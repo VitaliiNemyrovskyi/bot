@@ -63,3 +63,8 @@ Thumbs.db
 
 # Claude Code
 /.claude/
+
+# Root test files
+/index.js
+/package.json
+/package-lock.json
