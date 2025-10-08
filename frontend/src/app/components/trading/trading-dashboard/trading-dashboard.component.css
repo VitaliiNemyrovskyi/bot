@@ -1,0 +1,675 @@
+/**
+ * Trading Dashboard Component Styles
+ *
+ * Comprehensive styling for the manual trading dashboard.
+ * Features responsive design, dark mode support, and accessible UI elements.
+ */
+
+/* ==========================================================================
+   Dashboard Layout
+   ========================================================================== */
+
+.trading-dashboard {
+  padding: 1.5rem;
+  min-height: 100vh;
+  background-color: var(--background-secondary);
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.dashboard-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Dashboard Grid Layout */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* Chart and Trading Controls Layout */
+.chart-trading-layout {
+  grid-template-columns: 1fr 400px;
+  margin-bottom: 1.5rem;
+}
+
+.chart-column {
+  min-width: 0; /* Prevent overflow */
+}
+
+.trading-controls-column {
+  position: sticky;
+  top: 1.5rem;
+}
+
+/* Chart Card Styling */
+.chart-card {
+  height: 100%;
+}
+
+.chart-card ui-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chart-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.chart-credential-select,
+.chart-symbol-select {
+  min-width: 180px;
+}
+
+.chart-credential-select select,
+.chart-symbol-select select {
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Testnet Badge */
+.testnet-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background-color: rgba(255, 152, 0, 0.1);
+  color: #FF9800;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+html.dark .testnet-badge {
+  background-color: rgba(255, 152, 0, 0.15);
+  border-color: rgba(255, 152, 0, 0.4);
+}
+
+/* Positions and Orders Section */
+.positions-orders-section .dashboard-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.dashboard-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.left-column {
+  position: sticky;
+  top: 1.5rem;
+}
+
+/* ==========================================================================
+   Balance Card
+   ========================================================================== */
+
+.balance-card {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: var(--text-inverse);
+}
+
+.balance-card ui-card-title {
+  color: var(--text-inverse);
+}
+
+.balance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.balance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.balance-label {
+  font-size: 0.875rem;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.balance-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-value.primary {
+  font-size: 2rem;
+}
+
+.balance-loading {
+  text-align: center;
+  padding: 2rem;
+  opacity: 0.7;
+}
+
+/* ==========================================================================
+   Order Form
+   ========================================================================== */
+
+.order-form-card {
+  background-color: var(--background-primary);
+}
+
+.order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.form-actions {
+  margin-top: 0.5rem;
+}
+
+/* Form field enhancements */
+.form-group ui-input,
+.form-group ui-select {
+  width: 100%;
+}
+
+/* ==========================================================================
+   Positions Table
+   ========================================================================== */
+
+.positions-card,
+.orders-card {
+  background-color: var(--background-primary);
+}
+
+.positions-table-wrapper,
+.orders-table-wrapper {
+  overflow-x: auto;
+  margin: -1rem;
+  padding: 1rem;
+}
+
+.positions-table,
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.positions-table thead,
+.orders-table thead {
+  background-color: var(--background-tertiary);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.positions-table th,
+.orders-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.positions-table td,
+.orders-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.positions-table tbody tr,
+.orders-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.positions-table tbody tr:hover,
+.orders-table tbody tr:hover {
+  background-color: var(--background-secondary);
+}
+
+/* Table text alignment utilities */
+.text-left {
+  text-align: left;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Badges and Status Indicators
+   ========================================================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: var(--primary-color);
+  color: var(--text-inverse);
+  border-radius: 9999px;
+  margin-left: 0.5rem;
+}
+
+/* Side badges (Buy/Sell) */
+.side-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.side-badge.side-buy {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.side-badge.side-sell {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-badge[data-status="New"] {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.status-badge[data-status="Filled"] {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.status-badge[data-status="PartiallyFilled"] {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.status-badge[data-status="Cancelled"] {
+  background-color: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+}
+
+.status-badge[data-status="Rejected"] {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* Leverage badge */
+.leverage-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.625rem;
+  background-color: var(--background-tertiary);
+  color: var(--text-primary);
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+}
+
+/* ==========================================================================
+   PnL Styling
+   ========================================================================== */
+
+.pnl-positive {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.pnl-negative {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.pnl-percent {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-top: 0.125rem;
+}
+
+/* Positions Summary */
+.positions-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  margin-top: 1rem;
+  background-color: var(--background-secondary);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.summary-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Empty and Loading States
+   ========================================================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+
+.loading-state span {
+  font-size: 0.9375rem;
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.loading-state span {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-trading-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .positions-orders-section .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .left-column,
+  .trading-controls-column {
+    position: static;
+  }
+
+  .balance-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Mobile (up to 767px) */
+@media (max-width: 767px) {
+  .trading-dashboard {
+    padding: 1rem;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-title {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .dashboard-actions ui-button {
+    flex: 1;
+  }
+
+  .dashboard-grid {
+    gap: 1rem;
+  }
+
+  .balance-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .balance-value {
+    font-size: 1.25rem;
+  }
+
+  .balance-value.primary {
+    font-size: 1.5rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Horizontal scroll for tables on mobile */
+  .positions-table-wrapper,
+  .orders-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .positions-table,
+  .orders-table {
+    min-width: 800px;
+  }
+
+  .positions-table th,
+  .orders-table th,
+  .positions-table td,
+  .orders-table td {
+    padding: 0.625rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Small mobile (up to 480px) */
+@media (max-width: 480px) {
+  .dashboard-title {
+    font-size: 1.25rem;
+  }
+
+  .positions-table,
+  .orders-table {
+    font-size: 0.75rem;
+  }
+
+  .side-badge,
+  .status-badge {
+    font-size: 0.6875rem;
+    padding: 0.1875rem 0.5rem;
+  }
+}
+
+/* ==========================================================================
+   Dark Mode Enhancements
+   ========================================================================== */
+
+html.dark .balance-card {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+}
+
+html.dark .positions-table tbody tr:hover,
+html.dark .orders-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+html.dark .leverage-badge {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ==========================================================================
+   Accessibility Enhancements
+   ========================================================================== */
+
+/* Focus visible styles for keyboard navigation */
+.positions-table tbody tr:focus-within,
+.orders-table tbody tr:focus-within {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+/* Skip to content link for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .side-badge,
+  .status-badge,
+  .leverage-badge {
+    border: 2px solid currentColor;
+  }
+
+  .positions-table td,
+  .orders-table td {
+    border-bottom: 2px solid var(--border-color);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+  .trading-dashboard {
+    background-color: white;
+  }
+
+  .dashboard-actions,
+  .form-actions,
+  .positions-table td:last-child,
+  .orders-table td:last-child {
+    display: none;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-card {
+    color: black;
+    border: 2px solid black;
+  }
+}

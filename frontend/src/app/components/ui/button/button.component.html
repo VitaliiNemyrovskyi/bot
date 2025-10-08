@@ -1,0 +1,24 @@
+<button
+  [type]="type"
+  [class]="getButtonClasses()"
+  [disabled]="disabled || loading"
+  (click)="handleClick($event)">
+
+  @if (loading) {
+    <span class="ui-button__spinner">
+      <svg class="spinner" viewBox="0 0 50 50">
+        <circle
+          class="spinner-path"
+          cx="25"
+          cy="25"
+          r="20"
+          fill="none"
+          stroke-width="4"></circle>
+      </svg>
+    </span>
+  }
+
+  <span class="ui-button__content" [class.ui-button__content--hidden]="loading && iconOnly">
+    <ng-content></ng-content>
+  </span>
+</button>

@@ -1,0 +1,28 @@
+.confirmation-content {
+  padding: 1rem 0;
+}
+
+.confirmation-message {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+  margin: 0;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+/* Dark mode support */
+:host-context(.dark-mode) .confirmation-message {
+  color: var(--text-primary-dark, #e0e0e0);
+}
+
+:host-context(.dark-mode) .confirmation-actions {
+  border-top-color: var(--border-color-dark, #404040);
+}

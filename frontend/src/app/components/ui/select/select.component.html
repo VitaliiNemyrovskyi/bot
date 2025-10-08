@@ -1,0 +1,31 @@
+<div [class]="getWrapperClasses()">
+  <label *ngIf="label" class="select-label">{{ label }}</label>
+  <div class="select-container">
+    <select
+      [class]="getSelectClasses()"
+      [disabled]="disabled"
+      [multiple]="multiple"
+      [value]="value"
+      (change)="onSelectionChange($event)"
+      (blur)="onBlur()"
+    >
+      <option *ngIf="!multiple && placeholder" value="" disabled [selected]="!value">
+        {{ placeholder }}
+      </option>
+      <option
+        *ngFor="let option of options"
+        [value]="option.value"
+        [disabled]="option.disabled"
+        [selected]="isSelected(option.value)"
+      >
+        {{ option.label }}
+      </option>
+    </select>
+    <span class="select-arrow">
+      <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+  </div>
+  <div *ngIf="error" class="select-error-text">{{ error }}</div>
+</div>

@@ -1,0 +1,31 @@
+<ui-dialog
+  [open]="open"
+  [title]="getTitle()"
+  [size]="'small'"
+  [closable]="!loading"
+  [closeOnBackdrop]="!loading"
+  (close)="onDialogClose()"
+>
+  <div class="confirmation-content">
+    <p class="confirmation-message">{{ message }}</p>
+  </div>
+
+  <div class="confirmation-actions">
+    <ui-button
+      [variant]="'secondary'"
+      [disabled]="loading"
+      (clicked)="onCancel()"
+    >
+      {{ getCancelText() }}
+    </ui-button>
+
+    <ui-button
+      [variant]="confirmVariant"
+      [loading]="loading"
+      [disabled]="loading"
+      (clicked)="onConfirm()"
+    >
+      {{ getConfirmText() }}
+    </ui-button>
+  </div>
+</ui-dialog>

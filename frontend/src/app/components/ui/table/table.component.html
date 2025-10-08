@@ -1,0 +1,46 @@
+<div class="table-container" [style.max-height]="maxHeight">
+  <table [class]="getTableClasses()">
+    <thead>
+      <tr>
+        <th
+          *ngFor="let column of columns"
+          [class]="getColumnHeaderClasses(column)"
+          [style.width]="column.width"
+          (click)="onSort(column)"
+        >
+          <div class="table-header-content">
+            <span>{{ column.label }}</span>
+            <span *ngIf="column.sortable" class="sort-icon">{{ getSortIcon(column) }}</span>
+          </div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngIf="loading" class="table-loading">
+        <td [attr.colspan]="columns.length" class="table-loading-cell">
+          <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <span>{{ translate('table.loading') }}</span>
+          </div>
+        </td>
+      </tr>
+      <tr *ngIf="!loading && data.length === 0" class="table-empty">
+        <td [attr.colspan]="columns.length" class="table-empty-cell">
+          {{ translate('table.noData') }}
+        </td>
+      </tr>
+      <tr
+        *ngFor="let row of data; trackBy: trackByIndex"
+        class="table-row"
+        (click)="onRowClick(row)"
+      >
+        <td
+          *ngFor="let column of columns"
+          [class]="getCellClasses(column)"
+        >
+          {{ formatCellValue(row[column.key], column) }}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

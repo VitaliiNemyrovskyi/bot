@@ -1,0 +1,173 @@
+    .entry-filter {
+      margin-bottom: 2rem;
+    }
+
+    .filter-description {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+
+    .filters-list {
+      margin-bottom: 1.5rem;
+    }
+
+    .filter-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      transition: all 0.2s;
+    }
+
+    .filter-item:hover {
+      border-color: #d1d5db;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .filter-item.disabled {
+      opacity: 0.6;
+      background: #f9fafb;
+    }
+
+    .filter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .filter-info strong {
+      display: block;
+      color: #111827;
+      margin-bottom: 0.25rem;
+    }
+
+    .filter-details {
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+
+    .filter-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.4s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #3b82f6;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+    }
+
+    .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+      margin: 0 0 0.5rem 0;
+      color: #111827;
+    }
+
+    .empty-state p {
+      margin: 0;
+      color: #6b7280;
+    }
+
+    .filter-form {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-group label {
+      font-weight: 500;
+      font-size: 0.875rem;
+      color: #374151;
+    }
+
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    @media (max-width: 768px) {
+      .filter-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+      }
+
+      .filter-actions {
+        justify-content: flex-end;
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .form-actions {
+        flex-direction: column;
+      }
+    }

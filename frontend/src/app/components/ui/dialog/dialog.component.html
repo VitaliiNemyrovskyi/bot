@@ -1,0 +1,32 @@
+<div *ngIf="open" class="dialog-overlay" (click)="onBackdropClick($event)">
+  <div [class]="getDialogClasses()" role="dialog" [attr.aria-labelledby]="title ? 'dialog-title' : null">
+
+    <!-- Header -->
+    <div *ngIf="showHeader" class="dialog-header">
+      <h2 *ngIf="title" id="dialog-title" class="dialog-title">{{ title }}</h2>
+      <ng-content select="ui-dialog-header"></ng-content>
+
+      <button
+        *ngIf="closable"
+        class="dialog-close-button"
+        type="button"
+        [attr.aria-label]="translate('dialog.closeAriaLabel')"
+        (click)="onCloseClick()"
+      >
+        <span class="close-icon">✕</span>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="dialog-body">
+      <ng-content select="ui-dialog-content"></ng-content>
+      <ng-content></ng-content>
+    </div>
+
+    <!-- Footer -->
+    <div *ngIf="showFooter" class="dialog-footer">
+      <ng-content select="ui-dialog-footer"></ng-content>
+    </div>
+
+  </div>
+</div>

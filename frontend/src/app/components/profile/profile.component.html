@@ -1,0 +1,698 @@
+<div class="profile-container">
+  <!-- Profile Header -->
+  <div class="profile-header">
+    <div class="user-avatar-section">
+      <div class="avatar-container">
+        <img
+          [src]="currentUser()?.avatar || '/placeholder/120'"
+          [alt]="currentUser()?.name || currentUser()?.email"
+          class="user-avatar-xl"
+        />
+        <ui-button variant="ghost" className="avatar-edit-btn" (clicked)="changeAvatar()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
+            <path d="m18.5 2.5 a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </ui-button>
+      </div>
+      <div class="user-basic-info">
+        <h1 class="user-name">{{ currentUser()?.name || translate('profile.anonymous') }}</h1>
+        <p class="user-email">{{ currentUser()?.email }}</p>
+        <div class="user-status">
+          <span class="status-badge" [class]="'status-' + (currentUser()?.subscriptionActive ? 'active' : 'inactive')">
+            {{ currentUser()?.subscriptionActive ? translate('profile.premium') : translate('profile.free') }}
+          </span>
+          <span class="role-badge" [class]="'role-' + currentUser()?.role?.toLowerCase()">
+            {{ currentUser()?.role }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="profile-header-actions">
+      <ui-button variant="tertiary" className="logout-btn" (clicked)="logout()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        {{ translate('dashboard.logout') }}
+      </ui-button>
+    </div>
+  </div>
+
+  <!-- Profile Content -->
+  <div class="profile-content">
+    <!-- Navigation Tabs -->
+    <div class="profile-tabs">
+      @for (tab of tabs; track tab.id) {
+        <ui-button
+          variant="ghost"
+          className="tab-button"
+          [class.active]="activeTab() === tab.id"
+          (clicked)="setActiveTab(tab.id)"
+        >
+          <span class="tab-icon">{{ tab.icon }}</span>
+          <span class="tab-label">{{ translate(tab.label) }}</span>
+        </ui-button>
+      }
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+      <!-- Settings Tab -->
+      @if (activeTab() === 'settings') {
+        <div class="settings-section">
+          <div class="settings-group">
+            <h3>{{ translate('profile.preferences') }}</h3>
+            
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.language') }}</label>
+                <p>{{ translate('profile.languageDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <select [(ngModel)]="selectedLanguage" (change)="changeLanguage($event)">
+                  @for (lang of availableLanguages; track lang.code) {
+                    <option [value]="lang.code">{{ lang.flag }} {{ lang.name }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.theme') }}</label>
+                <p>{{ translate('profile.themeDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <ui-button variant="secondary" className="theme-toggle-btn" (clicked)="toggleTheme()">
+                  {{ isDark() ? translate('theme.light') : translate('theme.dark') }}
+                </ui-button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.currency') }}</label>
+                <p>{{ translate('profile.currencyDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <select [(ngModel)]="selectedCurrency" (change)="changeCurrency($event)">
+                  <option value="USD">🇺🇸 USD</option>
+                  <option value="EUR">🇪🇺 EUR</option>
+                  <option value="GBP">🇬🇧 GBP</option>
+                  <option value="JPY">🇯🇵 JPY</option>
+                  <option value="CAD">🇨🇦 CAD</option>
+                  <option value="AUD">🇦🇺 AUD</option>
+                  <option value="CHF">🇨🇭 CHF</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>{{ translate('profile.notifications') }}</h3>
+            
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.emailNotifications') }}</label>
+                <p>{{ translate('profile.emailNotificationsDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" [(ngModel)]="emailNotifications" (change)="updateNotificationSettings()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.priceAlerts') }}</label>
+                <p>{{ translate('profile.priceAlertsDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" [(ngModel)]="priceAlerts" (change)="updateNotificationSettings()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>{{ translate('profile.tradingAlerts') }}</label>
+                <p>{{ translate('profile.tradingAlertsDesc') }}</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" [(ngModel)]="tradingAlerts" (change)="updateNotificationSettings()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- User Info Tab -->
+      @if (activeTab() === 'userinfo') {
+        <div class="userinfo-section">
+          <div class="info-group">
+            <h3>{{ translate('profile.personalInfo') }}</h3>
+            
+            <form [formGroup]="userInfoForm" (ngSubmit)="updateUserInfo()">
+              <div class="form-row">
+                <div class="form-field">
+                  <label>{{ translate('profile.firstName') }}</label>
+                  <input type="text" formControlName="firstName" />
+                </div>
+                <div class="form-field">
+                  <label>{{ translate('profile.lastName') }}</label>
+                  <input type="text" formControlName="lastName" />
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label>{{ translate('profile.email') }}</label>
+                <div class="email-input-group">
+                  <input type="email" formControlName="email" />
+                  @if (currentUser()?.googleLinked) {
+                    <span class="google-badge">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                      {{ translate('profile.googleLinked') }}
+                    </span>
+                  } @else {
+                    <ui-button type="button" variant="secondary" className="link-google-btn" (clicked)="linkGoogleAccount()">
+                      {{ translate('profile.linkGoogle') }}
+                    </ui-button>
+                  }
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label>{{ translate('profile.phone') }}</label>
+                <input type="tel" formControlName="phone" />
+              </div>
+
+              <div class="form-field">
+                <label>{{ translate('profile.timezone') }}</label>
+                <select formControlName="timezone">
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">{{ translate('profile.timezoneET') }}</option>
+                  <option value="America/Chicago">{{ translate('profile.timezoneCT') }}</option>
+                  <option value="America/Denver">{{ translate('profile.timezoneMT') }}</option>
+                  <option value="America/Los_Angeles">{{ translate('profile.timezonePT') }}</option>
+                  <option value="Europe/London">{{ translate('profile.timezoneGMT') }}</option>
+                  <option value="Europe/Paris">{{ translate('profile.timezoneCET') }}</option>
+                  <option value="Europe/Moscow">{{ translate('profile.timezoneMSK') }}</option>
+                  <option value="Asia/Tokyo">{{ translate('profile.timezoneJST') }}</option>
+                  <option value="Asia/Shanghai">{{ translate('profile.timezoneCST') }}</option>
+                  <option value="Asia/Dubai">{{ translate('profile.timezoneGST') }}</option>
+                </select>
+              </div>
+
+              <div class="form-actions">
+                <ui-button type="submit" variant="primary" [disabled]="!userInfoForm.dirty">
+                  {{ translate('profile.saveChanges') }}
+                </ui-button>
+                <ui-button type="button" variant="secondary" (clicked)="resetUserInfo()">
+                  {{ translate('profile.cancel') }}
+                </ui-button>
+              </div>
+            </form>
+          </div>
+        </div>
+      }
+
+      <!-- Trading Platforms Tab -->
+      @if (activeTab() === 'platforms') {
+        <div class="platforms-section">
+          <div class="platforms-header">
+            <h3>{{ translate('profile.tradingPlatforms') }}</h3>
+            <ui-button variant="primary" (clicked)="openAddCredentialModal()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              {{ translate('profile.addNewCredential') }}
+            </ui-button>
+          </div>
+
+          <!-- Credentials Table -->
+          <div class="credentials-table-container">
+            @if (exchangeCredentialsService.loading()) {
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>{{ translate('profile.loadingCredentials') }}</p>
+              </div>
+            } @else if (credentials().length > 0) {
+              <table class="credentials-table">
+                <thead>
+                  <tr>
+                    <th>{{ translate('profile.tradingPlatform') }}</th>
+                    <th>{{ translate('profile.environment') }}</th>
+                    <th>{{ translate('profile.label') }}</th>
+                    <th>{{ translate('profile.apiKey') }}</th>
+                    <th>{{ translate('profile.apiSecret') }}</th>
+                    <th>{{ translate('profile.status') }}</th>
+                    <th>{{ translate('profile.actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (credential of credentials(); track credential.id) {
+                    <tr [class.editing]="editingCredentialId() === credential.id">
+                      <!-- Trading Platform -->
+                      <td class="platform-cell">
+                        <div class="platform-name">
+                          <span
+                            class="platform-badge clickable"
+                            [style.background-color]="EXCHANGE_METADATA[credential.exchange].color"
+                            (click)="openPlatformInfoModal(credential)"
+                            [attr.title]="translate('profile.clickToView') + ' ' + getExchangeName(credential.exchange) + ' ' + translate('profile.accountDetails')"
+                          >
+                            {{ getExchangeName(credential.exchange) }}
+                          </span>
+                        </div>
+                      </td>
+
+                      <!-- Environment -->
+                      <td class="environment-cell">
+                        <span class="env-badge" [class.testnet]="credential.environment === EnvironmentType.TESTNET">
+                          {{ credential.environment === EnvironmentType.TESTNET ? translate('profile.testnet') : translate('profile.mainnet') }}
+                        </span>
+                      </td>
+
+                      <!-- Label -->
+                      <td class="label-cell">
+                        @if (editingCredentialId() === credential.id) {
+                          <input
+                            type="text"
+                            class="edit-input"
+                            [value]="editFormData().label || ''"
+                            (input)="updateEditField('label', $any($event.target).value)"
+                            [placeholder]="translate('profile.enterLabel')"
+                          />
+                        } @else {
+                          <span class="label-text">{{ credential.label || '-' }}</span>
+                        }
+                      </td>
+
+                      <!-- API Key -->
+                      <td class="api-key-cell">
+                        @if (editingCredentialId() === credential.id) {
+                          <div class="password-input-wrapper">
+                            <input
+                              [type]="showApiSecret()[credential.id + '_key'] ? 'text' : 'password'"
+                              class="edit-input"
+                              [value]="showApiSecret()[credential.id + '_key'] && revealedCredentials()[credential.id] ? revealedCredentials()[credential.id]!.apiKey : (editFormData().apiKey || '')"
+                              (input)="updateEditField('apiKey', $any($event.target).value)"
+                              [placeholder]="translate('profile.currentKey') + ': ' + credential.apiKeyPreview + ' (' + translate('profile.enterNewOrEmpty') + ')'"
+                            />
+                            <ui-button type="button" variant="ghost" className="toggle-visibility-btn-small"
+                                    (clicked)="toggleApiKeyVisibility(credential.id)" tabindex="-1">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                @if (showApiSecret()[credential.id + '_key']) {
+                                  <path d="M12 5C7 5 2.73 8.11 1 12.5 2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" stroke="currentColor" stroke-width="2"/>
+                                  <circle cx="12" cy="12.5" r="2.5" fill="currentColor"/>
+                                } @else {
+                                  <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" fill="currentColor"/>
+                                }
+                              </svg>
+                            </ui-button>
+                          </div>
+                        } @else {
+                          <span class="api-key-preview">{{ getMaskedValue(credential.apiKeyPreview) }}</span>
+                        }
+                      </td>
+
+                      <!-- API Secret -->
+                      <td class="api-secret-cell">
+                        @if (editingCredentialId() === credential.id) {
+                          <div class="password-input-wrapper">
+                            <input
+                              [type]="showApiSecret()[credential.id + '_secret'] ? 'text' : 'password'"
+                              class="edit-input"
+                              [value]="showApiSecret()[credential.id + '_secret'] && revealedCredentials()[credential.id] ? revealedCredentials()[credential.id]!.apiSecret : (editFormData().apiSecret || '')"
+                              (input)="updateEditField('apiSecret', $any($event.target).value)"
+                              [placeholder]="translate('profile.enterNewSecret')"
+                            />
+                            <ui-button type="button" variant="ghost" className="toggle-visibility-btn-small"
+                                    (clicked)="toggleApiSecretVisibility(credential.id)" tabindex="-1">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                @if (showApiSecret()[credential.id + '_secret']) {
+                                  <path d="M12 5C7 5 2.73 8.11 1 12.5 2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" stroke="currentColor" stroke-width="2"/>
+                                  <circle cx="12" cy="12.5" r="2.5" fill="currentColor"/>
+                                } @else {
+                                  <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" fill="currentColor"/>
+                                }
+                              </svg>
+                            </ui-button>
+                          </div>
+                        } @else {
+                          <span class="api-secret-preview">••••••••••••••••</span>
+                        }
+                      </td>
+
+                      <!-- Status -->
+                      <td class="status-cell">
+                        <label class="toggle-switch-small">
+                          <input
+                            type="checkbox"
+                            [checked]="credential.isActive"
+                            (change)="toggleActive(credential, $event)"
+                          >
+                          <span class="slider-small"></span>
+                        </label>
+                        <span class="status-text">{{ credential.isActive ? translate('profile.active') : translate('profile.inactive') }}</span>
+                      </td>
+
+                      <!-- Actions -->
+                      <td class="actions-cell">
+                        @if (editingCredentialId() === credential.id) {
+                          <div class="edit-actions">
+                            <ui-button
+                              size="small"
+                              variant="secondary"
+                              className="btn-info"
+                              (clicked)="testEditConnection(credential)"
+                              [disabled]="testingConnectionId() === credential.id || savingCredentialId() === credential.id"
+                              [title]="translate('profile.testConnection')"
+                            >
+                              @if (testingConnectionId() === credential.id) {
+                                <span class="spinner-small"></span>
+                              } @else {
+                                {{ translate('button.test') }}
+                              }
+                            </ui-button>
+                            <ui-button
+                              size="small"
+                              variant="secondary"
+                              className="btn-success"
+                              (clicked)="saveCredential(credential.id)"
+                              [disabled]="savingCredentialId() === credential.id"
+                            >
+                              @if (savingCredentialId() === credential.id) {
+                                <span class="spinner-small"></span>
+                              }
+                              {{ translate('button.save') }}
+                            </ui-button>
+                            <ui-button
+                              size="small"
+                              variant="secondary"
+                              (clicked)="cancelEdit()"
+                              [disabled]="savingCredentialId() === credential.id"
+                            >
+                              {{ translate('button.cancel') }}
+                            </ui-button>
+                          </div>
+                        } @else {
+                          <div class="row-actions">
+                            <ui-button
+                              variant="ghost"
+                              className="btn-icon"
+                              (clicked)="startEditCredential(credential)"
+                              [title]="translate('button.edit')"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
+                                <path d="m18.5 2.5 a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2"/>
+                              </svg>
+                            </ui-button>
+                            <ui-button
+                              variant="danger"
+                              className="btn-icon"
+                              (clicked)="deleteCredential(credential)"
+                              [disabled]="deletingCredentialId() === credential.id"
+                              [title]="translate('button.delete')"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2"/>
+                              </svg>
+                            </ui-button>
+                          </div>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            } @else {
+              <div class="empty-state">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2a5 5 0 0 1 5 5v3h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2V7a5 5 0 0 1 5-5z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <h4>{{ translate('profile.noCredentials') }}</h4>
+                <p>{{ translate('profile.noCredentialsDesc') }}</p>
+                <ui-button variant="primary" (clicked)="openAddCredentialModal()">
+                  {{ translate('profile.addCredential') }}
+                </ui-button>
+              </div>
+            }
+          </div>
+
+          <!-- Platform Info -->
+          <div class="platform-info-section">
+            <div class="info-card">
+              <div class="info-icon">🔐</div>
+              <h4>{{ translate('profile.secureConnection') }}</h4>
+              <p>{{ translate('profile.secureConnectionDesc') }}</p>
+            </div>
+            <div class="info-card">
+              <div class="info-icon">⚡</div>
+              <h4>{{ translate('profile.realTimeData') }}</h4>
+              <p>{{ translate('profile.realTimeDataDesc') }}</p>
+            </div>
+            <div class="info-card">
+              <div class="info-icon">🌐</div>
+              <h4>{{ translate('profile.multiExchange') }}</h4>
+              <p>{{ translate('profile.multiExchangeDesc') }}</p>
+            </div>
+          </div>
+
+          <!-- Add Credential Modal -->
+          @if (showAddCredentialModal()) {
+            <div class="modal-overlay" (click)="closeAddCredentialModal()">
+              <div class="modal-content" (click)="$event.stopPropagation()">
+                <div class="modal-header">
+                  <h3>{{ translate('profile.addNewCredential') }}</h3>
+                  <ui-button variant="ghost" className="modal-close-btn" (clicked)="closeAddCredentialModal()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                      <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                  </ui-button>
+                </div>
+
+                <form [formGroup]="newCredentialForm" (ngSubmit)="saveNewCredential()" class="modal-form">
+                  <!-- Exchange Selection -->
+                  <div class="form-field">
+                    <label>{{ translate('bot.exchange') }} <span class="required">*</span></label>
+                    <select formControlName="exchange">
+                      <option value="">{{ translate('bot.selectExchange') }}</option>
+                      @for (exchange of exchanges; track exchange) {
+                        <option [value]="exchange">
+                          {{ getExchangeName(exchange) }}
+                        </option>
+                      }
+                    </select>
+                    @if (newCredentialForm.get('exchange')?.invalid && newCredentialForm.get('exchange')?.touched) {
+                      <span class="field-error">{{ translate('profile.exchangeRequired') }}</span>
+                    }
+                  </div>
+
+                  <!-- Environment Selection - Only visible for admins -->
+                  @if (isAdmin()) {
+                    <div class="form-field">
+                      <label>{{ translate('bot.environment') }} <span class="required">*</span></label>
+                      <select formControlName="environment">
+                        <option [value]="EnvironmentType.TESTNET">{{ translate('profile.testnetDemo') }}</option>
+                        <option [value]="EnvironmentType.MAINNET">{{ translate('profile.mainnetReal') }}</option>
+                      </select>
+                    </div>
+                  }
+
+                  <!-- Label -->
+                  <div class="form-field">
+                    <label>{{ translate('profile.label') }} ({{ translate('profile.optional') }})</label>
+                    <input
+                      type="text"
+                      formControlName="label"
+                      [placeholder]="translate('profile.labelPlaceholder')"
+                      maxlength="50"
+                    />
+                    <small>{{ translate('profile.labelDesc') }}</small>
+                  </div>
+
+                  <!-- API Key -->
+                  <div class="form-field">
+                    <label>{{ translate('profile.apiKey') }} <span class="required">*</span></label>
+                    <input
+                      type="text"
+                      formControlName="apiKey"
+                      [placeholder]="translate('profile.enterApiKey')"
+                    />
+                    @if (newCredentialForm.get('apiKey')?.invalid && newCredentialForm.get('apiKey')?.touched) {
+                      <span class="field-error">{{ translate('profile.apiKeyError') }}</span>
+                    }
+                  </div>
+
+                  <!-- API Secret -->
+                  <div class="form-field">
+                    <label>{{ translate('profile.apiSecret') }} <span class="required">*</span></label>
+                    <div class="password-input-wrapper">
+                      <input
+                        [type]="showApiSecret()['new'] ? 'text' : 'password'"
+                        formControlName="apiSecret"
+                        [placeholder]="translate('profile.enterApiSecret')"
+                      />
+                      <ui-button
+                        type="button"
+                        variant="ghost"
+                        className="toggle-visibility-btn"
+                        (clicked)="toggleNewFormApiSecretVisibility()"
+                        tabindex="-1"
+                      >
+                        @if (showApiSecret()['new']) {
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                          </svg>
+                        } @else {
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2"/>
+                            <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2"/>
+                          </svg>
+                        }
+                      </ui-button>
+                    </div>
+                    @if (newCredentialForm.get('apiSecret')?.invalid && newCredentialForm.get('apiSecret')?.touched) {
+                      <span class="field-error">{{ translate('profile.apiSecretError') }}</span>
+                    }
+                  </div>
+
+                  <!-- Modal Actions -->
+                  <div class="modal-actions">
+                    <ui-button
+                      type="button"
+                      variant="tertiary"
+                      (clicked)="testNewConnection()"
+                      [disabled]="testingConnectionId() === 'new'"
+                    >
+                      @if (testingConnectionId() === 'new') {
+                        <span>{{ translate('profile.testing') }}</span>
+                      } @else {
+                        <span>{{ translate('profile.testConnection') }}</span>
+                      }
+                    </ui-button>
+                    <div class="actions-right">
+                      <ui-button type="button" variant="secondary" (clicked)="closeAddCredentialModal()">
+                        {{ translate('button.cancel') }}
+                      </ui-button>
+                      <ui-button type="submit" variant="primary" [disabled]="newCredentialForm.invalid">
+                        {{ translate('profile.saveCredential') }}
+                      </ui-button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Messages Tab -->
+      @if (activeTab() === 'messages') {
+        <div class="messages-section">
+          <div class="messages-header">
+            <h3>{{ translate('profile.messages') }}</h3>
+            <ui-button variant="secondary" className="mark-all-read-btn" (clicked)="markAllAsRead()">
+              {{ translate('profile.markAllRead') }}
+            </ui-button>
+          </div>
+
+          <div class="messages-list">
+            @for (message of messages; track message.id) {
+              <div class="message-item" [class.unread]="!message.read">
+                <div class="message-icon" [class]="'icon-' + message.type">
+                  @switch (message.type) {
+                    @case ('info') { <span>ℹ️</span> }
+                    @case ('warning') { <span>⚠️</span> }
+                    @case ('success') { <span>✅</span> }
+                    @case ('error') { <span>❌</span> }
+                    @case ('trade') { <span>📈</span> }
+                    @default { <span>📧</span> }
+                  }
+                </div>
+                <div class="message-content">
+                  <div class="message-header">
+                    <h4>{{ message.title }}</h4>
+                    <span class="message-time">{{ message.timestamp | date:'short' }}</span>
+                  </div>
+                  <p>{{ message.content }}</p>
+                  @if (message.actions?.length) {
+                    <div class="message-actions">
+                      @for (action of message.actions; track action.label) {
+                        <ui-button size="small" variant="secondary" [className]="'btn-' + action.type" (clicked)="executeMessageAction(action)">
+                          {{ action.label }}
+                        </ui-button>
+                      }
+                    </div>
+                  }
+                </div>
+                @if (!message.read) {
+                  <ui-button variant="ghost" className="mark-read-btn" (clicked)="markAsRead(message.id)">
+                    <span class="unread-dot"></span>
+                  </ui-button>
+                }
+              </div>
+            }
+            
+            @if (messages.length === 0) {
+              <div class="no-messages">
+                <span class="no-messages-icon">📭</span>
+                <p>{{ translate('profile.noMessages') }}</p>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+@if (showToastSignal()) {
+  <div class="toast-notification" [class]="'toast-' + toastType()">
+    <span>{{ toastMessage() }}</span>
+    <ui-button variant="ghost" (clicked)="showToastSignal.set(false)" className="toast-close">×</ui-button>
+  </div>
+}
+
+<!-- Trading Platform Info Modal -->
+@if (showPlatformInfoModal() && selectedCredentialForModal()) {
+  <app-trading-platform-info-modal
+    [credential]="selectedCredentialForModal()!"
+    (closeModal)="closePlatformInfoModal()"
+  />
+}
+
+<!-- Confirmation Modal -->
+<ui-confirmation-modal
+  [open]="showConfirmModal()"
+  [title]="confirmModalTitle()"
+  [message]="confirmModalMessage()"
+  [confirmText]="confirmModalConfirmText()"
+  [cancelText]="confirmModalCancelText()"
+  [confirmVariant]="confirmModalVariant()"
+  (confirm)="onConfirmModalConfirm()"
+  (cancel)="onConfirmModalCancel()"
+  [(open)]="showConfirmModal"
+/>

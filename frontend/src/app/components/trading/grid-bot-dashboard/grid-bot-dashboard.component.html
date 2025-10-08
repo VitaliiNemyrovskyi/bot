@@ -1,0 +1,190 @@
+<div class="grid-bot-dashboard">
+  <div class="header">
+    <h1>{{ translate('dashboard.title') }}</h1>
+    <ui-button variant="primary" (clicked)="openBotConfig()">
+      {{ translate('dashboard.createNewBot') }}
+    </ui-button>
+  </div>
+
+  <ui-tabs [tabs]="[
+    {id: 'bots', label: translate('dashboard.tabActiveBots')},
+    {id: 'strategies', label: translate('dashboard.tabStrategies')},
+    {id: 'backtests', label: translate('dashboard.tabBacktests')}
+  ]" activeTabId="bots">
+
+    <!-- Active Bots Tab -->
+    <ui-tab-content tabId="bots" [active]="true">
+      <div class="tab-content">
+        <div class="bots-grid" *ngIf="activeBots.length > 0; else noBots">
+          <ui-card *ngFor="let bot of activeBots" class="bot-card" [hover]="true">
+            <ui-card-header>
+              <ui-card-title>{{ bot.name || bot.symbol }}</ui-card-title>
+              <ui-card-subtitle>
+                <span class="status-badge" [class]="'status-' + bot.status.toLowerCase()">
+                  {{ bot.status }}
+                </span>
+              </ui-card-subtitle>
+            </ui-card-header>
+
+            <ui-card-content>
+              <div class="bot-stats">
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.symbol') }}</span>
+                  <span class="value">{{ bot.symbol }}</span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.totalPnl') }}</span>
+                  <span class="value" [class]="bot.totalPnL >= 0 ? 'positive' : 'negative'">
+                    {{ bot.totalPnL | currency }}
+                  </span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.trades') }}</span>
+                  <span class="value">{{ bot.totalTrades }}</span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.winRate') }}</span>
+                  <span class="value">{{ bot.winRate }}%</span>
+                </div>
+              </div>
+            </ui-card-content>
+
+            <ui-card-actions>
+              <ui-button variant="ghost" size="small" (clicked)="viewBot(bot)">
+                {{ translate('button.view') }}
+              </ui-button>
+              <ui-button variant="ghost" size="small" (clicked)="editBot(bot)">
+                {{ translate('button.edit') }}
+              </ui-button>
+              <ui-button
+                [variant]="bot.status === 'RUNNING' ? 'warning' : 'primary'"
+                size="small"
+                (clicked)="toggleBot(bot)">
+                {{ bot.status === 'RUNNING' ? translate('button.stop') : translate('button.start') }}
+              </ui-button>
+              <ui-button variant="danger" size="small" (clicked)="deleteBot(bot)">
+                {{ translate('button.delete') }}
+              </ui-button>
+            </ui-card-actions>
+          </ui-card>
+        </div>
+
+        <ng-template #noBots>
+          <div class="empty-state">
+            <div class="empty-icon">🤖</div>
+            <h3>{{ translate('dashboard.noActiveBots') }}</h3>
+            <p>{{ translate('dashboard.createFirstBot') }}</p>
+            <ui-button variant="primary" (clicked)="openBotConfig()">
+              {{ translate('dashboard.createBot') }}
+            </ui-button>
+          </div>
+        </ng-template>
+      </div>
+    </ui-tab-content>
+
+    <!-- Strategies Tab -->
+    <ui-tab-content tabId="strategies">
+      <div class="tab-content">
+        <div class="strategies-header">
+          <h2>{{ translate('dashboard.tradingStrategies') }}</h2>
+          <ui-button variant="primary" (clicked)="createStrategy()">
+            {{ translate('dashboard.createStrategy') }}
+          </ui-button>
+        </div>
+
+        <div class="strategies-grid" *ngIf="strategies.length > 0; else noStrategies">
+          <ui-card *ngFor="let strategy of strategies" class="strategy-card" [hover]="true">
+            <ui-card-header>
+              <ui-card-title>{{ strategy.name }}</ui-card-title>
+              <ui-card-subtitle>{{ strategy.description || 'No description' }}</ui-card-subtitle>
+            </ui-card-header>
+
+            <ui-card-content>
+              <div class="strategy-stats">
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.entryFilters') }}</span>
+                  <span class="value">{{ strategy.entryFilters.length }}</span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.exitFilters') }}</span>
+                  <span class="value">{{ strategy.exitFilters.length }}</span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.avgReturn') }}</span>
+                  <span class="value" *ngIf="strategy.averageReturn">
+                    {{ strategy.averageReturn }}%
+                  </span>
+                  <span class="value" *ngIf="!strategy.averageReturn">{{ translate('dashboard.na') }}</span>
+                </div>
+                <div class="stat">
+                  <span class="label">{{ translate('dashboard.timesUsed') }}</span>
+                  <span class="value">{{ strategy.timesUsed }}</span>
+                </div>
+              </div>
+            </ui-card-content>
+
+            <ui-card-actions>
+              <ui-button variant="primary" size="small" (clicked)="useStrategy(strategy)">
+                {{ translate('button.use') }}
+              </ui-button>
+              <ui-button variant="secondary" size="small" (clicked)="backtestStrategy(strategy)">
+                {{ translate('button.backtest') }}
+              </ui-button>
+              <ui-button variant="ghost" size="small" (clicked)="editStrategy(strategy)">
+                {{ translate('button.edit') }}
+              </ui-button>
+              <ui-button variant="danger" size="small" (clicked)="deleteStrategy(strategy)">
+                {{ translate('button.delete') }}
+              </ui-button>
+            </ui-card-actions>
+          </ui-card>
+        </div>
+
+        <ng-template #noStrategies>
+          <div class="empty-state">
+            <div class="empty-icon">🧠</div>
+            <h3>{{ translate('dashboard.noStrategies') }}</h3>
+            <p>{{ translate('dashboard.createFirstStrategy') }}</p>
+            <ui-button variant="primary" (clicked)="createStrategy()">
+              {{ translate('dashboard.createStrategy') }}
+            </ui-button>
+          </div>
+        </ng-template>
+      </div>
+    </ui-tab-content>
+
+    <!-- Backtests Tab -->
+    <ui-tab-content tabId="backtests">
+      <div class="tab-content">
+        <div class="backtests-header">
+          <h2>{{ translate('dashboard.backtestResults') }}</h2>
+          <ui-button variant="primary" (clicked)="newBacktest()">
+            {{ translate('dashboard.newBacktest') }}
+          </ui-button>
+        </div>
+
+        <div class="backtests-table" *ngIf="backtests.length > 0; else noBacktests">
+          <ui-table
+            [columns]="backtestTableColumns"
+            [data]="backtests"
+            [striped]="true"
+            [hoverable]="true"
+            (rowClick)="viewBacktest($event)">
+          </ui-table>
+        </div>
+
+        <ng-template #noBacktests>
+          <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h3>{{ translate('dashboard.noBacktests') }}</h3>
+            <p>{{ translate('dashboard.runFirstBacktest') }}</p>
+            <ui-button variant="primary" (clicked)="newBacktest()">
+              {{ translate('dashboard.newBacktest') }}
+            </ui-button>
+          </div>
+        </ng-template>
+      </div>
+    </ui-tab-content>
+  </ui-tabs>
+
+</div>

@@ -1,0 +1,20 @@
+<div [class]="getWrapperClasses()">
+  <label *ngIf="label" class="input-label">{{ label }}</label>
+  <div class="input-container">
+    <span *ngIf="icon && iconPosition === 'left'" [class]="'input-icon input-icon-left ' + icon"></span>
+    <input
+      [type]="type"
+      [class]="getInputClasses()"
+      [placeholder]="placeholder"
+      [disabled]="disabled"
+      [value]="value"
+      [min]="min"
+      [max]="max"
+      [step]="step"
+      (input)="onInput($event)"
+      (blur)="onBlur()"
+    />
+    <span *ngIf="icon && iconPosition === 'right'" [class]="'input-icon input-icon-right ' + icon"></span>
+  </div>
+  <div *ngIf="error" class="input-error-text">{{ error }}</div>
+</div>

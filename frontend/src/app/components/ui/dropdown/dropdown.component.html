@@ -1,0 +1,86 @@
+<div class="dropdown-wrapper" [class.dropdown-disabled]="disabled">
+  <!-- Dropdown Trigger -->
+  <button
+    type="button"
+    class="dropdown-trigger"
+    [class.dropdown-open]="isOpen()"
+    [class.dropdown-small]="size === 'small'"
+    [class.dropdown-medium]="size === 'medium'"
+    [class.dropdown-large]="size === 'large'"
+    [class.width-normal]="width === 'normal'"
+    [class.width-medium]="width === 'medium'"
+    [class.width-wide]="width === 'wide'"
+    [class.dropdown-dark]="isDark()"
+    [disabled]="disabled"
+    (click)="toggle()"
+    (keydown)="onKeyDown($event)"
+    [attr.aria-expanded]="isOpen()"
+    [attr.aria-haspopup]="true">
+    <span class="dropdown-value">
+      @if (selectedOption()) {
+        <span class="dropdown-selected">
+          @if (selectedOption()?.icon) {
+            <span class="dropdown-icon">{{ selectedOption()?.icon }}</span>
+          }
+          {{ selectedOption()?.label }}
+        </span>
+      } @else {
+        <span class="dropdown-placeholder">{{ placeholder }}</span>
+      }
+    </span>
+    <span class="dropdown-arrow" [class.dropdown-arrow-up]="isOpen()">▼</span>
+    @if (selectedValue() && !disabled) {
+      <button
+        type="button"
+        class="dropdown-clear"
+        (click)="clearSelection($event)"
+        aria-label="Clear selection">
+        ✕
+      </button>
+    }
+  </button>
+
+  <!-- Dropdown Panel -->
+  @if (isOpen()) {
+    <div class="dropdown-panel" [class.dropdown-dark]="isDark()">
+      <!-- Search Input -->
+      @if (searchable) {
+        <div class="dropdown-search">
+          <input
+            #searchInput
+            type="text"
+            class="dropdown-search-input"
+            [placeholder]="searchPlaceholder"
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="onSearchChange($event)"
+            (keydown)="onKeyDown($event)"
+            autocomplete="off">
+        </div>
+      }
+
+      <!-- Options List -->
+      <div class="dropdown-options">
+        @if (filteredOptions().length === 0) {
+          <div class="dropdown-empty">No options found</div>
+        } @else {
+          @for (option of filteredOptions(); track option.value; let i = $index) {
+            <div
+              class="option"
+              [class.option-selected]="isSelected(option)"
+              [class.option-highlighted]="isHighlighted(i)"
+              [class.option-disabled]="option.disabled"
+              (click)="selectOption(option)"
+              (mouseenter)="onOptionHover(i)"
+              role="option"
+              [attr.aria-selected]="isSelected(option)">
+              @if (option.icon) {
+                <span class="option-icon">{{ option.icon }}</span>
+              }
+              <span class="option-label">{{ option.label }}</span>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  }
+</div>

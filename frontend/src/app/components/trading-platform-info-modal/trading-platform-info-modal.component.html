@@ -1,0 +1,343 @@
+<div class="modal-overlay" (click)="handleOverlayClick()">
+  <div class="modal-content" (click)="handleContentClick($event)">
+    <!-- Modal Header -->
+    <header class="modal-header">
+      <div class="header-info">
+        <div class="exchange-logo" [style.background-color]="exchangeColor()">
+          <span class="logo-text">{{ exchangeName().substring(0, 2) }}</span>
+        </div>
+        <div class="header-title">
+          <h2>{{ exchangeName() }} {{ translate('modal.account') }}</h2>
+          <div class="header-badges">
+            <span class="env-badge" [class.testnet]="isTestnet()" [style.background-color]="environmentColor()">
+              {{ environmentName() }}
+            </span>
+            @if (credential().label) {
+              <span class="label-badge">{{ credential().label }}</span>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <ui-button
+          variant="ghost"
+          size="small"
+          className="refresh-btn"
+          (clicked)="refreshUserInfo()"
+          [disabled]="loading()"
+          [title]="translate('modal.refreshData')"
+        >
+          <span class="icon" [class.spinning]="loading()">🔄</span>
+        </ui-button>
+        <ui-button variant="ghost" size="small" className="close-btn" (clicked)="close()" [title]="translate('button.close')">
+          <span class="icon">✕</span>
+        </ui-button>
+      </div>
+    </header>
+
+    <!-- Modal Body -->
+    <div class="modal-body">
+      <!-- Loading State -->
+      @if (loading() && !userInfo()) {
+        <div class="loading-container">
+          <div class="spinner-large"></div>
+          <p>{{ translate('modal.loadingAccount') }}</p>
+        </div>
+      }
+
+      <!-- Error State -->
+      @if (error() && !userInfo()) {
+        <div class="error-container">
+          <div class="error-icon">⚠️</div>
+          <h3>{{ translate('modal.unableToLoad') }}</h3>
+          <p class="error-message">{{ error() }}</p>
+          <ui-button variant="primary" size="medium" (clicked)="retryLoad()">
+            <span class="btn-icon">🔄</span>
+            {{ translate('button.tryAgain') }}
+          </ui-button>
+        </div>
+      }
+
+      <!-- Main Content -->
+      @if (userInfo() && !loading()) {
+        <!-- Stats Summary Cards -->
+        <section class="stats-section">
+          <div class="stats-grid">
+            <div class="stat-card primary">
+              <div class="stat-icon">💰</div>
+              <div class="stat-content">
+                <h3>${{ formatCurrency(totalEquity()) }}</h3>
+                <p>{{ translate('modal.totalEquity') }}</p>
+              </div>
+            </div>
+
+            <div class="stat-card success">
+              <div class="stat-icon">💵</div>
+              <div class="stat-content">
+                <h3>${{ formatCurrency(availableBalance()) }}</h3>
+                <p>{{ translate('modal.availableBalance') }}</p>
+              </div>
+            </div>
+
+            <div class="stat-card info">
+              <div class="stat-icon">💼</div>
+              <div class="stat-content">
+                <h3>${{ formatCurrency(walletBalance()) }}</h3>
+                <p>{{ translate('modal.walletBalance') }}</p>
+              </div>
+            </div>
+
+            <div class="stat-card" [class.danger]="unrealizedPnl() < 0" [class.success]="unrealizedPnl() > 0">
+              <div class="stat-icon">📈</div>
+              <div class="stat-content">
+                <h3 [class]="getPnlColorClass(unrealizedPnl())">${{ formatCurrency(unrealizedPnl()) }}</h3>
+                <p>{{ translate('modal.unrealizedPnL') }}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tabs Navigation -->
+        <nav class="tabs-navigation">
+          <div class="tabs-list">
+            @for (tab of tabs; track tab.id) {
+              <ui-button
+                variant="ghost"
+                size="medium"
+                className="tab-button"
+                [class.active]="activeTab() === tab.id"
+                (clicked)="setActiveTab(tab.id)"
+              >
+                <span class="tab-icon">{{ tab.icon }}</span>
+                <span class="tab-label">{{ translate(tab.label) }}</span>
+              </ui-button>
+            }
+          </div>
+        </nav>
+
+        <!-- Tab Content -->
+        <section class="tab-content">
+          <!-- Overview Tab -->
+          @if (activeTab() === 'overview') {
+            <div class="overview-container">
+              @if (accountInfo()) {
+                <div class="info-card">
+                  <div class="card-header">
+                    <h3>{{ translate('modal.accountSummary') }}</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.totalEquity') }}</span>
+                      <span class="info-value">${{ formatCurrency(getAccountField('totalEquity')) }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.walletBalance') }}</span>
+                      <span class="info-value">${{ formatCurrency(getAccountField('totalWalletBalance')) }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.availableBalance') }}</span>
+                      <span class="info-value text-success">${{ formatCurrency(getAccountField('totalAvailableBalance')) }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.marginBalance') }}</span>
+                      <span class="info-value">${{ formatCurrency(getAccountField('totalMarginBalance')) }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.initialMargin') }}</span>
+                      <span class="info-value">${{ formatCurrency(getAccountField('totalInitialMargin')) }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.unrealizedPnL') }}</span>
+                      <span class="info-value" [class]="getPnlColorClass(getAccountField('totalPerpUPL'))">
+                        ${{ formatCurrency(getAccountField('totalPerpUPL')) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="info-card">
+                  <div class="card-header">
+                    <h3>{{ translate('modal.quickStats') }}</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.activePositions') }}</span>
+                      <span class="info-value">{{ activePositions().length }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.activeOrders') }}</span>
+                      <span class="info-value">{{ activeOrders().length }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.nonZeroBalances') }}</span>
+                      <span class="info-value">{{ nonZeroBalances().length }}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">{{ translate('modal.lastUpdated') }}</span>
+                      <span class="info-value text-muted">{{ userInfo()!.timestamp | date:'short' }}</span>
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="error-message-inline">
+                  <span class="error-icon">⚠️</span>
+                  <p>{{ translate('modal.failedToLoadAccount') }}</p>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Balances Tab -->
+          @if (activeTab() === 'balances') {
+            <div class="balances-container">
+              @if (nonZeroBalances().length > 0) {
+                <div class="balances-grid">
+                  @for (balance of nonZeroBalances(); track balance.coin) {
+                    <div class="balance-card">
+                      <div class="balance-header">
+                        <div class="coin-info">
+                          <h4>{{ balance.coin }}</h4>
+                          <span class="usd-value">${{ formatCurrency(balance.usdValue) }}</span>
+                        </div>
+                      </div>
+                      <div class="balance-body">
+                        <div class="balance-row">
+                          <span class="label">{{ translate('modal.walletBalance') }}</span>
+                          <span class="value">{{ formatCurrency(balance.walletBalance, 8) }}</span>
+                        </div>
+                        <div class="balance-row">
+                          <span class="label">{{ translate('modal.available') }}</span>
+                          <span class="value text-success">{{ formatCurrency(balance.availableToWithdraw, 8) }}</span>
+                        </div>
+                        <div class="balance-row">
+                          <span class="label">{{ translate('modal.equity') }}</span>
+                          <span class="value">{{ formatCurrency(balance.equity, 8) }}</span>
+                        </div>
+                        @if (parseFloat(balance.unrealisedPnl) !== 0) {
+                          <div class="balance-row">
+                            <span class="label">{{ translate('modal.unrealizedPnL') }}</span>
+                            <span class="value" [class]="getPnlColorClass(balance.unrealisedPnl)">
+                              {{ formatCurrency(balance.unrealisedPnl, 8) }}
+                            </span>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state">
+                  <div class="empty-icon">💰</div>
+                  <h3>{{ translate('modal.noBalances') }}</h3>
+                  <p>{{ translate('modal.noBalancesDesc') }}</p>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Positions Tab -->
+          @if (activeTab() === 'positions') {
+            <div class="positions-container">
+              @if (activePositions().length > 0) {
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>{{ translate('dashboard.symbol') }}</th>
+                        <th>{{ translate('modal.side') }}</th>
+                        <th>{{ translate('modal.size') }}</th>
+                        <th>{{ translate('modal.entryPrice') }}</th>
+                        <th>{{ translate('modal.markPrice') }}</th>
+                        <th>{{ translate('modal.leverage') }}</th>
+                        <th>{{ translate('modal.unrealizedPnL') }}</th>
+                        <th>{{ translate('modal.pnlPercent') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (position of activePositions(); track position.symbol) {
+                        <tr>
+                          <td><strong>{{ position.symbol }}</strong></td>
+                          <td>
+                            <span class="badge" [class]="getSideClass(getPositionSide(position))">
+                              {{ getPositionSide(position) }}
+                            </span>
+                          </td>
+                          <td>{{ formatCurrency(getPositionSize(position), 4) }}</td>
+                          <td>${{ formatCurrency(position.entryPrice) }}</td>
+                          <td>${{ formatCurrency(position.markPrice) }}</td>
+                          <td>{{ position.leverage }}x</td>
+                          <td [class]="getPnlColorClass(getPositionUnrealizedPnl(position))">
+                            ${{ formatCurrency(getPositionUnrealizedPnl(position)) }}
+                          </td>
+                          <td [class]="getPnlColorClass(calculatePositionProfitPct(position))">
+                            {{ formatCurrency(calculatePositionProfitPct(position)) }}%
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              } @else {
+                <div class="empty-state">
+                  <div class="empty-icon">📈</div>
+                  <h3>{{ translate('modal.noPositions') }}</h3>
+                  <p>{{ translate('modal.noPositionsDesc') }}</p>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Active Orders Tab -->
+          @if (activeTab() === 'orders') {
+            <div class="orders-container">
+              @if (activeOrders().length > 0) {
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>{{ translate('dashboard.symbol') }}</th>
+                        <th>{{ translate('modal.side') }}</th>
+                        <th>{{ translate('modal.type') }}</th>
+                        <th>{{ translate('modal.quantity') }}</th>
+                        <th>{{ translate('modal.price') }}</th>
+                        <th>{{ translate('modal.status') }}</th>
+                        <th>{{ translate('modal.created') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (order of activeOrders(); track order.orderId) {
+                        <tr>
+                          <td><strong>{{ order.symbol }}</strong></td>
+                          <td>
+                            <span class="badge" [class]="getSideClass(order.side)">
+                              {{ order.side }}
+                            </span>
+                          </td>
+                          <td>{{ order.orderType }}</td>
+                          <td>{{ formatCurrency(order.qty, 4) }}</td>
+                          <td>${{ formatCurrency(order.price) }}</td>
+                          <td>
+                            <span class="badge" [class]="getOrderStatusClass(order.orderStatus)">
+                              {{ order.orderStatus }}
+                            </span>
+                          </td>
+                          <td class="text-muted">{{ order.createdTime | date:'short' }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              } @else {
+                <div class="empty-state">
+                  <div class="empty-icon">📋</div>
+                  <h3>{{ translate('modal.noActiveOrders') }}</h3>
+                  <p>{{ translate('modal.noOrdersDesc') }}</p>
+                </div>
+              }
+            </div>
+          }
+        </section>
+      }
+    </div>
+  </div>
+</div>

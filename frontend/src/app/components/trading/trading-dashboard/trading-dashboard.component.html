@@ -1,0 +1,200 @@
+<div class="trading-dashboard">
+  <!-- Header Section -->
+  <div class="dashboard-header">
+    <h1 class="dashboard-title">{{ translate('trading.dashboard.title') }}</h1>
+  </div>
+
+  <!-- Main Dashboard Grid with Chart and Trading Controls -->
+  <div class="dashboard-grid chart-trading-layout">
+    <!-- Left Column: Chart -->
+    @if (selectedSymbol) {
+      <div class="dashboard-column chart-column">
+        <app-lightweight-chart
+          [symbol]="chartSymbol"
+          [chartHeight]="600"
+          [showCredentialSelector]="true"
+          [showSymbolSelector]="true"
+          [showEnvironmentBadge]="true"
+          [credentialOptions]="credentialOptions()"
+          [symbolOptions]="symbolOptions()"
+          [isLoadingSymbols]="isLoadingSymbols()"
+          [environment]="selectedCredential()?.environment || 'TESTNET'"
+          (credentialChange)="onCredentialChange($event)"
+          (symbolChange)="onSymbolChange($event)">
+        </app-lightweight-chart>
+      </div>
+    }
+
+    <!-- Right Column: Bybit-Style Order Form -->
+    <div class="dashboard-column trading-controls-column">
+      <app-order-form
+        [selectedSymbol]="selectedSymbol"
+        [currentPrice]="0"
+        [balance]="balance()"
+        (orderPlaced)="handleOrderPlaced($event)">
+      </app-order-form>
+    </div>
+  </div>
+
+  <!-- Positions & Orders Section (Full Width) -->
+  <div class="positions-orders-section">
+    <div class="dashboard-grid">
+      <!-- Open Positions Card -->
+      <ui-card variant="elevated" class="positions-card">
+        <ui-card-header>
+          <ui-card-title>
+            {{ translate('trading.positions.title') }}
+            @if (positions().length > 0) {
+              <span class="badge">{{ positions().length }}</span>
+            }
+          </ui-card-title>
+        </ui-card-header>
+        <ui-card-content>
+          @if (isLoadingPositions()) {
+            <div class="loading-state">
+              <span>{{ translate('trading.loading') }}</span>
+            </div>
+          } @else if (positions().length === 0) {
+            <div class="empty-state">
+              <p>{{ translate('trading.positions.empty') }}</p>
+            </div>
+          } @else {
+            <div class="positions-table-wrapper">
+              <table class="positions-table" role="table" aria-label="Open positions">
+                <thead>
+                  <tr>
+                    <th>{{ translate('trading.table.symbol') }}</th>
+                    <th>{{ translate('trading.table.side') }}</th>
+                    <th class="text-right">{{ translate('trading.table.size') }}</th>
+                    <th class="text-right">{{ translate('trading.table.entryPrice') }}</th>
+                    <th class="text-right">{{ translate('trading.table.markPrice') }}</th>
+                    <th class="text-right">{{ translate('trading.table.unrealizedPnl') }}</th>
+                    <th class="text-center">{{ translate('trading.table.leverage') }}</th>
+                    <th class="text-center">{{ translate('trading.table.actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (position of positions(); track position.id) {
+                    <tr>
+                      <td class="font-semibold">{{ position.symbol }}</td>
+                      <td>
+                        <span class="side-badge" [ngClass]="getSideClass(position.side)">
+                          {{ position.side }}
+                        </span>
+                      </td>
+                      <td class="text-right">{{ position.size }}</td>
+                      <td class="text-right">{{ formatCurrency(position.entryPrice) }}</td>
+                      <td class="text-right">{{ formatCurrency(position.markPrice) }}</td>
+                      <td class="text-right">
+                        <div [ngClass]="getPnlClass(position.unrealizedPnl)">
+                          <div>{{ formatPnl(position.unrealizedPnl) }}</div>
+                          <div class="pnl-percent">{{ formatPnlPercent(position.unrealizedPnlPercent) }}</div>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <span class="leverage-badge">{{ position.leverage }}x</span>
+                      </td>
+                      <td class="text-center">
+                        <ui-button
+                          variant="danger"
+                          size="small"
+                          (clicked)="closePosition(position)"
+                          [attr.aria-label]="'Close position for ' + position.symbol">
+                          {{ translate('trading.actions.close') }}
+                        </ui-button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Total Unrealized PnL Summary -->
+            <div class="positions-summary">
+              <span class="summary-label">{{ translate('trading.positions.totalUnrealizedPnl') }}:</span>
+              <span class="summary-value" [ngClass]="getPnlClass(totalUnrealizedPnl())">
+                {{ formatPnl(totalUnrealizedPnl()) }}
+              </span>
+            </div>
+          }
+        </ui-card-content>
+      </ui-card>
+
+      <!-- Order History Card -->
+      <ui-card variant="elevated" class="orders-card">
+        <ui-card-header>
+          <ui-card-title>
+            {{ translate('trading.orders.title') }}
+            @if (orders().length > 0) {
+              <span class="badge">{{ orders().length }}</span>
+            }
+          </ui-card-title>
+        </ui-card-header>
+        <ui-card-content>
+          @if (isLoadingOrders()) {
+            <div class="loading-state">
+              <span>{{ translate('trading.loading') }}</span>
+            </div>
+          } @else if (orders().length === 0) {
+            <div class="empty-state">
+              <p>{{ translate('trading.orders.empty') }}</p>
+            </div>
+          } @else {
+            <div class="orders-table-wrapper">
+              <table class="orders-table" role="table" aria-label="Order history">
+                <thead>
+                  <tr>
+                    <th>{{ translate('trading.table.symbol') }}</th>
+                    <th>{{ translate('trading.table.type') }}</th>
+                    <th>{{ translate('trading.table.side') }}</th>
+                    <th class="text-right">{{ translate('trading.table.quantity') }}</th>
+                    <th class="text-right">{{ translate('trading.table.price') }}</th>
+                    <th>{{ translate('trading.table.status') }}</th>
+                    <th>{{ translate('trading.table.time') }}</th>
+                    <th class="text-center">{{ translate('trading.table.actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (order of orders(); track order.orderId) {
+                    <tr>
+                      <td class="font-semibold">{{ order.symbol }}</td>
+                      <td>{{ order.type }}</td>
+                      <td>
+                        <span class="side-badge" [ngClass]="getSideClass(order.side)">
+                          {{ order.side }}
+                        </span>
+                      </td>
+                      <td class="text-right">{{ order.quantity }}</td>
+                      <td class="text-right">
+                        {{ order.price ? formatCurrency(order.price) : '-' }}
+                      </td>
+                      <td>
+                        <span class="status-badge" [attr.data-status]="order.status">
+                          {{ order.status }}
+                        </span>
+                      </td>
+                      <td>{{ formatDate(order.createdAt) }}</td>
+                      <td class="text-center">
+                        @if (canCancelOrder(order)) {
+                          <ui-button
+                            variant="warning"
+                            size="small"
+                            (clicked)="cancelOrder(order)"
+                            [attr.aria-label]="'Cancel order for ' + order.symbol">
+                            {{ translate('trading.actions.cancel') }}
+                          </ui-button>
+                        } @else {
+                          <span class="text-muted">-</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </ui-card-content>
+      </ui-card>
+    </div>
+  </div>
+</div>

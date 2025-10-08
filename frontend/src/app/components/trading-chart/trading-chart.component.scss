@@ -1,0 +1,222 @@
+.trading-chart-container {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card-background, white);
+  transition: all 0.3s ease;
+  min-height: 600px;
+}
+
+.trading-chart-container.dark-theme {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #2d2d2d;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--controls-background, #f8f9fa);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  gap: 16px;
+  flex-wrap: wrap;
+  transition: all 0.3s ease;
+}
+
+.dark-theme .chart-controls {
+  background: #404040;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.symbol-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.symbol-input {
+  padding: 6px 12px;
+  border: 1px solid var(--input-border, #ccc);
+  border-radius: 4px;
+  min-width: 200px;
+  background: var(--input-background, white);
+  color: var(--text-color, black);
+  transition: all 0.3s ease;
+}
+
+.dark-theme .symbol-input {
+  background: #333;
+  border-color: #555;
+  color: white;
+}
+
+.load-button, .theme-toggle {
+  padding: 6px 12px;
+  background: var(--primary-color, #007bff);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.load-button:hover, .theme-toggle:hover {
+  background: var(--primary-hover, #0056b3);
+  transform: translateY(-1px);
+}
+
+.timeframe-selector select {
+  padding: 6px 12px;
+  border: 1px solid var(--input-border, #ccc);
+  border-radius: 4px;
+  background: var(--input-background, white);
+  color: var(--text-color, black);
+  transition: all 0.3s ease;
+}
+
+.dark-theme .timeframe-selector select {
+  background: #333;
+  border-color: #555;
+  color: white;
+}
+
+.chart-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-options label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+
+.chart-options input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.theme-toggle {
+  margin-left: auto;
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-wrapper {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  min-height: 600px;
+}
+
+.tradingview-widget-container {
+  min-height: 600px;
+  width: 100%;
+}
+
+.tradingview-widget-container__widget {
+  height: calc(100% - 32px);
+  width: 100%;
+}
+
+.tradingview-widget-copyright {
+  font-size: 13px !important;
+  line-height: 32px;
+  text-align: center;
+  vertical-align: middle;
+  color: #B2B5BE;
+}
+
+.tradingview-widget-copyright a {
+  text-decoration: none !important;
+  color: #B2B5BE;
+}
+
+.tradingview-widget-copyright .blue-text {
+  color: #2962FF;
+}
+
+.tradingview-widget-copyright a:hover .blue-text {
+  color: #1E53E5;
+}
+
+.loading-overlay, .error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  gap: 12px;
+  z-index: 1000;
+}
+
+.dark-theme .loading-overlay,
+.dark-theme .error-overlay {
+  background: rgba(45, 45, 45, 0.95);
+  color: white;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid var(--primary-color, #007bff);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-overlay button {
+  padding: 8px 16px;
+  background: var(--primary-color, #007bff);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: var(--primary-hover, #0056b3);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .chart-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .symbol-selector {
+    flex-direction: column;
+  }
+
+  .symbol-input {
+    min-width: auto;
+  }
+
+  .chart-options {
+    justify-content: center;
+  }
+}

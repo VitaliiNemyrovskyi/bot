@@ -1,0 +1,151 @@
+/* Tabs container */
+.tabs-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Base tabs styles */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tabs-full-width {
+  width: 100%;
+}
+
+.tabs-full-width .tab {
+  flex: 1;
+}
+
+/* Base tab styles */
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  outline: none;
+}
+
+.tab:focus {
+  outline: 2px solid #4f46e5;
+  outline-offset: -2px;
+}
+
+.tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Size variants */
+.tab-small {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+.tab-medium {
+  padding: 12px 20px;
+  font-size: 16px;
+}
+
+.tab-large {
+  padding: 16px 24px;
+  font-size: 18px;
+}
+
+/* Default variant */
+.tab-default {
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-default:hover:not(:disabled) {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.tab-default.tab-active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: white;
+}
+
+/* Pills variant */
+.tabs-pills {
+  border-bottom: none;
+  gap: 4px;
+  padding: 4px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.tab-pills {
+  color: #6b7280;
+  border-radius: 6px;
+  border-bottom: none;
+}
+
+.tab-pills:hover:not(:disabled) {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.tab-pills.tab-active {
+  color: #667eea;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Underline variant */
+.tabs-underline {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tab-underline {
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-underline:hover:not(:disabled) {
+  color: #374151;
+}
+
+.tab-underline.tab-active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+/* Tab content */
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.tab-label {
+  flex: 1;
+}
+
+/* Tab panels */
+.tab-panels {
+  flex: 1;
+}
+
+/* Icon classes for common icons */
+.icon-dashboard::before { content: '📊'; }
+.icon-settings::before { content: '⚙️'; }
+.icon-profile::before { content: '👤'; }
+.icon-chart::before { content: '📈'; }
+.icon-table::before { content: '📋'; }
+.icon-config::before { content: '🔧'; }
+.icon-history::before { content: '📜'; }
+.icon-analytics::before { content: '📊'; }

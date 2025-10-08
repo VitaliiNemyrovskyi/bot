@@ -1,0 +1,7 @@
+    .dialog-content {
+      padding: 20px 24px;
+      color: #374151;
+      line-height: 1.6;
+      flex: 1;
+      overflow-y: auto;
+    }

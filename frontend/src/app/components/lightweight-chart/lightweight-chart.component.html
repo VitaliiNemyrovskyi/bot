@@ -1,0 +1,110 @@
+<div class="lightweight-chart-container" [class.dark-theme]="isDark()">
+  <!-- Chart Header with Controls -->
+  <div class="chart-header">
+    <div class="chart-title-section">
+      <h3 class="chart-title">
+        {{ currentSymbol }} Chart
+        @if (showEnvironmentBadge && environment === 'TESTNET') {
+          <span class="testnet-badge">TESTNET - Live Market Data</span>
+        }
+      </h3>
+    </div>
+
+    <div class="chart-controls-section">
+      <!-- Credential Selector (if enabled) -->
+      @if (showCredentialSelector && credentialOptions && credentialOptions.length > 0) {
+        <ui-dropdown
+          [options]="credentialOptions"
+          [(ngModel)]="selectedCredentialId"
+          (ngModelChange)="onCredentialChange($event)"
+          placeholder="Select API Key"
+          size="small"
+          width="medium"
+          [searchable]="false"
+          class="credential-select">
+        </ui-dropdown>
+
+        <ui-dropdown
+            [options]="marketTypeOptions"
+            [(ngModel)]="selectedMarketType"
+            (ngModelChange)="onMarketTypeChange($event)"
+            placeholder="Market Type"
+            size="small"
+            [searchable]="false"
+            class="market-type-select">
+        </ui-dropdown>
+      }
+
+      <!-- Symbol Selector (if enabled) -->
+      @if (showSymbolSelector && symbolOptions && symbolOptions.length > 0) {
+        <ui-dropdown
+          [options]="symbolOptions"
+          [(ngModel)]="currentSymbol"
+          (ngModelChange)="onSymbolSelect($event)"
+          placeholder="Select Symbol"
+          size="small"
+          [searchable]="true"
+          [disabled]="isLoadingSymbols"
+          class="symbol-select">
+        </ui-dropdown>
+      } @else {
+        <!-- Manual Symbol Input (fallback) -->
+        <div class="symbol-input-group">
+          <input
+            type="text"
+            class="symbol-input"
+            [(ngModel)]="currentSymbol"
+            [placeholder]="translate('chart.enterSymbol')"
+            (keyup.enter)="updateSymbol()"
+          />
+          <ui-button variant="primary" size="small" (clicked)="updateSymbol()">
+            {{ translate('button.load') }}
+          </ui-button>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Chart Container -->
+  <div class="chart-wrapper">
+    <!-- Loading Overlay -->
+    @if (loading) {
+      <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p>{{ translate('chart.loading') }}</p>
+      </div>
+    }
+
+    <!-- Error Overlay -->
+    @if (error) {
+      <div class="error-overlay">
+        <div class="error-content">
+          <h3>{{ translate('chart.error') }}</h3>
+          <p>{{ error }}</p>
+          <ui-button variant="primary" size="medium" (clicked)="retry()">
+            {{ translate('button.retry') }}
+          </ui-button>
+        </div>
+      </div>
+    }
+
+    <!-- Chart Container -->
+    <div
+      #chartContainer
+      class="chart-container"
+      [style.height.px]="chartHeight"
+    ></div>
+  </div>
+
+  <!-- Chart Info -->
+  <div class="chart-info">
+    <div class="symbol-info">
+      <span class="symbol-name">{{ symbol }}</span>
+      @if (gridConfig) {
+        <span class="grid-info">
+          {{ translate('chart.grid') }}: {{ gridConfig.gridCount }} {{ translate('chart.levels') }} ({{ gridConfig.lowerBound | number:'1.2-2' }} - {{ gridConfig.upperBound | number:'1.2-2' }})
+        </span>
+      }
+    </div>
+  </div>
+</div>

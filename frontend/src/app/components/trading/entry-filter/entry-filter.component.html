@@ -1,0 +1,161 @@
+    <div class="entry-filter">
+      <ui-card>
+        <ui-card-header>
+          <ui-card-title>
+            {{ mode === 'ENTRY' ? translate('filter.entryFilters') : translate('filter.exitFilters') }}
+          </ui-card-title>
+          <div class="filter-description">
+            {{ mode === 'ENTRY' ?
+              translate('filter.entryDescription') :
+              translate('filter.exitDescription')
+            }}
+          </div>
+        </ui-card-header>
+
+        <ui-card-content>
+          <!-- Filter List -->
+          <div class="filters-list" *ngIf="filters.length > 0">
+            <div *ngFor="let filter of filters; let i = index"
+                 class="filter-item"
+                 [class.disabled]="!filter.enabled">
+              <div class="filter-header">
+                <div class="filter-info">
+                  <strong>{{ filter.name }}</strong>
+                  <span class="filter-details">
+                    {{ getFilterDescription(filter) }}
+                  </span>
+                </div>
+                <div class="filter-actions">
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      [checked]="filter.enabled"
+                      (change)="toggleFilter(i, $event)">
+                    <span class="slider"></span>
+                  </label>
+                  <ui-button
+                    variant="ghost"
+                    size="small"
+                    (clicked)="editFilter(i)">
+                    {{ translate('button.edit') }}
+                  </ui-button>
+                  <ui-button
+                    variant="danger"
+                    size="small"
+                    (clicked)="removeFilter(i)">
+                    {{ translate('button.delete') }}
+                  </ui-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div *ngIf="filters.length === 0" class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h3>{{ mode === 'ENTRY' ? translate('filter.noEntryFilters') : translate('filter.noExitFilters') }}</h3>
+            <p>{{ mode === 'ENTRY' ? translate('filter.addEntryIndicators') : translate('filter.addExitIndicators') }}</p>
+          </div>
+
+          <!-- Add/Edit Filter Form -->
+          <div *ngIf="showForm" class="filter-form">
+            <form [formGroup]="filterForm" (ngSubmit)="saveFilter()">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="filterName">{{ translate('filter.filterName') }} *</label>
+                  <ui-input
+                    id="filterName"
+                    formControlName="name"
+                    [placeholder]="translate('filter.enterFilterName')">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="indicator">{{ translate('filter.indicator') }} *</label>
+                  <ui-select
+                    id="indicator"
+                    formControlName="indicator"
+                    [options]="indicatorOptions"
+                    [placeholder]="translate('filter.selectIndicator')"
+                    (selectionChange)="onIndicatorChange($event)">
+                  </ui-select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="condition">{{ translate('filter.condition') }} *</label>
+                  <ui-select
+                    id="condition"
+                    formControlName="condition"
+                    [options]="conditionOptions"
+                    [placeholder]="translate('filter.selectCondition')">
+                  </ui-select>
+                </div>
+
+                <div class="form-group" *ngIf="selectedIndicator?.hasValue">
+                  <label for="value">{{ translate('filter.value') }} *</label>
+                  <ui-input
+                    id="value"
+                    type="number"
+                    formControlName="value"
+                    [placeholder]="translate('filter.enterValue')"
+                    [min]="selectedIndicator?.minValue"
+                    [max]="selectedIndicator?.maxValue"
+                    step="0.01">
+                  </ui-input>
+                </div>
+              </div>
+
+              <div class="form-row" *ngIf="selectedIndicator?.hasPeriod || selectedIndicator?.hasTimeframe">
+                <div class="form-group" *ngIf="selectedIndicator?.hasPeriod">
+                  <label for="period">{{ translate('filter.period') }}</label>
+                  <ui-input
+                    id="period"
+                    type="number"
+                    formControlName="period"
+                    [placeholder]="translate('filter.period')"
+                    min="1"
+                    max="200">
+                  </ui-input>
+                </div>
+
+                <div class="form-group" *ngIf="selectedIndicator?.hasTimeframe">
+                  <label for="timeframe">{{ translate('filter.timeframe') }}</label>
+                  <ui-select
+                    id="timeframe"
+                    formControlName="timeframe"
+                    [options]="timeframeOptions"
+                    [placeholder]="translate('filter.selectTimeframe')">
+                  </ui-select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="description">{{ translate('filter.description') }}</label>
+                <ui-input
+                  id="description"
+                  formControlName="description"
+                  [placeholder]="translate('filter.optionalDescription')">
+                </ui-input>
+              </div>
+
+              <div class="form-actions">
+                <ui-button variant="ghost" (clicked)="cancelForm()">
+                  {{ translate('button.cancel') }}
+                </ui-button>
+                <ui-button variant="primary" type="submit" [disabled]="!filterForm.valid">
+                  {{ editingIndex !== -1 ? translate('filter.updateFilter') : translate('filter.addFilter') }}
+                </ui-button>
+              </div>
+            </form>
+          </div>
+        </ui-card-content>
+
+        <ui-card-actions *ngIf="!showForm">
+          <ui-button variant="primary" (clicked)="addFilter()">
+            {{ mode === 'ENTRY' ? translate('filter.addEntryFilter') : translate('filter.addExitFilter') }}
+          </ui-button>
+        </ui-card-actions>
+      </ui-card>
+    </div>

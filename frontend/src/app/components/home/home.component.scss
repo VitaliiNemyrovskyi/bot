@@ -1,0 +1,174 @@
+.home-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.hero-section {
+  margin-bottom: 3rem;
+  padding: 2rem 0;
+}
+
+.hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+}
+
+.hero-content {
+  text-align: center;
+  flex: 1;
+}
+
+.hero-title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: opacity 0.3s ease;
+}
+
+.hero-subtitle {
+  font-size: 1.25rem;
+  margin: 0;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+
+.theme-toggle {
+  background: var(--card-background);
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text-primary);
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--hover-background);
+    transform: scale(1.05);
+    border-color: var(--primary-color);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    transition: transform 0.3s ease;
+  }
+
+  &:hover svg {
+    transform: rotate(15deg);
+  }
+}
+
+.trading-widget-container {
+  background: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  transition: all 0.3s ease;
+
+  .widget-header {
+    margin-bottom: 1.5rem;
+
+    h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: 1.5rem;
+      font-weight: 600;
+      transition: color 0.3s ease;
+    }
+  }
+}
+
+// CSS Custom Properties for theme support
+:host {
+  --primary-color: #667eea;
+  
+  // Light theme variables (default)
+  --text-primary: #333;
+  --text-secondary: #666;
+  --card-background: #ffffff;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --hover-background: #f8f9fa;
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+// Dark theme overrides
+:host-context(.dark) {
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --card-background: #2d2d2d;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --hover-background: #404040;
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.tradingview-widget-container {
+  min-height: 500px;
+  width: 100%;
+  
+  .tradingview-widget-container__widget {
+    height: calc(100% - 32px);
+    width: 100%;
+  }
+  
+  .tradingview-widget-copyright {
+    font-size: 13px !important;
+    line-height: 32px;
+    text-align: center;
+    vertical-align: middle;
+    color: #B2B5BE;
+    
+    a {
+      text-decoration: none !important;
+      color: #B2B5BE;
+      
+      .blue-text {
+        color: #2962FF;
+      }
+      
+      &:hover .blue-text {
+        color: #1E53E5;
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .home-container {
+    padding: 1rem;
+  }
+  
+  .hero-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+  
+  .hero-title {
+    font-size: 2rem;
+  }
+  
+  .tradingview-widget-container {
+    height: 400px;
+  }
+  
+  .trading-widget-container {
+    padding: 1rem;
+  }
+}

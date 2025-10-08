@@ -1,0 +1,74 @@
+<div class="trading-chart-container" [class.dark-theme]="isDark()">
+  <!-- Chart Controls -->
+  <div class="chart-controls">
+    <div class="symbol-selector">
+      <input
+        type="text"
+        class="symbol-input"
+        [(ngModel)]="currentSymbol"
+        [placeholder]="translate('chart.enterSymbolExample')"
+        (keyup.enter)="updateSymbol()"
+      >
+      <ui-button variant="primary" size="small" (clicked)="updateSymbol()">
+        📈 {{ translate('chart.loadSymbol') }}
+      </ui-button>
+    </div>
+
+    <div class="timeframe-selector">
+      <select [(ngModel)]="currentInterval" (change)="updateInterval()">
+        <option value="1">1m</option>
+        <option value="5">5m</option>
+        <option value="15">15m</option>
+        <option value="30">30m</option>
+        <option value="60">1h</option>
+        <option value="240">4h</option>
+        <option value="D">1D</option>
+        <option value="W">1W</option>
+        <option value="M">1M</option>
+      </select>
+    </div>
+
+    <div class="chart-options">
+      <label>
+        <input type="checkbox" [(ngModel)]="showVolume" (change)="updateConfig()"> {{ translate('chart.volume') }}
+      </label>
+      <label>
+        <input type="checkbox" [(ngModel)]="showDetails" (change)="updateConfig()"> {{ translate('chart.details') }}
+      </label>
+      <label>
+        <input type="checkbox" [(ngModel)]="showCalendar" (change)="updateConfig()"> {{ translate('chart.calendar') }}
+      </label>
+      <label>
+        <input type="checkbox" [(ngModel)]="allowSymbolChange" (change)="updateConfig()"> {{ translate('chart.symbolChange') }}
+      </label>
+    </div>
+
+    <ui-button variant="ghost" size="small" (clicked)="toggleTheme()">
+      {{ isDark() ? '☀️' : '🌙' }}
+    </ui-button>
+  </div>
+
+  <!-- TradingView Widget Container -->
+  <div class="chart-wrapper">
+    <div #tradingviewWidget class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <div class="tradingview-widget-copyright">
+        <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+          <span class="blue-text">Track all markets on TradingView</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div *ngIf="loading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <span>{{ translate('chart.loadingTradingView') }}</span>
+    </div>
+
+    <!-- Error message -->
+    <div *ngIf="error" class="error-overlay">
+      <span>{{ error }}</span>
+      <ui-button variant="primary" size="medium" (clicked)="retry()">🔄 {{ translate('button.retry') }}</ui-button>
+    </div>
+  </div>
+</div>

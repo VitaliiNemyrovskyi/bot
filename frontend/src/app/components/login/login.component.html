@@ -1,0 +1,178 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h1>{{ showRegister() ? translate('login.joinUs') : translate('login.welcomeBack') }}</h1>
+      <p>{{ showRegister() ? translate('login.createAccount') : translate('login.signInToAccount') }}</p>
+    </div>
+
+    @if (sessionMessage()) {
+      <div class="alert alert-warning">
+        <span class="alert-icon">⏰</span>
+        {{ sessionMessage() }}
+      </div>
+    }
+
+    @if (authError()) {
+      <div class="alert alert-error">
+        <span class="alert-icon">⚠️</span>
+        {{ authError() }}
+        <ui-button variant="ghost" size="small" type="button" className="alert-close" (clicked)="clearError()">×</ui-button>
+      </div>
+    }
+
+    <!-- Login Form -->
+    @if (!showRegister()) {
+      <form [formGroup]="loginForm" (ngSubmit)="onLogin()" class="auth-form">
+        <div class="form-group">
+          <label for="loginEmail" class="form-label">{{ translate('login.emailAddress') }}</label>
+          <input 
+            type="email" 
+            id="loginEmail" 
+            formControlName="email"
+            [class.is-invalid]="loginForm.get('email')?.invalid && loginForm.get('email')?.touched"
+            class="form-control"
+            [placeholder]="translate('login.enterEmail')"
+          />
+          @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
+            <div class="invalid-feedback">
+              @if (loginForm.get('email')?.hasError('required')) {
+                {{ translate('validation.emailRequired') }}
+              }
+              @if (loginForm.get('email')?.hasError('email')) {
+                {{ translate('validation.validEmail') }}
+              }
+            </div>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="loginPassword" class="form-label">{{ translate('login.password') }}</label>
+          <input 
+            type="password" 
+            id="loginPassword" 
+            formControlName="password"
+            [class.is-invalid]="loginForm.get('password')?.invalid && loginForm.get('password')?.touched"
+            class="form-control"
+            [placeholder]="translate('login.enterPassword')"
+          />
+          @if (loginForm.get('password')?.invalid && loginForm.get('password')?.touched) {
+            <div class="invalid-feedback">
+              {{ translate('validation.passwordRequired') }}
+            </div>
+          }
+        </div>
+
+        <ui-button
+          type="submit"
+          variant="primary"
+          size="large"
+          className="btn-full"
+          [disabled]="loginForm.invalid || isLoading()"
+        >
+          @if (isLoading()) {
+            <span class="spinner"></span>
+            {{ translate('login.signingIn') }}
+          } @else {
+            {{ translate('login.signIn') }}
+          }
+        </ui-button>
+      </form>
+    }
+
+    <!-- Register Form -->
+    @if (showRegister()) {
+      <form [formGroup]="registerForm" (ngSubmit)="onRegister()" class="auth-form">
+        <div class="form-group">
+          <label for="registerName" class="form-label">{{ translate('login.fullName') }}</label>
+          <input 
+            type="text" 
+            id="registerName" 
+            formControlName="name"
+            class="form-control"
+            [placeholder]="translate('login.enterFullName')"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="registerEmail" class="form-label">{{ translate('login.emailAddress') }}</label>
+          <input 
+            type="email" 
+            id="registerEmail" 
+            formControlName="email"
+            [class.is-invalid]="registerForm.get('email')?.invalid && registerForm.get('email')?.touched"
+            class="form-control"
+            [placeholder]="translate('login.enterEmail')"
+          />
+          @if (registerForm.get('email')?.invalid && registerForm.get('email')?.touched) {
+            <div class="invalid-feedback">
+              @if (registerForm.get('email')?.hasError('required')) {
+                {{ translate('validation.emailRequired') }}
+              }
+              @if (registerForm.get('email')?.hasError('email')) {
+                {{ translate('validation.validEmail') }}
+              }
+            </div>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="registerPassword" class="form-label">{{ translate('login.password') }}</label>
+          <input 
+            type="password" 
+            id="registerPassword" 
+            formControlName="password"
+            [class.is-invalid]="registerForm.get('password')?.invalid && registerForm.get('password')?.touched"
+            class="form-control"
+            [placeholder]="translate('login.createSecurePassword')"
+          />
+          @if (registerForm.get('password')?.invalid && registerForm.get('password')?.touched) {
+            <div class="invalid-feedback">
+              @if (registerForm.get('password')?.hasError('required')) {
+                {{ translate('validation.passwordRequired') }}
+              }
+              @if (registerForm.get('password')?.hasError('minlength')) {
+                {{ translate('validation.passwordMinLength') }}
+              }
+            </div>
+          }
+        </div>
+
+        <ui-button
+          type="submit"
+          variant="primary"
+          size="large"
+          className="btn-full"
+          [disabled]="registerForm.invalid || isLoading()"
+        >
+          @if (isLoading()) {
+            <span class="spinner"></span>
+            {{ translate('login.creatingAccount') }}
+          } @else {
+            {{ translate('login.createAccountBtn') }}
+          }
+        </ui-button>
+      </form>
+    }
+
+    <div class="divider">
+      <span>{{ translate('login.or') }}</span>
+    </div>
+
+    <ui-button variant="secondary" size="large" className="btn-google btn-full" (clicked)="loginWithGoogle()" [disabled]="isLoading()">
+      <span class="google-icon">🔍</span>
+      {{ translate('login.continueWithGoogle') }}
+    </ui-button>
+
+    <div class="auth-footer">
+      @if (!showRegister()) {
+        <p>{{ translate('login.dontHaveAccount') }} 
+          <a (click)="toggleMode()" class="link">{{ translate('login.signUpHere') }}</a>
+        </p>
+      } @else {
+        <p>{{ translate('login.alreadyHaveAccount') }} 
+          <a (click)="toggleMode()" class="link">{{ translate('login.signInHere') }}</a>
+        </p>
+      }
+    </div>
+  </div>
+</div>

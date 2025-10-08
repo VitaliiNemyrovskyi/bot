@@ -1,0 +1,237 @@
+/*
+ * Global CSS Variables
+ * Centralized design tokens for consistent theming across the application
+ */
+
+:root {
+  /* Color Palette */
+  --primary-color: #3b82f6;
+  --primary-hover: #2563eb;
+  --primary-light: #93c5fd;
+  --primary-dark: #1d4ed8;
+
+  --secondary-color: #6b7280;
+  --secondary-hover: #4b5563;
+  --secondary-light: #d1d5db;
+  --secondary-dark: #374151;
+
+  --success-color: #26a69a;
+  --success-hover: #00695c;
+  --success-light: #80cbc4;
+  --success-dark: #004d40;
+
+  --warning-color: #ff9800;
+  --warning-hover: #f57c00;
+  --warning-light: #ffcc02;
+  --warning-dark: #e65100;
+
+  --danger-color: #ef5350;
+  --danger-hover: #e53935;
+  --danger-light: #ffcdd2;
+  --danger-dark: #c62828;
+
+  --info-color: #2196f3;
+  --info-hover: #1976d2;
+  --info-light: #bbdefb;
+  --info-dark: #0d47a1;
+
+  /* Text Colors */
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-disabled: #d1d5db;
+  --text-inverse: #ffffff;
+
+  /* Background Colors */
+  --background-primary: #ffffff;
+  --background-secondary: #f9fafb;
+  --background-tertiary: #f3f4f6;
+  --background-quaternary: #e5e7eb;
+  --background-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Border Colors */
+  --border-color: #e5e7eb;
+  --border-hover: #d1d5db;
+  --border-focus: var(--primary-color);
+  --border-error: var(--danger-color);
+  --border-success: var(--success-color);
+
+  /* Shadow Values */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1);
+  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+  /* Border Radius */
+  --border-radius-xs: 2px;
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+  --border-radius-xl: 12px;
+  --border-radius-2xl: 16px;
+  --border-radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  /* Typography */
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;    /* 24px */
+  --font-size-3xl: 1.875rem;  /* 30px */
+  --font-size-4xl: 2.25rem;   /* 36px */
+
+  --font-weight-thin: 100;
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+  --font-weight-black: 900;
+
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+  --line-height-loose: 2;
+
+  /* Transitions */
+  --transition-fast: all 0.15s ease;
+  --transition-normal: all 0.2s ease;
+  --transition-slow: all 0.3s ease;
+  --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Z-Index */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+
+  /* Component Specific */
+  --chart-height: 600px;
+  --chart-min-height: 400px;
+  --sidebar-width: 280px;
+  --header-height: 64px;
+  --footer-height: 48px;
+
+  /* Trading Colors */
+  --trading-buy: var(--success-color);
+  --trading-sell: var(--danger-color);
+  --trading-neutral: var(--secondary-color);
+  --trading-profit: #26a69a;
+  --trading-loss: #ef5350;
+
+  /* Grid Colors */
+  --grid-line: rgba(59, 130, 246, 0.3);
+  --grid-line-hover: rgba(59, 130, 246, 0.5);
+  --grid-background: rgba(59, 130, 246, 0.1);
+}
+
+/* Dark Theme Variables */
+[data-theme="dark"] {
+  /* Text Colors */
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-disabled: #6b7280;
+  --text-inverse: #111827;
+
+  /* Background Colors */
+  --background-primary: #1e1e1e;
+  --background-secondary: #2d2d2d;
+  --background-tertiary: #374151;
+  --background-quaternary: #4b5563;
+  --background-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Border Colors */
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.2);
+
+  /* Shadow Values (adjusted for dark theme) */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.5);
+
+  /* Grid Colors (adjusted for dark theme) */
+  --grid-line: rgba(59, 130, 246, 0.2);
+  --grid-line-hover: rgba(59, 130, 246, 0.4);
+  --grid-background: rgba(59, 130, 246, 0.15);
+}
+
+/* Alternative dark theme class for components */
+.dark-theme {
+  /* Text Colors */
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-disabled: #6b7280;
+  --text-inverse: #111827;
+
+  /* Background Colors */
+  --background-primary: #1e1e1e;
+  --background-secondary: #2d2d2d;
+  --background-tertiary: #374151;
+  --background-quaternary: #4b5563;
+  --background-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Border Colors */
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.2);
+
+  /* Shadow Values (adjusted for dark theme) */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.5);
+
+  /* Grid Colors (adjusted for dark theme) */
+  --grid-line: rgba(59, 130, 246, 0.2);
+  --grid-line-hover: rgba(59, 130, 246, 0.4);
+  --grid-background: rgba(59, 130, 246, 0.15);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --border-color: #000000;
+    --text-secondary: #000000;
+    --text-muted: #333333;
+  }
+
+  [data-theme="dark"], .dark-theme {
+    --border-color: #ffffff;
+    --text-secondary: #ffffff;
+    --text-muted: #cccccc;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: none;
+    --transition-normal: none;
+    --transition-slow: none;
+    --transition-bounce: none;
+  }
+}

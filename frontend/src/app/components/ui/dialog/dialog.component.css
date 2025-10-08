@@ -1,0 +1,177 @@
+/* Dialog overlay */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Base dialog styles */
+.dialog {
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  position: relative;
+  animation: slideIn 0.2s ease-out;
+  overflow: hidden;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Size variants */
+.dialog-small {
+  width: 400px;
+  max-width: 90vw;
+}
+
+.dialog-medium {
+  width: 600px;
+  max-width: 90vw;
+}
+
+.dialog-large {
+  width: 800px;
+  max-width: 90vw;
+}
+
+.dialog-fullscreen {
+  width: 95vw;
+  height: 95vh;
+  max-width: none;
+  max-height: none;
+}
+
+/* Header */
+.dialog-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+
+/* Close button */
+.dialog-close-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  color: #6b7280;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 12px;
+}
+
+.dialog-close-button:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dialog-close-button:focus {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.close-icon {
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* Body */
+.dialog-body {
+  padding: 20px 24px;
+  color: #374151;
+  line-height: 1.6;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Footer */
+.dialog-footer {
+  padding: 16px 24px 20px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* Body class to prevent scrolling */
+:global(body.dialog-open) {
+  overflow: hidden;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dialog-overlay {
+    padding: 10px;
+  }
+
+  .dialog-small,
+  .dialog-medium,
+  .dialog-large {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .dialog-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .dialog-header,
+  .dialog-body,
+  .dialog-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Focus trap styles */
+.dialog:focus {
+  outline: none;
+}

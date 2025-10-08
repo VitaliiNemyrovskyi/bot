@@ -1,0 +1,39 @@
+    <div class="bot-config-page">
+
+          <app-bot-config-form
+            [mode]="mode"
+            [botData]="botData"
+            [strategyData]="strategyData"
+            (save)="onBotSave($event)"
+            (cancel)="onBotCancel()"
+            (edit)="onBotEdit($event)">
+          </app-bot-config-form>
+
+      <!-- Loading State -->
+      <div *ngIf="loading" class="loading-overlay">
+        <div class="loading-spinner">
+          <div class="spinner"></div>
+          <p>{{ translate('bot.loadingConfiguration') }}</p>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div *ngIf="error" class="error-message">
+        <ui-card>
+          <ui-card-header>
+            <ui-card-title>{{ translate('bot.errorLoadingBot') }}</ui-card-title>
+          </ui-card-header>
+          <ui-card-content>
+            <p>{{ error }}</p>
+            <div class="error-actions">
+              <ui-button variant="ghost" (clicked)="goBack()">
+                {{ translate('button.goBack') }}
+              </ui-button>
+              <ui-button variant="primary" (clicked)="retry()">
+                {{ translate('button.retry') }}
+              </ui-button>
+            </div>
+          </ui-card-content>
+        </ui-card>
+      </div>
+    </div>

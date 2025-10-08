@@ -1,0 +1,679 @@
+<div class="funding-rates-container">
+  <!-- Header -->
+  <div class="funding-rates-header">
+    <h2 class="funding-rates-title">{{ translate('funding.title') }}</h2>
+    <div class="funding-rates-actions">
+      <!-- Settings -->
+      <ui-button
+        variant="ghost"
+        size="small"
+        (clicked)="openSettingsDialog()"
+        aria-label="Subscription settings">
+        <span>⚙️ {{ translate('fundingRates.filters.settings') }}</span>
+      </ui-button>
+
+      <!-- Clear Sort (only show if multi-sort active) -->
+      @if (sortColumns().length > 1) {
+        <ui-button
+          variant="ghost"
+          size="small"
+          (clicked)="clearSort()"
+          aria-label="Clear sort">
+          <span>{{ translate('fundingRates.actions.clearSort') }}</span>
+        </ui-button>
+      }
+    </div>
+  </div>
+
+  <!-- Arbitrage Opportunities Section -->
+  <ui-card variant="outlined" class="arbitrage-card">
+    <ui-card-header>
+      <div class="card-header-content">
+        <ui-card-title>{{ translate('arbitrage.title') }}</ui-card-title>
+        <div class="header-actions">
+          <!-- Filter Input -->
+          <div class="filter-group-inline">
+            <label class="filter-label-inline">{{ translate('arbitrage.filters.minSpread') }}:</label>
+            <input
+              type="number"
+              class="filter-input-inline"
+              [(ngModel)]="minSpreadThreshold"
+              step="0.001"
+              min="0"
+              placeholder="{{ translate('arbitrage.filters.spreadExample') }}"
+            />
+            @if (minSpreadThreshold() !== null && minSpreadThreshold()! > 0) {
+              <ui-button
+                variant="ghost"
+                size="small"
+                (clicked)="clearArbitrageFilters()"
+                aria-label="Clear filters">
+                <span>✕</span>
+              </ui-button>
+            }
+          </div>
+
+          <ui-button
+            variant="ghost"
+            size="small"
+            (clicked)="loadArbitrageOpportunities()"
+            [loading]="isLoadingArbitrage()"
+            aria-label="Refresh arbitrage opportunities">
+            <span>🔄 {{ translate('funding.refresh') }}</span>
+          </ui-button>
+          <ui-button
+            variant="ghost"
+            size="small"
+            (clicked)="toggleArbitrageSection()"
+            [attr.aria-expanded]="!showArbitrageSection()">
+            <span>{{ showArbitrageSection() ? '▲' : '▼' }}</span>
+          </ui-button>
+        </div>
+      </div>
+    </ui-card-header>
+    <ui-card-content>
+      @if (!showArbitrageSection()) {
+        <div class="collapsed-summary">
+          <span>{{ translate('arbitrage.collapsed') }} ({{ filteredArbitrageOpportunities().length }} {{ translate('fundingRates.info.pairs') }})</span>
+        </div>
+      } @else {
+        @if (isLoadingArbitrage()) {
+          <div class="loading-state">
+            <span>{{ translate('arbitrage.loading') }}</span>
+          </div>
+        } @else if (arbitrageError()) {
+          <div class="error-state">
+            <p>{{ arbitrageError() }}</p>
+            <ui-button variant="primary" size="small" (clicked)="loadArbitrageOpportunities()">
+              {{ translate('funding.retry') }}
+            </ui-button>
+          </div>
+        } @else if (arbitrageOpportunities().length === 0) {
+          <div class="empty-state">
+            <p>{{ translate('arbitrage.empty') }}</p>
+            <p class="help-text">{{ translate('arbitrage.emptyHelp') }}</p>
+          </div>
+        } @else if (filteredArbitrageOpportunities().length === 0) {
+          <div class="empty-state">
+            <p>{{ translate('arbitrage.noMatches') }}</p>
+            <ui-button variant="secondary" size="small" (clicked)="clearArbitrageFilters()">
+              {{ translate('fundingRates.filters.clearFilters') }}
+            </ui-button>
+          </div>
+        } @else {
+        <!-- Arbitrage Opportunities Table -->
+        <div class="arbitrage-table-wrapper">
+          <table class="arbitrage-table" role="table" aria-label="Arbitrage opportunities">
+            <thead>
+              <tr>
+                <th>{{ translate('arbitrage.table.symbol') }}</th>
+                <th class="text-center">{{ translate('arbitrage.table.exchanges') }}</th>
+                <th class="text-right">{{ translate('arbitrage.table.bestLong') }}</th>
+                <th class="text-right">{{ translate('arbitrage.table.bestShort') }}</th>
+                <th class="text-right">{{ translate('arbitrage.table.nextFunding') }}</th>
+                <th class="text-right">{{ translate('arbitrage.table.spread') }}</th>
+                <th class="text-center">{{ translate('arbitrage.table.opportunity') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (opportunity of filteredArbitrageOpportunities(); track opportunity.symbol) {
+                <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscription(opportunity.symbol)">
+                  <!-- Symbol -->
+                  <td class="symbol-cell">
+                    <span class="symbol-text">{{ opportunity.symbol }}</span>
+                  </td>
+
+                  <!-- Exchanges -->
+                  <td class="exchanges-cell text-center">
+                    <div class="exchanges-badges">
+                      @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                        <button
+                          class="exchange-badge exchange-badge-button"
+                          [class]="'badge-' + exchange.exchange.toLowerCase()"
+                          (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
+                          [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange">
+                          {{ exchange.exchange }}
+                        </button>
+                      }
+                    </div>
+                  </td>
+
+                  <!-- Best Long (Lowest Rate) -->
+                  <td class="text-right">
+                    <div class="position-info">
+                      <div class="exchange-label">{{ opportunity.bestLong.exchange }}</div>
+                      <div class="rate-value" [class.negative]="parseFloat(opportunity.bestLong.fundingRate) < 0">
+                        {{ (parseFloat(opportunity.bestLong.fundingRate) * 100).toFixed(4) }}%
+                      </div>
+                      <div class="environment-tag">{{ opportunity.bestLong.environment }}</div>
+                    </div>
+                  </td>
+
+                  <!-- Best Short (Highest Rate) -->
+                  <td class="text-right">
+                    <div class="position-info">
+                      <div class="exchange-label">{{ opportunity.bestShort.exchange }}</div>
+                      <div class="rate-value" [class.positive]="parseFloat(opportunity.bestShort.fundingRate) > 0">
+                        {{ (parseFloat(opportunity.bestShort.fundingRate) * 100).toFixed(4) }}%
+                      </div>
+                      <div class="environment-tag">{{ opportunity.bestShort.environment }}</div>
+                    </div>
+                  </td>
+
+                  <!-- Next Funding Time (from both exchanges) -->
+                  <td class="text-right">
+                    <div class="funding-time-info">
+                      @if (opportunity.exchanges && opportunity.exchanges.length > 0) {
+                        <!-- Best Long Exchange Funding Time -->
+                        @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                          @if (exchange.exchange === opportunity.bestLong.exchange && exchange.credentialId === opportunity.bestLong.credentialId) {
+                            <div class="funding-time-entry">
+                              <span class="exchange-label-small">{{ exchange.exchange }}</span>
+                              <span class="funding-time-value" [class.negative]="parseFloat(opportunity.bestLong.fundingRate) < 0">
+                                {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                              </span>
+                            </div>
+                          }
+                        }
+                        <!-- Best Short Exchange Funding Time -->
+                        @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                          @if (exchange.exchange === opportunity.bestShort.exchange && exchange.credentialId === opportunity.bestShort.credentialId) {
+                            <div class="funding-time-entry">
+                              <span class="exchange-label-small">{{ exchange.exchange }}</span>
+                              <span class="funding-time-value" [class.positive]="parseFloat(opportunity.bestShort.fundingRate) > 0">
+                                {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                              </span>
+                            </div>
+                          }
+                        }
+                      }
+                    </div>
+                  </td>
+
+                  <!-- Spread -->
+                  <td class="text-right">
+                    <div class="spread-info">
+                      <div class="spread-value" [class.high-spread]="parseFloat(opportunity.spreadPercent) > 50">
+                        {{ (parseFloat(opportunity.spread) * 100).toFixed(4) }}%
+                      </div>
+                      <div class="spread-percent">
+                        ({{ opportunity.spreadPercent }}%)
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Opportunity Indicator -->
+                  <td class="text-center">
+                    @if (opportunity.arbitrageOpportunity) {
+                      <ui-button
+                        variant="primary"
+                        size="small"
+                        (clicked)="subscribeToArbitrage(opportunity)"
+                        className="action-btn subscribe-arbitrage-btn">
+                        <span>⚡ {{ translate('fundingRates.actions.subscribe') }}</span>
+                      </ui-button>
+                    } @else {
+                      <span class="opportunity-badge neutral">{{ translate('arbitrage.table.no') }}</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        }
+      }
+    </ui-card-content>
+  </ui-card>
+
+  <!-- Active Subscriptions Panel -->
+  @if (subscriptions().size > 0) {
+    <ui-card variant="elevated" class="subscriptions-card">
+      <ui-card-header>
+        <ui-card-title>{{ translate('fundingRates.subscriptions.title') }}</ui-card-title>
+      </ui-card-header>
+      <ui-card-content>
+        <div class="subscriptions-list">
+          @for (sub of Array.from(subscriptions().values()); track sub.subscriptionId) {
+            <div class="subscription-item">
+              <div class="subscription-info">
+                <div class="subscription-symbol">{{ sub.symbol }}</div>
+                <div class="subscription-details">
+                  <span class="detail-label">{{ translate('fundingRates.subscriptions.type') }}:</span>
+                  <span class="detail-value" [class.positive]="sub.positionType === 'short'" [class.negative]="sub.positionType === 'long'">
+                    {{ sub.positionType.toUpperCase() }}
+                  </span>
+                  <span class="detail-separator">•</span>
+                  <span class="detail-label">{{ translate('fundingRates.subscriptions.rate') }}:</span>
+                  <span class="detail-value">{{ formatFundingRate(sub.fundingRate.toString()) }}</span>
+                  <span class="detail-separator">•</span>
+                  <span class="detail-label">{{ translate('fundingRates.subscriptions.quantity') }}:</span>
+                  <span class="detail-value">{{ sub.quantity }}</span>
+                </div>
+              </div>
+              <div class="subscription-countdown">
+                @if (sub.countdown !== undefined) {
+                  <div class="countdown-display" [class.urgent]="sub.countdown && sub.countdown <= 10">
+                    {{ formatCountdown(sub.countdown) }}
+                  </div>
+                } @else {
+                  <div class="countdown-display" [class.urgent]="calculateCountdown(sub.nextFundingTime) <= 10">
+                    {{ formatCountdown(calculateCountdown(sub.nextFundingTime)) }}
+                  </div>
+                }
+              </div>
+              <div class="subscription-actions">
+                <ui-button
+                  variant="primary"
+                  size="small"
+                  (clicked)="startSubscriptionNow(sub.subscriptionId)">
+                  {{ translate('fundingRates.actions.startNow') }}
+                </ui-button>
+                <ui-button
+                  variant="ghost"
+                  size="small"
+                  (clicked)="editSubscription(sub)">
+                  {{ translate('fundingRates.actions.edit') }}
+                </ui-button>
+                <ui-button
+                  variant="ghost"
+                  size="small"
+                  (clicked)="unsubscribe(sub.subscriptionId)">
+                  {{ translate('fundingRates.actions.cancel') }}
+                </ui-button>
+              </div>
+            </div>
+          }
+        </div>
+      </ui-card-content>
+    </ui-card>
+  }
+
+  <!-- Completed Deals Panel -->
+  @if (completedDeals().length > 0) {
+    <ui-card variant="elevated" class="deals-card">
+      <ui-card-header>
+        <ui-card-title>{{ translate('fundingRates.deals.title') }}</ui-card-title>
+      </ui-card-header>
+      <ui-card-content>
+        <div class="deals-list">
+          @for (deal of completedDeals(); track deal.subscriptionId) {
+            <div class="deal-item">
+              <div class="deal-header">
+                <div class="deal-symbol">{{ deal.symbol }}</div>
+                <div class="deal-type" [class.positive]="deal.positionType === 'short'" [class.negative]="deal.positionType === 'long'">
+                  {{ deal.positionType.toUpperCase() }}
+                </div>
+              </div>
+              <div class="deal-details">
+                <div class="deal-row">
+                  <span class="detail-label">{{ translate('fundingRates.deals.fundingRate') }}:</span>
+                  <span class="detail-value">{{ formatFundingRate(deal.fundingRate.toString()) }}</span>
+                </div>
+                <div class="deal-row">
+                  <span class="detail-label">{{ translate('fundingRates.deals.quantity') }}:</span>
+                  <span class="detail-value">{{ deal.quantity }}</span>
+                </div>
+                <div class="deal-row">
+                  <span class="detail-label">{{ translate('fundingRates.deals.entryPrice') }}:</span>
+                  <span class="detail-value">${{ deal.entryPrice.toFixed(2) }}</span>
+                </div>
+                <div class="deal-row">
+                  <span class="detail-label">{{ translate('fundingRates.deals.hedgeEntry') }}:</span>
+                  <span class="detail-value">${{ deal.hedgeEntryPrice.toFixed(2) }}</span>
+                </div>
+                <div class="deal-row highlight">
+                  <span class="detail-label">{{ translate('fundingRates.deals.fundingEarned') }}:</span>
+                  <span class="detail-value" [class.positive]="deal.fundingEarned > 0" [class.negative]="deal.fundingEarned < 0">
+                    ${{ deal.fundingEarned.toFixed(4) }}
+                  </span>
+                </div>
+                <div class="deal-row highlight">
+                  <span class="detail-label">{{ translate('fundingRates.deals.realizedPnl') }}:</span>
+                  <span class="detail-value" [class.positive]="deal.realizedPnl > 0" [class.negative]="deal.realizedPnl < 0">
+                    ${{ deal.realizedPnl.toFixed(4) }}
+                  </span>
+                </div>
+                <div class="deal-row">
+                  <span class="detail-label">{{ translate('fundingRates.deals.executed') }}:</span>
+                  <span class="detail-value">{{ formatTimestamp(deal.executedAt) }}</span>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </ui-card-content>
+    </ui-card>
+  }
+
+  <!-- Subscription Dialog -->
+  @if (showSubscriptionDialog() && selectedTicker()) {
+    <div class="dialog-overlay" (click)="closeSubscriptionDialog()">
+      <div class="dialog-content" (click)="$event.stopPropagation()">
+        <div class="dialog-header">
+          <h3>{{ editingSubscription() ? 'Edit Subscription' : translate('fundingRates.dialog.title') }}</h3>
+          <button class="dialog-close" (click)="closeSubscriptionDialog()">×</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="dialog-info">
+            <div class="info-row">
+              <span class="info-label">{{ translate('fundingRates.dialog.symbol') }}:</span>
+              <span class="info-value">{{ selectedTicker()!.symbol }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ translate('fundingRates.dialog.fundingRate') }}:</span>
+              <span class="info-value" [ngClass]="getFundingRateClass(selectedTicker()!.fundingRate)">
+                {{ formatFundingRate(selectedTicker()!.fundingRate) }}
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ translate('fundingRates.dialog.nextFunding') }}:</span>
+              <span class="info-value">{{ formatNextFundingTime(selectedTicker()!.nextFundingTime) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ translate('fundingRates.dialog.positionType') }}:</span>
+              <span class="info-value">
+                {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? translate('fundingRates.dialog.longReceive') : translate('fundingRates.dialog.shortReceive') }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Positions to Open -->
+          <div class="positions-info">
+            <h4 class="positions-title">{{ translate('fundingRates.dialog.positionsToOpen') }}</h4>
+            <div class="positions-grid">
+              <div class="position-item primary-position">
+                <div class="position-label">{{ translate('fundingRates.dialog.primaryPosition') }}</div>
+                <div class="position-type" [class.long-position]="parseFloat(selectedTicker()!.fundingRate) < 0" [class.short-position]="parseFloat(selectedTicker()!.fundingRate) >= 0">
+                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
+                </div>
+                <div class="position-amount">
+                  ${{ (positionSizeUsdt() || 0) * subscriptionSettings().leverage }} USDT
+                </div>
+                <div class="position-margin">
+                  Margin: ${{ positionSizeUsdt() || 0 }} USDT
+                </div>
+                <div class="position-explanation">
+                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'Receive funding payments' : 'Pay funding to receive later' }}
+                </div>
+              </div>
+              <div class="position-arrow">⇄</div>
+              <div class="position-item hedge-position">
+                <div class="position-label">{{ translate('fundingRates.dialog.hedgePosition') }}</div>
+                <div class="position-type" [class.long-position]="parseFloat(selectedTicker()!.fundingRate) >= 0" [class.short-position]="parseFloat(selectedTicker()!.fundingRate) < 0">
+                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'SHORT' : 'LONG' }}
+                </div>
+                <div class="position-amount">
+                  ${{ (positionSizeUsdt() || 0) * subscriptionSettings().leverage }} USDT
+                </div>
+                <div class="position-margin">
+                  Margin: ${{ positionSizeUsdt() || 0 }} USDT
+                </div>
+                <div class="position-explanation">
+                  Hedge position (opposite direction)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Balance Information -->
+          @if (isLoadingBalances()) {
+            <div class="balance-info loading">
+              <p>{{ translate('fundingRates.dialog.loadingBalances') || 'Loading balances...' }}</p>
+            </div>
+          } @else {
+            <div class="balance-info">
+              <div class="balance-row">
+                <span class="balance-label">{{ translate('fundingRates.dialog.primary') }} {{ translate('fundingRates.dialog.balance') || 'Balance' }}:</span>
+                <span class="balance-value" [class.low-balance]="primaryBalance() !== null && primaryBalance()! < 10">
+                  @if (primaryBalance() !== null) {
+                    ${{ primaryBalance()!.toFixed(2) }} USDT
+                  } @else {
+                    {{ translate('fundingRates.dialog.unavailable') || 'N/A' }}
+                  }
+                </span>
+              </div>
+              <div class="balance-row">
+                <span class="balance-label">{{ translate('fundingRates.dialog.hedge') }} {{ translate('fundingRates.dialog.balance') || 'Balance' }}:</span>
+                <span class="balance-value" [class.low-balance]="hedgeBalance() !== null && hedgeBalance()! < 10 && hedgeBalance()! !== 999999">
+                  @if (hedgeBalance() !== null) {
+                    @if (hedgeBalance() === 999999) {
+                      ∞ ({{ translate('fundingRates.dialog.mockExchange') }})
+                    } @else {
+                      ${{ hedgeBalance()!.toFixed(2) }} USDT
+                    }
+                  } @else {
+                    {{ translate('fundingRates.dialog.unavailable') || 'N/A' }}
+                  }
+                </span>
+              </div>
+            </div>
+          }
+
+          <div class="dialog-form">
+            <div class="form-group">
+              <label class="form-label">Margin (USDT)</label>
+              <input
+                type="number"
+                class="form-input"
+                [ngModel]="positionSizeUsdt()"
+                (ngModelChange)="positionSizeUsdt.set($event)"
+                step="10"
+                min="10"
+                placeholder="e.g., 100"
+              />
+              <p class="form-hint">Your collateral amount. With {{ subscriptionSettings().leverage }}x leverage, this will open a position worth ${{ (positionSizeUsdt() || 0) * subscriptionSettings().leverage }} USDT</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">{{ translate('fundingRates.settings.leverage') }}</label>
+              <div class="leverage-display">
+                <span class="leverage-value">{{ subscriptionSettings().leverage }}x</span>
+                <p class="form-hint">
+                  {{ translate('fundingRates.dialog.currentLeverage') }}. {{ translate('fundingRates.dialog.changeIn') }}
+                  <button type="button" class="settings-link" (click)="closeSubscriptionDialog(); openSettingsDialog()">
+                    {{ translate('fundingRates.filters.settings') }} ⚙️
+                  </button>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Position Calculation -->
+          @if (positionCalculation()) {
+            <div class="position-calculation">
+              <h4 class="calculation-title">Position Details</h4>
+              <div class="calculation-grid">
+                <div class="calc-row">
+                  <span class="calc-label">Coin Quantity:</span>
+                  <span class="calc-value">{{ positionCalculation()!.quantity.toFixed(6) }} {{ positionCalculation()!.symbol.replace('USDT', '') }}</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Estimated Price:</span>
+                  <span class="calc-value">${{ positionCalculation()!.estimatedPrice.toFixed(2) }}</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Position Value:</span>
+                  <span class="calc-value">${{ positionCalculation()!.positionValue.toFixed(2) }} USDT</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Leverage:</span>
+                  <span class="calc-value">{{ positionCalculation()!.leverage }}x</span>
+                </div>
+                <div class="calc-row important">
+                  <span class="calc-label">Required Margin (per exchange):</span>
+                  <span class="calc-value">${{ positionCalculation()!.requiredMargin.toFixed(2) }} USDT</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Est. Fees (Entry+Exit):</span>
+                  <span class="calc-value">${{ positionCalculation()!.estimatedFee.toFixed(2) }} USDT</span>
+                </div>
+              </div>
+              <p class="calculation-note">
+                💡 Each exchange needs <strong>${{ positionCalculation()!.requiredMargin.toFixed(2) }} USDT</strong> margin
+              </p>
+            </div>
+          }
+
+          <div class="dialog-warning">
+            <p>⚠️ {{ translate('fundingRates.dialog.warning') }}</p>
+            <ul>
+              <li>{{ translate('fundingRates.dialog.primary') }}: {{ selectedCredential()?.exchange }} {{ selectedCredential()?.environment }}</li>
+              <li>{{ translate('fundingRates.dialog.hedge') }}:
+                @if (hedgeCredential()) {
+                  {{ hedgeCredential()!.exchange }} {{ hedgeCredential()!.environment }}
+                } @else {
+                  {{ translate('fundingRates.dialog.mockExchange') }}
+                }
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <ui-button variant="ghost" (clicked)="closeSubscriptionDialog()">
+            {{ translate('fundingRates.actions.cancel') }}
+          </ui-button>
+          <ui-button
+            variant="primary"
+            (clicked)="subscribeFundingRate()"
+            [loading]="isSubscribing()">
+            {{ editingSubscription() ? 'Save Changes' : translate('fundingRates.actions.subscribe') }}
+          </ui-button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Toast Notifications -->
+  @if (notifications().length > 0) {
+    <div class="notifications-container">
+      @for (notification of notifications(); track notification) {
+        <div class="notification-toast"
+             [class.success]="notification.includes('[SUCCESS]')"
+             [class.error]="notification.includes('[ERROR]')"
+             [class.info]="notification.includes('[INFO]')">
+          {{ notification.replace('[SUCCESS] ', '').replace('[ERROR] ', '').replace('[INFO] ', '') }}
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Settings Dialog -->
+  @if (showSettingsDialog()) {
+    <div class="dialog-overlay" (click)="closeSettingsDialog()">
+      <div class="dialog-content settings-dialog" (click)="$event.stopPropagation()">
+        <div class="dialog-header">
+          <h3 class="dialog-title">{{ translate('fundingRates.settings.title') }}</h3>
+          <button class="dialog-close" (click)="closeSettingsDialog()" aria-label="Close">×</button>
+        </div>
+
+        <div class="dialog-body">
+          <!-- Default Quantity -->
+          <div class="form-group">
+            <label class="form-label">{{ translate('fundingRates.settings.defaultQuantity') }} ({{ translate('fundingRates.dialog.coins') }})</label>
+            <input
+              type="number"
+              class="form-input"
+              [(ngModel)]="subscriptionSettings().defaultQuantity"
+              step="0.001"
+              min="0.001"
+              placeholder="0.01"
+              aria-label="Default quantity">
+            <small class="form-help">{{ translate('fundingRates.settings.defaultQuantityHelp') }}</small>
+          </div>
+
+          <!-- Leverage -->
+          <div class="form-group">
+            <label class="form-label">{{ translate('fundingRates.settings.leverage') }}</label>
+            <input
+              type="number"
+              class="form-input"
+              [(ngModel)]="subscriptionSettings().leverage"
+              min="1"
+              max="100"
+              step="1"
+              placeholder="1"
+              aria-label="Leverage">
+            <small class="form-help">{{ translate('fundingRates.settings.leverageHelp') }}</small>
+          </div>
+
+          <!-- Auto-Cancel Toggle -->
+          <div class="form-group">
+            <label class="form-checkbox">
+              <input
+                type="checkbox"
+                [(ngModel)]="subscriptionSettings().enableAutoCancel">
+              <span>{{ translate('fundingRates.settings.enableAutoCancel') }}</span>
+            </label>
+            <small class="form-help">{{ translate('fundingRates.settings.autoCancelHelp') }}</small>
+          </div>
+
+          <!-- Auto-Cancel Threshold (only show if enabled) -->
+          @if (subscriptionSettings().enableAutoCancel) {
+            <div class="form-group">
+              <label class="form-label">{{ translate('fundingRates.settings.autoCancelThreshold') }} (%)</label>
+              <input
+                type="number"
+                class="form-input"
+                [(ngModel)]="subscriptionSettings().autoCancelThreshold"
+                step="0.0001"
+                placeholder="0.01"
+                aria-label="Auto-cancel threshold">
+              <small class="form-help">
+                {{ translate('fundingRates.settings.autoCancelThresholdHelp') }}
+              </small>
+            </div>
+          }
+
+          <!-- Execution Delay -->
+          <div class="form-group">
+            <label class="form-label">{{ translate('fundingRates.settings.executionDelay') }} ({{ translate('fundingRates.dialog.seconds') }})</label>
+            <input
+              type="number"
+              class="form-input"
+              [(ngModel)]="subscriptionSettings().executionDelay"
+              min="1"
+              max="60"
+              step="1"
+              placeholder="5"
+              aria-label="Execution delay">
+            <small class="form-help">
+              {{ translate('fundingRates.settings.executionDelayHelp') }}
+            </small>
+          </div>
+
+          <!-- Arbitrage Spread Threshold -->
+          <div class="form-group">
+            <label class="form-label">{{ translate('fundingRates.settings.arbitrageSpreadThreshold') }} (%)</label>
+            <input
+              type="number"
+              class="form-input"
+              [(ngModel)]="subscriptionSettings().arbitrageSpreadThreshold"
+              step="0.001"
+              min="0"
+              placeholder="0.01"
+              aria-label="Arbitrage spread threshold">
+            <small class="form-help">
+              {{ translate('fundingRates.settings.arbitrageSpreadThresholdHelp') }}
+            </small>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <ui-button
+            variant="ghost"
+            (clicked)="closeSettingsDialog()">
+            {{ translate('fundingRates.actions.cancel') }}
+          </ui-button>
+          <ui-button
+            variant="primary"
+            (clicked)="saveSettings()">
+            {{ translate('fundingRates.actions.save') }}
+          </ui-button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,371 @@
+    <!-- View Mode Display -->
+    <div *ngIf="mode === 'view'" class="bot-view">
+      <ui-card>
+        <ui-card-header>
+          <ui-card-title>{{ botData?.name || translate('bot.details') }}</ui-card-title>
+        </ui-card-header>
+        <ui-card-content>
+          <div class="view-grid">
+            <!-- Basic Information -->
+            <div class="view-section">
+              <h3>{{ translate('bot.basicInformation') }}</h3>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.id') }}:</span>
+                <span class="value">{{ botData?.id }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.name') }}:</span>
+                <span class="value">{{ botData?.name }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.symbol') }}:</span>
+                <span class="value">{{ botData?.symbol }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.status') }}:</span>
+                <span class="value" [class]="'status-' + botData?.status?.toLowerCase()">
+                  {{ botData?.status }}
+                </span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.created') }}:</span>
+                <span class="value">{{ botData?.createdAt | date:'medium' }}</span>
+              </div>
+            </div>
+
+            <!-- Configuration -->
+            <div class="view-section">
+              <h3>{{ translate('bot.gridConfiguration') }}</h3>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.gridLevels') }}:</span>
+                <span class="value">{{ botData?.config?.gridStrategy?.gridCount || translate('dashboard.na') }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.strategyType') }}:</span>
+                <span class="value">{{ botData?.config?.gridStrategy?.type || translate('dashboard.na') }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.upperPrice') }}:</span>
+                <span class="value">{{ botData?.config?.gridRange?.upperBound | currency }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.lowerPrice') }}:</span>
+                <span class="value">{{ botData?.config?.gridRange?.lowerBound | currency }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.orderAmount') }}:</span>
+                <span class="value">{{ botData?.config?.riskManagement?.baseOrderSize }}</span>
+              </div>
+            </div>
+
+            <!-- Trading Filters -->
+            <div class="view-section" *ngIf="(botData?.config?.entryFilters && botData?.config?.entryFilters.length > 0) || (botData?.config?.exitFilters && botData?.config?.exitFilters.length > 0)">
+              <h3>{{ translate('bot.tradingFilters') }}</h3>
+              <div class="view-item" *ngIf="botData?.config?.entryFilters && botData?.config?.entryFilters.length > 0">
+                <span class="label">{{ translate('filter.entryFilters') }}:</span>
+                <span class="value">{{ botData?.config?.entryFilters.length }} {{ translate('bot.configured') }}</span>
+              </div>
+              <div class="view-item" *ngIf="botData?.config?.exitFilters && botData?.config?.exitFilters.length > 0">
+                <span class="label">{{ translate('filter.exitFilters') }}:</span>
+                <span class="value">{{ botData?.config?.exitFilters.length }} {{ translate('bot.configured') }}</span>
+              </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="view-section" *ngIf="botData?.performance">
+              <h3>{{ translate('bot.performance') }}</h3>
+              <div class="view-item">
+                <span class="label">{{ translate('dashboard.totalPnl') }}:</span>
+                <span class="value" [class]="botData?.totalPnL >= 0 ? 'positive' : 'negative'">
+                  {{ botData?.totalPnL | currency }}
+                </span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.totalTrades') }}:</span>
+                <span class="value">{{ botData?.totalTrades || 0 }}</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('dashboard.winRate') }}:</span>
+                <span class="value">{{ botData?.winRate || 0 }}%</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.maxDrawdown') }}:</span>
+                <span class="value">{{ botData?.performance?.maxDrawdown || 0 }}%</span>
+              </div>
+              <div class="view-item">
+                <span class="label">{{ translate('bot.sharpeRatio') }}:</span>
+                <span class="value">{{ botData?.performance?.sharpeRatio || 0 | number:'1.2-2' }}</span>
+              </div>
+            </div>
+          </div>
+        </ui-card-content>
+      </ui-card>
+
+      <div class="form-actions">
+        <ui-button variant="ghost" (clicked)="onCancel()">
+          {{ translate('button.close') }}
+        </ui-button>
+        <ui-button variant="primary" (clicked)="onEdit()">
+          {{ translate('button.edit') }} {{ translate('bot.name') }}
+        </ui-button>
+      </div>
+    </div>
+
+    <!-- Create/Edit Mode Form -->
+    <div *ngIf="mode !== 'view'" class="trading-layout">
+      <!-- Left Side: Bybit TradingView Chart -->
+      <div class="chart-container" [style.width.%]="chartWidth">
+        <div class="chart-wrapper">
+          <!-- New Bybit-powered TradingView Chart -->
+          <app-lightweight-chart
+              [symbol]="getSelectedSymbol()"
+              [chartHeight]="chartHeight"
+              [gridConfig]="currentGridConfig"
+              (symbolChange)="onChartSymbolChange($event)">
+          </app-lightweight-chart>
+
+          <!-- Grid overlay removed as requested -->
+        </div>
+      </div>
+
+      <!-- Resizer -->
+      <div class="resizer"
+           (mousedown)="startResize($event)"
+           (touchstart)="startResize($event)">
+        <div class="resizer-handle"></div>
+      </div>
+
+      <!-- Right Side: Configuration Form -->
+      <div class="form-container" [style.width.%]="formWidth">
+        <!-- Progress Indicator -->
+        <div class="progress-header">
+          <div class="progress-steps">
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>Setup</span>
+            </div>
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>API</span>
+            </div>
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>Pair</span>
+            </div>
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>Deposit</span>
+            </div>
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>Filters</span>
+            </div>
+            <div class="step active">
+              <div class="step-icon">✓</div>
+              <span>Orders</span>
+            </div>
+            <div class="step current">
+              <div class="step-icon">7</div>
+              <span>{{ translate('button.launch') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <form [formGroup]="configForm" (ngSubmit)="onSave()" class="bot-config-form">
+          <div class="form-content">
+            <!-- Trading Pair Section -->
+            <div class="config-section">
+              <h3>{{ translate('bot.tradingPair') }}</h3>
+              <div class="recommended-pairs">
+                <div class="section-subtitle">{{ translate('bot.recommendedPairs') }}</div>
+                <div class="info-text">{{ translate('bot.recommendedPairsDesc') }}</div>
+
+                <div class="pairs-grid">
+                  <div class="pair-item active">MEME USDT</div>
+                  <div class="pair-item">ORDER USDT</div>
+                  <div class="pair-item trending">1000PEPE USDT</div>
+                  <div class="pair-item">THE USDT</div>
+                  <div class="pair-item neutral">AEVO USDT</div>
+                  <div class="pair-item">ASTER USDT</div>
+                  <div class="pair-item">PUMPETO USDT</div>
+                  <div class="pair-item">STEL USDT</div>
+                  <div class="pair-item">PUMPFUN USDT</div>
+                  <div class="pair-item">AVNT USDT</div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label>{{ translate('bot.selectPair') }}</label>
+                <div class="pair-selector">
+                  <ui-select
+                    formControlName="symbol"
+                    [options]="symbolOptions"
+                    [placeholder]="translate('bot.selectTradingPair')">
+                  </ui-select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Deposit Section -->
+            <div class="config-section">
+              <h3>{{ translate('bot.deposit') }}</h3>
+              <div class="deposit-info">
+                <div class="balance-display">
+                  <span class="currency-icon">₮</span>
+                  <span class="amount">200</span>
+                  <div class="balance-detail">
+                    <span class="balance-value">0.0854105 USDT</span>
+                    <ui-button variant="ghost" size="small" className="refresh-btn">↻</ui-button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="warning-card">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-text">
+                  {{ translate('bot.balanceWarning') }}
+                </div>
+              </div>
+
+              <div class="warning-card">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-text">
+                  {{ translate('bot.insufficientBalance') }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Bot Configuration -->
+            <div class="config-section">
+              <h3>{{ translate('bot.configuration') }}</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="botName">{{ translate('bot.name') }} *</label>
+                  <ui-input
+                    id="botName"
+                    formControlName="name"
+                    [placeholder]="translate('bot.enterName')">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="gridCount">{{ translate('bot.gridLevels') }} *</label>
+                  <ui-input
+                    id="gridCount"
+                    type="number"
+                    formControlName="gridCount"
+                    placeholder="10"
+                    min="2"
+                    max="100">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="baseOrderSize">{{ translate('bot.orderAmount') }} *</label>
+                  <ui-input
+                    id="baseOrderSize"
+                    type="number"
+                    formControlName="baseOrderSize"
+                    placeholder="10"
+                    step="0.01"
+                    min="0.01">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="upperBound">{{ translate('bot.upperPrice') }} *</label>
+                  <ui-input
+                    id="upperBound"
+                    type="number"
+                    formControlName="upperBound"
+                    placeholder="50000"
+                    step="0.01"
+                    min="0">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="lowerBound">{{ translate('bot.lowerPrice') }} *</label>
+                  <ui-input
+                    id="lowerBound"
+                    type="number"
+                    formControlName="lowerBound"
+                    placeholder="30000"
+                    step="0.01"
+                    min="0">
+                  </ui-input>
+                </div>
+
+                <div class="form-group">
+                  <label for="strategyType">{{ translate('bot.gridStrategy') }} *</label>
+                  <ui-select
+                    id="strategyType"
+                    formControlName="strategyType"
+                    [options]="strategyOptions"
+                    [placeholder]="translate('bot.selectStrategyType')">
+                  </ui-select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Risk Management -->
+            <div class="config-section">
+              <h3>{{ translate('bot.riskManagement') }}</h3>
+              <div class="risk-slider">
+                <label>{{ translate('bot.selectOrderType') }}</label>
+                <div class="slider-container">
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width: 50%"></div>
+                  </div>
+                  <div class="slider-value">20</div>
+                </div>
+              </div>
+
+              <div class="warning-card">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-text">
+                  {{ translate('bot.leverageWarning') }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Terms Section -->
+            <div class="config-section">
+              <h3>{{ translate('bot.termsAndConditions') }}</h3>
+              <div class="terms-grid">
+                <div class="term-type">
+                  <h4>{{ translate('bot.conservative') }}</h4>
+                  <div class="filter-count">{{ translate('bot.filters') }}: 7</div>
+                </div>
+                <div class="term-type">
+                  <h4>{{ translate('bot.balanced') }}</h4>
+                  <div class="filter-count">{{ translate('bot.filters') }}: 4</div>
+                </div>
+                <div class="term-type">
+                  <h4>{{ translate('bot.aggressive') }}</h4>
+                  <div class="filter-count">{{ translate('bot.filters') }}: 4</div>
+                </div>
+              </div>
+
+              <div class="checkbox-option">
+                <input type="checkbox" id="accept-terms">
+                <label for="accept-terms">{{ translate('bot.iUnderstand') }}</label>
+              </div>
+
+              <div class="test-info">
+                <span>{{ translate('bot.availableTests') }}: 1</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <ui-button variant="ghost" (clicked)="onCancel()">
+              {{ translate('button.cancel') }}
+            </ui-button>
+            <ui-button variant="primary" type="submit" [disabled]="!configForm.valid" class="launch-btn">
+              🔧 {{ mode === 'edit' ? translate('button.update') + ' ' + translate('bot.name') : translate('button.launch') + ' ' + translate('bot.name') }}
+            </ui-button>
+          </div>
+        </form>
+      </div>
+    </div>

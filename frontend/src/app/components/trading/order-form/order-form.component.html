@@ -1,0 +1,410 @@
+<div class="order-form-container">
+  <!-- Header -->
+  <div class="order-form-header">
+    <h2 class="order-form-title">Trade</h2>
+    <div class="header-actions">
+      <button class="icon-button" aria-label="Grid settings">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <rect x="2" y="2" width="7" height="7" rx="1"></rect>
+          <rect x="11" y="2" width="7" height="7" rx="1"></rect>
+          <rect x="2" y="11" width="7" height="7" rx="1"></rect>
+          <rect x="11" y="11" width="7" height="7" rx="1"></rect>
+        </svg>
+      </button>
+      <button class="icon-button notification-button" aria-label="Notifications">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10 2C6.68629 2 4 4.68629 4 8V11.5858L2.29289 13.2929C1.90237 13.6834 2.19063 14.5 2.70711 14.5H17.2929C17.8094 14.5 18.0976 13.6834 17.7071 13.2929L16 11.5858V8C16 4.68629 13.3137 2 10 2Z"></path>
+          <path d="M8 16C8 17.1046 8.89543 18 10 18C11.1046 18 12 17.1046 12 16H8Z"></path>
+        </svg>
+        <span class="notification-badge"></span>
+      </button>
+      <button class="icon-button" aria-label="Settings">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10 6C7.79086 6 6 7.79086 6 10C6 12.2091 7.79086 14 10 14C12.2091 14 14 12.2091 14 10C14 7.79086 12.2091 6 10 6Z"></path>
+          <circle cx="3" cy="10" r="2"></circle>
+          <circle cx="17" cy="10" r="2"></circle>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Margin Mode & Leverage -->
+  <div class="margin-leverage-row">
+    <div class="margin-mode-select">
+      <ui-select
+        [options]="marginModeOptions"
+        [(ngModel)]="marginMode"
+        (ngModelChange)="onMarginModeChange($event)"
+        [fullWidth]="true"
+        size="medium">
+      </ui-select>
+    </div>
+    <div class="leverage-select">
+      <ui-select
+        [options]="leverageOptions"
+        [(ngModel)]="leverage"
+        (ngModelChange)="onLeverageChange($event)"
+        [fullWidth]="true"
+        size="medium">
+      </ui-select>
+      <span class="leverage-label">{{ leverage }}x</span>
+    </div>
+  </div>
+
+  <!-- Order Type Tabs -->
+  <div class="order-type-tabs">
+    <ui-tabs
+      [tabs]="orderTypeTabs"
+      [activeTabId]="orderType"
+      (tabChange)="onOrderTypeChange($event)"
+      variant="underline"
+      size="medium">
+    </ui-tabs>
+  </div>
+
+  <form [formGroup]="orderForm" class="order-form">
+    <!-- Price Input -->
+    <div class="form-group" *ngIf="orderType !== 'Market'">
+      <label class="form-label">Price</label>
+      <div class="input-with-actions">
+        <input
+          type="number"
+          formControlName="price"
+          class="form-input price-input"
+          [class.error]="hasError('price')"
+          placeholder="0.0"
+          step="0.1"
+        />
+        <button
+          type="button"
+          class="input-action-button last-button"
+          (click)="fillLastPrice()"
+          aria-label="Fill last price">
+          Last
+        </button>
+        <button
+          type="button"
+          class="input-action-button transfer-button"
+          aria-label="Transfer">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1L12 5H9V11H7V5H4L8 1Z"></path>
+            <path d="M8 15L4 11H7V5H9V11H12L8 15Z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="current-price">{{ lastPrice() | number:'1.1-1' }}</div>
+    </div>
+
+    <!-- Quantity Input -->
+    <div class="form-group">
+      <label class="form-label">Quantity</label>
+      <div class="input-with-unit">
+        <input
+          type="number"
+          formControlName="quantity"
+          class="form-input quantity-input"
+          [class.error]="hasError('quantity')"
+          placeholder="0.0"
+          step="0.001"
+        />
+        <ui-select
+          [options]="quantityUnitOptions"
+          [(ngModel)]="quantityUnit"
+          [ngModelOptions]="{standalone: true}"
+          (ngModelChange)="onQuantityUnitChange($event)"
+          class="unit-select"
+          size="small">
+        </ui-select>
+      </div>
+    </div>
+
+    <!-- Quantity Slider -->
+    <div class="quantity-slider-container">
+      <input
+        type="range"
+        min="0"
+        max="100"
+        [value]="quantityPercentage"
+        (input)="onQuantityPercentageChange($event)"
+        class="quantity-slider"
+        aria-label="Quantity percentage"
+      />
+      <div class="slider-markers">
+        <span class="slider-marker">0</span>
+        <span class="slider-marker"
+          [class.active]="quantityPercentage >= 100">100%</span>
+      </div>
+    </div>
+
+    <!-- Value Display -->
+    <div class="value-display-section">
+      <div class="value-row">
+        <span class="value-label">Value</span>
+        <span class="value-amount">
+          <span class="value-dash">--</span>
+          <span class="value-separator">/</span>
+          <span class="value-dash">--</span>
+          <span class="value-unit">USDT</span>
+        </span>
+      </div>
+      <div class="value-row">
+        <span class="value-label">Cost</span>
+        <span class="value-amount">
+          <span class="value-dash">--</span>
+          <span class="value-separator">/</span>
+          <span class="value-dash">--</span>
+          <span class="value-unit">USDT</span>
+        </span>
+      </div>
+      <div class="value-row liq-price-row">
+        <span class="value-label">Liq. Price</span>
+        <button
+          type="button"
+          class="calculate-button"
+          (click)="calculateLiquidationPrice()">
+          Calculate
+        </button>
+      </div>
+    </div>
+
+    <!-- TP/SL Section -->
+    <div class="tpsl-section">
+      <div class="tpsl-header">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="tpslEnabled"
+            (change)="toggleTPSL()"
+            class="checkbox-input"
+          />
+          <span class="checkbox-custom"></span>
+          <span class="checkbox-text">TP/SL</span>
+        </label>
+        <button
+          type="button"
+          class="tpsl-mode-toggle"
+          (click)="toggleTPSLMode()">
+          {{ tpslMode }}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="toggle-icon">
+            <path d="M4 6L8 10L12 6H4Z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="tpsl-inputs" *ngIf="tpslEnabled">
+        <div class="form-group">
+          <label class="form-label">Take Profit</label>
+          <div class="input-with-dropdown">
+            <input
+              type="number"
+              formControlName="takeProfit"
+              class="form-input"
+              placeholder="0.0"
+              step="0.1"
+            />
+            <button
+              type="button"
+              class="dropdown-button"
+              (click)="fillTPSLWithLast('takeProfit')">
+              Last
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M3 5L6 8L9 5H3Z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Stop Loss</label>
+          <div class="input-with-dropdown">
+            <input
+              type="number"
+              formControlName="stopLoss"
+              class="form-input"
+              placeholder="0.0"
+              step="0.1"
+            />
+            <button
+              type="button"
+              class="dropdown-button"
+              (click)="fillTPSLWithLast('stopLoss')">
+              Last
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M3 5L6 8L9 5H3Z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Options -->
+    <div class="order-options">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          formControlName="postOnly"
+          class="checkbox-input"
+        />
+        <span class="checkbox-custom"></span>
+        <span class="checkbox-text">Post-Only</span>
+      </label>
+
+      <ui-select
+        [options]="timeInForceOptions"
+        formControlName="timeInForce"
+        [fullWidth]="true"
+        size="small">
+      </ui-select>
+    </div>
+
+    <div class="order-options">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          formControlName="reduceOnly"
+          class="checkbox-input"
+        />
+        <span class="checkbox-custom"></span>
+        <span class="checkbox-text">Reduce-Only</span>
+      </label>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+      <ui-button
+        type="button"
+        variant="primary"
+        size="large"
+        className="long-button"
+        (clicked)="placeLongOrder()"
+        [disabled]="isPlacingOrder() || orderForm.invalid">
+        <span *ngIf="!isPlacingOrder()">Long</span>
+        <span *ngIf="isPlacingOrder()" class="loading-spinner"></span>
+      </ui-button>
+      <ui-button
+        type="button"
+        variant="danger"
+        size="large"
+        className="short-button"
+        (clicked)="placeShortOrder()"
+        [disabled]="isPlacingOrder() || orderForm.invalid">
+        <span *ngIf="!isPlacingOrder()">Short</span>
+        <span *ngIf="isPlacingOrder()" class="loading-spinner"></span>
+      </ui-button>
+    </div>
+
+    <!-- Footer Links -->
+    <div class="form-footer">
+      <button type="button" class="footer-link" (click)="openFeeRateDialog()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" fill="none"></circle>
+          <path d="M8 4V8L11 11"></path>
+        </svg>
+        Fee Rate
+        <span class="notification-dot"></span>
+      </button>
+      <button type="button" class="footer-link" (click)="openCalculatorDialog()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" fill="none"></rect>
+          <line x1="5" y1="6" x2="11" y2="6" stroke="currentColor"></line>
+          <line x1="5" y1="9" x2="11" y2="9" stroke="currentColor"></line>
+        </svg>
+        Calculator
+      </button>
+    </div>
+  </form>
+
+  <!-- Account Info Section -->
+  <div class="account-section">
+    <div class="account-header">
+      <div class="account-title">
+        <span>Unified Trading Account</span>
+        <button class="icon-button-small" aria-label="View account">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 3C4.5 3 1.5 5.5 1 8C1.5 10.5 4.5 13 8 13C11.5 13 14.5 10.5 15 8C14.5 5.5 11.5 3 8 3Z"></path>
+            <circle cx="8" cy="8" r="2"></circle>
+          </svg>
+        </button>
+      </div>
+      <button class="pnl-button" aria-label="P&L">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 3L8 9L14 3"></path>
+          <path d="M2 7L8 13L14 7"></path>
+        </svg>
+        P&L
+      </button>
+    </div>
+
+    <div class="margin-mode-row">
+      <span class="margin-label">Margin Mode</span>
+      <button class="margin-mode-value">
+        {{ marginMode }} Margin
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+          <path d="M4 5L6 7L8 5H4Z"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="margin-sliders">
+      <div class="margin-slider-row">
+        <label class="slider-label">Initial Margin</label>
+        <div class="slider-container">
+          <div class="slider-track">
+            <div class="slider-fill" style="width: 0%"></div>
+          </div>
+        </div>
+        <span class="slider-value">0.00%</span>
+      </div>
+
+      <div class="margin-slider-row">
+        <label class="slider-label">Maintenance Margin</label>
+        <div class="slider-container">
+          <div class="slider-track">
+            <div class="slider-fill" style="width: 0%"></div>
+          </div>
+        </div>
+        <span class="slider-value">0.00%</span>
+      </div>
+    </div>
+
+    <div class="balance-display">
+      <div class="balance-row">
+        <span class="balance-label">Margin Balance</span>
+        <span class="balance-value">
+          {{ marginBalance() | number:'1.4-4' }} USDT
+        </span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">Available Balance</span>
+        <span class="balance-value">
+          {{ availableBalance() | number:'1.4-4' }} USDT
+        </span>
+      </div>
+    </div>
+
+    <div class="account-actions">
+      <ui-button
+        type="button"
+        variant="secondary"
+        size="small"
+        (clicked)="navigateToDeposit()">
+        Deposit
+      </ui-button>
+      <ui-button
+        type="button"
+        variant="secondary"
+        size="small"
+        (clicked)="navigateToConvert()">
+        Convert
+      </ui-button>
+      <ui-button
+        type="button"
+        variant="secondary"
+        size="small"
+        (clicked)="navigateToTransfer()">
+        Transfer
+      </ui-button>
+    </div>
+  </div>
+</div>

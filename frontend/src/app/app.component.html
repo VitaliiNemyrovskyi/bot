@@ -1,0 +1,140 @@
+<div class="app-container">
+  <header class="app-header">
+    <div class="container">
+      <div class="header-content">
+        <a class="app-title" routerLink="/home">
+          <img [src]="logoSource()" alt="Optimus Logo" class="app-logo"/>
+          <h1>{{ translate('auth.app') }}</h1>
+        </a>
+
+        <div class="header-actions">
+          <app-theme-toggle></app-theme-toggle>
+
+          <div class="language-selector">
+            <ui-button variant="ghost" size="small" className="language-toggle" (clicked)="toggleLanguageDropdown()"
+                    [attr.aria-label]="translate('language.select')">
+              <span class="flag">{{ currentLanguageOption().flag }}</span>
+              <span class="lang-code">{{ currentLanguageOption().code.toUpperCase() }}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round"/>
+              </svg>
+            </ui-button>
+
+            @if (showLanguageDropdown) {
+              <div class="language-dropdown">
+                @for (language of availableLanguages; track language.code) {
+                  <ui-button
+                      variant="ghost"
+                      size="small"
+                      className="language-option"
+                      [class.active]="language.code === currentLanguage()"
+                      (clicked)="selectLanguage(language.code)"
+                  >
+                    <span class="flag">{{ language.flag }}</span>
+                    <span class="name">{{ language.name }}</span>
+                  </ui-button>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Desktop Navigation -->
+          <nav class="main-nav desktop-nav">
+            @if (!isAuthenticated()) {
+              <a routerLink="/login" routerLinkActive="active" class="nav-link">{{ translate('nav.login') }}</a>
+            } @else {
+              <div class="user-nav">
+                <a routerLink="/trading/funding-rates" routerLinkActive="active" class="nav-link">{{ translate('Funding') }}</a>
+                <a routerLink="/trading" routerLinkActive="active" class="nav-link">🤖 {{ translate('nav.gridTrading') }}</a>
+                <a routerLink="/trading/manual" routerLinkActive="active" class="nav-link">📊 {{ translate('nav.manualTrading') }}</a>
+                <a routerLink="/profile" routerLinkActive="active" class="nav-link">{{ translate('nav.profile') }}</a>
+              </div>
+            }
+          </nav>
+
+          <!-- Mobile Hamburger Menu -->
+          @if (isAuthenticated()) {
+            <ui-button variant="ghost" size="medium" className="hamburger-menu" (clicked)="toggleMobileMenu()" [attr.aria-label]="'Menu'">
+              <div class="hamburger-line" [class.active]="showMobileMenu"></div>
+              <div class="hamburger-line" [class.active]="showMobileMenu"></div>
+              <div class="hamburger-line" [class.active]="showMobileMenu"></div>
+            </ui-button>
+          }
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Overlay -->
+  @if (showMobileMenu && isAuthenticated()) {
+    <div class="mobile-menu-overlay" (click)="closeMobileMenu()">
+      <nav class="mobile-menu" (click)="$event.stopPropagation()">
+        <div class="mobile-menu-header">
+          <h3>Menu</h3>
+          <ui-button variant="ghost" size="medium" className="close-menu" (clicked)="closeMobileMenu()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round"/>
+            </svg>
+          </ui-button>
+        </div>
+
+        <div class="mobile-menu-content">
+          <a routerLink="/trading" routerLinkActive="active" class="mobile-nav-link" (click)="closeMobileMenu()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 3v18h18" stroke="currentColor" stroke-width="2"/>
+              <path d="M7 12l4-4 4 4 6-6" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            🤖 {{ translate('nav.gridTrading') }}
+          </a>
+
+          <a routerLink="/trading/manual" routerLinkActive="active" class="mobile-nav-link" (click)="closeMobileMenu()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 4h20M2 10h20M2 16h20M2 22h20" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            📊 {{ translate('nav.manualTrading') }}
+          </a>
+
+          <a routerLink="/profile" routerLinkActive="active" class="mobile-nav-link" (click)="closeMobileMenu()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2"/>
+              <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            {{ translate('nav.profile') }}
+          </a>
+
+          @if (currentUser(); as user) {
+            <div class="mobile-user-info">
+              <img
+                  [src]="user.avatar || '/placeholder/48'"
+                  [alt]="user.name || user.email"
+                  class="mobile-user-avatar"
+              />
+              <div class="mobile-user-details">
+                <span class="mobile-user-name">{{ user.name || user.email }}</span>
+                <span class="mobile-user-role" [class]="'role-' + user.role.toLowerCase()">
+                  {{ user.role }}
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+      </nav>
+    </div>
+  }
+
+  <main class="main-content">
+    <div class="container">
+      @if (isLoading()) {
+        <div class="loading-indicator">
+          <div class="spinner"></div>
+          <span>{{ translate('loading') }}</span>
+        </div>
+      }
+
+      <router-outlet></router-outlet>
+    </div>
+  </main>
+
+</div>
