@@ -1,0 +1,664 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  BASIC
+  PREMIUM
+  ENTERPRISE
+  ADMIN
+}
+
+enum Exchange {
+  BYBIT
+  BINANCE
+  OKX
+  KRAKEN
+  COINBASE
+  BINGX
+}
+
+enum Environment {
+  TESTNET
+  MAINNET
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String?
+  password     String? // Optional for Google OAuth users
+  googleId     String? @unique
+  googleLinked Boolean @default(false)
+  avatar       String?
+  role         Role    @default(BASIC)
+
+  // Personal info
+  firstName String?
+  lastName  String?
+  phone     String?
+  timezone  String?
+
+  // Subscription details
+  subscriptionId     String?
+  subscriptionActive Boolean   @default(false)
+  subscriptionExpiry DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  // Relations
+  sessions                      Session[]
+  tradingPlatforms              UserTradingPlatform[]
+  preferences                   UserPreferences?
+  messages                      Message[]
+  notifications                 NotificationSettings?
+  gridBots                      GridBot[]
+  backtests                     Backtest[]
+  strategies                    Strategy[]
+  bybitApiKey                   BybitApiKey? // One-to-one relationship (deprecated, use exchangeCredentials)
+  exchangeCredentials           ExchangeCredentials[]
+  fundingArbitrageSubscriptions FundingArbitrageSubscription[]
+
+  @@map("users")
+}
+
+model BybitApiKey {
+  id     String @id @default(cuid())
+  userId String @unique // One-to-one relationship
+
+  // Encrypted API credentials
+  apiKey    String // Encrypted Bybit API key
+  apiSecret String // Encrypted Bybit API secret
+
+  // Configuration
+  testnet Boolean @default(true)
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bybit_api_keys")
+}
+
+model ExchangeCredentials {
+  id     String @id @default(cuid())
+  userId String
+
+  // Exchange information
+  exchange    Exchange
+  environment Environment
+
+  // Encrypted API credentials
+  apiKey    String // Encrypted API key
+  apiSecret String // Encrypted API secret
+
+  // Optional user-friendly label
+  label String?
+
+  // Active status - only one credential per exchange can be active
+  isActive Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for efficient queries
+  @@index([userId])
+  @@index([userId, exchange])
+  @@index([userId, exchange, environment])
+  @@index([userId, exchange, isActive])
+  @@map("exchange_credentials")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  price       Float
+  duration    Int // in days
+  features    String[] // JSON array of features
+  role        Role
+  isActive    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+enum TradingPlatformType {
+  BINANCE
+  COINBASE_PRO
+  KRAKEN
+  BYBIT
+  KUCOIN
+  BITFINEX
+  BINGX
+}
+
+model TradingPlatform {
+  id          String              @id @default(cuid())
+  name        String              @unique
+  type        TradingPlatformType
+  description String?
+  logo        String?
+  isActive    Boolean             @default(true)
+
+  // API configuration
+  baseUrl      String
+  websocketUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userPlatforms UserTradingPlatform[]
+
+  @@map("trading_platforms")
+}
+
+model UserTradingPlatform {
+  id         String @id @default(cuid())
+  userId     String
+  platformId String
+
+  // API credentials (encrypted)
+  apiKey     String
+  secretKey  String
+  passphrase String?
+
+  // Status
+  isConnected Boolean   @default(true)
+  lastSync    DateTime?
+  connectedAt DateTime  @default(now())
+
+  // Balance information
+  totalBalance     Float @default(0)
+  availableBalance Float @default(0)
+  tradingBalance   Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform       TradingPlatform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  orders         Order[]
+  balanceHistory BalanceHistory[]
+
+  @@unique([userId, platformId])
+  @@map("user_trading_platforms")
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP
+  STOP_LIMIT
+}
+
+enum OrderStatus {
+  PENDING
+  FILLED
+  PARTIALLY_FILLED
+  CANCELLED
+  REJECTED
+}
+
+model Order {
+  id                    String @id @default(cuid())
+  userTradingPlatformId String
+
+  // Order details
+  symbol    String // e.g., "BTCUSDT"
+  side      OrderSide
+  type      OrderType
+  amount    Float
+  price     Float? // null for market orders
+  stopPrice Float? // for stop orders
+
+  // Execution details
+  status          OrderStatus @default(PENDING)
+  filledAmount    Float       @default(0)
+  averagePrice    Float?
+  commission      Float       @default(0)
+  commissionAsset String?
+
+  // External reference
+  platformOrderId String? // ID from the trading platform
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  filledAt  DateTime?
+
+  // Relations
+  userTradingPlatform UserTradingPlatform @relation(fields: [userTradingPlatformId], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+}
+
+model BalanceHistory {
+  id                    String @id @default(cuid())
+  userTradingPlatformId String
+
+  // Balance snapshot
+  totalBalance     Float
+  availableBalance Float
+  tradingBalance   Float
+  balanceChange    Float @default(0)
+
+  // Metadata
+  syncedAt DateTime @default(now())
+
+  // Relations
+  userTradingPlatform UserTradingPlatform @relation(fields: [userTradingPlatformId], references: [id], onDelete: Cascade)
+
+  @@map("balance_history")
+}
+
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // UI preferences
+  language String @default("en")
+  theme    String @default("light")
+  currency String @default("USD")
+
+  // Notification preferences
+  emailNotifications Boolean @default(true)
+  priceAlerts        Boolean @default(true)
+  tradingAlerts      Boolean @default(false)
+  pushNotifications  Boolean @default(false)
+
+  // Trading preferences
+  defaultAmount Float   @default(100)
+  riskLevel     String  @default("medium")
+  autoTrade     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+enum MessageType {
+  INFO
+  WARNING
+  SUCCESS
+  ERROR
+  TRADE
+}
+
+model Message {
+  id     String @id @default(cuid())
+  userId String
+
+  type    MessageType
+  title   String
+  content String
+
+  // Message metadata
+  read     Boolean @default(false)
+  actions  Json? // JSON array of actions
+  metadata Json? // Additional metadata
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model NotificationSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  email            Boolean @default(true)
+  push             Boolean @default(false)
+  priceAlerts      Boolean @default(true)
+  tradingAlerts    Boolean @default(true)
+  securityAlerts   Boolean @default(true)
+  marketUpdates    Boolean @default(false)
+  portfolioReports Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+enum BotStatus {
+  RUNNING
+  STOPPED
+  PAUSED
+  ERROR
+}
+
+model GridBot {
+  id     String @id @default(cuid())
+  userId String
+
+  // Bot configuration
+  symbol      String // e.g., "BTCUSDT"
+  name        String?
+  description String?
+
+  // Grid settings
+  config     Json // Grid configuration as JSON
+  gridLevels Json // Current grid levels as JSON
+
+  // Bot status
+  status BotStatus @default(STOPPED)
+
+  // Performance tracking
+  totalPnL    Float @default(0)
+  totalTrades Int   @default(0)
+  winRate     Float @default(0)
+
+  // Risk management
+  maxLoss    Float?
+  stopLoss   Float?
+  takeProfit Float?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  startedAt DateTime?
+  stoppedAt DateTime?
+
+  // Relations
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades GridBotTrade[]
+
+  @@map("grid_bots")
+}
+
+model GridBotTrade {
+  id        String @id @default(cuid())
+  gridBotId String
+
+  // Trade details
+  symbol String
+  side   OrderSide // BUY or SELL
+  type   OrderType // MARKET, LIMIT, etc.
+  amount Float
+  price  Float
+
+  // Execution details
+  status       OrderStatus @default(PENDING)
+  filledAmount Float       @default(0)
+  averagePrice Float?
+  commission   Float       @default(0)
+  pnl          Float?
+
+  // Grid specific
+  gridLevel   Int // Which grid level this trade belongs to
+  pairTradeId String? // Reference to the matching buy/sell trade
+
+  // External reference
+  platformOrderId String?
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  executedAt DateTime?
+
+  // Relations
+  gridBot GridBot @relation(fields: [gridBotId], references: [id], onDelete: Cascade)
+
+  @@map("grid_bot_trades")
+}
+
+model Backtest {
+  id     String @id @default(cuid())
+  userId String
+
+  // Backtest configuration
+  symbol    String
+  timeframe String // 1m, 5m, 1h, 1d, etc.
+  startDate DateTime
+  endDate   DateTime
+
+  // Strategy configuration
+  config Json // Complete backtest configuration as JSON
+
+  // Results
+  summary     Json // Backtest summary results as JSON
+  trades      Json // All trades as JSON array
+  equityCurve Json // Equity curve data as JSON array
+
+  // Performance metrics
+  totalPnL     Float
+  winRate      Float
+  maxDrawdown  Float
+  sharpeRatio  Float
+  profitFactor Float
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("backtests")
+}
+
+model Strategy {
+  id     String @id @default(cuid())
+  userId String
+
+  // Strategy details
+  name        String
+  description String?
+
+  // Configuration
+  entryFilters   Json // Entry filter configuration as JSON
+  exitFilters    Json // Exit filter configuration as JSON
+  riskManagement Json? // Risk management rules as JSON
+
+  // Usage tracking
+  isPublic      Boolean @default(false)
+  timesUsed     Int     @default(0)
+  averageReturn Float?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("strategies")
+}
+
+enum SymbolStatus {
+  ACTIVE
+  INACTIVE
+  DELISTED
+}
+
+model TradingSymbol {
+  id String @id @default(cuid())
+
+  // Exchange and symbol information
+  exchange Exchange
+  symbol   String // e.g., "BTCUSDT"
+
+  // Symbol details
+  baseAsset  String // e.g., "BTC"
+  quoteAsset String // e.g., "USDT"
+  status     SymbolStatus @default(ACTIVE)
+
+  // Trading limits and precision
+  minOrderQty Float? // Minimum order quantity
+  maxOrderQty Float? // Maximum order quantity
+  minPrice    Float? // Minimum price
+  maxPrice    Float? // Maximum price
+  tickSize    Float? // Price step size
+  qtyStep     Float? // Quantity step size
+
+  // Leverage information (for futures)
+  minLeverage Float?
+  maxLeverage Float?
+
+  // Additional metadata
+  description String?
+  category    String? // SPOT, FUTURES, OPTIONS, etc.
+  metadata    Json? // Additional exchange-specific data
+
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastSyncedAt DateTime @default(now())
+
+  // Unique constraint: one symbol per exchange
+  @@unique([exchange, symbol])
+  @@index([exchange])
+  @@index([exchange, status])
+  @@index([symbol])
+  @@map("trading_symbols")
+}
+
+model FundingRate {
+  id String @id @default(cuid())
+
+  // Exchange and symbol information
+  exchange Exchange
+  symbol   String // e.g., "BTCUSDT"
+
+  // Funding rate data
+  fundingRate          Float // Current funding rate (e.g., 0.0001 = 0.01%)
+  fundingRateTimestamp DateTime // When this rate applies
+  nextFundingTime      DateTime // When next funding will occur
+  predictedRate        Float? // Predicted rate for next period (if available)
+
+  // Market data at time of funding
+  markPrice    Float? // Mark price when funding was recorded
+  indexPrice   Float? // Index price when funding was recorded
+  openInterest Float? // Open interest at time of recording
+  volume24h    Float? // 24h volume
+
+  // Timestamps
+  createdAt  DateTime @default(now())
+  recordedAt DateTime @default(now()) // When this data was fetched
+
+  // Indexes for efficient queries
+  @@unique([exchange, symbol, fundingRateTimestamp])
+  @@index([exchange])
+  @@index([symbol])
+  @@index([exchange, symbol])
+  @@index([fundingRateTimestamp])
+  @@index([recordedAt])
+  @@map("funding_rates")
+}
+
+enum FundingArbitrageStatus {
+  ACTIVE
+  WAITING
+  EXECUTING
+  COMPLETED
+  CANCELLED
+  ERROR
+}
+
+model FundingArbitrageSubscription {
+  id     String @id @default(cuid())
+  userId String
+
+  // Symbol and position details
+  symbol          String // e.g., "BTCUSDT"
+  fundingRate     Float // The funding rate at subscription time
+  nextFundingTime DateTime // When the next funding occurs
+  positionType    String // "long" or "short"
+  quantity        Float // Position size
+
+  // Exchange configuration
+  primaryExchange     String // Exchange name (e.g., "BYBIT_TESTNET")
+  primaryCredentialId String // Reference to ExchangeCredentials
+  hedgeExchange       String // Hedge exchange (e.g., "MOCK", "BINGX")
+  hedgeCredentialId   String? // Reference to ExchangeCredentials for hedge (optional for MOCK)
+
+  // Status and execution
+  status       FundingArbitrageStatus @default(ACTIVE)
+  errorMessage String?
+
+  // Deal results (filled when positions are opened)
+  entryPrice      Float? // Average entry price for primary position
+  hedgeEntryPrice Float? // Average entry price for hedge position
+  fundingEarned   Float? // Funding payment earned (in USDT)
+  realizedPnl     Float? // Total realized P&L including funding (in USDT)
+
+  // Exit prices (filled when positions are closed)
+  primaryExitPrice Float? // Exit price for primary position
+  hedgeExitPrice   Float? // Exit price for hedge position
+
+  // Trading fees
+  primaryTradingFees Float? // Trading fees for primary position (entry + exit)
+  hedgeTradingFees   Float? // Trading fees for hedge position (entry + exit)
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  executedAt DateTime? // When positions were opened
+  closedAt   DateTime? // When positions were closed
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for efficient queries
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status])
+  @@index([nextFundingTime])
+  @@index([closedAt])
+  @@index([userId, closedAt])
+  @@index([symbol])
+  @@index([primaryExchange])
+  @@map("funding_arbitrage_subscriptions")
+}
