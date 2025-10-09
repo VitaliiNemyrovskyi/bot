@@ -90,18 +90,20 @@ export async function GET(request: NextRequest) {
 
     console.log(`[BingX Balance] Credentials loaded - environment: ${credentials.environment}`);
 
-    // 4. Create BingXService
+    // 4. Create BingXService with persistent cache support
     const isTestnet = credentials.environment === 'TESTNET';
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
       testnet: isTestnet,
       enableRateLimit: true,
+      userId: userId,           // Enable persistent time sync caching
+      credentialId: credentialId || credentials.id, // Enable persistent time sync caching
     });
 
-    console.log(`[BingX Balance] BingX service created - testnet: ${isTestnet}`);
+    console.log(`[BingX Balance] BingX service created - testnet: ${isTestnet}, cache enabled: true`);
 
-    // Sync time with BingX server before making authenticated requests
+    // Sync time with BingX server (uses cache if available, ~0ms vs 200-600ms)
     await bingxService.syncTime();
 
     // 5. Fetch wallet balance

@@ -18,6 +18,8 @@ export interface FundingSubscription {
   primaryCredentialId?: string;
   hedgeCredentialId?: string;
   executionDelay?: number; // Seconds before funding time to execute (default: 5)
+  leverage?: number; // Leverage multiplier (1-125, recommended 1-20, default: 3)
+  margin?: number; // Margin/collateral used for this position (in USDT)
 }
 
 export interface OrderExecutionEvent {
@@ -183,6 +185,8 @@ export class FundingArbitrageService extends EventEmitter {
             createdAt: dbSub.createdAt.getTime(),
             primaryCredentialId: dbSub.primaryCredentialId,
             hedgeCredentialId: dbSub.hedgeCredentialId || undefined,
+            leverage: dbSub.leverage,
+            margin: dbSub.margin || undefined,
           };
 
           // Add to memory
@@ -233,8 +237,20 @@ export class FundingArbitrageService extends EventEmitter {
     primaryCredentialId?: string;
     hedgeCredentialId?: string;
     executionDelay?: number;
+    leverage?: number;
+    margin?: number;
   }): Promise<FundingSubscription> {
-    // Save to database first
+    // Save to database first (default leverage: 3x if not provided)
+    const leverage = params.leverage ?? 3;
+    const margin = params.margin;
+
+    console.log('[FundingArbitrage] Creating subscription with margin:', {
+      quantity: params.quantity,
+      leverage,
+      margin,
+      marginProvided: margin !== undefined,
+    });
+
     const dbSubscription = await prisma.fundingArbitrageSubscription.create({
       data: {
         userId: params.userId,
@@ -243,6 +259,8 @@ export class FundingArbitrageService extends EventEmitter {
         nextFundingTime: new Date(params.nextFundingTime),
         positionType: params.positionType,
         quantity: params.quantity,
+        leverage,
+        margin,
         primaryExchange: params.primaryExchange.exchangeName,
         primaryCredentialId: params.primaryCredentialId || '',
         hedgeExchange: params.hedgeExchange.exchangeName,
@@ -266,6 +284,8 @@ export class FundingArbitrageService extends EventEmitter {
       primaryCredentialId: params.primaryCredentialId,
       hedgeCredentialId: params.hedgeCredentialId,
       executionDelay: params.executionDelay || 5,
+      leverage,
+      margin,
     };
 
     // Cache connectors for instant execution later
@@ -318,6 +338,8 @@ export class FundingArbitrageService extends EventEmitter {
     hedgeCredentialId: string;
     hedgeExchange: string;
     executionDelay?: number;
+    leverage?: number;
+    margin?: number;
   }): Promise<FundingSubscription> {
     console.log('[FundingArbitrage] Creating subscription with credential caching...');
 
@@ -341,6 +363,33 @@ export class FundingArbitrageService extends EventEmitter {
 
     console.log('[FundingArbitrage] Connectors created and cached, creating subscription...');
 
+    // IMMEDIATELY set leverage on both exchanges (user-requested feature)
+    // This allows users to verify leverage on exchange platforms right after subscribing
+    const leverage = params.leverage ?? 3;
+    const primarySymbol = this.convertSymbolForExchange(params.symbol, primaryConnector.exchangeName);
+    const hedgeSymbol = this.convertSymbolForExchange(params.symbol, hedgeConnector.exchangeName);
+
+    try {
+      console.log(`[FundingArbitrage] Setting leverage to ${leverage}x immediately on both exchanges...`);
+
+      // Set leverage in parallel for speed
+      await Promise.all([
+        this.setExchangeLeverage(primaryConnector, primarySymbol, leverage),
+        this.setExchangeLeverage(hedgeConnector, hedgeSymbol, leverage),
+      ]);
+
+      console.log(`[FundingArbitrage] ✓ Leverage set successfully on both exchanges (${leverage}x)`);
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Failed to set leverage immediately:`, error.message);
+
+      // Provide helpful error message
+      throw new Error(
+        `Failed to set leverage: ${error.message}. ` +
+        `Please ensure there are no open positions on ${params.symbol} before subscribing. ` +
+        `You can check your positions on the exchange platforms.`
+      );
+    }
+
     // Call the existing subscribe method with connector objects
     return this.subscribe({
       symbol: params.symbol,
@@ -354,6 +403,8 @@ export class FundingArbitrageService extends EventEmitter {
       primaryCredentialId: params.primaryCredentialId,
       hedgeCredentialId: params.hedgeCredentialId,
       executionDelay: params.executionDelay,
+      leverage: params.leverage,
+      margin: params.margin,
     });
   }
 
@@ -449,6 +500,8 @@ export class FundingArbitrageService extends EventEmitter {
       createdAt: dbSub.createdAt.getTime(),
       primaryCredentialId: dbSub.primaryCredentialId,
       hedgeCredentialId: dbSub.hedgeCredentialId || undefined,
+      leverage: dbSub.leverage,
+      margin: dbSub.margin || undefined,
     }));
   }
 
@@ -703,6 +756,94 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Set leverage on an exchange
+   * Handles exchange-specific setLeverage implementations
+   * Checks for existing positions first and skips if positions exist
+   *
+   * @param connector Exchange connector instance
+   * @param symbol Trading pair symbol (exchange-specific format)
+   * @param leverage Leverage multiplier
+   */
+  private async setExchangeLeverage(
+    connector: BaseExchangeConnector,
+    symbol: string,
+    leverage: number
+  ): Promise<void> {
+    const exchangeName = connector.exchangeName;
+
+    console.log(`[FundingArbitrage] Setting leverage on ${exchangeName} for ${symbol}: ${leverage}x`);
+
+    // FIRST: Check if there are any open positions on this symbol
+    try {
+      const position = await connector.getPosition(symbol);
+
+      // Check if position is open (has non-zero quantity)
+      const positionSize = position ? parseFloat(position.positionAmt || position.size || '0') : 0;
+
+      if (positionSize !== 0) {
+        console.warn(
+          `[FundingArbitrage] ⚠️ Skipping leverage change for ${symbol} on ${exchangeName}: ` +
+          `Open position detected (size: ${positionSize}). ` +
+          `Leverage cannot be changed while positions are open. ` +
+          `Current subscription will use existing leverage setting.`
+        );
+        return; // Skip leverage setting if position exists
+      }
+
+      console.log(`[FundingArbitrage] ✓ No open positions on ${symbol}, proceeding with leverage change...`);
+    } catch (positionError: any) {
+      console.warn(`[FundingArbitrage] Could not check position for ${symbol}: ${positionError.message}. Proceeding with leverage change...`);
+      // Continue with leverage setting even if position check fails
+    }
+
+    // SECOND: Attempt to set leverage
+    try {
+      // Type assertion to access setLeverage method
+      const connectorWithLeverage = connector as any;
+
+      if (typeof connectorWithLeverage.setLeverage !== 'function') {
+        console.warn(`[FundingArbitrage] ${exchangeName} connector does not support setLeverage, skipping...`);
+        return;
+      }
+
+      // Call setLeverage - signature depends on exchange type
+      if (exchangeName.includes('BINGX')) {
+        // BingX: setLeverage(symbol, leverage, side)
+        // Use "BOTH" for one-way mode (default)
+        await connectorWithLeverage.setLeverage(symbol, leverage, 'BOTH');
+      } else if (exchangeName.includes('BYBIT')) {
+        // Bybit: setLeverage(symbol, leverage, category)
+        // Use "linear" for USDT perpetuals (default)
+        await connectorWithLeverage.setLeverage(symbol, leverage, 'linear');
+      } else {
+        // Generic fallback (most exchanges use: symbol, leverage)
+        await connectorWithLeverage.setLeverage(symbol, leverage);
+      }
+
+      console.log(`[FundingArbitrage] ✓ Leverage set successfully on ${exchangeName}: ${leverage}x`);
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Failed to set leverage on ${exchangeName}:`, error.message);
+
+      // "leverage not modified" means leverage is already at the desired value - this is OK!
+      if (error.message.toLowerCase().includes('leverage not modified')) {
+        console.log(`[FundingArbitrage] ✓ Leverage already set to ${leverage}x on ${exchangeName}, continuing...`);
+        return; // Not an error - leverage is already correct
+      }
+
+      // If error is about existing positions, provide helpful context
+      if (error.message.toLowerCase().includes('position')) {
+        throw new Error(
+          `Cannot set leverage on ${exchangeName} for ${symbol}: ${error.message}. ` +
+          `Please close all open positions on ${symbol} before subscribing. ` +
+          `You can check and close your positions on the exchange platform.`
+        );
+      }
+
+      throw new Error(`Failed to set leverage on ${exchangeName}: ${error.message}`);
+    }
+  }
+
+  /**
    * Execute arbitrage orders
    */
   private async executeArbitrageOrders(subscription: FundingSubscription): Promise<void> {
@@ -733,6 +874,42 @@ export class FundingArbitrageService extends EventEmitter {
       hedgeSide,
       quantity,
     });
+
+    // STEP 0: Synchronize leverage on both exchanges BEFORE opening positions
+    // Use subscription leverage setting (default: 3x if not specified)
+    const leverage = subscription.leverage ?? 3;
+
+    try {
+      console.log(`[FundingArbitrage] Synchronizing leverage to ${leverage}x on both exchanges...`);
+
+      // Synchronize leverage in parallel for speed
+      await Promise.all([
+        this.setExchangeLeverage(primaryExchange, primarySymbol, leverage),
+        this.setExchangeLeverage(hedgeExchange, hedgeSymbol, leverage),
+      ]);
+
+      console.log(`[FundingArbitrage] Leverage synchronized successfully on both exchanges (${leverage}x)`);
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Failed to synchronize leverage:`, error.message);
+
+      // Update subscription status to failed
+      subscription.status = 'failed';
+      await prisma.fundingArbitrageSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ERROR',
+          errorMessage: `Leverage sync failed: ${error.message}`,
+        },
+      });
+
+      // Emit error event
+      this.emit(FundingArbitrageService.ERROR, {
+        subscriptionId: subscription.id,
+        error: `Leverage synchronization failed: ${error.message}`,
+      });
+
+      throw new Error(`Leverage synchronization failed: ${error.message}`);
+    }
 
     // 1. Notify user: Both orders executing
     this.emit(FundingArbitrageService.ORDER_EXECUTING, {
@@ -1195,6 +1372,8 @@ export class FundingArbitrageService extends EventEmitter {
         createdAt: dbSub.createdAt.getTime(),
         primaryCredentialId: dbSub.primaryCredentialId,
         hedgeCredentialId: dbSub.hedgeCredentialId || undefined,
+        leverage: dbSub.leverage,
+        margin: dbSub.margin || undefined,
       };
 
       // Add subscription references to cached connectors

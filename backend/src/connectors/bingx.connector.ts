@@ -91,6 +91,12 @@ export class BingXConnector extends BaseExchangeConnector {
 
   /**
    * Place a market order
+   *
+   * BingX Position Mode Behavior:
+   * - One-Way Mode: positionSide must be OMITTED (do not include in params)
+   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
+   *
+   * The service will check account mode and handle positionSide accordingly
    */
   async placeMarketOrder(
     symbol: string,
@@ -110,17 +116,30 @@ export class BingXConnector extends BaseExchangeConnector {
       // Get trading rules for quantity adjustment
       const adjustedQuantity = await this.adjustQuantityForSymbol(symbol, quantity);
 
-      // BingX position side based on order direction (per official API docs)
-      const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
-      const result = await this.bingxService.placeOrder({
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      const orderParams: any = {
         symbol,
         side: bingxSide,
-        positionSide,
         type: 'MARKET',
         quantity: adjustedQuantity,
-      });
+      };
+
+      // Only include positionSide in Hedge Mode
+      if (isHedgeMode) {
+        // Hedge Mode: positionSide required (LONG or SHORT)
+        // For market orders, derive from side: BUY -> LONG, SELL -> SHORT
+        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+        console.log(`[BingXConnector] Hedge Mode: Placing ${bingxSide} order with positionSide=${orderParams.positionSide}`);
+      } else {
+        // One-Way Mode: positionSide must be omitted
+        console.log(`[BingXConnector] One-Way Mode: Placing ${bingxSide} order (positionSide omitted)`);
+      }
+
+      const result = await this.bingxService.placeOrder(orderParams);
 
       console.log('[BingXConnector] Market order placed:', result);
       return result;
@@ -183,6 +202,10 @@ export class BingXConnector extends BaseExchangeConnector {
 
   /**
    * Place a limit order
+   *
+   * BingX Position Mode Behavior:
+   * - One-Way Mode: positionSide must be OMITTED (do not include in params)
+   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
    */
   async placeLimitOrder(
     symbol: string,
@@ -201,19 +224,29 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      // BingX position side based on order direction (per official API docs)
-      const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
-      const result = await this.bingxService.placeOrder({
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      const orderParams: any = {
         symbol,
         side: bingxSide,
-        positionSide,
         type: 'LIMIT',
         quantity,
         price,
         timeInForce: 'GTC',
-      });
+      };
+
+      // Only include positionSide in Hedge Mode
+      if (isHedgeMode) {
+        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+        console.log(`[BingXConnector] Hedge Mode: Placing ${bingxSide} limit order with positionSide=${orderParams.positionSide}`);
+      } else {
+        console.log(`[BingXConnector] One-Way Mode: Placing ${bingxSide} limit order (positionSide omitted)`);
+      }
+
+      const result = await this.bingxService.placeOrder(orderParams);
 
       console.log('[BingXConnector] Limit order placed:', result);
       return result;
@@ -341,6 +374,10 @@ export class BingXConnector extends BaseExchangeConnector {
 
   /**
    * Place a reduce-only market order
+   *
+   * BingX Position Mode Behavior:
+   * - One-Way Mode: positionSide must be OMITTED, use reduceOnly flag
+   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
    */
   async placeReduceOnlyOrder(
     symbol: string,
@@ -357,24 +394,81 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      // BingX position side based on order direction (per official API docs)
-      const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
-      const result = await this.bingxService.placeOrder({
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      const orderParams: any = {
         symbol,
         side: bingxSide,
-        positionSide,
         type: 'MARKET',
         quantity,
         reduceOnly: true,
-      });
+      };
+
+      // Only include positionSide in Hedge Mode
+      if (isHedgeMode) {
+        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+        console.log(`[BingXConnector] Hedge Mode: Closing ${orderParams.positionSide} position with ${bingxSide} reduceOnly order`);
+      } else {
+        console.log(`[BingXConnector] One-Way Mode: Closing position with ${bingxSide} reduceOnly order (positionSide omitted)`);
+      }
+
+      const result = await this.bingxService.placeOrder(orderParams);
 
       console.log('[BingXConnector] Reduce-only order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing reduce-only order:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Set leverage for a trading symbol
+   * IMPORTANT: Leverage must be set BEFORE opening positions
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @param leverage Leverage multiplier (typically 1-100x)
+   * @param side Position side: "LONG", "SHORT", or "BOTH" (default: "BOTH" for one-way mode)
+   */
+  async setLeverage(
+    symbol: string,
+    leverage: number,
+    side: 'LONG' | 'SHORT' | 'BOTH' = 'BOTH'
+  ): Promise<any> {
+    console.log(`[BingXConnector] Setting leverage for ${symbol}:`, {
+      leverage,
+      side,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Validate leverage range
+      if (leverage < 1 || leverage > 125) {
+        throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 125.`);
+      }
+
+      const result = await this.bingxService.setLeverage(symbol, leverage, side);
+      console.log('[BingXConnector] Leverage set successfully:', result);
+      return result;
+    } catch (error: any) {
+      console.error('[BingXConnector] Error setting leverage:', error.message);
+
+      // Provide helpful error messages for common issues
+      if (error.message.includes('position')) {
+        throw new Error(
+          `Failed to set leverage for ${symbol}: ${error.message}. ` +
+          `Note: Leverage cannot be changed when there are open positions. ` +
+          `Please close all positions for ${symbol} before changing leverage.`
+        );
+      }
+
+      throw new Error(`Failed to set leverage for ${symbol}: ${error.message}`);
     }
   }
 }

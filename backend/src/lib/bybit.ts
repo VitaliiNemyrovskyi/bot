@@ -846,6 +846,73 @@ export class BybitService {
     }
   }
 
+  /**
+   * Set leverage for a trading symbol
+   * Endpoint: POST /v5/position/set-leverage
+   *
+   * IMPORTANT: For Bybit V5 API:
+   * - Leverage must be set BEFORE opening positions
+   * - Both buyLeverage and sellLeverage must be set
+   * - In one-way mode, both leverages must be equal
+   * - In hedge mode, they can be different
+   *
+   * @param category Product type: "linear", "inverse"
+   * @param symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param buyLeverage Leverage for long positions (1-100x typically)
+   * @param sellLeverage Leverage for short positions (1-100x typically)
+   */
+  async setLeverage(
+    category: 'linear' | 'inverse',
+    symbol: string,
+    buyLeverage: number,
+    sellLeverage: number
+  ): Promise<any> {
+    try {
+      if (!this.config.apiKey || !this.config.apiSecret) {
+        throw new Error('API credentials required for leverage operations');
+      }
+
+      console.log('[BybitService] Setting leverage:', {
+        category,
+        symbol,
+        buyLeverage,
+        sellLeverage,
+      });
+
+      // Validate leverage range (typically 1-100x, but can vary by symbol)
+      if (buyLeverage < 1 || buyLeverage > 100) {
+        throw new Error(`Invalid buy leverage: ${buyLeverage}. Must be between 1 and 100.`);
+      }
+      if (sellLeverage < 1 || sellLeverage > 100) {
+        throw new Error(`Invalid sell leverage: ${sellLeverage}. Must be between 1 and 100.`);
+      }
+
+      const response = await this.restClient.setLeverage({
+        category,
+        symbol,
+        buyLeverage: buyLeverage.toString(),
+        sellLeverage: sellLeverage.toString(),
+      });
+
+      if (response.retCode !== 0) {
+        console.error('[BybitService] Set leverage failed:', {
+          retCode: response.retCode,
+          retMsg: response.retMsg,
+          symbol,
+          buyLeverage,
+          sellLeverage,
+        });
+        throw new Error(`Bybit API Error: ${response.retMsg}`);
+      }
+
+      console.log('[BybitService] Leverage set successfully:', response.result);
+      return response.result;
+    } catch (error: any) {
+      console.error('[BybitService] Error setting leverage:', error.message);
+      throw error;
+    }
+  }
+
   async cancelOrder(category: 'linear' | 'spot' | 'option', symbol: string, orderId?: string, orderLinkId?: string) {
     try {
       if (!orderId && !orderLinkId) {

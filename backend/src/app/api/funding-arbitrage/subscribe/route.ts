@@ -20,7 +20,9 @@ import prisma from '@/lib/prisma';
  *   "quantity": 0.01,
  *   "primaryCredentialId": "cred_123",
  *   "hedgeExchange": "BYBIT" | "BINGX",
- *   "hedgeCredentialId": "cred_456" (required)
+ *   "hedgeCredentialId": "cred_456" (required),
+ *   "leverage": 3 (optional, default: 3, range: 1-125, recommended: 1-20),
+ *   "margin": 100.50 (optional, margin/collateral in USDT)
  * }
  */
 export async function POST(request: NextRequest) {
@@ -53,7 +55,17 @@ export async function POST(request: NextRequest) {
       hedgeExchange,
       hedgeCredentialId,
       executionDelay = 5,
+      leverage = 3,
+      margin,
     } = body;
+
+    console.log('[FundingArbitrageAPI] Received subscription request with margin:', {
+      symbol,
+      quantity,
+      leverage,
+      margin,
+      marginProvided: margin !== undefined,
+    });
 
     // 3. Validate inputs
     if (!symbol || !fundingRate || !nextFundingTime || !positionType || !quantity || !primaryCredentialId) {
@@ -80,6 +92,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate leverage range (1-125 for exchange compatibility, recommend 1-20)
+    if (typeof leverage !== 'number' || leverage < 1 || leverage > 125) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid leverage',
+          message: 'leverage must be a number between 1 and 125 (recommended: 1-20)',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate margin if provided (must be positive number)
+    if (margin !== undefined && (typeof margin !== 'number' || margin <= 0)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid margin',
+          message: 'margin must be a positive number (in USDT)',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
     // 4. Get primary exchange credentials
     const primaryCred = await ExchangeCredentialsService.getCredentialById(
       userId,
@@ -99,34 +137,49 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Validate hedge exchange and credentials
-    if (!hedgeExchange || !hedgeCredentialId) {
+    if (!hedgeExchange) {
       return NextResponse.json(
         {
           success: false,
           error: 'Missing hedge exchange configuration',
-          message: 'hedgeExchange and hedgeCredentialId are required',
+          message: 'hedgeExchange is required',
           timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
     }
 
-    // Verify hedge credentials exist
-    const hedgeCred = await ExchangeCredentialsService.getCredentialById(
-      userId,
-      hedgeCredentialId
-    );
+    // MOCK exchange doesn't require credentials
+    if (hedgeExchange !== 'MOCK') {
+      if (!hedgeCredentialId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Missing hedge credential',
+            message: 'hedgeCredentialId is required for non-MOCK exchanges',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 400 }
+        );
+      }
 
-    if (!hedgeCred) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Credential not found',
-          message: `Hedge credential ${hedgeCredentialId} not found`,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 404 }
+      // Verify hedge credentials exist
+      const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+        userId,
+        hedgeCredentialId
       );
+
+      if (!hedgeCred) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Credential not found',
+            message: `Hedge credential ${hedgeCredentialId} not found`,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 }
+        );
+      }
     }
 
     // 6. Create subscription - let the SERVICE create and cache the connectors
@@ -142,6 +195,8 @@ export async function POST(request: NextRequest) {
       hedgeCredentialId,
       hedgeExchange,
       executionDelay,
+      leverage,
+      margin,
     });
 
     console.log(`[FundingArbitrageAPI] Subscription created:`, subscription.id);
@@ -157,6 +212,8 @@ export async function POST(request: NextRequest) {
           nextFundingTime: subscription.nextFundingTime,
           positionType: subscription.positionType,
           quantity: subscription.quantity,
+          leverage: subscription.leverage,
+          margin: subscription.margin,
           status: subscription.status,
           createdAt: subscription.createdAt,
         },
@@ -222,6 +279,13 @@ export async function GET(request: NextRequest) {
           quantity: sub.quantity,
           status: sub.status,
           createdAt: sub.createdAt,
+          leverage: sub.leverage, // Include leverage from subscription
+          margin: sub.margin, // Include margin from subscription
+          // Exchange credentials for editing subscriptions
+          primaryCredentialId: sub.primaryCredentialId,
+          hedgeCredentialId: sub.hedgeCredentialId,
+          primaryExchange: sub.primaryExchange?.exchangeName || 'UNKNOWN',
+          hedgeExchange: sub.hedgeExchange?.exchangeName || 'UNKNOWN',
           // Deal results (for completed deals)
           entryPrice: sub.entryPrice,
           hedgeEntryPrice: sub.hedgeEntryPrice,
@@ -337,7 +401,18 @@ export async function PUT(request: NextRequest) {
       hedgeExchange,
       hedgeCredentialId,
       executionDelay = 5,
+      leverage = 3,
+      margin,
     } = body;
+
+    console.log('[FundingArbitrageAPI] Updating subscription with margin:', {
+      subscriptionId,
+      symbol,
+      quantity,
+      leverage,
+      margin,
+      marginProvided: margin !== undefined,
+    });
 
     // 5. Validate inputs
     if (!symbol || !fundingRate || !nextFundingTime || !positionType || !quantity || !primaryCredentialId) {
@@ -364,6 +439,32 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Validate leverage range
+    if (typeof leverage !== 'number' || leverage < 1 || leverage > 125) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid leverage',
+          message: 'leverage must be a number between 1 and 125 (recommended: 1-20)',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate margin if provided (must be positive number)
+    if (margin !== undefined && (typeof margin !== 'number' || margin <= 0)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid margin',
+          message: 'margin must be a positive number (in USDT)',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
     // 6. Validate credentials exist
     const primaryCred = await ExchangeCredentialsService.getCredentialById(
       userId,
@@ -382,33 +483,48 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (!hedgeExchange || !hedgeCredentialId) {
+    if (!hedgeExchange) {
       return NextResponse.json(
         {
           success: false,
           error: 'Missing hedge exchange configuration',
-          message: 'hedgeExchange and hedgeCredentialId are required',
+          message: 'hedgeExchange is required',
           timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
     }
 
-    const hedgeCred = await ExchangeCredentialsService.getCredentialById(
-      userId,
-      hedgeCredentialId
-    );
+    // MOCK exchange doesn't require credentials
+    if (hedgeExchange !== 'MOCK') {
+      if (!hedgeCredentialId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Missing hedge credential',
+            message: 'hedgeCredentialId is required for non-MOCK exchanges',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 400 }
+        );
+      }
 
-    if (!hedgeCred) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Credential not found',
-          message: `Hedge credential ${hedgeCredentialId} not found`,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 404 }
+      const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+        userId,
+        hedgeCredentialId
       );
+
+      if (!hedgeCred) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Credential not found',
+            message: `Hedge credential ${hedgeCredentialId} not found`,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 }
+        );
+      }
     }
 
     // 7. Update the subscription in the database
@@ -420,6 +536,8 @@ export async function PUT(request: NextRequest) {
         nextFundingTime: new Date(nextFundingTime),
         positionType,
         quantity,
+        leverage,
+        margin,
         primaryCredentialId,
         hedgeExchange,
         hedgeCredentialId,
@@ -449,6 +567,8 @@ export async function PUT(request: NextRequest) {
         hedgeCredentialId,
         hedgeExchange,
         executionDelay,
+        leverage,
+        margin,
       });
 
       return NextResponse.json(

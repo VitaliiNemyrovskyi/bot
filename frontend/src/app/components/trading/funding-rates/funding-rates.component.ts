@@ -57,6 +57,12 @@ export interface FundingSubscription {
   quantity: number;
   status: string;
   countdown?: number; // Seconds remaining
+  primaryExchange?: string; // Exchange where position is opened
+  primaryCredentialId?: string; // Credential used for primary exchange
+  hedgeExchange?: string; // Exchange for hedge position
+  hedgeCredentialId?: string; // Credential for hedge exchange
+  leverage?: number; // Leverage multiplier for this subscription
+  margin?: number; // Margin amount in USDT (the actual capital invested by user)
 }
 
 export interface CompletedDeal {
@@ -148,6 +154,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   showSubscriptionDialog = signal<boolean>(false);
   selectedTicker = signal<TickerData | null>(null);
   positionSizeUsdt = signal<number>(100); // Changed from subscriptionQuantity to USDT-based
+  dialogLeverage = signal<number>(3); // Dialog-specific leverage (separate from global settings)
   isSubscribing = signal<boolean>(false);
   editingSubscription = signal<FundingSubscription | null>(null);
   startingSubscriptionId = signal<string | null>(null); // Track which subscription is being started
@@ -167,7 +174,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   // Subscription settings
   subscriptionSettings = signal<SubscriptionSettings>({
     defaultQuantity: 0.01,
-    leverage: 1,
+    leverage: 3,
     autoCancelThreshold: 0.003,
     enableAutoCancel: true,
     executionDelay: 5, // Default: execute 5 seconds before funding
@@ -360,6 +367,21 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   });
 
   /**
+   * Map of symbol to subscription for quick lookup in arbitrage table
+   */
+  symbolToSubscription = computed(() => {
+    const subs = Array.from(this.subscriptions().values());
+    const map = new Map<string, FundingSubscription>();
+    subs.forEach(sub => {
+      // Normalize symbol format (remove hyphens for comparison)
+      const normalizedSymbol = sub.symbol.replace(/-/g, '');
+      map.set(normalizedSymbol, sub);
+    });
+    console.log('[symbolToSubscription] Map keys:', Array.from(map.keys()));
+    return map;
+  });
+
+  /**
    * Position validation error - tracks why position calculation might fail
    */
   positionValidationError = computed(() => {
@@ -387,13 +409,23 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
   /**
    * Position calculation computed signal - automatically recalculates when dependencies change
+   * Uses dialogLeverage for dialog-specific leverage (separate from global settings)
    */
   positionCalculation = computed(() => {
     const ticker = this.selectedTicker();
     const positionSizeUsdt = this.positionSizeUsdt();
-    const leverage = this.subscriptionSettings().leverage;
+    const leverage = this.dialogLeverage(); // Use dialog-specific leverage
+
+    console.log('[positionCalculation] Computing with:', {
+      ticker: ticker?.symbol,
+      positionSizeUsdt,
+      leverage,
+      tickerLastPrice: ticker?.lastPrice,
+      tickerMarkPrice: ticker?.markPrice
+    });
 
     if (!ticker || !positionSizeUsdt || positionSizeUsdt <= 0) {
+      console.log('[positionCalculation] Returning null - missing dependencies');
       return null;
     }
 
@@ -401,6 +433,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     const estimatedPrice = parseFloat(ticker.lastPrice) || parseFloat(ticker.markPrice) || 0;
 
     if (estimatedPrice === 0) {
+      console.log('[positionCalculation] Returning null - price is 0');
       return null;
     }
 
@@ -416,7 +449,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     // For both entry and exit, fee = position value * 0.00055 * 2
     const estimatedFee = positionValue * 0.00055 * 2; // Entry + Exit
 
-    return {
+    const result = {
       symbol: ticker.symbol,
       quantity,
       estimatedPrice,
@@ -425,6 +458,9 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       estimatedFee,
       leverage
     };
+
+    console.log('[positionCalculation] Returning:', result);
+    return result;
   });
 
   private refreshSubscription?: Subscription;
@@ -952,6 +988,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   openSubscriptionDialog(ticker: TickerData, event: Event): void {
     event.stopPropagation();
     this.selectedTicker.set(ticker);
+    this.dialogLeverage.set(this.subscriptionSettings().leverage); // Initialize with global setting
     this.showSubscriptionDialog.set(true);
     this.positionSizeUsdt.set(100); // Default position size in USDT
   }
@@ -965,6 +1002,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.editingSubscription.set(null);
     this.isSubscribing.set(false);
     this.hedgeCredentialId.set(null); // Clear hedge credential
+    this.dialogLeverage.set(this.subscriptionSettings().leverage); // Reset to global setting
   }
 
   /**
@@ -1063,7 +1101,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Sync settings to filters (threshold becomes min funding rate filter)
+   * Sync settings to filters (threshold becomes min funding rate filter AND min spread filter)
    */
   syncSettingsToFilters(): void {
     const settings = this.subscriptionSettings();
@@ -1071,6 +1109,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       // Convert from decimal (0.003) to percentage (0.3%) for the filter
       const thresholdPercent = Math.abs(settings.autoCancelThreshold) * 100;
       this.minAbsFundingRate.set(thresholdPercent);
+      // Also sync to arbitrage min spread filter
+      this.minSpreadThreshold.set(thresholdPercent);
     }
   }
 
@@ -1102,6 +1142,9 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
   /**
    * Check if any subscriptions should be auto-cancelled based on funding rate threshold
+   * Only cancels if BOTH conditions are met:
+   * 1. Funding rate is below threshold
+   * 2. Less than 30 seconds remaining before execution
    */
   checkAutoCancelConditions(): void {
     const settings = this.subscriptionSettings();
@@ -1111,6 +1154,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
     const subscriptionsMap = this.subscriptions();
     const tickers = this.tickers();
+    const now = Date.now();
 
     subscriptionsMap.forEach((subscription, subscriptionId) => {
       // Find current ticker data for this subscription
@@ -1120,12 +1164,19 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       const currentFundingRate = parseFloat(ticker.fundingRate);
       const absFundingRate = Math.abs(currentFundingRate);
 
-      // Check if funding rate fell below threshold
-      if (absFundingRate < Math.abs(settings.autoCancelThreshold!)) {
-        console.log(`Auto-cancelling ${subscription.symbol}: funding rate ${currentFundingRate} below threshold ${settings.autoCancelThreshold}`);
+      // Calculate time remaining until execution
+      const timeRemaining = subscription.nextFundingTime - now;
+      const secondsRemaining = Math.floor(timeRemaining / 1000);
+
+      // Only cancel if funding rate is below threshold AND less than 30 seconds remaining
+      const isFundingBelowThreshold = absFundingRate < Math.abs(settings.autoCancelThreshold!);
+      const isCloseToExecution = secondsRemaining < 30 && secondsRemaining > 0;
+
+      if (isFundingBelowThreshold && isCloseToExecution) {
+        console.log(`Auto-cancelling ${subscription.symbol}: funding rate ${currentFundingRate} below threshold ${settings.autoCancelThreshold} with ${secondsRemaining}s remaining`);
         this.unsubscribe(subscriptionId, false); // Cancel with notification
         this.showNotification(
-          `Auto-cancelled ${subscription.symbol}: funding rate ${(currentFundingRate * 100).toFixed(4)}% below threshold`,
+          `Auto-cancelled ${subscription.symbol}: funding rate ${(currentFundingRate * 100).toFixed(4)}% below threshold (${secondsRemaining}s remaining)`,
           'info'
         );
       }
@@ -1135,14 +1186,35 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Edit an existing subscription
    */
-  editSubscription(subscription: FundingSubscription): void {
+  async editSubscription(subscription: FundingSubscription): Promise<void> {
     console.log('[DEBUG] editSubscription called with:', subscription);
 
+    // If subscription has primary credential, switch to it to load correct ticker data
+    if (subscription.primaryCredentialId) {
+      const currentCredId = this.selectedCredentialId();
+      if (currentCredId !== subscription.primaryCredentialId) {
+        console.log('[DEBUG] Switching credential from', currentCredId, 'to', subscription.primaryCredentialId);
+        this.selectedCredentialId.set(subscription.primaryCredentialId);
+        // Load tickers for this credential
+        await this.loadTickersAsync().toPromise();
+      }
+    }
+
     // Find the ticker data for this subscription
-    const ticker = this.tickers().find(t => t.symbol === subscription.symbol);
+    let ticker = this.tickers().find(t => t.symbol === subscription.symbol);
+
+    if (!ticker) {
+      // Try with normalized symbol (remove/add hyphens)
+      const normalizedSymbol = subscription.symbol.includes('-')
+        ? subscription.symbol.replace(/-/g, '')
+        : subscription.symbol.replace('USDT', '-USDT');
+      ticker = this.tickers().find(t => t.symbol === normalizedSymbol);
+    }
+
     if (!ticker) {
       console.error('[ERROR] Cannot edit: ticker data not found for symbol:', subscription.symbol);
-      this.showNotification('[ERROR] Cannot edit: ticker data not found', 'error');
+      console.log('[DEBUG] Available tickers:', this.tickers().map(t => t.symbol));
+      this.showNotification(`[ERROR] Cannot find ticker data for ${subscription.symbol}. Please ensure the exchange is accessible.`, 'error');
       return;
     }
 
@@ -1150,15 +1222,38 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
     this.editingSubscription.set(subscription);
     this.selectedTicker.set(ticker);
-    // Convert quantity to USDT (approximate based on current price)
-    const price = parseFloat(ticker.lastPrice) || parseFloat(ticker.markPrice) || 0;
-    const estimatedMargin = subscription.quantity * price / this.subscriptionSettings().leverage;
-    console.log('[DEBUG] Setting position size USDT to:', estimatedMargin, 'based on quantity:', subscription.quantity, 'price:', price, 'leverage:', this.subscriptionSettings().leverage);
-    this.positionSizeUsdt.set(estimatedMargin);
+
+    // Set hedge credential if available
+    if (subscription.hedgeCredentialId) {
+      this.hedgeCredentialId.set(subscription.hedgeCredentialId);
+    }
+
+    // Use subscription's leverage if available, otherwise fall back to global setting
+    const leverage = subscription.leverage || this.subscriptionSettings().leverage;
+
+    // Use saved margin if available, otherwise recalculate from quantity
+    const savedMargin = subscription.margin;
+    if (savedMargin && savedMargin > 0) {
+      console.log('[Edit] Loaded saved margin:', savedMargin);
+      this.positionSizeUsdt.set(savedMargin);
+    } else {
+      // Fallback: recalculate from quantity (existing logic)
+      const price = parseFloat(ticker.lastPrice) || parseFloat(ticker.markPrice) || 0;
+      const estimatedMargin = subscription.quantity * price / leverage;
+      console.log('[Edit] Recalculated margin from quantity:', estimatedMargin, 'based on quantity:', subscription.quantity, 'price:', price, 'leverage:', leverage);
+      this.positionSizeUsdt.set(estimatedMargin);
+    }
+
+    // Set leverage for dialog (use subscription's leverage, not global)
+    this.dialogLeverage.set(leverage);
+    console.log('[DEBUG] Set dialogLeverage to:', leverage, '(from subscription)');
 
     // Open the subscription dialog for editing
     console.log('[DEBUG] Opening subscription dialog');
     this.showSubscriptionDialog.set(true);
+
+    // Fetch balances for both primary and hedge exchanges
+    this.fetchBalancesAndCalculatePosition(ticker.symbol);
   }
 
   /**
@@ -1209,6 +1304,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             return;
           }
 
+          // Get hedge credential - REQUIRED
+          const hedgeCred = this.hedgeCredential();
+          if (!hedgeCred) {
+            this.showNotification('[ERROR] Hedge credential is required. Please select a hedge exchange.', 'error');
+            return;
+          }
+
           const subscribeData = {
             symbol: editingSub.symbol,
             fundingRate: editingSub.fundingRate,
@@ -1216,7 +1318,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             positionType: editingSub.positionType,
             quantity: newQuantity,
             primaryCredentialId: credential.id,
-            hedgeExchange: 'MOCK',
+            hedgeExchange: hedgeCred.exchange,
+            hedgeCredentialId: hedgeCred.id,
             leverage: this.subscriptionSettings().leverage
           };
 
@@ -1371,8 +1474,16 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // Get hedge credential if available, otherwise use MOCK
+      // Get hedge credential - REQUIRED (no mock exchange)
       const hedgeCred = this.hedgeCredential();
+
+      if (!hedgeCred) {
+        this.showNotification('Hedge credential is required for funding arbitrage. Please select a hedge exchange.', 'error');
+        return;
+      }
+
+      const currentMargin = this.positionSizeUsdt();
+
       const body: any = {
         symbol: ticker.symbol,
         fundingRate: fundingRate,
@@ -1380,15 +1491,14 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         positionType: positionType,
         quantity: positionCalc.quantity, // Use calculated quantity from USDT amount
         primaryCredentialId: credential.id,
-        hedgeExchange: hedgeCred ? hedgeCred.exchange : 'MOCK',
-        executionDelay: this.subscriptionSettings().executionDelay
+        hedgeExchange: hedgeCred.exchange,
+        hedgeCredentialId: hedgeCred.id,
+        executionDelay: this.subscriptionSettings().executionDelay,
+        leverage: this.dialogLeverage(), // Use dialog-specific leverage
+        margin: currentMargin // Current margin/position size in USDT
       };
 
-      // Add hedge credential ID if available
-      if (hedgeCred) {
-        body.hedgeCredentialId = hedgeCred.id;
-      }
-
+      console.log('[Subscribe] Saving margin:', currentMargin);
       console.log('Creating funding subscription:', body);
 
       const response = await this.http.post<any>(
@@ -1602,6 +1712,157 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Get subscription for an arbitrage opportunity by symbol
+   */
+  getArbitrageSubscription(symbol: string): FundingSubscription | undefined {
+    // Normalize symbol (remove hyphens)
+    const normalizedSymbol = symbol.replace(/-/g, '');
+    return this.symbolToSubscription().get(normalizedSymbol);
+  }
+
+  /**
+   * Check if arbitrage opportunity has an active subscription
+   */
+  hasArbitrageSubscription(symbol: string): boolean {
+    return this.getArbitrageSubscription(symbol) !== undefined;
+  }
+
+  /**
+   * Start arbitrage subscription execution (for already subscribed symbols)
+   */
+  async startArbitrageSubscription(opportunity: any): Promise<void> {
+    const subscription = this.getArbitrageSubscription(opportunity.symbol);
+    if (!subscription) {
+      this.showNotification('No active subscription found for this symbol', 'error');
+      return;
+    }
+
+    await this.startSubscriptionNow(subscription.subscriptionId);
+  }
+
+  /**
+   * Edit arbitrage subscription (for already subscribed symbols)
+   */
+  async editArbitrageSubscription(opportunity: any): Promise<void> {
+    const subscription = this.getArbitrageSubscription(opportunity.symbol);
+    if (!subscription) {
+      this.showNotification('No active subscription found for this symbol', 'error');
+      return;
+    }
+
+    console.log('[editArbitrageSubscription] === DEBUGGING MARGIN CALCULATION ===');
+    console.log('[editArbitrageSubscription] Opportunity data:', opportunity);
+    console.log('[editArbitrageSubscription] Subscription data:', subscription);
+
+    // Set hedge credential if available
+    if (subscription.hedgeCredentialId) {
+      this.hedgeCredentialId.set(subscription.hedgeCredentialId);
+      console.log('[editArbitrageSubscription] Set hedge credential:', subscription.hedgeCredentialId);
+    }
+
+    // Switch to primary credential if needed and load tickers to get current price
+    if (subscription.primaryCredentialId) {
+      const currentCredId = this.selectedCredentialId();
+      if (currentCredId !== subscription.primaryCredentialId) {
+        console.log('[editArbitrageSubscription] Switching credential from', currentCredId, 'to', subscription.primaryCredentialId);
+        this.selectedCredentialId.set(subscription.primaryCredentialId);
+        // Load tickers for this credential to get current price
+        await this.loadTickersAsync().toPromise();
+      }
+    }
+
+    // Find the actual ticker data from loaded tickers (has current price)
+    let ticker = this.tickers().find(t => t.symbol === subscription.symbol);
+
+    if (!ticker) {
+      // Try with normalized symbol (BingX uses hyphens, Bybit doesn't)
+      const normalizedSymbol = subscription.symbol.includes('-')
+        ? subscription.symbol.replace(/-/g, '')
+        : subscription.symbol.replace('USDT', '-USDT');
+      ticker = this.tickers().find(t => t.symbol === normalizedSymbol);
+    }
+
+    if (!ticker) {
+      console.error('[editArbitrageSubscription] ERROR: Cannot find ticker data for symbol:', subscription.symbol);
+      console.log('[editArbitrageSubscription] Available tickers:', this.tickers().map(t => t.symbol));
+      this.showNotification(`Cannot find current price for ${subscription.symbol}. Please try again.`, 'error');
+      return;
+    }
+
+    console.log('[editArbitrageSubscription] Found ticker with price:', {
+      symbol: ticker.symbol,
+      lastPrice: ticker.lastPrice,
+      markPrice: ticker.markPrice
+    });
+
+    this.editingSubscription.set(subscription);
+    this.selectedTicker.set(ticker);
+
+    // Use subscription's leverage if available, otherwise fall back to global setting
+    const leverage = subscription.leverage || this.subscriptionSettings().leverage;
+
+    // Use saved margin if available, otherwise recalculate from quantity
+    const savedMargin = subscription.margin;
+    if (savedMargin && savedMargin > 0) {
+      console.log('[editArbitrageSubscription] Loaded saved margin:', savedMargin);
+      this.positionSizeUsdt.set(savedMargin);
+    } else {
+      // Fallback: recalculate from quantity and current price
+      const price = parseFloat(ticker.lastPrice) || parseFloat(ticker.markPrice) || 0;
+      const estimatedMargin = subscription.quantity * price / leverage;
+
+      console.log('[editArbitrageSubscription] Recalculated margin from quantity:', estimatedMargin);
+      console.log('[editArbitrageSubscription] Margin calculation:', {
+        quantity: subscription.quantity,
+        price: price,
+        subscriptionLeverage: subscription.leverage,
+        globalLeverage: this.subscriptionSettings().leverage,
+        usedLeverage: leverage,
+        calculation: `${subscription.quantity} * ${price} / ${leverage}`,
+        estimatedMargin: estimatedMargin
+      });
+
+      this.positionSizeUsdt.set(estimatedMargin);
+    }
+
+    // Set leverage from subscription (use subscription's leverage, not global)
+    this.dialogLeverage.set(leverage);
+    console.log('[editArbitrageSubscription] Set dialogLeverage to:', leverage, '(from subscription)');
+
+    // Open the subscription dialog for editing
+    this.showSubscriptionDialog.set(true);
+
+    // Fetch balances for both exchanges
+    console.log('[editArbitrageSubscription] Calling fetchBalancesAndCalculatePosition...');
+    this.fetchBalancesAndCalculatePosition(ticker.symbol);
+  }
+
+  /**
+   * Cancel arbitrage subscription (for already subscribed symbols)
+   */
+  async cancelArbitrageSubscription(opportunity: any): Promise<void> {
+    const subscription = this.getArbitrageSubscription(opportunity.symbol);
+    if (!subscription) {
+      this.showNotification('No active subscription found for this symbol', 'error');
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = confirm(
+      `Are you sure you want to cancel the subscription for ${opportunity.symbol}?\n\n` +
+      `Position: ${subscription.positionType.toUpperCase()}\n` +
+      `Quantity: ${subscription.quantity}\n` +
+      `Funding Rate: ${(subscription.fundingRate * 100).toFixed(4)}%`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await this.cancelSubscription(subscription.subscriptionId);
+  }
+
+  /**
    * Subscribe to arbitrage opportunity
    * Opens the subscription dialog for the best long position exchange
    */
@@ -1694,6 +1955,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       console.log('[subscribeToArbitrage] Using ticker:', ticker);
       this.selectedTicker.set(ticker);
       this.positionSizeUsdt.set(100); // Default position size in USDT
+      this.dialogLeverage.set(this.subscriptionSettings().leverage); // Initialize with global setting
       this.showSubscriptionDialog.set(true);
       this.fetchBalancesAndCalculatePosition(ticker.symbol);
 
@@ -1785,6 +2047,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
         this.primaryBalance.set(balance);
         console.log('[fetchBalances] Primary balance set to:', balance, 'for', primaryCred.exchange);
+        this.cdr.detectChanges(); // Trigger change detection to update computed signals in UI
+        console.log('[fetchBalances] Change detection triggered after primary balance update');
       }
 
       // Fetch hedge balance if available
@@ -1830,10 +2094,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
           this.hedgeBalance.set(balance);
           console.log('[fetchBalances] Hedge balance set to:', balance, 'for', hedgeCred.exchange);
+          this.cdr.detectChanges(); // Trigger change detection to update computed signals in UI
+          console.log('[fetchBalances] Change detection triggered after hedge balance update');
         }
       } else {
-        // Mock exchange - unlimited balance
-        this.hedgeBalance.set(999999);
+        // No hedge credential selected
+        this.hedgeBalance.set(null);
       }
 
       // Position calculation is now automatic via computed signal
@@ -1844,6 +2110,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       this.hedgeBalance.set(null);
     } finally {
       this.isLoadingBalances.set(false);
+      this.cdr.detectChanges(); // Trigger final change detection after loading completes
+      console.log('[fetchBalances] Final change detection triggered after loading completion');
     }
   }
 

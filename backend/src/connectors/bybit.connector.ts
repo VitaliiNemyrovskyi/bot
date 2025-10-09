@@ -375,4 +375,70 @@ export class BybitConnector extends BaseExchangeConnector {
       throw error;
     }
   }
+
+  /**
+   * Set leverage for a trading symbol
+   * IMPORTANT: Leverage must be set BEFORE opening positions
+   *
+   * For Bybit, both buyLeverage and sellLeverage must be set:
+   * - In one-way mode, both must be equal
+   * - In hedge mode, they can be different
+   *
+   * @param symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param leverage Leverage multiplier (typically 1-100x)
+   * @param category Product category (default: "linear")
+   */
+  async setLeverage(
+    symbol: string,
+    leverage: number,
+    category: 'linear' | 'inverse' = 'linear'
+  ): Promise<any> {
+    console.log(`[BybitConnector] Setting leverage for ${symbol}:`, {
+      leverage,
+      category,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    try {
+      // Validate leverage range
+      if (leverage < 1 || leverage > 100) {
+        throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 100.`);
+      }
+
+      // For one-way mode, both buy and sell leverage must be equal
+      // Set both to the same value
+      const result = await this.bybitService.setLeverage(
+        category,
+        symbol,
+        leverage,  // buyLeverage
+        leverage   // sellLeverage
+      );
+
+      console.log('[BybitConnector] Leverage set successfully:', result);
+      return result;
+    } catch (error: any) {
+      console.error('[BybitConnector] Error setting leverage:', error.message);
+
+      // Provide helpful error messages for common issues
+      if (error.message.includes('position') || error.message.includes('Position')) {
+        throw new Error(
+          `Failed to set leverage for ${symbol}: ${error.message}. ` +
+          `Note: Leverage cannot be changed when there are open positions. ` +
+          `Please close all positions for ${symbol} before changing leverage.`
+        );
+      }
+
+      if (error.message.includes('leverage') && error.message.includes('risk')) {
+        throw new Error(
+          `Failed to set leverage for ${symbol}: ${error.message}. ` +
+          `The requested leverage may exceed the maximum allowed for your account tier or position size.`
+        );
+      }
+
+      throw new Error(`Failed to set leverage for ${symbol}: ${error.message}`);
+    }
+  }
 }

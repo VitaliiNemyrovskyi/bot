@@ -617,12 +617,14 @@ model FundingArbitrageSubscription {
   nextFundingTime DateTime // When the next funding occurs
   positionType    String // "long" or "short"
   quantity        Float // Position size
+  leverage        Float  @default(3) // Leverage multiplier (1-125, recommended 1-20)
+  margin          Float? // Margin/collateral used for this position (in USDT)
 
   // Exchange configuration
   primaryExchange     String // Exchange name (e.g., "BYBIT_TESTNET")
   primaryCredentialId String // Reference to ExchangeCredentials
-  hedgeExchange       String // Hedge exchange (e.g., "BINGX", "BYBIT")
-  hedgeCredentialId   String // Reference to ExchangeCredentials for hedge
+  hedgeExchange       String // Hedge exchange (e.g., "BINGX", "BYBIT", "MOCK")
+  hedgeCredentialId   String? // Reference to ExchangeCredentials for hedge (null for MOCK exchange)
 
   // Status and execution
   status       FundingArbitrageStatus @default(ACTIVE)

@@ -685,16 +685,17 @@ export class BingXService {
     paramsArray.push(['symbol', orderRequest.symbol]);
     paramsArray.push(['side', orderRequest.side]);
 
-    // positionSide is ALWAYS REQUIRED by BingX API
-    // Use provided positionSide, or derive from side (BUY->LONG, SELL->SHORT)
-    const positionSide = orderRequest.positionSide || (orderRequest.side === 'BUY' ? 'LONG' : 'SHORT');
-    console.log('[BingXService] Using positionSide:', {
-      side: orderRequest.side,
-      positionSide,
-      wasProvided: !!orderRequest.positionSide
-    });
+    // positionSide handling:
+    // - Hedge Mode: REQUIRED (must be explicitly provided by caller)
+    // - One-Way Mode: Should NOT be included
+    // The connector layer is responsible for checking mode and providing positionSide only when needed
+    if (orderRequest.positionSide) {
+      paramsArray.push(['positionSide', orderRequest.positionSide]);
+      console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
+    } else {
+      console.log('[BingXService] No positionSide provided (One-Way Mode)');
+    }
 
-    paramsArray.push(['positionSide', positionSide]);
     paramsArray.push(['type', orderRequest.type]);
 
     // quantity comes after type (as per official example)
@@ -1004,6 +1005,61 @@ export class BingXService {
     };
 
     return this.placeOrder(orderRequest);
+  }
+
+  /**
+   * Set leverage for a trading symbol
+   * Endpoint: POST /openApi/swap/v2/trade/leverage
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @param leverage Leverage multiplier (typically 1-100x, depends on symbol)
+   * @param side Position side: "LONG" or "SHORT" for hedge mode, "BOTH" for one-way mode
+   * @returns Leverage setting result
+   */
+  async setLeverage(
+    symbol: string,
+    leverage: number,
+    side: 'LONG' | 'SHORT' | 'BOTH' = 'BOTH'
+  ): Promise<any> {
+    console.log('[BingXService] Setting leverage:', {
+      symbol,
+      leverage,
+      side
+    });
+
+    // Validate leverage range (1-125x typically, but depends on symbol and position size)
+    if (leverage < 1 || leverage > 125) {
+      throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 125.`);
+    }
+
+    // Build params array to preserve order
+    const paramsArray: Array<[string, any]> = [
+      ['symbol', symbol],
+      ['side', side],
+      ['leverage', leverage]
+    ];
+
+    console.log('[BingXService] Leverage parameters:', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+
+    const response = await this.makeRequestWithOrder(
+      'POST',
+      '/openApi/swap/v2/trade/leverage',
+      paramsArray
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Set leverage failed:', {
+        code: response.code,
+        msg: response.msg,
+        symbol,
+        leverage,
+        side
+      });
+      throw new Error(`Failed to set leverage: ${response.msg} (code: ${response.code})`);
+    }
+
+    console.log('[BingXService] Leverage set successfully:', response.data);
+    return response.data;
   }
 
   /**
