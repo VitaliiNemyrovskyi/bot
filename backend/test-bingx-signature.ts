@@ -1,35 +1,11 @@
+import { PrismaClient } from '@prisma/client';
+import { EncryptionService } from './src/lib/encryption';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 
-// Load environment variables
-dotenv.config();
+const prisma = new PrismaClient();
 
-// Get credentials from command line arguments or environment
-// CRITICAL: Trim to remove any whitespace, newlines, or hidden characters
-const API_KEY = (process.argv[2] || process.env.BINGX_API_KEY || '').trim();
-const API_SECRET = (process.argv[3] || process.env.BINGX_API_SECRET || '').trim();
-const BASE_URL = 'https://open-api.bingx.com';
-
-/**
- * Test script to determine the correct signature encoding for BingX API
- *
- * Usage:
- *   npx tsx test-bingx-signature.ts <API_KEY> <API_SECRET>
- *   or set BINGX_API_KEY and BINGX_API_SECRET in .env
- *
- * This script will try BOTH hex and base64 encoding to see which one works
- */
-
-if (!API_KEY || !API_SECRET) {
-  console.error('ERROR: BingX API credentials not provided!');
-  console.error('');
-  console.error('Usage:');
-  console.error('  npx tsx test-bingx-signature.ts <API_KEY> <API_SECRET>');
-  console.error('  or set BINGX_API_KEY and BINGX_API_SECRET in .env');
-  process.exit(1);
-}
-
-function generateSignatureHex(params: Record<string, any>): string {
+// Test BingX signature generation
+function generateSignature(params: Record<string, any>, apiSecret: string): string {
   // Sort parameters alphabetically
   const sortedParams = Object.keys(params)
     .sort()
@@ -38,130 +14,134 @@ function generateSignatureHex(params: Record<string, any>): string {
       return acc;
     }, {} as Record<string, any>);
 
-  // Create query string
+  // Create query string WITHOUT URL encoding
   const queryString = Object.entries(sortedParams)
     .map(([key, value]) => `${key}=${value}`)
     .join('&');
 
-  // Generate HMAC SHA256 signature with HEX encoding
+  console.log('Query String:', queryString);
+
+  // Generate HMAC SHA256 signature using HEX encoding
   const signature = crypto
-    .createHmac('sha256', API_SECRET)
+    .createHmac('sha256', apiSecret)
     .update(queryString)
     .digest('hex');
 
   return signature;
 }
 
-function generateSignatureBase64(params: Record<string, any>): string {
-  // Sort parameters alphabetically
-  const sortedParams = Object.keys(params)
-    .sort()
-    .reduce((acc, key) => {
-      acc[key] = params[key];
-      return acc;
-    }, {} as Record<string, any>);
-
-  // Create query string
-  const queryString = Object.entries(sortedParams)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('&');
-
-  // Generate HMAC SHA256 signature with BASE64 encoding
-  const signature = crypto
-    .createHmac('sha256', API_SECRET)
-    .update(queryString)
-    .digest('base64');
-
-  return signature;
-}
-
-async function testSignature(signatureType: 'hex' | 'base64') {
-  const timestamp = Date.now();
-
-  const params = {
-    timestamp
-  };
-
-  let signature: string;
-  let signatureLabel: string;
-
-  if (signatureType === 'hex') {
-    signature = generateSignatureHex(params);
-    signatureLabel = 'HEX';
-  } else {
-    signature = generateSignatureBase64(params);
-    signatureLabel = 'BASE64';
-  }
-
-  console.log(`\n========== Testing ${signatureLabel} Signature ==========`);
-  console.log(`Timestamp: ${timestamp}`);
-  console.log(`Query String: timestamp=${timestamp}`);
-  console.log(`Signature (${signatureLabel}): ${signature}`);
-  console.log(`Signature Length: ${signature.length} characters`);
-
-  // Build request URL
-  const url = `${BASE_URL}/openApi/swap/v2/user/balance?timestamp=${timestamp}&signature=${encodeURIComponent(signature)}`;
-
-  console.log(`\nMaking request to: ${BASE_URL}/openApi/swap/v2/user/balance`);
-
+async function testBingXSignature() {
   try {
-    const response = await fetch(url, {
+    console.log('=== BingX Signature Test ===\n');
+
+    // Fetch BingX credentials
+    const cred = await prisma.exchangeCredentials.findFirst({
+      where: {
+        exchange: 'BINGX',
+        userId: 'admin_1'
+      }
+    });
+
+    if (!cred) {
+      console.log('❌ No BingX credentials found');
+      return;
+    }
+
+    // Decrypt credentials
+    const apiKey = EncryptionService.decrypt(cred.apiKey);
+    const apiSecret = EncryptionService.decrypt(cred.apiSecret);
+
+    console.log('API Key:', apiKey);
+    console.log('API Secret length:', apiSecret.length);
+    console.log('');
+
+    // Test 1: Simple server time request (no signature needed typically)
+    console.log('=== Test 1: Server Time (GET) ===');
+    const timestamp = Date.now();
+    console.log('Timestamp:', timestamp);
+
+    const timeResponse = await fetch('https://open-api.bingx.com/openApi/swap/v2/server/time');
+    const timeData = await timeResponse.json();
+    console.log('Server Time Response:', timeData);
+    console.log('');
+
+    // Test 2: Account balance request (requires signature)
+    console.log('=== Test 2: Account Balance (with signature) ===');
+    const balanceTimestamp = Date.now();
+    const balanceParams = {
+      timestamp: balanceTimestamp
+    };
+
+    const balanceSignature = generateSignature(balanceParams, apiSecret);
+    console.log('Balance Signature:', balanceSignature);
+    console.log('');
+
+    const balanceUrl = `https://open-api.bingx.com/openApi/swap/v2/user/balance?timestamp=${balanceTimestamp}&signature=${balanceSignature}`;
+    console.log('Balance URL:', balanceUrl);
+
+    const balanceResponse = await fetch(balanceUrl, {
       method: 'GET',
       headers: {
-        'X-BX-APIKEY': API_KEY,
+        'X-BX-APIKEY': apiKey
+      }
+    });
+
+    const balanceData = await balanceResponse.json();
+    console.log('Balance Response:', JSON.stringify(balanceData, null, 2));
+    console.log('');
+
+    // Test 3: Actually place a small market order to test POST signature
+    console.log('=== Test 3: LIVE Order Placement Test ===');
+    const orderTimestamp = Date.now();
+    const orderParams = {
+      symbol: 'BTC-USDT',
+      side: 'BID',
+      positionSide: 'LONG',
+      type: 'MARKET',
+      quantity: '0.001',
+      timestamp: orderTimestamp
+    };
+
+    const orderSignature = generateSignature(orderParams, apiSecret);
+    console.log('Order Parameters:', JSON.stringify(orderParams, null, 2));
+    console.log('Order Signature:', orderSignature);
+    console.log('');
+
+    // Build the full query string with signature
+    const fullOrderParams = {...orderParams, signature: orderSignature};
+    const orderQueryParts: string[] = [];
+    for (const key in fullOrderParams) {
+      const value = fullOrderParams[key as keyof typeof fullOrderParams];
+      orderQueryParts.push(key + '=' + encodeURIComponent(String(value)));
+    }
+    const orderQueryString = orderQueryParts.join('&');
+
+    const orderUrl = 'https://open-api.bingx.com/openApi/swap/v2/trade/order?' + orderQueryString;
+    console.log('Order URL (first 150 chars):', orderUrl.substring(0, 150) + '...');
+    console.log('');
+
+    const orderResponse = await fetch(orderUrl, {
+      method: 'POST',
+      headers: {
+        'X-BX-APIKEY': apiKey,
         'Content-Type': 'application/json'
       }
     });
 
-    const data = await response.json();
+    const orderData = await orderResponse.json();
+    console.log('Order Response:', JSON.stringify(orderData, null, 2));
 
-    console.log(`Response Status: ${response.status}`);
-    console.log(`Response Body:`, JSON.stringify(data, null, 2));
-
-    if (data.code === 0) {
-      console.log(`✅ SUCCESS! ${signatureLabel} encoding works!`);
-      return true;
+    if (orderData.code === 0) {
+      console.log('\n✅ SUCCESS: Order placed successfully!');
     } else {
-      console.log(`❌ FAILED! Error code: ${data.code}, Message: ${data.msg}`);
-      return false;
+      console.log('\n❌ FAILED: ' + orderData.msg + ' (code: ' + orderData.code + ')');
     }
-  } catch (error: any) {
-    console.log(`❌ REQUEST FAILED:`, error.message);
-    return false;
+
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
-async function main() {
-  console.log('BingX Signature Encoding Test');
-  console.log('==============================');
-  console.log(`API Key Length: ${API_KEY.length}`);
-  console.log(`API Secret Length: ${API_SECRET.length}`);
-  console.log(`API Key (first 8 chars): ${API_KEY.substring(0, 8)}...`);
-  console.log(`API Secret (first 8 chars): ${API_SECRET.substring(0, 8)}...`);
-
-  // Test HEX encoding first
-  const hexWorks = await testSignature('hex');
-
-  // Wait a bit to avoid rate limiting
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Test BASE64 encoding
-  const base64Works = await testSignature('base64');
-
-  // Summary
-  console.log('\n========== TEST SUMMARY ==========');
-  console.log(`HEX encoding: ${hexWorks ? '✅ WORKS' : '❌ FAILED'}`);
-  console.log(`BASE64 encoding: ${base64Works ? '✅ WORKS' : '❌ FAILED'}`);
-
-  if (hexWorks && !base64Works) {
-    console.log('\n🎯 CONCLUSION: Use HEX encoding (.digest("hex"))');
-  } else if (base64Works && !hexWorks) {
-    console.log('\n🎯 CONCLUSION: Use BASE64 encoding (.digest("base64"))');
-  } else if (hexWorks && base64Works) {
-    console.log('\n⚠️  WARNING: Both encodings work! This is unexpected.');
-  } else {
-    console.log('\n❌ ERROR: Neither encoding works. Check API credentials or other parameters.');
-  }
-}
-
-main().catch(console.error);
+testBingXSignature();

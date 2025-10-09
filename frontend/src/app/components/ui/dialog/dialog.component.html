@@ -1,9 +1,28 @@
-<div *ngIf="open" class="dialog-overlay" (click)="onBackdropClick($event)">
-  <div [class]="getDialogClasses()" role="dialog" [attr.aria-labelledby]="title ? 'dialog-title' : null">
-
+<div
+  *ngIf="open"
+  class="dialog-overlay"
+  role="presentation"
+  (click)="onBackdropClick($event)"
+  [@fadeIn]
+>
+  <div
+    [class]="getDialogClasses()"
+    role="dialog"
+    [attr.aria-labelledby]="title ? 'dialog-title' : null"
+    [attr.aria-describedby]="'dialog-content'"
+    [attr.aria-modal]="true"
+    tabindex="-1"
+    [@slideUp]
+  >
     <!-- Header -->
     <div *ngIf="showHeader" class="dialog-header">
-      <h2 *ngIf="title" id="dialog-title" class="dialog-title">{{ title }}</h2>
+      <h2
+        *ngIf="title"
+        id="dialog-title"
+        class="dialog-title"
+      >
+        {{ title }}
+      </h2>
       <ng-content select="ui-dialog-header"></ng-content>
 
       <button
@@ -11,20 +30,30 @@
         class="dialog-close-button"
         type="button"
         [attr.aria-label]="translate('dialog.closeAriaLabel')"
+        [disabled]="!closable"
         (click)="onCloseClick()"
       >
-        <span class="close-icon">✕</span>
+        <span class="close-icon" aria-hidden="true">✕</span>
       </button>
     </div>
 
     <!-- Content -->
-    <div class="dialog-body">
+    <div
+      id="dialog-content"
+      class="dialog-body"
+      role="document"
+    >
       <ng-content select="ui-dialog-content"></ng-content>
       <ng-content></ng-content>
     </div>
 
     <!-- Footer -->
-    <div *ngIf="showFooter" class="dialog-footer">
+    <div
+      *ngIf="showFooter"
+      class="dialog-footer"
+      role="group"
+      [attr.aria-label]="translate('dialog.actionsAriaLabel')"
+    >
       <ng-content select="ui-dialog-footer"></ng-content>
     </div>
 

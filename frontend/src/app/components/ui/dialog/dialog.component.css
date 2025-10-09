@@ -1,66 +1,86 @@
-/* Dialog overlay */
+/**
+ * Unified Modal Design System
+ * Professional, theme-aware dialog component with full accessibility support
+ */
+
+/* ============================================================================
+   Dialog Overlay - Backdrop with smooth fade-in animation
+   ============================================================================ */
 .dialog-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--background-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
-  padding: 20px;
+  z-index: var(--z-modal-backdrop);
+  animation: overlayFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: var(--spacing-lg);
   box-sizing: border-box;
 }
 
-@keyframes fadeIn {
+@keyframes overlayFadeIn {
   from {
     opacity: 0;
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
   }
   to {
     opacity: 1;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 }
 
-/* Base dialog styles */
+/* ============================================================================
+   Base Dialog - Container with slide-up animation
+   ============================================================================ */
 .dialog {
-  border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  background: var(--background-primary);
+  border-radius: var(--border-radius-2xl);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
   max-height: 90vh;
   position: relative;
-  animation: slideIn 0.2s ease-out;
+  animation: dialogSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  border: 1px solid var(--border-color);
+  will-change: transform, opacity;
 }
 
-@keyframes slideIn {
+@keyframes dialogSlideUp {
   from {
     opacity: 0;
-    transform: scale(0.95) translateY(-10px);
+    transform: translateY(20px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
-/* Size variants */
+/* ============================================================================
+   Size Variants - Responsive widths for different dialog types
+   ============================================================================ */
 .dialog-small {
-  width: 400px;
-  max-width: 90vw;
+  width: 100%;
+  max-width: 420px;
 }
 
 .dialog-medium {
-  width: 600px;
-  max-width: 90vw;
+  width: 100%;
+  max-width: 640px;
 }
 
 .dialog-large {
-  width: 800px;
-  max-width: 90vw;
+  width: 100%;
+  max-width: 900px;
 }
 
 .dialog-fullscreen {
@@ -68,85 +88,183 @@
   height: 95vh;
   max-width: none;
   max-height: none;
+  border-radius: var(--border-radius-xl);
 }
 
-/* Header */
+/* ============================================================================
+   Dialog Header - Professional gradient header with proper spacing
+   ============================================================================ */
 .dialog-header {
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: var(--text-inverse);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: var(--spacing-md);
   flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+/* Subtle pattern overlay for visual depth */
+.dialog-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(255, 255, 255, 0.02) 10px,
+    rgba(255, 255, 255, 0.02) 20px
+  );
+  pointer-events: none;
 }
 
 .dialog-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-inverse);
   flex: 1;
+  line-height: var(--line-height-tight);
+  position: relative;
+  z-index: 1;
 }
 
-/* Close button */
+/* ============================================================================
+   Close Button - Accessible close button with hover effects
+   ============================================================================ */
 .dialog-close-button {
-  background: none;
-  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
-  padding: 8px;
-  border-radius: 6px;
-  color: #6b7280;
-  transition: all 0.2s ease-in-out;
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius-lg);
+  color: var(--text-inverse);
+  transition: var(--transition-normal);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 12px;
+  margin-left: var(--spacing-sm);
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
-.dialog-close-button:hover {
-  background: #f3f4f6;
-  color: #374151;
+.dialog-close-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
 }
 
 .dialog-close-button:focus {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--text-inverse);
   outline-offset: 2px;
 }
 
+.dialog-close-button:active {
+  transform: scale(0.95);
+}
+
+.dialog-close-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .close-icon {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
   line-height: 1;
 }
 
-/* Body */
+/* ============================================================================
+   Dialog Body - Scrollable content area with proper spacing
+   ============================================================================ */
 .dialog-body {
-  padding: 20px 24px;
-  color: #374151;
-  line-height: 1.6;
+  padding: var(--spacing-xl);
+  color: var(--text-primary);
+  line-height: var(--line-height-relaxed);
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Footer */
+/* Custom scrollbar styling */
+.dialog-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dialog-body::-webkit-scrollbar-track {
+  background: var(--background-secondary);
+  border-radius: var(--border-radius-sm);
+}
+
+.dialog-body::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--border-radius-sm);
+  transition: var(--transition-normal);
+}
+
+.dialog-body::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* ============================================================================
+   Dialog Footer - Action buttons area with proper separation
+   ============================================================================ */
 .dialog-footer {
-  padding: 16px 24px 20px;
-  border-top: 1px solid #e5e7eb;
+  padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+  border-top: 1px solid var(--border-color);
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-md);
   justify-content: flex-end;
   flex-shrink: 0;
+  background: var(--background-secondary);
+  align-items: center;
 }
 
-/* Body class to prevent scrolling */
+/* ============================================================================
+   Body Scroll Lock - Prevent background scrolling when dialog is open
+   ============================================================================ */
 :global(body.dialog-open) {
   overflow: hidden;
+  padding-right: var(--scrollbar-width, 0);
 }
 
-/* Responsive */
+/* ============================================================================
+   Responsive Design - Mobile-first approach with bottom sheet on small screens
+   ============================================================================ */
 @media (max-width: 768px) {
   .dialog-overlay {
-    padding: 10px;
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: var(--border-radius-2xl) var(--border-radius-2xl) 0 0;
+    animation: dialogSlideUpMobile 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes dialogSlideUpMobile {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .dialog-small,
@@ -154,24 +272,127 @@
   .dialog-large {
     width: 100%;
     max-width: none;
-    margin: 0;
   }
 
   .dialog-fullscreen {
     width: 100vw;
     height: 100vh;
+    max-height: 100vh;
     border-radius: 0;
   }
 
-  .dialog-header,
-  .dialog-body,
+  .dialog-header {
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+    position: relative;
+  }
+
+  /* Mobile drag handle indicator */
+  .dialog-header::after {
+    content: '';
+    position: absolute;
+    top: var(--spacing-sm);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: var(--border-radius-full);
+  }
+
+  .dialog-title {
+    font-size: var(--font-size-xl);
+    margin-top: var(--spacing-sm);
+  }
+
+  .dialog-body {
+    padding: var(--spacing-lg);
+  }
+
   .dialog-footer {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+    flex-direction: column-reverse;
+    gap: var(--spacing-sm);
+  }
+
+  .dialog-footer > * {
+    width: 100%;
   }
 }
 
-/* Focus trap styles */
+@media (max-width: 480px) {
+  .dialog-header {
+    padding: var(--spacing-md);
+  }
+
+  .dialog-title {
+    font-size: var(--font-size-lg);
+  }
+
+  .dialog-body {
+    padding: var(--spacing-md);
+  }
+
+  .dialog-footer {
+    padding: var(--spacing-md);
+  }
+
+  .dialog-close-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .close-icon {
+    font-size: var(--font-size-lg);
+  }
+}
+
+/* ============================================================================
+   Focus Management - Accessibility enhancements
+   ============================================================================ */
 .dialog:focus {
   outline: none;
+}
+
+.dialog:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+/* ============================================================================
+   Reduced Motion Support - Respect user preferences
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .dialog-overlay,
+  .dialog,
+  .dialog-close-button {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ============================================================================
+   Dark Theme Enhancements - Additional dark mode refinements
+   ============================================================================ */
+[data-theme="dark"] .dialog,
+.dark-theme .dialog {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .dialog-header,
+.dark-theme .dialog-header {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%);
+}
+
+[data-theme="dark"] .dialog-body::-webkit-scrollbar-track,
+.dark-theme .dialog-body::-webkit-scrollbar-track {
+  background: var(--background-tertiary);
+}
+
+/* ============================================================================
+   Print Styles - Hide dialogs when printing
+   ============================================================================ */
+@media print {
+  .dialog-overlay {
+    display: none;
+  }
 }

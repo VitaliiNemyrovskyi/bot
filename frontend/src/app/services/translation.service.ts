@@ -226,6 +226,7 @@ export class TranslationService {
       'table.noData': 'No data available',
       // Dialog
       'dialog.closeAriaLabel': 'Close dialog',
+      'dialog.actionsAriaLabel': 'Dialog actions',
       // Dashboard
       'dashboard.title': 'Trading Grid Bot Dashboard',
       'dashboard.createNewBot': 'Create New Bot',
@@ -745,6 +746,7 @@ export class TranslationService {
       'table.noData': 'No hay datos disponibles',
       // Dialog
       'dialog.closeAriaLabel': 'Cerrar diálogo',
+      'dialog.actionsAriaLabel': 'Acciones del diálogo',
       // Dashboard
       'dashboard.title': 'Panel de Bot de Grid Trading',
       'dashboard.createNewBot': 'Crear Nuevo Bot',
@@ -1223,6 +1225,7 @@ export class TranslationService {
       'table.noData': 'Aucune donnée disponible',
       // Dialog
       'dialog.closeAriaLabel': 'Fermer la boîte de dialogue',
+      'dialog.actionsAriaLabel': 'Actions de la boîte de dialogue',
       // Dashboard
       'dashboard.title': 'Tableau de Bord du Bot de Grid Trading',
       'dashboard.createNewBot': 'Créer un Nouveau Bot',
@@ -1701,6 +1704,7 @@ export class TranslationService {
       'table.noData': 'Нет доступных данных',
       // Dialog
       'dialog.closeAriaLabel': 'Закрыть диалог',
+      'dialog.actionsAriaLabel': 'Действия диалога',
       // Dashboard
       'dashboard.title': 'Панель Grid Trading Бота',
       'dashboard.createNewBot': 'Создать Нового Бота',
@@ -2179,6 +2183,7 @@ export class TranslationService {
       'table.noData': 'Немає доступних даних',
       // Dialog
       'dialog.closeAriaLabel': 'Закрити діалог',
+      'dialog.actionsAriaLabel': 'Дії діалогу',
       // Dashboard
       'dashboard.title': 'Панель Grid Trading Бота',
       'dashboard.createNewBot': 'Створити Нового Бота',

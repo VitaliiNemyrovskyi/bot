@@ -257,11 +257,17 @@ export class BingXService {
 
   /**
    * Check if account is in Hedge Mode (dual side position mode)
-   * Endpoint: GET /openApi/swap/v2/user/getPositionMode
+   *
+   * IMPORTANT: The getPositionMode API endpoint does not exist in BingX API
+   * (returns error 100400 "this api is not exist")
+   *
+   * BingX ALWAYS requires positionSide parameter in orders:
+   * - One-Way Mode: positionSide MUST be "BOTH"
+   * - Hedge Mode: positionSide MUST be "LONG" or "SHORT" (based on BUY/SELL)
    *
    * Returns:
-   * - true: Hedge Mode (dual side) - positionSide REQUIRED in orders
-   * - false: One-Way Mode - positionSide should NOT be included in orders
+   * - true: Hedge Mode (dual side) - can hold LONG and SHORT simultaneously
+   * - false: One-Way Mode - can only hold one direction at a time
    */
   async getPositionMode(): Promise<boolean> {
     // Return cached value if available
@@ -270,26 +276,22 @@ export class BingXService {
       return this.isHedgeMode;
     }
 
-    console.log('[BingXService] Checking account position mode...');
+    // CRITICAL FIX: BingX API does not have a getPositionMode endpoint
+    // The API returns error 100400 "this api is not exist"
+    //
+    // positionSide is ALWAYS REQUIRED in BingX orders:
+    // - One-Way Mode: Use "BOTH"
+    // - Hedge Mode: Use "LONG" or "SHORT" based on BUY/SELL
+    //
+    // Default to One-Way Mode (most common setup)
+    console.log('[BingXService] BingX does not support position mode detection API');
+    console.log('[BingXService] Defaulting to One-Way Mode (positionSide="BOTH")');
 
-    const response = await this.makeRequest<{ dualSidePosition: boolean }>(
-      'GET',
-      '/openApi/swap/v2/user/getPositionMode',
-      {}
-    );
+    // Default to One-Way Mode
+    this.isHedgeMode = false;
 
-    if (response.code !== 0) {
-      console.error('[BingXService] Failed to get position mode:', response.msg);
-      // Default to One-Way mode to avoid positionSide errors
-      this.isHedgeMode = false;
-      return false;
-    }
-
-    // Cache the result
-    this.isHedgeMode = response.data?.dualSidePosition || false;
-
-    console.log(`[BingXService] Account position mode: ${this.isHedgeMode ? 'Hedge Mode (Dual Side)' : 'One-Way Mode'}`);
-    console.log(`[BingXService] ${this.isHedgeMode ? 'positionSide is REQUIRED' : 'positionSide should be OMITTED'}`);
+    console.log(`[BingXService] Account position mode: One-Way Mode [DEFAULT]`);
+    console.log(`[BingXService] positionSide will be set to "BOTH" for all orders`);
 
     return this.isHedgeMode;
   }
@@ -685,16 +687,14 @@ export class BingXService {
     paramsArray.push(['symbol', orderRequest.symbol]);
     paramsArray.push(['side', orderRequest.side]);
 
-    // positionSide handling:
-    // - Hedge Mode: REQUIRED (must be explicitly provided by caller)
-    // - One-Way Mode: Should NOT be included
-    // The connector layer is responsible for checking mode and providing positionSide only when needed
-    if (orderRequest.positionSide) {
-      paramsArray.push(['positionSide', orderRequest.positionSide]);
-      console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
-    } else {
-      console.log('[BingXService] No positionSide provided (One-Way Mode)');
+    // positionSide: ALWAYS REQUIRED by BingX API
+    // - One-Way Mode: MUST be "BOTH"
+    // - Hedge Mode: MUST be "LONG" or "SHORT"
+    if (!orderRequest.positionSide) {
+      throw new Error('positionSide is required for all BingX orders. Use "BOTH" for One-Way Mode, or "LONG"/"SHORT" for Hedge Mode.');
     }
+    paramsArray.push(['positionSide', orderRequest.positionSide]);
+    console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
 
     paramsArray.push(['type', orderRequest.type]);
 
@@ -749,10 +749,14 @@ export class BingXService {
     paramsArray.push(['symbol', orderRequest.symbol]);
     paramsArray.push(['side', orderRequest.side]);
 
-    // Add positionSide if provided (required by BingX API)
-    if (orderRequest.positionSide) {
-      paramsArray.push(['positionSide', orderRequest.positionSide]);
+    // positionSide: ALWAYS REQUIRED by BingX API
+    // - One-Way Mode: MUST be "BOTH"
+    // - Hedge Mode: MUST be "LONG" or "SHORT"
+    if (!orderRequest.positionSide) {
+      throw new Error('positionSide is required for all BingX orders. Use "BOTH" for One-Way Mode, or "LONG"/"SHORT" for Hedge Mode.');
     }
+    paramsArray.push(['positionSide', orderRequest.positionSide]);
+    console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
 
     paramsArray.push(['type', orderRequest.type]);
 

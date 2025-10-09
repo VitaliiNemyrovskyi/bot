@@ -1,28 +1,94 @@
+/**
+ * Confirmation Modal Styles
+ * Extends the unified dialog design system with confirmation-specific styling
+ */
+
+/* ============================================================================
+   Confirmation Content Area
+   ============================================================================ */
 .confirmation-content {
-  padding: 1rem 0;
+  padding: var(--spacing-md) 0;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
 }
 
 .confirmation-message {
-  font-size: 1rem;
-  line-height: 1.6;
-  color: var(--text-primary, #333);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
+  color: var(--text-primary);
   margin: 0;
+  text-align: left;
 }
 
+/* ============================================================================
+   Confirmation Actions - Button layout
+   ============================================================================ */
 .confirmation-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--spacing-md);
   justify-content: flex-end;
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-color, #e0e0e0);
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+  align-items: center;
 }
 
-/* Dark mode support */
-:host-context(.dark-mode) .confirmation-message {
-  color: var(--text-primary-dark, #e0e0e0);
+/* ============================================================================
+   Warning/Danger Confirmation Styling
+   ============================================================================ */
+:host-context([data-variant="danger"]) .confirmation-content,
+:host-context([data-variant="warning"]) .confirmation-content {
+  border-left: 4px solid var(--danger-color);
+  padding-left: var(--spacing-lg);
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: var(--border-radius-md);
+  padding-top: var(--spacing-lg);
+  padding-bottom: var(--spacing-lg);
 }
 
-:host-context(.dark-mode) .confirmation-actions {
-  border-top-color: var(--border-color-dark, #404040);
+:host-context([data-variant="warning"]) .confirmation-content {
+  border-left-color: var(--warning-color);
+  background: rgba(255, 152, 0, 0.05);
+}
+
+/* ============================================================================
+   Responsive Design - Stack buttons on mobile
+   ============================================================================ */
+@media (max-width: 480px) {
+  .confirmation-actions {
+    flex-direction: column-reverse;
+    gap: var(--spacing-sm);
+  }
+
+  .confirmation-actions > * {
+    width: 100%;
+  }
+
+  .confirmation-message {
+    font-size: var(--font-size-sm);
+  }
+}
+
+/* ============================================================================
+   Dark Theme Support
+   ============================================================================ */
+[data-theme="dark"] .confirmation-message,
+.dark-theme .confirmation-message {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .confirmation-actions,
+.dark-theme .confirmation-actions {
+  border-top-color: var(--border-color);
+}
+
+[data-theme="dark"] :host-context([data-variant="danger"]) .confirmation-content,
+.dark-theme :host-context([data-variant="danger"]) .confirmation-content {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+[data-theme="dark"] :host-context([data-variant="warning"]) .confirmation-content,
+.dark-theme :host-context([data-variant="warning"]) .confirmation-content {
+  background: rgba(255, 152, 0, 0.1);
 }

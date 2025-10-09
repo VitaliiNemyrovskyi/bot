@@ -1,5 +1,8 @@
-// Trading Platform Info Modal Styles
-// Matches the design system from profile and bybit-user-info components
+/**
+ * Trading Platform Info Modal Styles
+ * Unified with the global modal design system
+ * Uses CSS variables for full theme support
+ */
 
 // ============================================================================
 // Modal Overlay and Container
@@ -11,46 +14,52 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: var(--background-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-  animation: fadeIn 0.2s ease-in-out;
+  z-index: var(--z-modal-backdrop);
+  padding: var(--spacing-lg);
+  animation: overlayFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes fadeIn {
+@keyframes overlayFadeIn {
   from {
     opacity: 0;
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
   }
   to {
     opacity: 1;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
 }
 
 .modal-content {
-  background: var(--card-background, #ffffff);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  background: var(--background-primary);
+  border-radius: var(--border-radius-2xl);
+  box-shadow: var(--shadow-overlay);
   width: 100%;
   max-width: 1200px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: slideUp 0.3s ease-out;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+  animation: modalSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
+  will-change: transform, opacity;
 }
 
-@keyframes slideUp {
+@keyframes modalSlideUp {
   from {
-    transform: translateY(30px);
+    transform: translateY(20px) scale(0.96);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
@@ -60,15 +69,34 @@
 // ============================================================================
 
 .modal-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem 2rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: var(--text-inverse);
+  padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-lg);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: var(--spacing-md);
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+
+  // Subtle pattern overlay for visual depth
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 255, 255, 0.02) 10px,
+      rgba(255, 255, 255, 0.02) 20px
+    );
+    pointer-events: none;
+  }
 }
 
 .header-info {
@@ -723,31 +751,62 @@
 }
 
 // ============================================================================
-// Responsive Design
+// Responsive Design - Mobile-first with bottom sheet
 // ============================================================================
 
 @media (max-width: 768px) {
   .modal-overlay {
     padding: 0;
+    align-items: flex-end;
   }
 
   .modal-content {
-    max-height: 100vh;
-    border-radius: 0;
-    height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    max-height: 95vh;
+    height: auto;
+    border-radius: var(--border-radius-2xl) var(--border-radius-2xl) 0 0;
+    animation: modalSlideUpMobile 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes modalSlideUpMobile {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .modal-header {
-    padding: 1rem;
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
     flex-wrap: wrap;
+    position: relative;
+
+    // Mobile drag handle indicator
+    &::after {
+      content: '';
+      position: absolute;
+      top: var(--spacing-sm);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.4);
+      border-radius: var(--border-radius-full);
+      z-index: 2;
+    }
 
     .header-title h2 {
-      font-size: 1.25rem;
+      font-size: var(--font-size-xl);
+      margin-top: var(--spacing-sm);
     }
   }
 
   .modal-body {
-    padding: 1rem;
+    padding: var(--spacing-lg);
   }
 
   .stats-grid {
@@ -763,31 +822,36 @@
   }
 
   .tab-content {
-    padding: 1rem;
+    padding: var(--spacing-lg);
   }
 
   .tabs-list {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .data-table {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
 
     thead th,
     tbody td {
-      padding: 0.5rem;
+      padding: var(--spacing-sm);
     }
   }
 }
 
 @media (max-width: 480px) {
+  .modal-header {
+    padding: var(--spacing-md);
+  }
+
   .exchange-logo {
     width: 40px;
     height: 40px;
   }
 
   .stat-card {
-    padding: 1rem;
+    padding: var(--spacing-lg);
 
     .stat-icon {
       font-size: 1.5rem;
@@ -796,5 +860,84 @@
     .stat-content h3 {
       font-size: 1.5rem;
     }
+  }
+
+  .modal-body {
+    padding: var(--spacing-md);
+  }
+
+  .tab-content {
+    padding: var(--spacing-md);
+  }
+}
+
+// ============================================================================
+// Dark Theme Enhancements
+// ============================================================================
+
+[data-theme="dark"],
+.dark-theme {
+  .modal-content {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%);
+  }
+
+  .stat-card,
+  .info-card,
+  .balance-card {
+    background: var(--background-secondary);
+    border-color: var(--border-color);
+
+    &:hover {
+      background: var(--background-tertiary);
+    }
+  }
+
+  .tabs-navigation {
+    background: var(--background-secondary);
+    border-color: var(--border-color);
+  }
+
+  .tab-content {
+    background: var(--background-secondary);
+    border-color: var(--border-color);
+  }
+
+  .data-table {
+    thead {
+      background: var(--background-tertiary);
+    }
+
+    tbody tr:hover {
+      background: var(--background-tertiary);
+    }
+  }
+}
+
+// ============================================================================
+// Reduced Motion Support
+// ============================================================================
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-content,
+  .stat-card,
+  .balance-card,
+  .tab-button {
+    animation: none;
+    transition: none;
+  }
+}
+
+// ============================================================================
+// Print Styles
+// ============================================================================
+
+@media print {
+  .modal-overlay {
+    display: none;
   }
 }

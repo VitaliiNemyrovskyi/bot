@@ -92,11 +92,9 @@ export class BingXConnector extends BaseExchangeConnector {
   /**
    * Place a market order
    *
-   * BingX Position Mode Behavior:
-   * - One-Way Mode: positionSide must be OMITTED (do not include in params)
-   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
-   *
-   * The service will check account mode and handle positionSide accordingly
+   * BingX Position Mode Behavior (ALWAYS requires positionSide):
+   * - One-Way Mode: positionSide MUST be "BOTH"
+   * - Hedge Mode: positionSide MUST be "LONG" or "SHORT" (based on BUY/SELL)
    */
   async placeMarketOrder(
     symbol: string,
@@ -121,23 +119,25 @@ export class BingXConnector extends BaseExchangeConnector {
       // Check account position mode
       const isHedgeMode = await this.bingxService.getPositionMode();
 
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use LONG for BUY, SHORT for SELL
+        positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
       const orderParams: any = {
         symbol,
         side: bingxSide,
         type: 'MARKET',
         quantity: adjustedQuantity,
+        positionSide,
       };
 
-      // Only include positionSide in Hedge Mode
-      if (isHedgeMode) {
-        // Hedge Mode: positionSide required (LONG or SHORT)
-        // For market orders, derive from side: BUY -> LONG, SELL -> SHORT
-        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
-        console.log(`[BingXConnector] Hedge Mode: Placing ${bingxSide} order with positionSide=${orderParams.positionSide}`);
-      } else {
-        // One-Way Mode: positionSide must be omitted
-        console.log(`[BingXConnector] One-Way Mode: Placing ${bingxSide} order (positionSide omitted)`);
-      }
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Placing ${bingxSide} order with positionSide=${positionSide}`);
 
       const result = await this.bingxService.placeOrder(orderParams);
 
@@ -203,9 +203,9 @@ export class BingXConnector extends BaseExchangeConnector {
   /**
    * Place a limit order
    *
-   * BingX Position Mode Behavior:
-   * - One-Way Mode: positionSide must be OMITTED (do not include in params)
-   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
+   * BingX Position Mode Behavior (ALWAYS requires positionSide):
+   * - One-Way Mode: positionSide MUST be "BOTH"
+   * - Hedge Mode: positionSide MUST be "LONG" or "SHORT" (based on BUY/SELL)
    */
   async placeLimitOrder(
     symbol: string,
@@ -229,6 +229,16 @@ export class BingXConnector extends BaseExchangeConnector {
       // Check account position mode
       const isHedgeMode = await this.bingxService.getPositionMode();
 
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use LONG for BUY, SHORT for SELL
+        positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
       const orderParams: any = {
         symbol,
         side: bingxSide,
@@ -236,15 +246,10 @@ export class BingXConnector extends BaseExchangeConnector {
         quantity,
         price,
         timeInForce: 'GTC',
+        positionSide,
       };
 
-      // Only include positionSide in Hedge Mode
-      if (isHedgeMode) {
-        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
-        console.log(`[BingXConnector] Hedge Mode: Placing ${bingxSide} limit order with positionSide=${orderParams.positionSide}`);
-      } else {
-        console.log(`[BingXConnector] One-Way Mode: Placing ${bingxSide} limit order (positionSide omitted)`);
-      }
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Placing ${bingxSide} limit order with positionSide=${positionSide}`);
 
       const result = await this.bingxService.placeOrder(orderParams);
 
@@ -375,9 +380,9 @@ export class BingXConnector extends BaseExchangeConnector {
   /**
    * Place a reduce-only market order
    *
-   * BingX Position Mode Behavior:
-   * - One-Way Mode: positionSide must be OMITTED, use reduceOnly flag
-   * - Hedge Mode: positionSide is REQUIRED ('LONG' or 'SHORT')
+   * BingX Position Mode Behavior (ALWAYS requires positionSide):
+   * - One-Way Mode: positionSide MUST be "BOTH"
+   * - Hedge Mode: positionSide MUST be "LONG" or "SHORT" (based on BUY/SELL)
    */
   async placeReduceOnlyOrder(
     symbol: string,
@@ -399,21 +404,26 @@ export class BingXConnector extends BaseExchangeConnector {
       // Check account position mode
       const isHedgeMode = await this.bingxService.getPositionMode();
 
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use LONG for BUY, SHORT for SELL
+        positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
       const orderParams: any = {
         symbol,
         side: bingxSide,
         type: 'MARKET',
         quantity,
         reduceOnly: true,
+        positionSide,
       };
 
-      // Only include positionSide in Hedge Mode
-      if (isHedgeMode) {
-        orderParams.positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
-        console.log(`[BingXConnector] Hedge Mode: Closing ${orderParams.positionSide} position with ${bingxSide} reduceOnly order`);
-      } else {
-        console.log(`[BingXConnector] One-Way Mode: Closing position with ${bingxSide} reduceOnly order (positionSide omitted)`);
-      }
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Closing position with ${bingxSide} reduceOnly order (positionSide=${positionSide})`);
 
       const result = await this.bingxService.placeOrder(orderParams);
 

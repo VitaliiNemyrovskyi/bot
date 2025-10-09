@@ -170,6 +170,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   arbitrageFiltersCollapsed = signal<boolean>(false);
   arbitrageSearchQuery = signal<string>(''); // Symbol search filter for arbitrage table
   minSpreadThreshold = signal<number | null>(null); // Minimum spread threshold in percentage
+  showOnlySubscribedArbitrage = signal<boolean>(false); // Filter to show only subscribed pairs
 
   // Subscription settings
   subscriptionSettings = signal<SubscriptionSettings>({
@@ -331,7 +332,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   });
 
   /**
-   * Filtered arbitrage opportunities based on symbol search and spread threshold
+   * Filtered arbitrage opportunities based on symbol search, spread threshold, and subscription status
    */
   filteredArbitrageOpportunities = computed(() => {
     let opportunities = [...this.arbitrageOpportunities()];
@@ -351,6 +352,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         const spreadPercent = parseFloat(opp.spread) * 100;
         return spreadPercent >= minSpread;
       });
+    }
+
+    // Filter by subscription status (show only subscribed pairs)
+    if (this.showOnlySubscribedArbitrage()) {
+      opportunities = opportunities.filter(opp =>
+        this.hasArbitrageSubscription(opp.symbol)
+      );
     }
 
     return opportunities;
@@ -773,6 +781,82 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   clearArbitrageFilters(): void {
     this.arbitrageSearchQuery.set('');
     this.minSpreadThreshold.set(null);
+    this.showOnlySubscribedArbitrage.set(false);
+  }
+
+  /**
+   * Cancel all active subscriptions
+   * Always fetches fresh subscription data from server and deletes all of them
+   */
+  async cancelAllSubscriptions(): Promise<void> {
+    try {
+      const token = this.authService.authState().token;
+      if (!token) {
+        this.showNotification('Authentication required', 'error');
+        return;
+      }
+
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`
+      });
+
+      // Step 1: Fetch all subscriptions from server (to ensure we have the complete list)
+      const response = await this.http.get<any>(
+        'http://localhost:3000/api/funding-arbitrage/subscribe',
+        { headers }
+      ).toPromise();
+
+      if (!response?.success || !response?.data) {
+        this.showNotification('Failed to fetch subscriptions from server', 'error');
+        return;
+      }
+
+      // Filter only active subscriptions (not completed)
+      const serverSubscriptions = response.data.filter((sub: any) => sub.status !== 'COMPLETED');
+
+      if (serverSubscriptions.length === 0) {
+        this.showNotification('No active subscriptions found on server', 'info');
+        // Still clear local state
+        this.subscriptions.set(new Map());
+        return;
+      }
+
+      // Step 2: Show confirmation dialog with server count
+      const confirmed = confirm(
+        `Are you sure you want to cancel ALL ${serverSubscriptions.length} active subscriptions?\n\n` +
+        `This will delete all subscriptions from the database.\n` +
+        `This action cannot be undone.`
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      // Step 3: Delete all subscriptions in parallel
+      console.log('[cancelAllSubscriptions] Deleting', serverSubscriptions.length, 'subscriptions');
+      const cancelPromises = serverSubscriptions.map((sub: any) =>
+        this.http.delete<any>(
+          `http://localhost:3000/api/funding-arbitrage/subscribe?subscriptionId=${sub.subscriptionId}`,
+          { headers }
+        ).toPromise()
+      );
+
+      await Promise.all(cancelPromises);
+
+      // Step 4: Clear local state
+      this.subscriptions.set(new Map());
+
+      this.showNotification(`Successfully cancelled all ${serverSubscriptions.length} subscriptions`, 'success');
+
+      // Reload subscriptions to verify they're gone
+      this.loadSubscriptions();
+    } catch (error: any) {
+      console.error('Error cancelling all subscriptions:', error);
+      this.showNotification('Failed to cancel some subscriptions. Please try again.', 'error');
+
+      // Reload subscriptions to get current state
+      this.loadSubscriptions();
+    }
   }
 
   /**
