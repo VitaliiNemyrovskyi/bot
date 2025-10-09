@@ -36,6 +36,16 @@ export interface CountdownEvent {
   positionType: 'long' | 'short';
 }
 
+export interface CachedConnector {
+  connector: BaseExchangeConnector;
+  credentialId: string;
+  exchange: string;
+  environment: string;
+  subscriptionIds: Set<string>; // Reference counting
+  lastUsed: number;
+  initializationTime: number;
+}
+
 /**
  * Funding Arbitrage Service
  *
@@ -50,6 +60,10 @@ export class FundingArbitrageService extends EventEmitter {
   private countdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private subscriptionCounter = 1;
   private initialized = false;
+
+  // Connector cache for instant execution
+  private connectorCache: Map<string, CachedConnector> = new Map();
+  private cleanupTimer?: NodeJS.Timeout;
 
   // Event types
   static readonly COUNTDOWN = 'countdown';
@@ -111,69 +125,47 @@ export class FundingArbitrageService extends EventEmitter {
             continue;
           }
 
-          // Initialize primary exchange connector
+          // Initialize primary exchange connector using cache
           let primaryConnector;
-          if (credential.exchange === 'BYBIT') {
-            const { BybitConnector } = await import('@/connectors/bybit.connector');
-            primaryConnector = new BybitConnector(
-              credential.apiKey,
-              credential.apiSecret,
-              credential.environment === 'TESTNET'
+          try {
+            primaryConnector = await this.getOrCreateConnector(
+              dbSub.userId,
+              dbSub.primaryCredentialId,
+              false // Use cache
             );
-            await primaryConnector.initialize();
-          } else {
-            console.error(`[FundingArbitrage] Exchange ${credential.exchange} not supported for subscription ${dbSub.id}`);
+          } catch (error: any) {
+            console.error(`[FundingArbitrage] Failed to initialize primary connector: ${error.message}`);
+            await prisma.fundingArbitrageSubscription.update({
+              where: { id: dbSub.id },
+              data: { status: 'ERROR', errorMessage: error.message },
+            });
             continue;
           }
 
           // Initialize hedge exchange connector
           let hedgeConnector;
-          if (dbSub.hedgeExchange === 'MOCK' || !dbSub.hedgeCredentialId) {
-            // Use mock exchange for testing or when no hedge credential provided
-            const { MockExchangeConnector } = await import('@/connectors/mock-exchange.connector');
-            hedgeConnector = new MockExchangeConnector();
-            await hedgeConnector.initialize();
-          } else {
-            // Load hedge exchange credentials
-            const hedgeCredential = await ExchangeCredentialsService.getCredentialById(
+          if (!dbSub.hedgeCredentialId) {
+            console.error(`[FundingArbitrage] No hedge credential for subscription ${dbSub.id}`);
+            await prisma.fundingArbitrageSubscription.update({
+              where: { id: dbSub.id },
+              data: { status: 'ERROR', errorMessage: 'Hedge credential required' },
+            });
+            continue;
+          }
+
+          try {
+            hedgeConnector = await this.getOrCreateConnector(
               dbSub.userId,
-              dbSub.hedgeCredentialId
+              dbSub.hedgeCredentialId,
+              false // Use cache
             );
-
-            if (!hedgeCredential) {
-              console.error(`[FundingArbitrage] Hedge credential ${dbSub.hedgeCredentialId} not found for subscription ${dbSub.id}`);
-              await prisma.fundingArbitrageSubscription.update({
-                where: { id: dbSub.id },
-                data: { status: 'ERROR', errorMessage: 'Hedge credentials not found' },
-              });
-              continue;
-            }
-
-            // Initialize hedge exchange connector based on exchange type
-            if (hedgeCredential.exchange === 'BYBIT') {
-              const { BybitConnector } = await import('@/connectors/bybit.connector');
-              hedgeConnector = new BybitConnector(
-                hedgeCredential.apiKey,
-                hedgeCredential.apiSecret,
-                hedgeCredential.environment === 'TESTNET'
-              );
-              await hedgeConnector.initialize();
-            } else if (hedgeCredential.exchange === 'BINGX') {
-              const { BingXConnector } = await import('@/connectors/bingx.connector');
-              hedgeConnector = new BingXConnector(
-                hedgeCredential.apiKey,
-                hedgeCredential.apiSecret,
-                hedgeCredential.environment === 'TESTNET'
-              );
-              await hedgeConnector.initialize();
-            } else {
-              console.error(`[FundingArbitrage] Hedge exchange ${hedgeCredential.exchange} not supported for subscription ${dbSub.id}`);
-              await prisma.fundingArbitrageSubscription.update({
-                where: { id: dbSub.id },
-                data: { status: 'ERROR', errorMessage: `Hedge exchange ${hedgeCredential.exchange} not supported` },
-              });
-              continue;
-            }
+          } catch (error: any) {
+            console.error(`[FundingArbitrage] Failed to initialize hedge connector: ${error.message}`);
+            await prisma.fundingArbitrageSubscription.update({
+              where: { id: dbSub.id },
+              data: { status: 'ERROR', errorMessage: error.message },
+            });
+            continue;
           }
 
           // Recreate subscription object
@@ -196,6 +188,12 @@ export class FundingArbitrageService extends EventEmitter {
           // Add to memory
           this.subscriptions.set(dbSub.id, subscription);
 
+          // Add connector references for restored subscription
+          this.addConnectorReference(dbSub.primaryCredentialId, dbSub.id, dbSub.userId);
+          if (dbSub.hedgeCredentialId) {
+            this.addConnectorReference(dbSub.hedgeCredentialId, dbSub.id, dbSub.userId);
+          }
+
           // Start countdown monitoring
           this.startCountdownMonitoring(subscription);
 
@@ -204,6 +202,14 @@ export class FundingArbitrageService extends EventEmitter {
           console.error(`[FundingArbitrage] Error restoring subscription ${dbSub.id}:`, error.message);
         }
       }
+
+      // Start periodic connector cleanup (every 15 minutes)
+      this.cleanupTimer = setInterval(() => {
+        this.cleanupStaleConnectors();
+        this.cleanup(); // Existing subscription cleanup
+      }, 900000); // 15 minutes
+
+      console.log('[FundingArbitrage] Started periodic cleanup timer');
 
       this.initialized = true;
       console.log('[FundingArbitrage] Service initialization complete');
@@ -262,9 +268,28 @@ export class FundingArbitrageService extends EventEmitter {
       executionDelay: params.executionDelay || 5,
     };
 
+    // Cache connectors for instant execution later
+    if (params.primaryCredentialId) {
+      this.cacheConnectorForSubscription(
+        params.primaryExchange,
+        params.primaryCredentialId,
+        params.userId,
+        dbSubscription.id
+      );
+    }
+
+    if (params.hedgeCredentialId) {
+      this.cacheConnectorForSubscription(
+        params.hedgeExchange,
+        params.hedgeCredentialId,
+        params.userId,
+        dbSubscription.id
+      );
+    }
+
     this.subscriptions.set(dbSubscription.id, subscription);
 
-    console.log(`[FundingArbitrage] New subscription created:`, {
+    console.log(`[FundingArbitrage] New subscription created with pre-initialized connectors:`, {
       id: dbSubscription.id,
       symbol: params.symbol,
       fundingRate: params.fundingRate,
@@ -279,18 +304,88 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Subscribe to funding rate arbitrage using credential IDs (recommended)
+   * This method creates and caches connectors for instant execution
+   */
+  async subscribeWithCredentials(params: {
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: number;
+    positionType: 'long' | 'short';
+    quantity: number;
+    userId: string;
+    primaryCredentialId: string;
+    hedgeCredentialId: string;
+    hedgeExchange: string;
+    executionDelay?: number;
+  }): Promise<FundingSubscription> {
+    console.log('[FundingArbitrage] Creating subscription with credential caching...');
+
+    // Create and cache primary connector
+    const primaryConnector = await this.getOrCreateConnector(
+      params.userId,
+      params.primaryCredentialId,
+      false
+    );
+
+    // Create and cache hedge connector
+    if (!params.hedgeCredentialId) {
+      throw new Error('Hedge credential ID is required');
+    }
+
+    const hedgeConnector = await this.getOrCreateConnector(
+      params.userId,
+      params.hedgeCredentialId,
+      false
+    );
+
+    console.log('[FundingArbitrage] Connectors created and cached, creating subscription...');
+
+    // Call the existing subscribe method with connector objects
+    return this.subscribe({
+      symbol: params.symbol,
+      fundingRate: params.fundingRate,
+      nextFundingTime: params.nextFundingTime,
+      positionType: params.positionType,
+      quantity: params.quantity,
+      primaryExchange: primaryConnector,
+      hedgeExchange: hedgeConnector,
+      userId: params.userId,
+      primaryCredentialId: params.primaryCredentialId,
+      hedgeCredentialId: params.hedgeCredentialId,
+      executionDelay: params.executionDelay,
+    });
+  }
+
+  /**
    * Unsubscribe from funding rate arbitrage
    */
   async unsubscribe(subscriptionId: string): Promise<void> {
     const subscription = this.subscriptions.get(subscriptionId);
 
-    // If in memory, clean up timers
+    // If in memory, clean up timers and connector references
     if (subscription) {
       // Clear countdown timer
       const timer = this.countdownTimers.get(subscriptionId);
       if (timer) {
         clearInterval(timer);
         this.countdownTimers.delete(subscriptionId);
+      }
+
+      // Remove connector references
+      if (subscription.primaryCredentialId) {
+        this.removeConnectorReference(
+          subscription.primaryCredentialId,
+          subscriptionId,
+          subscription.userId
+        );
+      }
+      if (subscription.hedgeCredentialId) {
+        this.removeConnectorReference(
+          subscription.hedgeCredentialId,
+          subscriptionId,
+          subscription.userId
+        );
       }
 
       // Delete from memory
@@ -302,7 +397,7 @@ export class FundingArbitrageService extends EventEmitter {
       await prisma.fundingArbitrageSubscription.delete({
         where: { id: subscriptionId },
       });
-      console.log(`[FundingArbitrage] Subscription ${subscriptionId} canceled and deleted from database`);
+      console.log(`[FundingArbitrage] Subscription ${subscriptionId.substring(0, 8)} canceled and deleted`);
     } catch (error: any) {
       if (error.code === 'P2025') {
         // Record not found
@@ -310,6 +405,9 @@ export class FundingArbitrageService extends EventEmitter {
       }
       throw error;
     }
+
+    // Trigger cleanup of stale connectors
+    this.cleanupStaleConnectors();
   }
 
   /**
@@ -375,6 +473,163 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Get or create connector from cache (FAST PATH for instant execution)
+   */
+  private async getOrCreateConnector(
+    userId: string,
+    credentialId: string,
+    forceNew: boolean = false
+  ): Promise<BaseExchangeConnector> {
+    const cacheKey = `${userId}_${credentialId}`;
+
+    // Return cached connector if exists and not forcing new
+    if (!forceNew && this.connectorCache.has(cacheKey)) {
+      const cached = this.connectorCache.get(cacheKey)!;
+      cached.lastUsed = Date.now();
+      console.log(`[FundingArbitrage] ✓ Using cached ${cached.exchange} connector (age: ${Math.floor((Date.now() - cached.initializationTime) / 1000)}s)`);
+      return cached.connector;
+    }
+
+    // Create new connector
+    console.log(`[FundingArbitrage] Creating new connector for credential ${credentialId.substring(0, 8)}...`);
+    const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
+    const credential = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
+
+    if (!credential) {
+      throw new Error(`Credential ${credentialId} not found`);
+    }
+
+    let connector: BaseExchangeConnector;
+    const startTime = Date.now();
+
+    if (credential.exchange === 'BYBIT') {
+      const { BybitConnector } = await import('@/connectors/bybit.connector');
+      connector = new BybitConnector(
+        credential.apiKey,
+        credential.apiSecret,
+        credential.environment === 'TESTNET'
+      );
+    } else if (credential.exchange === 'BINGX') {
+      const { BingXConnector } = await import('@/connectors/bingx.connector');
+      connector = new BingXConnector(
+        credential.apiKey,
+        credential.apiSecret,
+        credential.environment === 'TESTNET',
+        userId,          // Enable persistent time sync caching
+        credentialId     // Enable persistent time sync caching
+      );
+    } else {
+      throw new Error(`Exchange ${credential.exchange} not supported`);
+    }
+
+    await connector.initialize();
+    const initTime = Date.now() - startTime;
+
+    // Cache the connector
+    this.connectorCache.set(cacheKey, {
+      connector,
+      credentialId,
+      exchange: credential.exchange,
+      environment: credential.environment,
+      subscriptionIds: new Set(),
+      lastUsed: Date.now(),
+      initializationTime: Date.now(),
+    });
+
+    console.log(`[FundingArbitrage] ✓ ${credential.exchange} connector initialized in ${initTime}ms and cached`);
+    return connector;
+  }
+
+  /**
+   * Cache connector for a subscription (add reference)
+   */
+  private cacheConnectorForSubscription(
+    connector: BaseExchangeConnector,
+    credentialId: string,
+    userId: string,
+    subscriptionId: string
+  ): void {
+    const cacheKey = `${userId}_${credentialId}`;
+
+    // Check if already cached
+    if (this.connectorCache.has(cacheKey)) {
+      this.addConnectorReference(credentialId, subscriptionId, userId);
+      return;
+    }
+
+    // Add to cache with subscription reference
+    this.connectorCache.set(cacheKey, {
+      connector,
+      credentialId,
+      exchange: connector.exchangeName,
+      environment: connector.exchangeName.includes('TESTNET') ? 'TESTNET' : 'PRODUCTION',
+      subscriptionIds: new Set([subscriptionId]),
+      lastUsed: Date.now(),
+      initializationTime: Date.now(),
+    });
+
+    console.log(`[FundingArbitrage] Cached connector ${connector.exchangeName} for subscription ${subscriptionId.substring(0, 8)}`);
+  }
+
+  /**
+   * Add subscription reference to connector cache
+   */
+  private addConnectorReference(credentialId: string, subscriptionId: string, userId: string): void {
+    const cacheKey = `${userId}_${credentialId}`;
+    const cached = this.connectorCache.get(cacheKey);
+    if (cached) {
+      cached.subscriptionIds.add(subscriptionId);
+      console.log(`[FundingArbitrage] Added reference: ${cached.exchange} connector now has ${cached.subscriptionIds.size} subscription(s)`);
+    }
+  }
+
+  /**
+   * Remove subscription reference from connector cache
+   */
+  private removeConnectorReference(credentialId: string, subscriptionId: string, userId: string): void {
+    const cacheKey = `${userId}_${credentialId}`;
+    const cached = this.connectorCache.get(cacheKey);
+    if (cached) {
+      cached.subscriptionIds.delete(subscriptionId);
+      console.log(`[FundingArbitrage] Removed reference: ${cached.exchange} connector now has ${cached.subscriptionIds.size} subscription(s)`);
+
+      // If no more subscriptions using this connector, mark for cleanup
+      if (cached.subscriptionIds.size === 0) {
+        console.log(`[FundingArbitrage] Connector ${cacheKey} has no active subscriptions, eligible for cleanup`);
+      }
+    }
+  }
+
+  /**
+   * Cleanup stale connectors (unused for >1 hour)
+   */
+  private cleanupStaleConnectors(maxIdleTime: number = 3600000): void {
+    const now = Date.now();
+    const toRemove: string[] = [];
+
+    for (const [key, cached] of this.connectorCache.entries()) {
+      const idleTime = now - cached.lastUsed;
+
+      // Only cleanup if no active subscriptions and idle for more than maxIdleTime
+      if (cached.subscriptionIds.size === 0 && idleTime > maxIdleTime) {
+        toRemove.push(key);
+      }
+    }
+
+    toRemove.forEach((key) => {
+      const cached = this.connectorCache.get(key);
+      if (cached) {
+        console.log(`[FundingArbitrage] Cleaning up stale ${cached.exchange} connector (idle: ${Math.floor((now - cached.lastUsed) / 1000)}s)`);
+      }
+      this.connectorCache.delete(key);
+    });
+
+    if (toRemove.length > 0) {
+      console.log(`[FundingArbitrage] Cleaned up ${toRemove.length} stale connector(s)`);
+    }
+  }
+
+  /**
    * Start countdown monitoring
    */
   private startCountdownMonitoring(subscription: FundingSubscription): void {
@@ -429,10 +684,41 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Convert normalized symbol to exchange-specific format
+   * BingX requires hyphenated format: "H-USDT", "BTC-USDT"
+   * Bybit requires non-hyphenated format: "HUSDT", "BTCUSDT"
+   */
+  private convertSymbolForExchange(normalizedSymbol: string, exchangeName: string): string {
+    // BingX requires hyphenated format
+    if (exchangeName.includes('BINGX')) {
+      // Add hyphen before USDT if not already present
+      if (!normalizedSymbol.includes('-') && normalizedSymbol.endsWith('USDT')) {
+        return normalizedSymbol.replace(/USDT$/, '-USDT');
+      }
+      return normalizedSymbol;
+    }
+
+    // Bybit and other exchanges use non-hyphenated format (already normalized)
+    return normalizedSymbol;
+  }
+
+  /**
    * Execute arbitrage orders
    */
   private async executeArbitrageOrders(subscription: FundingSubscription): Promise<void> {
     const { symbol, positionType, quantity, primaryExchange, hedgeExchange } = subscription;
+
+    // Convert symbol to exchange-specific format
+    const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
+    const hedgeSymbol = this.convertSymbolForExchange(symbol, hedgeExchange.exchangeName);
+
+    console.log(`[FundingArbitrage] Symbol conversion:`, {
+      normalized: symbol,
+      primaryExchange: primaryExchange.exchangeName,
+      primarySymbol,
+      hedgeExchange: hedgeExchange.exchangeName,
+      hedgeSymbol,
+    });
 
     // Determine order sides
     // For funding farming:
@@ -448,7 +734,7 @@ export class FundingArbitrageService extends EventEmitter {
       quantity,
     });
 
-    // 1. Notify user: Primary order executing
+    // 1. Notify user: Both orders executing
     this.emit(FundingArbitrageService.ORDER_EXECUTING, {
       subscriptionId: subscription.id,
       symbol,
@@ -458,24 +744,6 @@ export class FundingArbitrageService extends EventEmitter {
       exchange: primaryExchange.exchangeName,
     });
 
-    // 2. Execute primary order (funding farming position)
-    const primaryOrder = await primaryExchange.placeMarketOrder(
-      symbol,
-      primarySide,
-      quantity
-    );
-
-    console.log(`[FundingArbitrage] Primary order executed:`, primaryOrder);
-
-    this.emit(FundingArbitrageService.ORDER_EXECUTED, {
-      subscriptionId: subscription.id,
-      symbol,
-      type: 'primary',
-      order: primaryOrder,
-      timestamp: Date.now(),
-    } as OrderExecutionEvent);
-
-    // 3. Notify user: Hedge order executing
     this.emit(FundingArbitrageService.HEDGE_EXECUTING, {
       subscriptionId: subscription.id,
       symbol,
@@ -485,14 +753,28 @@ export class FundingArbitrageService extends EventEmitter {
       exchange: hedgeExchange.exchangeName,
     });
 
-    // 4. Execute hedge order (opposite position)
-    const hedgeOrder = await hedgeExchange.placeMarketOrder(
-      symbol,
-      hedgeSide,
-      quantity
-    );
+    // 2. Execute BOTH orders in parallel for speed ⚡
+    console.log(`[FundingArbitrage] ⚡ Executing orders in parallel...`);
+    const orderStartTime = Date.now();
 
-    console.log(`[FundingArbitrage] Hedge order executed:`, hedgeOrder);
+    const [primaryOrder, hedgeOrder] = await Promise.all([
+      primaryExchange.placeMarketOrder(primarySymbol, primarySide, quantity),
+      hedgeExchange.placeMarketOrder(hedgeSymbol, hedgeSide, quantity),
+    ]);
+
+    const orderExecutionTime = Date.now() - orderStartTime;
+    console.log(`[FundingArbitrage] ✓ Both orders executed in ${orderExecutionTime}ms (parallel)`);
+    console.log(`[FundingArbitrage] Primary order:`, primaryOrder);
+    console.log(`[FundingArbitrage] Hedge order:`, hedgeOrder);
+
+    // 3. Notify orders executed
+    this.emit(FundingArbitrageService.ORDER_EXECUTED, {
+      subscriptionId: subscription.id,
+      symbol,
+      type: 'primary',
+      order: primaryOrder,
+      timestamp: Date.now(),
+    } as OrderExecutionEvent);
 
     this.emit(FundingArbitrageService.HEDGE_EXECUTED, {
       subscriptionId: subscription.id,
@@ -502,23 +784,35 @@ export class FundingArbitrageService extends EventEmitter {
       timestamp: Date.now(),
     } as OrderExecutionEvent);
 
-    // 5. Get actual entry prices from positions (market orders don't return avgPrice immediately)
+    // 4. Get actual entry prices from positions (market orders don't return avgPrice immediately)
     let entryPrice = primaryOrder.avgPrice || primaryOrder.price || 0;
     let hedgeEntryPrice = hedgeOrder.avgPrice || hedgeOrder.price || 0;
 
-    // If price is not in order response, fetch from position
-    if (entryPrice === 0) {
-      console.log(`[FundingArbitrage] Fetching entry price from primary position...`);
-      const primaryPosition = await primaryExchange.getPosition(symbol);
-      entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
-      console.log(`[FundingArbitrage] Primary entry price: ${entryPrice}`);
-    }
+    // If prices are not in order response, fetch from positions in parallel ⚡
+    const needPrimaryPrice = entryPrice === 0;
+    const needHedgePrice = hedgeEntryPrice === 0;
 
-    if (hedgeEntryPrice === 0) {
-      console.log(`[FundingArbitrage] Fetching entry price from hedge position...`);
-      const hedgePosition = await hedgeExchange.getPosition(symbol);
-      hedgeEntryPrice = parseFloat(hedgePosition.avgPrice || hedgePosition.entryPrice || '0');
-      console.log(`[FundingArbitrage] Hedge entry price: ${hedgeEntryPrice}`);
+    if (needPrimaryPrice || needHedgePrice) {
+      console.log(`[FundingArbitrage] ⚡ Fetching entry prices in parallel...`);
+      const priceStartTime = Date.now();
+
+      const [primaryPosition, hedgePosition] = await Promise.all([
+        needPrimaryPrice ? primaryExchange.getPosition(primarySymbol) : Promise.resolve(null),
+        needHedgePrice ? hedgeExchange.getPosition(hedgeSymbol) : Promise.resolve(null),
+      ]);
+
+      if (needPrimaryPrice && primaryPosition) {
+        entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
+        console.log(`[FundingArbitrage] Primary entry price: ${entryPrice}`);
+      }
+
+      if (needHedgePrice && hedgePosition) {
+        hedgeEntryPrice = parseFloat(hedgePosition.avgPrice || hedgePosition.entryPrice || '0');
+        console.log(`[FundingArbitrage] Hedge entry price: ${hedgeEntryPrice}`);
+      }
+
+      const priceFetchTime = Date.now() - priceStartTime;
+      console.log(`[FundingArbitrage] ✓ Entry prices fetched in ${priceFetchTime}ms (parallel)`);
     }
 
     // Calculate funding earned (funding rate * position value)
@@ -623,12 +917,6 @@ export class FundingArbitrageService extends EventEmitter {
     const { symbol, primaryExchange, nextFundingTime } = subscription;
 
     try {
-      // Check if exchange supports transaction log (only real exchanges, not mock)
-      if (primaryExchange.exchangeName === 'MOCK') {
-        console.log(`[FundingArbitrage] Mock exchange - skipping funding verification`);
-        return null; // Use calculated funding for mock
-      }
-
       // Cast to BybitConnector to access getTransactionLog
       const bybitConnector = primaryExchange as any;
       if (typeof bybitConnector.getTransactionLog !== 'function') {
@@ -694,6 +982,10 @@ export class FundingArbitrageService extends EventEmitter {
   ): Promise<void> {
     const { symbol, quantity, positionType, primaryExchange, hedgeExchange } = subscription;
 
+    // Convert symbol to exchange-specific format
+    const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
+    const hedgeSymbol = this.convertSymbolForExchange(symbol, hedgeExchange.exchangeName);
+
     console.log(`[FundingArbitrage] Closing positions for ${symbol}...`);
 
     // Close positions (opposite direction from entry)
@@ -702,7 +994,7 @@ export class FundingArbitrageService extends EventEmitter {
 
     // 1. Close primary position using reduce-only market order
     const primaryCloseOrder = await primaryExchange.placeReduceOnlyOrder(
-      symbol,
+      primarySymbol,
       primaryCloseSide,
       quantity
     );
@@ -711,7 +1003,7 @@ export class FundingArbitrageService extends EventEmitter {
 
     // 2. Close hedge position using reduce-only market order
     const hedgeCloseOrder = await hedgeExchange.placeReduceOnlyOrder(
-      symbol,
+      hedgeSymbol,
       hedgeCloseSide,
       quantity
     );
@@ -728,7 +1020,7 @@ export class FundingArbitrageService extends EventEmitter {
     if (primaryExitPrice === 0) {
       console.log(`[FundingArbitrage] Could not get exit price from order, fetching market price...`);
       try {
-        const position = await primaryExchange.getPosition(symbol);
+        const position = await primaryExchange.getPosition(primarySymbol);
         // Position should be closed now, use mark price as exit price
         primaryExitPrice = parseFloat(position.markPrice || position.lastPrice || '0');
         console.log(`[FundingArbitrage] Using market price for primary exit: ${primaryExitPrice}`);
@@ -741,7 +1033,7 @@ export class FundingArbitrageService extends EventEmitter {
     if (hedgeExitPrice === 0) {
       console.log(`[FundingArbitrage] Could not get hedge exit price from order, fetching market price...`);
       try {
-        const position = await hedgeExchange.getPosition(symbol);
+        const position = await hedgeExchange.getPosition(hedgeSymbol);
         hedgeExitPrice = parseFloat(position.markPrice || position.lastPrice || '0');
         console.log(`[FundingArbitrage] Using market price for hedge exit: ${hedgeExitPrice}`);
       } catch (error) {
@@ -857,69 +1149,35 @@ export class FundingArbitrageService extends EventEmitter {
         throw new Error(`Subscription ${subscriptionId} not found`);
       }
 
-      // Recreate exchange connectors from stored credential ID
-      const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
-      const credential = await ExchangeCredentialsService.getCredentialById(
-        dbSub.userId,
-        dbSub.primaryCredentialId
-      );
+      // Use cached connectors for INSTANT execution (FAST PATH)
+      console.log(`[FundingArbitrage] Loading subscription from database, attempting to use cached connectors...`);
+      const startTime = Date.now();
 
-      if (!credential) {
-        throw new Error(`Credential ${dbSub.primaryCredentialId} not found`);
-      }
+      let primaryConnector: BaseExchangeConnector;
+      let hedgeConnector: BaseExchangeConnector;
 
-      // Initialize primary exchange connector
-      let primaryConnector;
-      if (credential.exchange === 'BYBIT') {
-        const { BybitConnector } = await import('@/connectors/bybit.connector');
-        primaryConnector = new BybitConnector(
-          credential.apiKey,
-          credential.apiSecret,
-          credential.environment === 'TESTNET'
-        );
-        await primaryConnector.initialize();
-      } else {
-        throw new Error(`Exchange ${credential.exchange} not supported`);
-      }
-
-      // Initialize hedge exchange connector
-      let hedgeConnector;
-      if (dbSub.hedgeExchange === 'MOCK' || !dbSub.hedgeCredentialId) {
-        // Use mock exchange for testing or when no hedge credential provided
-        const { MockExchangeConnector } = await import('@/connectors/mock-exchange.connector');
-        hedgeConnector = new MockExchangeConnector();
-        await hedgeConnector.initialize();
-      } else {
-        // Load hedge exchange credentials
-        const hedgeCredential = await ExchangeCredentialsService.getCredentialById(
+      try {
+        // Fast path: use cached connectors
+        primaryConnector = await this.getOrCreateConnector(
           dbSub.userId,
-          dbSub.hedgeCredentialId
+          dbSub.primaryCredentialId,
+          false // Use cached if available
         );
 
-        if (!hedgeCredential) {
-          throw new Error(`Hedge credential ${dbSub.hedgeCredentialId} not found`);
+        if (!dbSub.hedgeCredentialId) {
+          throw new Error(`No hedge credential for subscription ${dbSub.id}`);
         }
 
-        // Initialize hedge exchange connector based on exchange type
-        if (hedgeCredential.exchange === 'BYBIT') {
-          const { BybitConnector } = await import('@/connectors/bybit.connector');
-          hedgeConnector = new BybitConnector(
-            hedgeCredential.apiKey,
-            hedgeCredential.apiSecret,
-            hedgeCredential.environment === 'TESTNET'
-          );
-          await hedgeConnector.initialize();
-        } else if (hedgeCredential.exchange === 'BINGX') {
-          const { BingXConnector } = await import('@/connectors/bingx.connector');
-          hedgeConnector = new BingXConnector(
-            hedgeCredential.apiKey,
-            hedgeCredential.apiSecret,
-            hedgeCredential.environment === 'TESTNET'
-          );
-          await hedgeConnector.initialize();
-        } else {
-          throw new Error(`Hedge exchange ${hedgeCredential.exchange} not supported`);
-        }
+        hedgeConnector = await this.getOrCreateConnector(
+          dbSub.userId,
+          dbSub.hedgeCredentialId,
+          false // Use cached if available
+        );
+
+        const loadTime = Date.now() - startTime;
+        console.log(`[FundingArbitrage] ✓ Connectors loaded in ${loadTime}ms (cached: ${loadTime < 1000})`);
+      } catch (error: any) {
+        throw new Error(`Failed to initialize connectors: ${error.message}`);
       }
 
       // Recreate subscription object
@@ -939,6 +1197,12 @@ export class FundingArbitrageService extends EventEmitter {
         hedgeCredentialId: dbSub.hedgeCredentialId || undefined,
       };
 
+      // Add subscription references to cached connectors
+      this.addConnectorReference(dbSub.primaryCredentialId, subscriptionId, dbSub.userId);
+      if (dbSub.hedgeCredentialId) {
+        this.addConnectorReference(dbSub.hedgeCredentialId, subscriptionId, dbSub.userId);
+      }
+
       // Add to memory
       this.subscriptions.set(subscriptionId, subscription);
     }
@@ -957,7 +1221,7 @@ export class FundingArbitrageService extends EventEmitter {
     // Update status and execute
     subscription.status = 'executing';
 
-    console.log(`[FundingArbitrage] Manually executing subscription ${subscriptionId}`);
+    console.log(`[FundingArbitrage] ⚡ Executing subscription ${subscriptionId.substring(0, 8)} with cached connectors`);
 
     try {
       await this.executeArbitrageOrders(subscription);

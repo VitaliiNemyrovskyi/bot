@@ -45,6 +45,7 @@ export class TranslationService {
       'nav.profile': 'Profile',
       'nav.gridTrading': 'Grid Trading',
       'nav.manualTrading': 'Manual Trading',
+      'nav.apiTester': 'API Tester',
       'footer.copyright': '© 2025 Authentication App. Built with Angular 18.',
       'loading': 'Loading...',
       // Login/Register
@@ -563,6 +564,7 @@ export class TranslationService {
       'nav.profile': 'Perfil',
       'nav.gridTrading': 'Trading de Grid',
       'nav.manualTrading': 'Trading Manual',
+      'nav.apiTester': 'Probador de API',
       'footer.copyright': '© 2025 Aplicación de Autenticación. Construido con Angular 18.',
       'loading': 'Cargando...',
       // Login/Register
@@ -1040,6 +1042,7 @@ export class TranslationService {
       'nav.profile': 'Profil',
       'nav.gridTrading': 'Trading Grid',
       'nav.manualTrading': 'Trading Manuel',
+      'nav.apiTester': 'Testeur d\'API',
       'footer.copyright': '© 2025 Application d\'Authentification. Construit avec Angular 18.',
       'loading': 'Chargement...',
       // Login/Register
@@ -1517,6 +1520,7 @@ export class TranslationService {
       'nav.profile': 'Профиль',
       'nav.gridTrading': 'Grid Trading',
       'nav.manualTrading': 'Ручная Торговля',
+      'nav.apiTester': 'Тестер API',
       'footer.copyright': '© 2025 Приложение аутентификации. Создано с Angular 18.',
       'loading': 'Загрузка...',
       // Login/Register
@@ -1994,6 +1998,7 @@ export class TranslationService {
       'nav.profile': 'Профіль',
       'nav.gridTrading': 'Grid Trading',
       'nav.manualTrading': 'Ручна Торгівля',
+      'nav.apiTester': 'Тестер API',
       'footer.copyright': '© 2025 Застосунок автентифікації. Створено з Angular 18.',
       'loading': 'Завантаження...',
       // Login/Register

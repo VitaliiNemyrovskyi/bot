@@ -161,6 +161,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   arbitrageError = signal<string | null>(null);
   showArbitrageSection = signal<boolean>(true);
   arbitrageFiltersCollapsed = signal<boolean>(false);
+  arbitrageSearchQuery = signal<string>(''); // Symbol search filter for arbitrage table
   minSpreadThreshold = signal<number | null>(null); // Minimum spread threshold in percentage
 
   // Subscription settings
@@ -323,11 +324,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   });
 
   /**
-   * Filtered arbitrage opportunities based on spread threshold
+   * Filtered arbitrage opportunities based on symbol search and spread threshold
    */
   filteredArbitrageOpportunities = computed(() => {
     let opportunities = [...this.arbitrageOpportunities()];
 
+    // Filter by symbol search query
+    const search = this.arbitrageSearchQuery().trim().toUpperCase();
+    if (search) {
+      opportunities = opportunities.filter(opp =>
+        opp.symbol.toUpperCase().includes(search)
+      );
+    }
+
+    // Filter by minimum spread threshold
     const minSpread = this.minSpreadThreshold();
     if (minSpread !== null && minSpread > 0) {
       opportunities = opportunities.filter(opp => {
@@ -347,6 +357,32 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     const symbols = new Set(subs.map(sub => sub.symbol));
     console.log('[subscribedSymbols] Computed signal updated. Active symbols:', Array.from(symbols));
     return symbols;
+  });
+
+  /**
+   * Position validation error - tracks why position calculation might fail
+   */
+  positionValidationError = computed(() => {
+    const ticker = this.selectedTicker();
+    const positionSizeUsdt = this.positionSizeUsdt();
+
+    if (!ticker) {
+      return 'No symbol selected';
+    }
+
+    if (!positionSizeUsdt || positionSizeUsdt <= 0) {
+      return 'Invalid position size';
+    }
+
+    // Check if price data is available
+    const lastPrice = parseFloat(ticker.lastPrice) || 0;
+    const markPrice = parseFloat(ticker.markPrice) || 0;
+
+    if (lastPrice === 0 && markPrice === 0) {
+      return `No price data available for ${ticker.symbol}. This symbol may not be actively traded or may be delisted.`;
+    }
+
+    return null;
   });
 
   /**
@@ -699,6 +735,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   clearArbitrageFilters(): void {
+    this.arbitrageSearchQuery.set('');
     this.minSpreadThreshold.set(null);
   }
 
@@ -1244,6 +1281,17 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             const completedDealsList: CompletedDeal[] = [];
 
             response.data.forEach((sub: any) => {
+              // Basic validation - symbol must be a non-empty string ending with USDT
+              const isValidSymbol = sub.symbol &&
+                                   typeof sub.symbol === 'string' &&
+                                   sub.symbol.length > 0 &&
+                                   (sub.symbol.endsWith('USDT') || sub.symbol.endsWith('-USDT'));
+
+              if (!isValidSymbol) {
+                console.warn(`[loadSubscriptions] Skipping subscription with invalid symbol: ${sub.symbol} (ID: ${sub.subscriptionId})`);
+                return; // Skip this subscription
+              }
+
               // Check if subscription is completed
               if (sub.status === 'COMPLETED' && sub.entryPrice) {
                 completedDealsList.push({
@@ -1311,10 +1359,15 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       const fundingRate = parseFloat(ticker.fundingRate);
       const positionType = fundingRate < 0 ? 'long' : 'short';
 
+      // Debug: Log ticker price data
+      console.log(`[Subscribe ${ticker.symbol}] Price data - lastPrice: ${ticker.lastPrice}, markPrice: ${ticker.markPrice}`);
+
       // Calculate quantity from position size in USDT
       const positionCalc = this.positionCalculation();
       if (!positionCalc) {
-        this.showNotification('Unable to calculate position details. Please check your input.', 'error');
+        const errorMessage = this.positionValidationError() || 'Unable to calculate position details. Please check your input.';
+        console.log(`[Subscribe ${ticker.symbol}] Validation error: ${errorMessage}`);
+        this.showNotification(errorMessage, 'error');
         return;
       }
 

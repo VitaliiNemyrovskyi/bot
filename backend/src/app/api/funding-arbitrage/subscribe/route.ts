@@ -3,7 +3,6 @@ import { AuthService } from '@/lib/auth';
 import { fundingArbitrageService } from '@/services/funding-arbitrage.service';
 import { BybitConnector } from '@/connectors/bybit.connector';
 import { BingXConnector } from '@/connectors/bingx.connector';
-import { MockExchangeConnector } from '@/connectors/mock-exchange.connector';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import prisma from '@/lib/prisma';
 
@@ -20,8 +19,8 @@ import prisma from '@/lib/prisma';
  *   "positionType": "long" | "short",
  *   "quantity": 0.01,
  *   "primaryCredentialId": "cred_123",
- *   "hedgeExchange": "MOCK" | "BYBIT" | "BINGX",
- *   "hedgeCredentialId": "cred_456" (optional, required for non-MOCK exchanges)
+ *   "hedgeExchange": "BYBIT" | "BINGX",
+ *   "hedgeCredentialId": "cred_456" (required)
  * }
  */
 export async function POST(request: NextRequest) {
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest) {
       positionType,
       quantity,
       primaryCredentialId,
-      hedgeExchange = 'MOCK',
+      hedgeExchange,
       hedgeCredentialId,
       executionDelay = 5,
     } = body;
@@ -99,192 +98,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Initialize primary exchange connector
-    let primaryConnector;
-    if (primaryCred.exchange === 'BYBIT') {
-      primaryConnector = new BybitConnector(
-        primaryCred.apiKey,
-        primaryCred.apiSecret,
-        primaryCred.environment === 'TESTNET'
-      );
-    } else if (primaryCred.exchange === 'BINGX') {
-      primaryConnector = new BingXConnector(
-        primaryCred.apiKey,
-        primaryCred.apiSecret,
-        primaryCred.environment === 'TESTNET'
-      );
-    } else {
+    // 5. Validate hedge exchange and credentials
+    if (!hedgeExchange || !hedgeCredentialId) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Unsupported exchange',
-          message: `Exchange ${primaryCred.exchange} not yet supported`,
+          error: 'Missing hedge exchange configuration',
+          message: 'hedgeExchange and hedgeCredentialId are required',
           timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
     }
 
-    await primaryConnector.initialize();
+    // Verify hedge credentials exist
+    const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+      userId,
+      hedgeCredentialId
+    );
 
-    // 6. Initialize hedge exchange connector
-    let hedgeConnector;
-    if (hedgeExchange === 'MOCK') {
-      // Use MockExchangeConnector as fallback or for testing
-      hedgeConnector = new MockExchangeConnector();
-      await hedgeConnector.initialize();
-    } else {
-      // Real exchange - validate hedgeCredentialId is provided
-      if (!hedgeCredentialId) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Missing hedge credential',
-            message: `hedgeCredentialId is required when hedgeExchange is not MOCK`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 400 }
-        );
-      }
-
-      // Load hedge exchange credentials
-      const hedgeCred = await ExchangeCredentialsService.getCredentialById(
-        userId,
-        hedgeCredentialId
-      );
-
-      if (!hedgeCred) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Credential not found',
-            message: `Hedge credential ${hedgeCredentialId} not found`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 404 }
-        );
-      }
-
-      // Initialize hedge exchange connector based on exchange type
-      if (hedgeCred.exchange === 'BYBIT') {
-        hedgeConnector = new BybitConnector(
-          hedgeCred.apiKey,
-          hedgeCred.apiSecret,
-          hedgeCred.environment === 'TESTNET'
-        );
-      } else if (hedgeCred.exchange === 'BINGX') {
-        hedgeConnector = new BingXConnector(
-          hedgeCred.apiKey,
-          hedgeCred.apiSecret,
-          hedgeCred.environment === 'TESTNET'
-        );
-      } else {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Unsupported hedge exchange',
-            message: `Hedge exchange ${hedgeCred.exchange} not yet supported`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 400 }
-        );
-      }
-
-      await hedgeConnector.initialize();
-    }
-
-    // 6.5. Validate balances on both exchanges
-    try {
-      // Check primary exchange balance
-      const primaryBalance = await primaryConnector.getBalance();
-      let primaryAvailable = 0;
-
-      // Extract available balance based on exchange type
-      if (primaryCred.exchange === 'BYBIT') {
-        // Bybit returns: { list: [{ totalAvailableBalance, totalWalletBalance, ... }] }
-        if (primaryBalance.list && primaryBalance.list.length > 0) {
-          primaryAvailable = parseFloat(primaryBalance.list[0].totalAvailableBalance || '0');
-        }
-      } else if (primaryCred.exchange === 'BINGX') {
-        // BingX returns: { balance: { balance: '1234.56', availableMargin: '1234.56' } }
-        primaryAvailable = parseFloat(primaryBalance.balance?.availableMargin || primaryBalance.balance?.balance || '0');
-      }
-
-      // Check hedge exchange balance (skip for MOCK)
-      let hedgeAvailable = Infinity; // Mock exchange has infinite balance
-      if (hedgeExchange !== 'MOCK') {
-        const hedgeBalance = await hedgeConnector.getBalance();
-
-        // Extract balance based on hedge exchange type
-        if (hedgeExchange === 'BYBIT') {
-          // Bybit returns: { list: [{ totalAvailableBalance, ... }] }
-          if (hedgeBalance.list && hedgeBalance.list.length > 0) {
-            hedgeAvailable = parseFloat(hedgeBalance.list[0].totalAvailableBalance || '0');
-          }
-        } else if (hedgeExchange === 'BINGX') {
-          // BingX returns: { balance: { balance: '1234.56', availableMargin: '1234.56' } }
-          hedgeAvailable = parseFloat(hedgeBalance.balance?.availableMargin || hedgeBalance.balance?.balance || '0');
-        }
-      }
-
-      // Calculate required balance (approximate)
-      // For a position, we need: quantity * price / leverage
-      // Assuming minimum $10 required per exchange as a safety buffer
-      const minRequiredBalance = 10;
-
-      if (primaryAvailable < minRequiredBalance) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Insufficient balance',
-            message: `Primary exchange (${primaryCred.exchange}) has insufficient balance: $${primaryAvailable.toFixed(2)}. Minimum required: $${minRequiredBalance.toFixed(2)}`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 400 }
-        );
-      }
-
-      if (hedgeExchange !== 'MOCK' && hedgeAvailable < minRequiredBalance) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Insufficient balance',
-            message: `Hedge exchange (${hedgeExchange}) has insufficient balance: $${hedgeAvailable.toFixed(2)}. Minimum required: $${minRequiredBalance.toFixed(2)}`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 400 }
-        );
-      }
-
-      console.log(`[FundingArbitrageAPI] Balance validation passed:`, {
-        primary: `${primaryCred.exchange}: $${primaryAvailable.toFixed(2)}`,
-        hedge: hedgeExchange === 'MOCK' ? 'MOCK (unlimited)' : `${hedgeExchange}: $${hedgeAvailable.toFixed(2)}`
-      });
-    } catch (balanceError: any) {
-      console.error('[FundingArbitrageAPI] Failed to fetch balances:', balanceError.message);
+    if (!hedgeCred) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Balance check failed',
-          message: `Could not verify account balances: ${balanceError.message}`,
+          error: 'Credential not found',
+          message: `Hedge credential ${hedgeCredentialId} not found`,
           timestamp: new Date().toISOString(),
         },
-        { status: 500 }
+        { status: 404 }
       );
     }
 
-    // 7. Create subscription
-    const subscription = await fundingArbitrageService.subscribe({
+    // 6. Create subscription - let the SERVICE create and cache the connectors
+    console.log('[FundingArbitrageAPI] Creating subscription with credential IDs (service will cache connectors)');
+    const subscription = await fundingArbitrageService.subscribeWithCredentials({
       symbol,
       fundingRate,
       nextFundingTime,
       positionType,
       quantity,
-      primaryExchange: primaryConnector,
-      hedgeExchange: hedgeConnector,
       userId,
       primaryCredentialId,
       hedgeCredentialId,
+      hedgeExchange,
       executionDelay,
     });
 
@@ -388,6 +244,262 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         error: 'Failed to get subscriptions',
+        message: error.message || 'An unexpected error occurred',
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PUT /api/funding-arbitrage/subscribe
+ *
+ * Update an existing funding arbitrage subscription
+ *
+ * Query parameters:
+ * - subscriptionId: string
+ *
+ * Request body: same as POST
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    // 1. Authenticate user
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 401 }
+      );
+    }
+
+    const userId = authResult.user.userId;
+
+    // 2. Get subscription ID from query params
+    const { searchParams } = new URL(request.url);
+    const subscriptionId = searchParams.get('subscriptionId');
+
+    if (!subscriptionId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing subscription ID',
+          message: 'subscriptionId query parameter is required',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Verify subscription exists and belongs to user
+    const existingSubscription = await prisma.fundingArbitrageSubscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!existingSubscription) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Subscription not found',
+          message: `Subscription ${subscriptionId} not found`,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 404 }
+      );
+    }
+
+    if (existingSubscription.userId !== userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized',
+          message: 'You do not have permission to update this subscription',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Parse request body
+    const body = await request.json();
+    const {
+      symbol,
+      fundingRate,
+      nextFundingTime,
+      positionType,
+      quantity,
+      primaryCredentialId,
+      hedgeExchange,
+      hedgeCredentialId,
+      executionDelay = 5,
+    } = body;
+
+    // 5. Validate inputs
+    if (!symbol || !fundingRate || !nextFundingTime || !positionType || !quantity || !primaryCredentialId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required fields',
+          message: 'symbol, fundingRate, nextFundingTime, positionType, quantity, and primaryCredentialId are required',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    if (positionType !== 'long' && positionType !== 'short') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid position type',
+          message: 'positionType must be either "long" or "short"',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    // 6. Validate credentials exist
+    const primaryCred = await ExchangeCredentialsService.getCredentialById(
+      userId,
+      primaryCredentialId
+    );
+
+    if (!primaryCred) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Credential not found',
+          message: `Primary credential ${primaryCredentialId} not found`,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 404 }
+      );
+    }
+
+    if (!hedgeExchange || !hedgeCredentialId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing hedge exchange configuration',
+          message: 'hedgeExchange and hedgeCredentialId are required',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+      userId,
+      hedgeCredentialId
+    );
+
+    if (!hedgeCred) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Credential not found',
+          message: `Hedge credential ${hedgeCredentialId} not found`,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 404 }
+      );
+    }
+
+    // 7. Update the subscription in the database
+    const updatedSubscription = await prisma.fundingArbitrageSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        symbol,
+        fundingRate,
+        nextFundingTime: new Date(nextFundingTime),
+        positionType,
+        quantity,
+        primaryCredentialId,
+        hedgeExchange,
+        hedgeCredentialId,
+        // Reset status to PENDING if it was ERROR/COMPLETED
+        status: existingSubscription.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING',
+        errorMessage: null,
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log(`[FundingArbitrageAPI] Subscription updated:`, updatedSubscription.id);
+
+    // 8. If subscription was active, we need to restart it with new parameters
+    if (existingSubscription.status === 'ACTIVE') {
+      // Cancel the old subscription and create a new one
+      await fundingArbitrageService.unsubscribe(subscriptionId);
+
+      // Create new subscription with updated parameters
+      const newSubscription = await fundingArbitrageService.subscribeWithCredentials({
+        symbol,
+        fundingRate,
+        nextFundingTime,
+        positionType,
+        quantity,
+        userId,
+        primaryCredentialId,
+        hedgeCredentialId,
+        hedgeExchange,
+        executionDelay,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            subscriptionId: newSubscription.id,
+            symbol: newSubscription.symbol,
+            fundingRate: newSubscription.fundingRate,
+            nextFundingTime: newSubscription.nextFundingTime,
+            positionType: newSubscription.positionType,
+            quantity: newSubscription.quantity,
+            status: newSubscription.status,
+            createdAt: newSubscription.createdAt,
+          },
+          message: 'Subscription updated and restarted successfully',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 200 }
+      );
+    }
+
+    // 9. Return response for non-active subscriptions
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          subscriptionId: updatedSubscription.id,
+          symbol: updatedSubscription.symbol,
+          fundingRate: updatedSubscription.fundingRate,
+          nextFundingTime: updatedSubscription.nextFundingTime,
+          positionType: updatedSubscription.positionType,
+          quantity: updatedSubscription.quantity,
+          status: updatedSubscription.status,
+          createdAt: updatedSubscription.createdAt,
+        },
+        message: 'Subscription updated successfully',
+        timestamp: new Date().toISOString(),
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error('[FundingArbitrageAPI] Error updating subscription:', {
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update subscription',
         message: error.message || 'An unexpected error occurred',
         timestamp: new Date().toISOString(),
       },

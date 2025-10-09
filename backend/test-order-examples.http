@@ -1,0 +1,374 @@
+### Test Order Endpoint - Example Requests
+### Use with REST Client VS Code extension or convert to cURL/Postman
+
+### Variables (update these with your values)
+@baseUrl = http://localhost:3000
+@authToken = YOUR_JWT_TOKEN_HERE
+@bingxCredentialId = YOUR_BINGX_CREDENTIAL_ID
+@bybitCredentialId = YOUR_BYBIT_CREDENTIAL_ID
+
+###############################################################################
+# BINGX EXAMPLES
+###############################################################################
+
+### 1. BingX - Test Market Order (BUY LONG) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 2. BingX - Test Market Order (SELL SHORT) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "ETH-USDT",
+    "side": "SELL",
+    "positionSide": "SHORT",
+    "type": "MARKET",
+    "quantity": 0.01
+  }
+}
+
+### 3. BingX - Test Limit Order (BUY LONG) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "LIMIT",
+    "quantity": 0.001,
+    "price": 90000
+  }
+}
+
+### 4. BingX - Test Limit Order (SELL SHORT) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "ETH-USDT",
+    "side": "SELL",
+    "positionSide": "SHORT",
+    "type": "LIMIT",
+    "quantity": 0.01,
+    "price": 3000
+  }
+}
+
+### 5. BingX - REAL Market Order (BUY LONG) - WILL EXECUTE!
+# WARNING: This will execute a real order!
+# POST {{baseUrl}}/api/test-order
+# Content-Type: application/json
+# Authorization: Bearer {{authToken}}
+#
+# {
+#   "exchange": "BINGX",
+#   "credentialId": "{{bingxCredentialId}}",
+#   "testMode": false,
+#   "order": {
+#     "symbol": "BTC-USDT",
+#     "side": "BUY",
+#     "positionSide": "LONG",
+#     "type": "MARKET",
+#     "quantity": 0.001
+#   }
+# }
+
+### 6. BingX - Test with Small Quantity (will be adjusted)
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.0005
+  }
+}
+
+###############################################################################
+# BYBIT EXAMPLES
+###############################################################################
+
+### 7. Bybit - Test Market Order (BUY) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BYBIT",
+  "credentialId": "{{bybitCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTCUSDT",
+    "side": "BUY",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 8. Bybit - Test Market Order (SELL) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BYBIT",
+  "credentialId": "{{bybitCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "ETHUSDT",
+    "side": "SELL",
+    "type": "MARKET",
+    "quantity": 0.01
+  }
+}
+
+### 9. Bybit - Test Limit Order (BUY) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BYBIT",
+  "credentialId": "{{bybitCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTCUSDT",
+    "side": "BUY",
+    "type": "LIMIT",
+    "quantity": 0.001,
+    "price": 90000
+  }
+}
+
+### 10. Bybit - Test Limit Order (SELL) - No Execution
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BYBIT",
+  "credentialId": "{{bybitCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "ETHUSDT",
+    "side": "SELL",
+    "type": "LIMIT",
+    "quantity": 0.01,
+    "price": 3000
+  }
+}
+
+### 11. Bybit - REAL Market Order (BUY) - WILL EXECUTE!
+# WARNING: This will execute a real order!
+# POST {{baseUrl}}/api/test-order
+# Content-Type: application/json
+# Authorization: Bearer {{authToken}}
+#
+# {
+#   "exchange": "BYBIT",
+#   "credentialId": "{{bybitCredentialId}}",
+#   "testMode": false,
+#   "order": {
+#     "symbol": "BTCUSDT",
+#     "side": "BUY",
+#     "type": "MARKET",
+#     "quantity": 0.001
+#   }
+# }
+
+###############################################################################
+# ERROR TESTING
+###############################################################################
+
+### 12. Missing Exchange Field
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 13. Missing Order Object
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true
+}
+
+### 14. Invalid Symbol (will fail at exchange)
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "INVALID-SYMBOL",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 15. LIMIT Order Missing Price
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "LIMIT",
+    "quantity": 0.001
+  }
+}
+
+### 16. Invalid Credential ID
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "invalid-credential-id",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 17. No Authentication Token
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+###############################################################################
+# EDGE CASES
+###############################################################################
+
+### 18. BingX - Auto-derive Position Side from Order Side
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "type": "MARKET",
+    "quantity": 0.001
+  }
+}
+
+### 19. Very Small Quantity (test adjustment logic)
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "BTC-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 0.00001
+  }
+}
+
+### 20. Multiple Altcoins - Test Different Trading Rules
+POST {{baseUrl}}/api/test-order
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "exchange": "BINGX",
+  "credentialId": "{{bingxCredentialId}}",
+  "testMode": true,
+  "order": {
+    "symbol": "DOGE-USDT",
+    "side": "BUY",
+    "positionSide": "LONG",
+    "type": "MARKET",
+    "quantity": 100
+  }
+}

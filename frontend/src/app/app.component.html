@@ -48,6 +48,7 @@
                 <a routerLink="/trading/funding-rates" routerLinkActive="active" class="nav-link">{{ translate('Funding') }}</a>
                 <a routerLink="/trading" routerLinkActive="active" class="nav-link">🤖 {{ translate('nav.gridTrading') }}</a>
                 <a routerLink="/trading/manual" routerLinkActive="active" class="nav-link">📊 {{ translate('nav.manualTrading') }}</a>
+                <a routerLink="/testing/api-tester" routerLinkActive="active" class="nav-link">🧪 {{ translate('nav.apiTester') }}</a>
                 <a routerLink="/profile" routerLinkActive="active" class="nav-link">{{ translate('nav.profile') }}</a>
               </div>
             }
@@ -94,6 +95,13 @@
               <path d="M2 4h20M2 10h20M2 16h20M2 22h20" stroke="currentColor" stroke-width="2"/>
             </svg>
             📊 {{ translate('nav.manualTrading') }}
+          </a>
+
+          <a routerLink="/testing/api-tester" routerLinkActive="active" class="mobile-nav-link" (click)="closeMobileMenu()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            🧪 {{ translate('nav.apiTester') }}
           </a>
 
           <a routerLink="/profile" routerLinkActive="active" class="mobile-nav-link" (click)="closeMobileMenu()">

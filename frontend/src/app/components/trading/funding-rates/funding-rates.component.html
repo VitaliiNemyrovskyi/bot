@@ -31,7 +31,19 @@
       <div class="card-header-content">
         <ui-card-title>{{ translate('arbitrage.title') }}</ui-card-title>
         <div class="header-actions">
-          <!-- Filter Input -->
+          <!-- Symbol Search Input -->
+          <div class="filter-group-inline">
+            <label class="filter-label-inline">Symbol:</label>
+            <input
+              type="text"
+              class="filter-input-inline"
+              [(ngModel)]="arbitrageSearchQuery"
+              placeholder="e.g., BTC-USDT"
+              style="min-width: 140px;"
+            />
+          </div>
+
+          <!-- Spread Filter Input -->
           <div class="filter-group-inline">
             <label class="filter-label-inline">{{ translate('arbitrage.filters.minSpread') }}:</label>
             <input
@@ -42,16 +54,18 @@
               min="0"
               placeholder="{{ translate('arbitrage.filters.spreadExample') }}"
             />
-            @if (minSpreadThreshold() !== null && minSpreadThreshold()! > 0) {
-              <ui-button
-                variant="ghost"
-                size="small"
-                (clicked)="clearArbitrageFilters()"
-                aria-label="Clear filters">
-                <span>✕</span>
-              </ui-button>
-            }
           </div>
+
+          <!-- Clear Filters Button -->
+          @if (arbitrageSearchQuery() || (minSpreadThreshold() !== null && minSpreadThreshold()! > 0)) {
+            <ui-button
+              variant="ghost"
+              size="small"
+              (clicked)="clearArbitrageFilters()"
+              aria-label="Clear filters">
+              <span>✕ Clear</span>
+            </ui-button>
+          }
 
           <ui-button
             variant="ghost"
@@ -213,7 +227,13 @@
                         <span>⚡ {{ translate('fundingRates.actions.subscribe') }}</span>
                       </ui-button>
                     } @else {
-                      <span class="opportunity-badge neutral">{{ translate('arbitrage.table.no') }}</span>
+                      <ui-button
+                        variant="ghost"
+                        size="small"
+                        (clicked)="subscribeToArbitrage(opportunity)"
+                        className="action-btn subscribe-arbitrage-btn">
+                        <span>{{ translate('fundingRates.actions.subscribe') }}</span>
+                      </ui-button>
                     }
                   </td>
                 </tr>

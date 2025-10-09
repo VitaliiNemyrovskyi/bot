@@ -621,8 +621,8 @@ model FundingArbitrageSubscription {
   // Exchange configuration
   primaryExchange     String // Exchange name (e.g., "BYBIT_TESTNET")
   primaryCredentialId String // Reference to ExchangeCredentials
-  hedgeExchange       String // Hedge exchange (e.g., "MOCK", "BINGX")
-  hedgeCredentialId   String? // Reference to ExchangeCredentials for hedge (optional for MOCK)
+  hedgeExchange       String // Hedge exchange (e.g., "BINGX", "BYBIT")
+  hedgeCredentialId   String // Reference to ExchangeCredentials for hedge
 
   // Status and execution
   status       FundingArbitrageStatus @default(ACTIVE)
@@ -661,4 +661,43 @@ model FundingArbitrageSubscription {
   @@index([symbol])
   @@index([primaryExchange])
   @@map("funding_arbitrage_subscriptions")
+}
+
+model ConnectorStateCache {
+  id String @id @default(cuid())
+
+  // Cache key: userId_credentialId
+  cacheKey String @unique
+
+  // User and credential reference
+  userId       String
+  credentialId String
+
+  // Exchange information
+  exchange    String // "BYBIT", "BINGX", etc.
+  environment String // "TESTNET", "MAINNET"
+
+  // Cached connector state
+  timeOffset   Int      @default(0) // Time offset in milliseconds
+  lastSyncTime DateTime // When time was last synchronized
+
+  // Cache metadata
+  isValid   Boolean  @default(true) // Whether cache is still valid
+  expiresAt DateTime // Cache expiration time (TTL: 15 minutes)
+  hitCount  Int      @default(0) // Number of times cache was used
+
+  // Additional state that can be cached
+  metadata Json? // Additional exchange-specific state
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes for efficient queries
+  @@index([cacheKey])
+  @@index([userId])
+  @@index([credentialId])
+  @@index([expiresAt])
+  @@index([userId, exchange])
+  @@map("connector_state_cache")
 }

@@ -10,12 +10,18 @@ import {
   BingXApiResponse,
   BingXWalletBalance
 } from '../types/bingx';
+import { ConnectorStateCacheService } from '@/services/connector-state-cache.service';
 
 /**
  * BingX API Service
  *
  * Implements authentication and API calls for BingX Perpetual Futures
  * Documentation: https://bingx-api.github.io/docs/
+ *
+ * PERFORMANCE OPTIMIZATION:
+ * - Supports persistent time sync caching via PostgreSQL
+ * - Eliminates 1-2s initialization delay in serverless environments
+ * - Cache TTL: 15 minutes
  */
 export class BingXService {
   private apiKey: string;
@@ -28,19 +34,32 @@ export class BingXService {
   private readonly SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   private readonly LARGE_OFFSET_WARNING_MS = 1000; // 1 second
 
-  constructor(config: BingXConfig) {
+  // Cache support for persistent time sync across serverless invocations
+  private userId?: string;
+  private credentialId?: string;
+  private environment: 'TESTNET' | 'MAINNET';
+
+  // Position mode cache (Hedge Mode vs One-Way Mode)
+  private isHedgeMode: boolean | null = null;
+
+  constructor(config: BingXConfig & { userId?: string; credentialId?: string }) {
     // CRITICAL: Trim API keys to remove any whitespace, newlines, or hidden characters
     // This is a common source of signature verification failures
     this.apiKey = config.apiKey.trim();
     this.apiSecret = config.apiSecret.trim();
     this.enableRateLimit = config.enableRateLimit ?? true;
+    this.userId = config.userId;
+    this.credentialId = config.credentialId;
+    this.environment = config.testnet ? 'TESTNET' : 'MAINNET';
 
     // Log API key/secret lengths for debugging (after trimming)
     console.log('[BingXService] Initialized with credentials:', {
       apiKeyLength: this.apiKey.length,
       apiSecretLength: this.apiSecret.length,
       apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
-      apiSecretPrefix: this.apiSecret.substring(0, 8) + '...'
+      apiSecretPrefix: this.apiSecret.substring(0, 8) + '...',
+      environment: this.environment,
+      cacheEnabled: !!(this.userId && this.credentialId)
     });
 
     // BingX uses different URLs for testnet and mainnet
@@ -84,8 +103,40 @@ export class BingXService {
   /**
    * Synchronize local time with BingX server time
    * Calculates the offset between local time and server time
+   *
+   * PERFORMANCE OPTIMIZATION:
+   * - Checks PostgreSQL cache first (< 100ms)
+   * - Only queries server if cache miss (saves 1-2s)
+   * - Caches result with 15-minute TTL
    */
   async syncTime(): Promise<void> {
+    const syncStartTime = Date.now();
+
+    // Try loading from persistent cache first (if enabled)
+    if (this.userId && this.credentialId) {
+      console.log('[BingXService] Checking persistent cache for time sync...');
+
+      const cached = await ConnectorStateCacheService.get(this.userId, this.credentialId);
+
+      if (cached) {
+        // Cache HIT - use cached offset
+        this.timeOffset = cached.timeOffset;
+        this.lastSyncTime = cached.lastSyncTime.getTime();
+
+        const cacheAge = Math.floor((Date.now() - cached.lastSyncTime.getTime()) / 1000);
+        console.log('[BingXService] ⚡ Time sync loaded from cache:', {
+          offset: this.timeOffset,
+          cacheAge: `${cacheAge}s`,
+          loadTime: `${Date.now() - syncStartTime}ms`
+        });
+
+        return; // Skip server sync
+      }
+
+      console.log('[BingXService] Cache miss - syncing with server...');
+    }
+
+    // Cache MISS or cache disabled - sync with server
     const startTime = Date.now();
     const serverTime = await this.getServerTime();
     const endTime = Date.now();
@@ -100,16 +151,37 @@ export class BingXService {
     this.lastSyncTime = endTime;
 
     // Log sync status
-    console.log('[BingXService] Time synchronized:', {
+    console.log('[BingXService] Time synchronized from server:', {
       serverTime,
       localTime: endTime,
       offset: newOffset,
-      latency: endTime - startTime
+      latency: endTime - startTime,
+      totalTime: `${Date.now() - syncStartTime}ms`
     });
 
     // Warn if offset is large
     if (Math.abs(newOffset) > this.LARGE_OFFSET_WARNING_MS) {
       console.warn(`[BingXService] WARNING: Large time offset detected: ${newOffset}ms. This may cause API request failures.`);
+    }
+
+    // Save to persistent cache (if enabled)
+    if (this.userId && this.credentialId) {
+      try {
+        await ConnectorStateCacheService.set(
+          this.userId,
+          this.credentialId,
+          'BINGX',
+          this.environment,
+          {
+            timeOffset: this.timeOffset,
+            lastSyncTime: new Date(this.lastSyncTime)
+          }
+        );
+        console.log('[BingXService] Time sync cached for future use');
+      } catch (error: any) {
+        console.error('[BingXService] Failed to cache time sync:', error.message);
+        // Don't fail if caching fails - connector still works
+      }
     }
   }
 
@@ -184,35 +256,71 @@ export class BingXService {
   }
 
   /**
-   * Generate signature for BingX API requests
-   * BingX Swap V3 API uses HMAC SHA256 signature with HEX encoding
+   * Check if account is in Hedge Mode (dual side position mode)
+   * Endpoint: GET /openApi/swap/v2/user/getPositionMode
    *
-   * IMPORTANT:
+   * Returns:
+   * - true: Hedge Mode (dual side) - positionSide REQUIRED in orders
+   * - false: One-Way Mode - positionSide should NOT be included in orders
+   */
+  async getPositionMode(): Promise<boolean> {
+    // Return cached value if available
+    if (this.isHedgeMode !== null) {
+      console.log(`[BingXService] Using cached position mode: ${this.isHedgeMode ? 'Hedge Mode' : 'One-Way Mode'}`);
+      return this.isHedgeMode;
+    }
+
+    console.log('[BingXService] Checking account position mode...');
+
+    const response = await this.makeRequest<{ dualSidePosition: boolean }>(
+      'GET',
+      '/openApi/swap/v2/user/getPositionMode',
+      {}
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Failed to get position mode:', response.msg);
+      // Default to One-Way mode to avoid positionSide errors
+      this.isHedgeMode = false;
+      return false;
+    }
+
+    // Cache the result
+    this.isHedgeMode = response.data?.dualSidePosition || false;
+
+    console.log(`[BingXService] Account position mode: ${this.isHedgeMode ? 'Hedge Mode (Dual Side)' : 'One-Way Mode'}`);
+    console.log(`[BingXService] ${this.isHedgeMode ? 'positionSide is REQUIRED' : 'positionSide should be OMITTED'}`);
+
+    return this.isHedgeMode;
+  }
+
+  /**
+   * Generate signature for BingX API requests
+   * BingX Swap V2 API uses HMAC SHA256 signature with HEX encoding
+   *
+   * IMPORTANT (from official BingX example):
+   * - Parameters are processed in INSERTION ORDER (NOT alphabetically sorted)
    * - Parameters must NOT be URL-encoded when generating signature
-   * - The signature must be HEX encoded (as per official BingX V3 Node.js example)
-   * - The signature is calculated on the raw query string before URL encoding
+   * - The signature must be HEX encoded
    * - Official example: https://bingx-api.github.io/docs/
    */
   private generateSignature(params: Record<string, any>): string {
-    // Sort parameters alphabetically
-    const sortedParams = Object.keys(params)
-      .sort()
-      .reduce((acc, key) => {
-        acc[key] = params[key];
-        return acc;
-      }, {} as Record<string, any>);
+    // IMPORTANT: DO NOT SORT! Use insertion order as per official BingX example
+    // The official example iterates through parameters in the order they appear
+    // Reference: https://bingx-api.github.io/docs/#/en-us/swapV2/trade-api
 
     // Create query string WITHOUT URL encoding (required for signature calculation)
-    const queryString = Object.entries(sortedParams)
+    // Use insertion order (Object.entries preserves insertion order in modern JS)
+    const queryString = Object.entries(params)
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     console.log('[BingXService] Signature calculation details:');
-    console.log('  Query string:', queryString);
+    console.log('  Query string (insertion order):', queryString);
     console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
 
-    // Generate HMAC SHA256 signature using HEX encoding (V3 API requirement)
-    // This matches the official BingX V3 Node.js example
+    // Generate HMAC SHA256 signature using HEX encoding
+    // This matches the official BingX Node.js example
     const signature = crypto
       .createHmac('sha256', this.apiSecret)
       .update(queryString)
@@ -221,6 +329,139 @@ export class BingXService {
     console.log('  Generated signature (hex):', signature);
 
     return signature;
+  }
+
+  /**
+   * Make authenticated API request with precise parameter ordering
+   * Uses array of [key, value] pairs to preserve exact order from official BingX example
+   */
+  private async makeRequestWithOrder<T>(
+    method: 'GET' | 'POST' | 'DELETE',
+    endpoint: string,
+    paramsArray: Array<[string, any]>
+  ): Promise<BingXApiResponse<T>> {
+    // Add timestamp - use synced time if available
+    const timestamp = this.getSyncedTime();
+
+    // Ensure timestamp is valid
+    if (!timestamp || timestamp <= 0) {
+      throw new Error('Invalid timestamp generated - time sync may have failed');
+    }
+
+    console.log('[BingXService] Making request:', {
+      endpoint,
+      method,
+      timestamp,
+      serverTime: timestamp - this.timeOffset,
+      timeOffset: this.timeOffset,
+      paramsCount: paramsArray.length
+    });
+
+    // Add timestamp to the END of the params array (preserves order)
+    const paramsWithTimestamp = [...paramsArray, ['timestamp', timestamp]];
+
+    // Generate signature from params in exact order
+    const queryString = paramsWithTimestamp
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+
+    console.log('[BingXService] Signature calculation details:');
+    console.log('  Query string (exact order):', queryString);
+    console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
+
+    // Generate HMAC SHA256 signature using HEX encoding
+    const signature = crypto
+      .createHmac('sha256', this.apiSecret)
+      .update(queryString)
+      .digest('hex');
+
+    console.log('  Generated signature (hex):', signature);
+
+    // Build URL with URL-encoded parameters in exact order
+    const urlParamsString = paramsWithTimestamp
+      .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+      .join('&');
+
+    // Append signature at the end
+    const fullQueryString = `${urlParamsString}&signature=${signature}`;
+
+    console.log('[BingXService] Request method:', method);
+
+    // For POST requests, send parameters in body; for GET/DELETE, use URL query string
+    let url: string;
+    let body: URLSearchParams | undefined;
+    const headers: Record<string, string> = {
+      'X-BX-APIKEY': this.apiKey
+    };
+
+    if (method === 'POST') {
+      // POST: Parameters in body as URLSearchParams (application/x-www-form-urlencoded)
+      url = `${this.baseUrl}${endpoint}`;
+
+      // Create URLSearchParams from paramsWithTimestamp array
+      body = new URLSearchParams();
+      paramsWithTimestamp.forEach(([key, value]) => {
+        body!.append(key, String(value));
+      });
+      body.append('signature', signature);
+
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      console.log('[BingXService] Request URL:', url);
+      console.log('[BingXService] Request body:', body.toString());
+    } else {
+      // GET/DELETE: Parameters in URL query string
+      url = `${this.baseUrl}${endpoint}?${fullQueryString}`;
+      headers['Content-Type'] = 'application/json';
+      console.log('[BingXService] Request URL (truncated):', url.substring(0, 120) + '...');
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[BingXService] API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+          endpoint,
+          timestamp
+        });
+        throw new Error(`BingX API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      // Check if the response indicates an error
+      if (data.code && data.code !== 0) {
+        console.error('[BingXService] API returned error code:', {
+          endpoint,
+          code: data.code,
+          msg: data.msg,
+          timestamp
+        });
+      } else {
+        // Log successful request
+        console.log('[BingXService] Request successful:', {
+          endpoint,
+          responseCode: data.code
+        });
+      }
+
+      return data as BingXApiResponse<T>;
+    } catch (error: any) {
+      console.error('[BingXService] API request failed:', {
+        error: error.message,
+        endpoint,
+        timestamp,
+        timeOffset: this.timeOffset
+      });
+      throw error;
+    }
   }
 
   /**
@@ -248,43 +489,59 @@ export class BingXService {
       paramsCount: Object.keys(params).length
     });
 
-    // Prepare params for signature calculation (only timestamp and user params, NOT recvWindow)
+    // Prepare params for signature calculation (params first, then timestamp)
+    // IMPORTANT: Order matters! Must match official BingX example (insertion order)
     const signatureParams = {
       ...params,
       timestamp
     };
 
-    // Generate signature from timestamp + params only
+    // Generate signature from params + timestamp (in insertion order)
     const signature = this.generateSignature(signatureParams);
 
-    // Build final request params including signature
-    // NOTE: BingX V3 API does NOT use recvWindow parameter
-    const requestParams = {
-      ...params,
-      timestamp,
-      signature
-    };
-
     // Build URL - URL encode all parameter values
-    // Note: Hex signatures don't need encoding but we encode all values for consistency
-    const queryString = Object.entries(requestParams)
+    // IMPORTANT: Use INSERTION ORDER (NOT alphabetical) to match signature calculation
+    // This matches the official BingX Node.js example
+    const paramsString = Object.entries(signatureParams)
       .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
       .join('&');
 
-    const url = `${this.baseUrl}${endpoint}?${queryString}`;
+    // Append signature at the end
+    const queryString = `${paramsString}&signature=${signature}`;
 
-    console.log('[BingXService] Request URL (truncated):', url.substring(0, 100) + '...');
-
-    // Set headers
+    // For POST requests, send parameters in body; for GET/DELETE, use URL query string
+    let url: string;
+    let body: URLSearchParams | undefined;
     const headers: Record<string, string> = {
-      'X-BX-APIKEY': this.apiKey,
-      'Content-Type': 'application/json'
+      'X-BX-APIKEY': this.apiKey
     };
+
+    if (method === 'POST') {
+      // POST: Parameters in body as URLSearchParams (application/x-www-form-urlencoded)
+      url = `${this.baseUrl}${endpoint}`;
+
+      // Create URLSearchParams from signatureParams
+      body = new URLSearchParams();
+      Object.entries(signatureParams).forEach(([key, value]) => {
+        body!.append(key, String(value));
+      });
+      body.append('signature', signature);
+
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      console.log('[BingXService] Request URL:', url);
+      console.log('[BingXService] Request body:', body.toString());
+    } else {
+      // GET/DELETE: Parameters in URL query string
+      url = `${this.baseUrl}${endpoint}?${queryString}`;
+      headers['Content-Type'] = 'application/json';
+      console.log('[BingXService] Request URL (truncated):', url.substring(0, 100) + '...');
+    }
 
     try {
       const response = await fetch(url, {
         method,
-        headers
+        headers,
+        body
       });
 
       if (!response.ok) {
@@ -401,35 +658,134 @@ export class BingXService {
 
   /**
    * Place an order
+   *
+   * BingX API v2 Requirements:
+   * - symbol: Required
+   * - side: Required (BUY/SELL)
+   * - positionSide: ALWAYS REQUIRED (LONG/SHORT)
+   * - type: Required (MARKET/LIMIT/etc)
+   * - quantity: Required for most order types
+   * - price: Required for LIMIT orders
+   *
+   * Position Mode Behavior:
+   * - Hedge Mode: Can have LONG and SHORT simultaneously, use orderRequest.positionSide
+   * - One-Way Mode: Can only have one direction, derive from side (BUY->LONG, SELL->SHORT)
    */
   async placeOrder(orderRequest: BingXOrderRequest): Promise<BingXOrder> {
     console.log('[BingXService] Placing order:', orderRequest);
 
-    const params: Record<string, any> = {
-      symbol: orderRequest.symbol,
+    // CRITICAL: Build params array to preserve EXACT order from official BingX example
+    // Reference: https://bingx-api.github.io/docs/#/en-us/swapV2/trade-api
+    // Official example order: symbol, side, positionSide, type, quantity, takeProfit, timestamp
+
+    // Use array of [key, value] pairs to preserve insertion order
+    const paramsArray: Array<[string, any]> = [];
+
+    // Required params in official example order
+    paramsArray.push(['symbol', orderRequest.symbol]);
+    paramsArray.push(['side', orderRequest.side]);
+
+    // positionSide is ALWAYS REQUIRED by BingX API
+    // Use provided positionSide, or derive from side (BUY->LONG, SELL->SHORT)
+    const positionSide = orderRequest.positionSide || (orderRequest.side === 'BUY' ? 'LONG' : 'SHORT');
+    console.log('[BingXService] Using positionSide:', {
       side: orderRequest.side,
-      positionSide: orderRequest.positionSide,
-      type: orderRequest.type
-    };
+      positionSide,
+      wasProvided: !!orderRequest.positionSide
+    });
 
-    if (orderRequest.quantity) params.quantity = orderRequest.quantity;
-    if (orderRequest.price) params.price = orderRequest.price;
-    if (orderRequest.stopPrice) params.stopPrice = orderRequest.stopPrice;
-    if (orderRequest.reduceOnly !== undefined) params.reduceOnly = orderRequest.reduceOnly;
-    if (orderRequest.timeInForce) params.timeInForce = orderRequest.timeInForce;
-    if (orderRequest.closePosition) params.closePosition = orderRequest.closePosition;
+    paramsArray.push(['positionSide', positionSide]);
+    paramsArray.push(['type', orderRequest.type]);
 
-    const response = await this.makeRequest<BingXOrder>(
+    // quantity comes after type (as per official example)
+    if (orderRequest.quantity !== undefined && orderRequest.quantity !== null) {
+      paramsArray.push(['quantity', orderRequest.quantity]);
+    }
+
+    // Add optional parameters after the required ones
+    if (orderRequest.price !== undefined) paramsArray.push(['price', orderRequest.price]);
+    if (orderRequest.stopPrice !== undefined) paramsArray.push(['stopPrice', orderRequest.stopPrice]);
+    if (orderRequest.reduceOnly !== undefined) paramsArray.push(['reduceOnly', orderRequest.reduceOnly]);
+    if (orderRequest.timeInForce) paramsArray.push(['timeInForce', orderRequest.timeInForce]);
+    if (orderRequest.closePosition !== undefined) paramsArray.push(['closePosition', orderRequest.closePosition]);
+
+    console.log('[BingXService] Order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+
+    const response = await this.makeRequestWithOrder<BingXOrder>(
       'POST',
       '/openApi/swap/v2/trade/order',
-      params
+      paramsArray
     );
 
     if (response.code !== 0) {
-      throw new Error(`Failed to place order: ${response.msg}`);
+      console.error('[BingXService] Order failed:', {
+        code: response.code,
+        msg: response.msg,
+        sentParams: paramsArray,
+        orderRequest,
+        fullResponse: JSON.stringify(response)
+      });
+      throw new Error(`Failed to place order: ${response.msg} (code: ${response.code})`);
     }
 
     return response.data;
+  }
+
+  /**
+   * Test order placement without actually executing
+   * Uses the BingX test order endpoint
+   *
+   * @param orderRequest The order parameters to test
+   * @returns Test result with validation details
+   */
+  async testOrder(orderRequest: BingXOrderRequest): Promise<any> {
+    console.log('[BingXService] Testing order (no execution):', orderRequest);
+
+    // Use array of [key, value] pairs to preserve insertion order (same as placeOrder)
+    const paramsArray: Array<[string, any]> = [];
+
+    // Required params in official example order
+    paramsArray.push(['symbol', orderRequest.symbol]);
+    paramsArray.push(['side', orderRequest.side]);
+
+    // Add positionSide if provided (required by BingX API)
+    if (orderRequest.positionSide) {
+      paramsArray.push(['positionSide', orderRequest.positionSide]);
+    }
+
+    paramsArray.push(['type', orderRequest.type]);
+
+    // quantity comes after type (as per official example)
+    if (orderRequest.quantity !== undefined && orderRequest.quantity !== null) {
+      paramsArray.push(['quantity', orderRequest.quantity]);
+    }
+
+    // Add optional parameters after the required ones
+    if (orderRequest.price !== undefined) paramsArray.push(['price', orderRequest.price]);
+    if (orderRequest.stopPrice !== undefined) paramsArray.push(['stopPrice', orderRequest.stopPrice]);
+    if (orderRequest.reduceOnly !== undefined) paramsArray.push(['reduceOnly', orderRequest.reduceOnly]);
+    if (orderRequest.timeInForce) paramsArray.push(['timeInForce', orderRequest.timeInForce]);
+    if (orderRequest.closePosition !== undefined) paramsArray.push(['closePosition', orderRequest.closePosition]);
+
+    console.log('[BingXService] Test order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+
+    const response = await this.makeRequestWithOrder(
+      'POST',
+      '/openApi/swap/v2/trade/order/test',
+      paramsArray
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Test order failed:', {
+        code: response.code,
+        msg: response.msg,
+        sentParams: paramsArray
+      });
+      throw new Error(`Test order validation failed: ${response.msg} (code: ${response.code})`);
+    }
+
+    console.log('[BingXService] Test order validated successfully:', response);
+    return response;
   }
 
   /**
@@ -489,7 +845,25 @@ export class BingXService {
       throw new Error(`Failed to get tickers: ${response.msg}`);
     }
 
-    return response.data || [];
+    const allTickers = response.data || [];
+
+    // Filter out tickers without valid price data
+    const validTickers = allTickers.filter((ticker: any) => {
+      const lastPrice = parseFloat(ticker.lastPrice) || 0;
+      const markPrice = parseFloat(ticker.markPrice) || 0;
+
+      // Only include tickers that have at least one valid price
+      const hasValidPrice = lastPrice > 0 || markPrice > 0;
+
+      if (!hasValidPrice) {
+        console.log(`[BingXService] Filtered out ${ticker.symbol} - no valid price data (lastPrice: ${ticker.lastPrice}, markPrice: ${ticker.markPrice})`);
+      }
+
+      return hasValidPrice;
+    });
+
+    console.log(`[BingXService] Returning ${validTickers.length}/${allTickers.length} tickers with valid price data`);
+    return validTickers;
   }
 
   /**
@@ -509,6 +883,40 @@ export class BingXService {
     }
 
     return response.data;
+  }
+
+  /**
+   * Get contract specifications for all trading pairs
+   * Endpoint: GET /openApi/swap/v2/quote/contracts (public endpoint, no auth)
+   * Returns trading rules including quantity precision, min quantity, step size, etc.
+   */
+  async getContracts(): Promise<any[]> {
+    try {
+      const url = `${this.baseUrl}/openApi/swap/v2/quote/contracts`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BingX API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== 0) {
+        throw new Error(`Failed to get contracts: ${data.msg}`);
+      }
+
+      return data.data || [];
+    } catch (error: any) {
+      console.error('[BingXService] Failed to fetch contracts:', error.message);
+      throw error;
+    }
   }
 
   /**

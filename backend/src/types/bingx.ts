@@ -46,9 +46,9 @@ export interface BingXOrderRequest {
   side: 'BUY' | 'SELL';
   positionSide: 'LONG' | 'SHORT';
   type: 'MARKET' | 'LIMIT' | 'STOP_MARKET' | 'STOP' | 'TAKE_PROFIT_MARKET' | 'TAKE_PROFIT';
-  quantity?: string;
-  price?: string;
-  stopPrice?: string;
+  quantity?: number;
+  price?: number;
+  stopPrice?: number;
   reduceOnly?: boolean;
   timeInForce?: 'GTC' | 'IOC' | 'FOK';
   closePosition?: boolean;

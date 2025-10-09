@@ -59,5 +59,10 @@ export const routes: Routes = [
     path: 'chart-demo',
     loadComponent: () => import('./components/chart-demo/chart-demo.component').then(m => m.ChartDemoComponent),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'testing/api-tester',
+    loadComponent: () => import('./components/testing/api-tester/api-tester.component').then(m => m.ApiTesterComponent),
+    canActivate: [AuthGuard]
   }
 ];

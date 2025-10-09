@@ -1,7 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, throwError } from 'rxjs';
-import { getEndpointUrl } from '../config/app.config';
+import { getEndpointUrl, buildApiUrl } from '../config/app.config';
+import { ExchangeType } from '../models/exchange-credentials.model';
 
 export interface TradingPlatform {
   id: string;
@@ -49,6 +50,37 @@ export interface TradeOrder {
   status: 'pending' | 'filled' | 'cancelled';
   createdAt: Date;
   filledAt?: Date;
+}
+
+/**
+ * Exchange Order Request for API testing
+ */
+export interface ExchangeOrderRequest {
+  exchange: ExchangeType;
+  credentialId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  positionSide: 'LONG' | 'SHORT';
+  type: 'MARKET' | 'LIMIT';
+  quantity: number;
+  price?: number;
+}
+
+/**
+ * Exchange Order Response
+ */
+export interface ExchangeOrderResponse {
+  success: boolean;
+  orderId?: string;
+  clientOrderId?: string;
+  status?: string;
+  message?: string;
+  data?: any;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
 }
 
 @Injectable({
@@ -169,6 +201,28 @@ export class TradingService {
     ).pipe(
       catchError(error => {
         console.error('Error updating API key:', error);
+        return throwError(() => error);
+      })
+    );
+  }
+
+  /**
+   * Place an exchange order (for API testing)
+   * This endpoint allows testing exchange order placement with detailed request/response logging
+   *
+   * @param orderRequest - The order request parameters
+   * @returns Observable of ExchangeOrderResponse
+   */
+  placeExchangeOrder(orderRequest: ExchangeOrderRequest): Observable<ExchangeOrderResponse> {
+    return this.http.post<ExchangeOrderResponse>(
+      buildApiUrl('/exchange-orders'),
+      orderRequest
+    ).pipe(
+      tap(response => {
+        console.log('Exchange order placed:', response);
+      }),
+      catchError(error => {
+        console.error('Error placing exchange order:', error);
         return throwError(() => error);
       })
     );

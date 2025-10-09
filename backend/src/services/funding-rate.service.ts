@@ -310,6 +310,13 @@ export async function getArbitrageOpportunities(
       const annualizedRate = calculateAnnualizedRate(rate.fundingRate);
       const absAnnualizedRate = Math.abs(annualizedRate);
 
+      // Skip symbols without valid price data
+      const markPrice = rate.markPrice || 0;
+      if (markPrice <= 0) {
+        console.log(`[FundingRateService] Filtered out ${rate.symbol} from opportunities - no valid price data (markPrice: ${rate.markPrice})`);
+        continue;
+      }
+
       // Filter by minimum annualized rate
       if (absAnnualizedRate >= minAnnualizedRate) {
         const estimatedProfit8h = Math.abs(rate.fundingRate) * 100; // Percentage profit per 8h

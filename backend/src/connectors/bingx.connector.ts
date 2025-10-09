@@ -5,25 +5,41 @@ import { BingXService } from '@/lib/bingx';
  * BingX Exchange Connector
  *
  * Implements the BaseExchangeConnector interface for BingX exchange
+ *
+ * PERFORMANCE OPTIMIZATION:
+ * - Supports persistent time sync caching when userId and credentialId are provided
+ * - Eliminates 1-2s initialization delay in serverless environments
  */
 export class BingXConnector extends BaseExchangeConnector {
   private bingxService: BingXService;
   private apiKey: string;
   private apiSecret: string;
   private testnet: boolean;
+  private userId?: string;
+  private credentialId?: string;
 
-  constructor(apiKey: string, apiSecret: string, testnet: boolean = true) {
+  constructor(
+    apiKey: string,
+    apiSecret: string,
+    testnet: boolean = true,
+    userId?: string,
+    credentialId?: string
+  ) {
     super();
     this.exchangeName = testnet ? 'BINGX_TESTNET' : 'BINGX';
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.testnet = testnet;
+    this.userId = userId;
+    this.credentialId = credentialId;
 
     this.bingxService = new BingXService({
       apiKey,
       apiSecret,
       testnet,
       enableRateLimit: true,
+      userId,
+      credentialId,
     });
   }
 
@@ -91,7 +107,10 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      // Determine position side based on order side
+      // Get trading rules for quantity adjustment
+      const adjustedQuantity = await this.adjustQuantityForSymbol(symbol, quantity);
+
+      // BingX position side based on order direction (per official API docs)
       const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
@@ -100,7 +119,7 @@ export class BingXConnector extends BaseExchangeConnector {
         side: bingxSide,
         positionSide,
         type: 'MARKET',
-        quantity: quantity.toString(),
+        quantity: adjustedQuantity,
       });
 
       console.log('[BingXConnector] Market order placed:', result);
@@ -108,6 +127,57 @@ export class BingXConnector extends BaseExchangeConnector {
     } catch (error: any) {
       console.error('[BingXConnector] Error placing market order:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Adjust quantity to match BingX contract specifications
+   * BingX requires:
+   * - Quantity must match quantityPrecision (decimal places)
+   * - Quantity must be a multiple of size (step size)
+   * - Quantity must be >= tradeMinQuantity
+   */
+  private async adjustQuantityForSymbol(symbol: string, quantity: number): Promise<number> {
+    try {
+      // Fetch contract specifications
+      const contracts = await this.bingxService.getContracts();
+      const contract = contracts.find((c: any) => c.symbol === symbol);
+
+      if (!contract) {
+        console.warn(`[BingXConnector] No contract found for ${symbol}, using quantity as-is`);
+        return quantity;
+      }
+
+      const precision = contract.quantityPrecision || 0;
+      const stepSize = parseFloat(contract.size || '1');
+      const minQuantity = parseFloat(contract.tradeMinQuantity || '0');
+
+      console.log(`[BingXConnector] Trading rules for ${symbol}:`, {
+        precision,
+        stepSize,
+        minQuantity,
+        requestedQty: quantity,
+      });
+
+      // Round to correct precision
+      const factor = Math.pow(10, precision);
+      let adjusted = Math.floor((quantity / stepSize)) * stepSize;
+      adjusted = Math.round(adjusted * factor) / factor;
+
+      // Ensure minimum quantity
+      if (adjusted < minQuantity) {
+        console.warn(`[BingXConnector] Quantity ${adjusted} below minimum ${minQuantity}, using minimum`);
+        adjusted = minQuantity;
+      }
+
+      if (adjusted !== quantity) {
+        console.log(`[BingXConnector] Adjusted quantity from ${quantity} to ${adjusted} (precision: ${precision}, step: ${stepSize})`);
+      }
+
+      return adjusted;
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error adjusting quantity:`, error.message);
+      return quantity; // Fallback to original
     }
   }
 
@@ -131,6 +201,7 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // BingX position side based on order direction (per official API docs)
       const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
@@ -139,8 +210,8 @@ export class BingXConnector extends BaseExchangeConnector {
         side: bingxSide,
         positionSide,
         type: 'LIMIT',
-        quantity: quantity.toString(),
-        price: price.toString(),
+        quantity,
+        price,
         timeInForce: 'GTC',
       });
 
@@ -249,13 +320,14 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      // First get the current position to determine side
+      // First check if there's an open position
       const position = await this.getPosition(symbol);
 
       if (!position || position.positionSide === 'None') {
         throw new Error(`No open position for ${symbol}`);
       }
 
+      // Determine position side from the current position
       const positionSide = position.positionSide as 'LONG' | 'SHORT';
       const result = await this.bingxService.closePosition(symbol, positionSide);
 
@@ -285,6 +357,7 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // BingX position side based on order direction (per official API docs)
       const positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
@@ -293,7 +366,7 @@ export class BingXConnector extends BaseExchangeConnector {
         side: bingxSide,
         positionSide,
         type: 'MARKET',
-        quantity: quantity.toString(),
+        quantity,
         reduceOnly: true,
       });
 

@@ -56,6 +56,62 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Validate and adjust quantity to meet Bybit's trading rules
+   */
+  private async validateAndAdjustQuantity(symbol: string, quantity: number): Promise<string> {
+    try {
+      // Fetch instrument info to get trading rules
+      const instrumentInfo = await this.bybitService.getInstrumentsInfo('linear', symbol);
+
+      if (!instrumentInfo || !instrumentInfo.list || instrumentInfo.list.length === 0) {
+        console.warn(`[BybitConnector] No instrument info found for ${symbol}, using original quantity`);
+        return quantity.toString();
+      }
+
+      const instrument = instrumentInfo.list[0];
+      const lotSizeFilter = instrument.lotSizeFilter;
+
+      if (!lotSizeFilter) {
+        console.warn(`[BybitConnector] No lot size filter for ${symbol}, using original quantity`);
+        return quantity.toString();
+      }
+
+      const minOrderQty = parseFloat(lotSizeFilter.minOrderQty || '0');
+      const qtyStep = parseFloat(lotSizeFilter.qtyStep || '0.001');
+
+      console.log(`[BybitConnector] Trading rules for ${symbol}:`, {
+        minOrderQty,
+        qtyStep,
+        requestedQty: quantity
+      });
+
+      // Check minimum quantity
+      if (quantity < minOrderQty) {
+        console.warn(`[BybitConnector] Quantity ${quantity} is below minimum ${minOrderQty}, adjusting to minimum`);
+        quantity = minOrderQty;
+      }
+
+      // Adjust to nearest step size
+      const steps = Math.floor(quantity / qtyStep);
+      const adjustedQty = steps * qtyStep;
+
+      // Round to appropriate decimal places based on qtyStep
+      const decimals = qtyStep.toString().split('.')[1]?.length || 0;
+      const finalQty = parseFloat(adjustedQty.toFixed(decimals));
+
+      if (finalQty !== quantity) {
+        console.log(`[BybitConnector] Adjusted quantity from ${quantity} to ${finalQty} (step: ${qtyStep})`);
+      }
+
+      return finalQty.toString();
+    } catch (error: any) {
+      console.error(`[BybitConnector] Error validating quantity for ${symbol}:`, error.message);
+      // Fallback: return original quantity as string
+      return quantity.toString();
+    }
+  }
+
+  /**
    * Place a market order
    */
   async placeMarketOrder(
@@ -73,12 +129,15 @@ export class BybitConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Validate and adjust quantity to meet trading rules
+      const validatedQty = await this.validateAndAdjustQuantity(symbol, quantity);
+
       const result = await this.bybitService.placeOrder({
         category: 'linear',
         symbol,
         side,
         orderType: 'Market',
-        qty: quantity.toString(),
+        qty: validatedQty,
       });
 
       console.log('[BybitConnector] Market order placed:', result);
@@ -109,12 +168,15 @@ export class BybitConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Validate and adjust quantity to meet trading rules
+      const validatedQty = await this.validateAndAdjustQuantity(symbol, quantity);
+
       const result = await this.bybitService.placeOrder({
         category: 'linear',
         symbol,
         side,
         orderType: 'Limit',
-        qty: quantity.toString(),
+        qty: validatedQty,
         price: price.toString(),
         timeInForce: 'GTC',
       });
@@ -264,12 +326,15 @@ export class BybitConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Validate and adjust quantity to meet trading rules
+      const validatedQty = await this.validateAndAdjustQuantity(symbol, quantity);
+
       const result = await this.bybitService.placeOrder({
         category: 'linear',
         symbol,
         side,
         orderType: 'Market',
-        qty: quantity.toString(),
+        qty: validatedQty,
         reduceOnly: true,
       });
 
