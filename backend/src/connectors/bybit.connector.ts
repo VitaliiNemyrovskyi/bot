@@ -347,6 +347,86 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Set take-profit and stop-loss for an existing position
+   * Uses Bybit's setTradingStop API to set TP/SL on open position
+   */
+  async setTradingStop(params: {
+    symbol: string;
+    side: OrderSide;
+    takeProfit?: number;
+    stopLoss?: number;
+  }): Promise<{
+    success: boolean;
+    takeProfitOrderId?: string;
+    stopLossOrderId?: string;
+    message?: string;
+  }> {
+    console.log(`[BybitConnector] Setting trading stop for ${params.symbol}:`, {
+      side: params.side,
+      takeProfit: params.takeProfit,
+      stopLoss: params.stopLoss,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    // Validate at least one parameter is provided
+    if (!params.takeProfit && !params.stopLoss) {
+      throw new Error('At least one of takeProfit or stopLoss must be provided');
+    }
+
+    try {
+      // Build setTradingStop request
+      const request: any = {
+        category: 'linear',
+        symbol: params.symbol,
+        positionIdx: 0, // 0 for one-way mode
+      };
+
+      // Add take-profit if provided
+      if (params.takeProfit) {
+        request.takeProfit = params.takeProfit.toString();
+        console.log(`[BybitConnector] Take-profit price: $${params.takeProfit}`);
+      }
+
+      // Add stop-loss if provided
+      if (params.stopLoss) {
+        request.stopLoss = params.stopLoss.toString();
+        console.log(`[BybitConnector] Stop-loss price: $${params.stopLoss}`);
+      }
+
+      // Call Bybit API
+      const result = await this.bybitService.setTradingStop(request);
+
+      console.log('[BybitConnector] Trading stop set successfully:', {
+        takeProfit: params.takeProfit,
+        stopLoss: params.stopLoss,
+        result
+      });
+
+      return {
+        success: true,
+        message: 'Trading stop set successfully',
+        takeProfitOrderId: params.takeProfit ? 'TP-' + Date.now() : undefined,
+        stopLossOrderId: params.stopLoss ? 'SL-' + Date.now() : undefined,
+      };
+    } catch (error: any) {
+      console.error('[BybitConnector] Error setting trading stop:', error.message);
+
+      // Provide helpful error messages
+      if (error.message.includes('position')) {
+        throw new Error(
+          `Failed to set TP/SL for ${params.symbol}: No open position found. ` +
+          `Please open a position first before setting take-profit or stop-loss.`
+        );
+      }
+
+      throw new Error(`Failed to set trading stop: ${error.message}`);
+    }
+  }
+
+  /**
    * Get transaction logs (for funding fee verification)
    */
   async getTransactionLog(params: {

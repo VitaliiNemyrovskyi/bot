@@ -70,6 +70,26 @@ export abstract class BaseExchangeConnector {
   ): Promise<any>;
 
   /**
+   * Set take-profit and stop-loss for an existing position
+   * @param symbol - Trading pair symbol
+   * @param side - Position side (Buy for long, Sell for short)
+   * @param takeProfit - Take profit price (optional)
+   * @param stopLoss - Stop loss price (optional)
+   * @returns Order IDs or confirmation
+   */
+  abstract setTradingStop(params: {
+    symbol: string;
+    side: OrderSide;
+    takeProfit?: number;
+    stopLoss?: number;
+  }): Promise<{
+    success: boolean;
+    takeProfitOrderId?: string;
+    stopLossOrderId?: string;
+    message?: string;
+  }>;
+
+  /**
    * Check if connector is initialized
    */
   isConnected(): boolean {

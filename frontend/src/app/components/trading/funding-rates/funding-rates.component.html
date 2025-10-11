@@ -338,7 +338,22 @@
                 <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscription(opportunity.symbol)">
                   <!-- Symbol -->
                   <td class="symbol-cell">
-                    <span class="symbol-text">{{ opportunity.symbol }}</span>
+                    <div class="symbol-wrapper">
+                      <span class="symbol-text">{{ opportunity.symbol }}</span>
+                      <!-- Display price from the exchange with highest absolute funding rate -->
+                      @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                        @if ((getAbsoluteFundingRate(opportunity.bestLong.fundingRate) >= getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                              exchange.exchange === opportunity.bestLong.exchange &&
+                              exchange.credentialId === opportunity.bestLong.credentialId) ||
+                             (getAbsoluteFundingRate(opportunity.bestLong.fundingRate) < getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                              exchange.exchange === opportunity.bestShort.exchange &&
+                              exchange.credentialId === opportunity.bestShort.credentialId)) {
+                          @if (exchange.lastPrice) {
+                            <span class="symbol-price text-xs">${{ parseFloat(exchange.lastPrice).toFixed(2) }}</span>
+                          }
+                        }
+                      }
+                    </div>
                   </td>
 
                   <!-- HEDGED Mode: Show Spread column -->
@@ -474,22 +489,6 @@
                                 [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best rate: ' + (parseFloat(exchange.fundingRate) * 100).toFixed(4) + '%)'">
                                 {{ exchange.exchange }}
                               </button>
-                              <div class="exchange-details">
-                                <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
-                                  Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
-                                </div>
-                                <div class="detail-line text-xs">
-                                  Position: {{ parseFloat(exchange.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
-                                </div>
-                                <div class="detail-line text-xs">
-                                  Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
-                                </div>
-                                @if (exchange.lastPrice) {
-                                  <div class="detail-line text-xs">
-                                    Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
-                                  </div>
-                                }
-                              </div>
                             </div>
                           }
                         }

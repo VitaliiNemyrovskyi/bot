@@ -225,8 +225,8 @@ export class BybitService {
   private lastSyncTime: number = 0;
   private syncInterval: NodeJS.Timeout | null = null;
   private readonly SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  private readonly LARGE_OFFSET_WARNING_MS = 3000; // 3 seconds
-  private readonly MAX_OFFSET_MS = 5000; // 5 seconds - Bybit's recv_window default
+  private readonly LARGE_OFFSET_WARNING_MS = 10000; // 10 seconds
+  private readonly MAX_OFFSET_MS = 30000; // 30 seconds - matches increased recv_window
 
   constructor(config: BybitConfig = {}) {
     this.config = {
@@ -250,6 +250,7 @@ export class BybitService {
       secret: this.config.apiSecret,
       testnet: this.config.testnet,
       enableRateLimit: this.config.enableRateLimit,
+      recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
 
     if (this.config.apiKey && this.config.apiSecret) {
@@ -933,6 +934,87 @@ export class BybitService {
     }
   }
 
+  /**
+   * Set trading stop (take-profit and stop-loss) for an existing position
+   * Endpoint: POST /v5/position/trading-stop
+   *
+   * IMPORTANT: This method sets TP/SL on an existing position
+   * - Position must be open before calling this method
+   * - TP/SL prices are absolute prices, not percentages
+   * - At least one of takeProfit or stopLoss must be provided
+   *
+   * @param params.category Product type: "linear", "inverse"
+   * @param params.symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param params.positionIdx Position index (0 for one-way mode, 1 for long hedge, 2 for short hedge)
+   * @param params.takeProfit Take profit price (optional)
+   * @param params.stopLoss Stop loss price (optional)
+   * @param params.tpslMode TP/SL mode: "Full" (default) or "Partial"
+   * @param params.tpTriggerBy TP trigger price type: "LastPrice", "IndexPrice", "MarkPrice" (default)
+   * @param params.slTriggerBy SL trigger price type: "LastPrice", "IndexPrice", "MarkPrice" (default)
+   */
+  async setTradingStop(params: {
+    category?: 'linear' | 'inverse';
+    symbol: string;
+    positionIdx?: number;
+    takeProfit?: string;
+    stopLoss?: string;
+    tpslMode?: 'Full' | 'Partial';
+    tpTriggerBy?: 'LastPrice' | 'IndexPrice' | 'MarkPrice';
+    slTriggerBy?: 'LastPrice' | 'IndexPrice' | 'MarkPrice';
+  }): Promise<any> {
+    try {
+      if (!this.config.apiKey || !this.config.apiSecret) {
+        throw new Error('API credentials required for trading stop operations');
+      }
+
+      // Validate at least one TP/SL is provided
+      if (!params.takeProfit && !params.stopLoss) {
+        throw new Error('At least one of takeProfit or stopLoss must be provided');
+      }
+
+      console.log('[BybitService] Setting trading stop:', {
+        category: params.category || 'linear',
+        symbol: params.symbol,
+        takeProfit: params.takeProfit,
+        stopLoss: params.stopLoss,
+        positionIdx: params.positionIdx || 0,
+      });
+
+      // Build request parameters
+      const requestParams: any = {
+        category: params.category || 'linear',
+        symbol: params.symbol,
+        positionIdx: params.positionIdx ?? 0, // Default to 0 (one-way mode)
+      };
+
+      // Add optional parameters
+      if (params.takeProfit) requestParams.takeProfit = params.takeProfit;
+      if (params.stopLoss) requestParams.stopLoss = params.stopLoss;
+      if (params.tpslMode) requestParams.tpslMode = params.tpslMode;
+      if (params.tpTriggerBy) requestParams.tpTriggerBy = params.tpTriggerBy;
+      if (params.slTriggerBy) requestParams.slTriggerBy = params.slTriggerBy;
+
+      const response = await this.restClient.setTradingStop(requestParams);
+
+      if (response.retCode !== 0) {
+        console.error('[BybitService] Set trading stop failed:', {
+          retCode: response.retCode,
+          retMsg: response.retMsg,
+          symbol: params.symbol,
+          takeProfit: params.takeProfit,
+          stopLoss: params.stopLoss,
+        });
+        throw new Error(`Bybit API Error: ${response.retMsg}`);
+      }
+
+      console.log('[BybitService] Trading stop set successfully:', response.result);
+      return response.result;
+    } catch (error: any) {
+      console.error('[BybitService] Error setting trading stop:', error.message);
+      throw error;
+    }
+  }
+
   async cancelOrder(category: 'linear' | 'spot' | 'option', symbol: string, orderId?: string, orderLinkId?: string) {
     try {
       if (!orderId && !orderLinkId) {
@@ -1223,6 +1305,7 @@ export class BybitService {
       secret: this.config.apiSecret,
       testnet: this.config.testnet,
       enableRateLimit: this.config.enableRateLimit,
+      recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
 
     this.wsClient = new WebsocketClient({

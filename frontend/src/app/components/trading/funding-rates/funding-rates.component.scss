@@ -1716,6 +1716,53 @@
       &.text-right {
         text-align: right;
       }
+
+      &.sortable-header {
+        cursor: pointer;
+        user-select: none;
+        transition: var(--transition-fast);
+
+        &:hover {
+          color: var(--text-primary);
+          background: var(--background-tertiary);
+        }
+
+        .header-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+
+        .sort-indicator {
+          color: var(--primary-color);
+          font-weight: bold;
+          transition: var(--transition-fast);
+
+          &.asc {
+            transform: rotate(180deg);
+          }
+
+          &.desc {
+            transform: rotate(0deg);
+          }
+
+          .sort-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            font-size: 10px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            font-weight: 600;
+            margin-right: 4px;
+          }
+        }
+      }
     }
   }
 
@@ -1763,9 +1810,80 @@
           color: var(--text-primary);
           font-size: 14px;
 
+          .symbol-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
           .symbol-text {
             color: var(--primary-color);
             font-weight: 600;
+          }
+
+          .symbol-price {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 12px;
+          }
+        }
+
+        &.spread-cell {
+          .spread-value {
+            font-size: 14px;
+            font-weight: 600;
+
+            &.positive {
+              color: var(--success-color);
+            }
+          }
+        }
+
+        &.funding-cell {
+          .funding-value {
+            font-size: 14px;
+            font-weight: 600;
+
+            &.positive {
+              color: var(--success-color);
+            }
+
+            &.negative {
+              color: var(--danger-color);
+            }
+          }
+        }
+
+        &.next-funding-cell {
+          .next-funding-value {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+          }
+        }
+
+        &.position-cell {
+          .position-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+
+            &.long-position {
+              background: rgba(16, 185, 129, 0.1);
+              border: 1px solid rgba(16, 185, 129, 0.3);
+              color: #10b981;
+            }
+
+            &.short-position {
+              background: rgba(239, 68, 68, 0.1);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              color: #ef4444;
+            }
           }
         }
       }
@@ -1780,6 +1898,33 @@
     gap: 6px;
     flex-wrap: wrap;
     justify-content: center;
+  }
+
+  .exchange-info-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .exchange-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+
+    .detail-line {
+      color: var(--text-secondary);
+      white-space: nowrap;
+
+      &.negative {
+        color: var(--danger-color);
+      }
+
+      &.positive {
+        color: var(--success-color);
+      }
+    }
   }
 
   .exchange-badge {

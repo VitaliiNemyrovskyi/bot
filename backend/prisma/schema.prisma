@@ -633,6 +633,10 @@ model FundingArbitrageSubscription {
   // Arbitrage mode configuration
   mode ArbitrageMode @default(HEDGED) // HEDGED: 2 positions (hedged), NON_HEDGED: 1 position (fast close)
 
+  // Take-Profit and Stop-Loss configuration
+  takeProfit Float? // Take-profit percentage (e.g., 0.5 = 0.5% profit target)
+  stopLoss   Float? // Stop-loss percentage (e.g., 0.3 = 0.3% maximum loss)
+
   // Exchange configuration
   primaryExchange     String // Exchange name (e.g., "BYBIT_TESTNET")
   primaryCredentialId String // Reference to ExchangeCredentials

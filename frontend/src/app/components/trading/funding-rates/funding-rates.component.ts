@@ -412,15 +412,24 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             bVal = parseFloat(b.bestLong?.fundingRate || '0');
             break;
           case 'nextFunding':
-            // Get the next funding time from the correct exchange
-            // Find the exchange that matches bestLong
+            // Get the next funding time from the exchange with highest absolute funding rate
+            // This matches the display logic in NON_HEDGED mode
+            const aAbsLong = Math.abs(parseFloat(a.bestLong?.fundingRate || '0'));
+            const aAbsShort = Math.abs(parseFloat(a.bestShort?.fundingRate || '0'));
+            const bAbsLong = Math.abs(parseFloat(b.bestLong?.fundingRate || '0'));
+            const bAbsShort = Math.abs(parseFloat(b.bestShort?.fundingRate || '0'));
+
+            // Determine which exchange to use for each opportunity (matches UI display logic)
+            const useALong = aAbsLong >= aAbsShort;
+            const useBLong = bAbsLong >= bAbsShort;
+
             const aExchange = a.exchanges?.find((ex: any) =>
-              ex.exchange === a.bestLong?.exchange &&
-              ex.credentialId === a.bestLong?.credentialId
+              ex.exchange === (useALong ? a.bestLong?.exchange : a.bestShort?.exchange) &&
+              ex.credentialId === (useALong ? a.bestLong?.credentialId : a.bestShort?.credentialId)
             );
             const bExchange = b.exchanges?.find((ex: any) =>
-              ex.exchange === b.bestLong?.exchange &&
-              ex.credentialId === b.bestLong?.credentialId
+              ex.exchange === (useBLong ? b.bestLong?.exchange : b.bestShort?.exchange) &&
+              ex.credentialId === (useBLong ? b.bestLong?.credentialId : b.bestShort?.credentialId)
             );
             aVal = parseInt(aExchange?.nextFundingTime?.toString() || '0');
             bVal = parseInt(bExchange?.nextFundingTime?.toString() || '0');

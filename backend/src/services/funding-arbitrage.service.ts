@@ -22,6 +22,14 @@ export interface FundingSubscription {
   leverage?: number; // Leverage multiplier (1-125, recommended 1-20, default: 3)
   margin?: number; // Margin/collateral used for this position (in USDT)
   mode?: 'HEDGED' | 'NON_HEDGED'; // Arbitrage mode (default: HEDGED)
+  takeProfit?: number; // Take-profit percentage (e.g., 0.5 = 0.5% profit target)
+  stopLoss?: number; // Stop-loss percentage (e.g., 0.3 = 0.3% maximum loss)
+  // Execution tracking fields (cleared after each cycle for recurring subscriptions)
+  entryPrice?: number | null;
+  hedgeEntryPrice?: number | null;
+  primaryExitPrice?: number | null;
+  hedgeExitPrice?: number | null;
+  errorMessage?: string | null;
 }
 
 export interface OrderExecutionEvent {
@@ -1354,31 +1362,72 @@ export class FundingArbitrageService extends EventEmitter {
       let entryPrice = primaryOrder.avgPrice || primaryOrder.price || 0;
       let hedgeEntryPrice = hedgeOrder.avgPrice || hedgeOrder.price || 0;
 
-      // If prices are not in order response, fetch from positions in parallel ⚡
+      // If prices are not in order response, fetch from positions with retry logic
       const needPrimaryPrice = entryPrice === 0;
       const needHedgePrice = hedgeEntryPrice === 0;
 
       if (needPrimaryPrice || needHedgePrice) {
-        console.log(`[FundingArbitrage] ⚡ Fetching entry prices in parallel...`);
+        console.log(`[FundingArbitrage] ⚡ Entry prices not in order responses, fetching from positions with retries...`);
         const priceStartTime = Date.now();
 
-        const [primaryPosition, hedgePosition] = await Promise.all([
-          needPrimaryPrice ? primaryExchange.getPosition(primarySymbol) : Promise.resolve(null),
-          needHedgePrice ? hedgeExchange.getPosition(hedgeSymbol) : Promise.resolve(null),
-        ]);
+        // Retry up to 5 times with exponential backoff
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          try {
+            const [primaryPosition, hedgePosition] = await Promise.all([
+              needPrimaryPrice && entryPrice === 0 ? primaryExchange.getPosition(primarySymbol) : Promise.resolve(null),
+              needHedgePrice && hedgeEntryPrice === 0 ? hedgeExchange.getPosition(hedgeSymbol) : Promise.resolve(null),
+            ]);
 
-        if (needPrimaryPrice && primaryPosition) {
-          entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
-          console.log(`[FundingArbitrage] Primary entry price: ${entryPrice}`);
-        }
+            if (needPrimaryPrice && entryPrice === 0 && primaryPosition) {
+              entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
+              if (entryPrice > 0) {
+                console.log(`[FundingArbitrage] ✓ Primary entry price obtained: ${entryPrice} (attempt ${attempt})`);
+              }
+            }
 
-        if (needHedgePrice && hedgePosition) {
-          hedgeEntryPrice = parseFloat(hedgePosition.avgPrice || hedgePosition.entryPrice || '0');
-          console.log(`[FundingArbitrage] Hedge entry price: ${hedgeEntryPrice}`);
+            if (needHedgePrice && hedgeEntryPrice === 0 && hedgePosition) {
+              hedgeEntryPrice = parseFloat(hedgePosition.avgPrice || hedgePosition.entryPrice || '0');
+              if (hedgeEntryPrice > 0) {
+                console.log(`[FundingArbitrage] ✓ Hedge entry price obtained: ${hedgeEntryPrice} (attempt ${attempt})`);
+              }
+            }
+
+            // If both prices are obtained, break
+            if ((!needPrimaryPrice || entryPrice > 0) && (!needHedgePrice || hedgeEntryPrice > 0)) {
+              break;
+            }
+
+            // If still missing prices and not last attempt, wait and retry
+            if (attempt < 5) {
+              console.log(`[FundingArbitrage] Entry prices still incomplete, retrying... (attempt ${attempt}/5)`);
+              const delay = 200 * Math.pow(2, attempt - 1); // 200ms, 400ms, 800ms, 1600ms, 3200ms
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          } catch (error: any) {
+            console.error(`[FundingArbitrage] Error fetching entry prices (attempt ${attempt}): ${error.message}`);
+            if (attempt === 5) {
+              throw new Error(`Failed to get entry prices after 5 attempts: ${error.message}`);
+            }
+          }
         }
 
         const priceFetchTime = Date.now() - priceStartTime;
-        console.log(`[FundingArbitrage] ✓ Entry prices fetched in ${priceFetchTime}ms (parallel)`);
+        console.log(`[FundingArbitrage] Entry price fetch completed in ${priceFetchTime}ms (parallel with retries)`);
+
+        // Validate prices
+        if (needPrimaryPrice && entryPrice === 0) {
+          throw new Error(
+            `Failed to get primary entry price for ${primarySymbol} after 5 attempts. ` +
+            `Position may not exist or exchange API is not responding correctly.`
+          );
+        }
+
+        if (needHedgePrice && hedgeEntryPrice === 0) {
+          throw new Error(
+            `Failed to get hedge entry price for ${hedgeSymbol} after 5 attempts. ` +
+            `Position may not exist or exchange API is not responding correctly.`
+          );
+        }
       }
 
       // Calculate funding earned (funding rate * position value)
@@ -1391,27 +1440,242 @@ export class FundingArbitrageService extends EventEmitter {
         fundingEarned,
       });
 
-      // 10. Schedule position closing with WebSocket funding payment monitoring
-      // Recalculate time (some time has passed since opening positions)
-      timeUntilFunding = subscription.nextFundingTime - Date.now();
+      // ========== SET TAKE-PROFIT / STOP-LOSS FOR HEDGED MODE ==========
+      // Set TP/SL on both exchanges if configured
+      if (subscription.takeProfit || subscription.stopLoss) {
+        console.log(`[FundingArbitrage] Setting up TP/SL orders for HEDGED mode on both exchanges...`);
 
-      console.log(`[FundingArbitrage] Setting up WebSocket funding payment monitor (expected: ${fundingEarned.toFixed(4)} USDT)`);
+        try {
+          // Calculate TP/SL prices for PRIMARY position
+          const primaryTakeProfitPrice = subscription.takeProfit
+            ? entryPrice * (1 + (positionType === 'long' ? subscription.takeProfit : -subscription.takeProfit) / 100)
+            : undefined;
 
-      // Start monitoring funding payment via WebSocket
-      this.monitorFundingPayment(
-        subscription,
-        primaryExchange,
-        fundingEarned,
-        timeUntilFunding,
-        entryPrice,
-        hedgeEntryPrice
-      ).catch((error: any) => {
-        console.error(`[FundingArbitrage] Error in funding monitoring:`, error);
-        this.emit(FundingArbitrageService.ERROR, {
-          subscriptionId: subscription.id,
-          error: error.message,
+          const primaryStopLossPrice = subscription.stopLoss
+            ? entryPrice * (1 - (positionType === 'long' ? subscription.stopLoss : -subscription.stopLoss) / 100)
+            : undefined;
+
+          // Calculate TP/SL prices for HEDGE position (opposite direction)
+          const hedgeTakeProfitPrice = subscription.takeProfit
+            ? hedgeEntryPrice * (1 + (positionType === 'long' ? -subscription.takeProfit : subscription.takeProfit) / 100)
+            : undefined;
+
+          const hedgeStopLossPrice = subscription.stopLoss
+            ? hedgeEntryPrice * (1 - (positionType === 'long' ? -subscription.stopLoss : subscription.stopLoss) / 100)
+            : undefined;
+
+          console.log(`[FundingArbitrage] HEDGED TP/SL prices calculated:`, {
+            primary: {
+              entryPrice,
+              takeProfitPrice: primaryTakeProfitPrice?.toFixed(2),
+              stopLossPrice: primaryStopLossPrice?.toFixed(2),
+            },
+            hedge: {
+              entryPrice: hedgeEntryPrice,
+              takeProfitPrice: hedgeTakeProfitPrice?.toFixed(2),
+              stopLossPrice: hedgeStopLossPrice?.toFixed(2),
+            },
+          });
+
+          // Set TP/SL on both exchanges in parallel
+          const [primaryTpslResult, hedgeTpslResult] = await Promise.all([
+            primaryExchange.setTradingStop({
+              symbol: primarySymbol,
+              side: primarySide,
+              takeProfit: primaryTakeProfitPrice,
+              stopLoss: primaryStopLossPrice,
+            }).catch((error: any) => {
+              console.error(`[FundingArbitrage] Failed to set TP/SL on primary exchange: ${error.message}`);
+              return null;
+            }),
+            hedgeExchange.setTradingStop({
+              symbol: hedgeSymbol,
+              side: hedgeSide,
+              takeProfit: hedgeTakeProfitPrice,
+              stopLoss: hedgeStopLossPrice,
+            }).catch((error: any) => {
+              console.error(`[FundingArbitrage] Failed to set TP/SL on hedge exchange: ${error.message}`);
+              return null;
+            }),
+          ]);
+
+          if (primaryTpslResult && hedgeTpslResult) {
+            console.log(`[FundingArbitrage] ✓ TP/SL orders set successfully on BOTH exchanges`);
+            console.log(`[FundingArbitrage] Positions will close automatically when TP or SL is hit on either exchange`);
+
+            // Set up monitoring for TP/SL fills on both exchanges
+            // Monitor both positions - when one closes, close the other
+            const monitorInterval = setInterval(async () => {
+              try {
+                const [primaryPosition, hedgePosition] = await Promise.all([
+                  primaryExchange.getPosition(primarySymbol),
+                  hedgeExchange.getPosition(hedgeSymbol),
+                ]);
+
+                const primarySize = Math.abs(parseFloat(primaryPosition.positionAmt || primaryPosition.size || '0'));
+                const hedgeSize = Math.abs(parseFloat(hedgePosition.positionAmt || hedgePosition.size || '0'));
+
+                // If either position is closed, close the other and complete the cycle
+                if (primarySize === 0 || hedgeSize === 0) {
+                  clearInterval(monitorInterval);
+                  console.log(`[FundingArbitrage] ✓ One position closed by TP/SL, closing the other...`);
+
+                  // Close remaining position
+                  if (primarySize > 0) {
+                    const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
+                    await this.forceClosePosition(
+                      primaryExchange,
+                      primarySymbol,
+                      primaryCloseSide,
+                      primarySize,
+                      primaryExchange.exchangeName
+                    );
+                  }
+
+                  if (hedgeSize > 0) {
+                    const hedgeCloseSide: OrderSide = positionType === 'long' ? 'Buy' : 'Sell';
+                    await this.forceClosePosition(
+                      hedgeExchange,
+                      hedgeSymbol,
+                      hedgeCloseSide,
+                      hedgeSize,
+                      hedgeExchange.exchangeName
+                    );
+                  }
+
+                  // Handle completion
+                  await this.handleHedgedPositionClose(
+                    subscription,
+                    entryPrice,
+                    hedgeEntryPrice,
+                    fundingEarned
+                  );
+                }
+              } catch (error: any) {
+                console.error(`[FundingArbitrage] Error monitoring HEDGED TP/SL: ${error.message}`);
+              }
+            }, 2000); // Check every 2 seconds
+
+            // Set max hold time safety (2 hours)
+            const MAX_HOLD_TIME = 2 * 60 * 60 * 1000;
+            setTimeout(async () => {
+              clearInterval(monitorInterval);
+
+              // Force close both positions if still open
+              try {
+                const [primaryPosition, hedgePosition] = await Promise.all([
+                  primaryExchange.getPosition(primarySymbol),
+                  hedgeExchange.getPosition(hedgeSymbol),
+                ]);
+
+                const primarySize = Math.abs(parseFloat(primaryPosition.positionAmt || primaryPosition.size || '0'));
+                const hedgeSize = Math.abs(parseFloat(hedgePosition.positionAmt || hedgePosition.size || '0'));
+
+                if (primarySize > 0 || hedgeSize > 0) {
+                  console.log(`[FundingArbitrage] ⏰ Max hold time exceeded, force closing HEDGED positions...`);
+
+                  await Promise.all([
+                    primarySize > 0
+                      ? this.forceClosePosition(
+                          primaryExchange,
+                          primarySymbol,
+                          positionType === 'long' ? 'Sell' : 'Buy',
+                          primarySize,
+                          primaryExchange.exchangeName
+                        )
+                      : Promise.resolve(),
+                    hedgeSize > 0
+                      ? this.forceClosePosition(
+                          hedgeExchange,
+                          hedgeSymbol,
+                          positionType === 'long' ? 'Buy' : 'Sell',
+                          hedgeSize,
+                          hedgeExchange.exchangeName
+                        )
+                      : Promise.resolve(),
+                  ]);
+
+                  await this.handleHedgedPositionClose(
+                    subscription,
+                    entryPrice,
+                    hedgeEntryPrice,
+                    fundingEarned
+                  );
+                }
+              } catch (error: any) {
+                console.error(`[FundingArbitrage] Error in HEDGED max hold time handler: ${error.message}`);
+              }
+            }, MAX_HOLD_TIME);
+
+            console.log(`[FundingArbitrage] HEDGED mode with TP/SL configured successfully`);
+
+          } else {
+            // One or both TP/SL setups failed - fall back to WebSocket monitoring
+            console.log(`[FundingArbitrage] TP/SL setup failed on one or both exchanges, falling back to WebSocket monitoring`);
+            timeUntilFunding = subscription.nextFundingTime - Date.now();
+            this.monitorFundingPayment(
+              subscription,
+              primaryExchange,
+              fundingEarned,
+              timeUntilFunding,
+              entryPrice,
+              hedgeEntryPrice
+            ).catch((error: any) => {
+              console.error(`[FundingArbitrage] Error in funding monitoring:`, error);
+              this.emit(FundingArbitrageService.ERROR, {
+                subscriptionId: subscription.id,
+                error: error.message,
+              });
+            });
+          }
+
+        } catch (tpslError: any) {
+          console.error(`[FundingArbitrage] Failed to set HEDGED TP/SL: ${tpslError.message}`);
+          console.log(`[FundingArbitrage] Falling back to WebSocket funding monitoring`);
+
+          // Fall back to WebSocket monitoring
+          timeUntilFunding = subscription.nextFundingTime - Date.now();
+          this.monitorFundingPayment(
+            subscription,
+            primaryExchange,
+            fundingEarned,
+            timeUntilFunding,
+            entryPrice,
+            hedgeEntryPrice
+          ).catch((error: any) => {
+            console.error(`[FundingArbitrage] Error in funding monitoring:`, error);
+            this.emit(FundingArbitrageService.ERROR, {
+              subscriptionId: subscription.id,
+              error: error.message,
+            });
+          });
+        }
+      } else {
+        // No TP/SL configured - use WebSocket monitoring
+        console.log(`[FundingArbitrage] No TP/SL configured for HEDGED mode, using WebSocket monitoring`);
+
+        // 10. Schedule position closing with WebSocket funding payment monitoring
+        // Recalculate time (some time has passed since opening positions)
+        timeUntilFunding = subscription.nextFundingTime - Date.now();
+
+        console.log(`[FundingArbitrage] Setting up WebSocket funding payment monitor (expected: ${fundingEarned.toFixed(4)} USDT)`);
+
+        // Start monitoring funding payment via WebSocket
+        this.monitorFundingPayment(
+          subscription,
+          primaryExchange,
+          fundingEarned,
+          timeUntilFunding,
+          entryPrice,
+          hedgeEntryPrice
+        ).catch((error: any) => {
+          console.error(`[FundingArbitrage] Error in funding monitoring:`, error);
+          this.emit(FundingArbitrageService.ERROR, {
+            subscriptionId: subscription.id,
+            error: error.message,
+          });
         });
-      });
+      }
 
       // 11. Update database with entry data (but not completed yet)
       await prisma.fundingArbitrageSubscription.update({
@@ -1431,30 +1695,59 @@ export class FundingArbitrageService extends EventEmitter {
       // ========== NON_HEDGED MODE: Schedule immediate fast position close ==========
       console.log(`[FundingArbitrage] NON_HEDGED mode: Single position opened, scheduling immediate fast close (2-8s)...`);
 
-      // Get primary entry price
+      // Get primary entry price with retry logic
       let entryPrice = primaryOrder.avgPrice || primaryOrder.price || 0;
 
       if (entryPrice === 0) {
-        console.log(`[FundingArbitrage] ⚡ Fetching entry price from position...`);
+        console.log(`[FundingArbitrage] ⚡ Entry price not in order response, fetching from position with retries...`);
         const priceStartTime = Date.now();
 
-        const primaryPosition = await primaryExchange.getPosition(primarySymbol);
-        if (primaryPosition) {
-          entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
-          console.log(`[FundingArbitrage] Primary entry price: ${entryPrice}`);
+        // Retry up to 5 times with exponential backoff
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          try {
+            const primaryPosition = await primaryExchange.getPosition(primarySymbol);
+            if (primaryPosition) {
+              entryPrice = parseFloat(primaryPosition.avgPrice || primaryPosition.entryPrice || '0');
+
+              if (entryPrice > 0) {
+                console.log(`[FundingArbitrage] ✓ Primary entry price obtained: ${entryPrice} (attempt ${attempt})`);
+                break;
+              } else {
+                console.log(`[FundingArbitrage] Entry price still 0, retrying... (attempt ${attempt}/5)`);
+
+                // Wait with exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+                if (attempt < 5) {
+                  const delay = 200 * Math.pow(2, attempt - 1);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+              }
+            }
+          } catch (error: any) {
+            console.error(`[FundingArbitrage] Error fetching entry price (attempt ${attempt}): ${error.message}`);
+            if (attempt === 5) {
+              throw new Error(`Failed to get entry price after 5 attempts: ${error.message}`);
+            }
+          }
         }
 
         const priceFetchTime = Date.now() - priceStartTime;
-        console.log(`[FundingArbitrage] ✓ Entry price fetched in ${priceFetchTime}ms`);
+        console.log(`[FundingArbitrage] Entry price fetch completed in ${priceFetchTime}ms`);
+
+        if (entryPrice === 0) {
+          throw new Error(
+            `Failed to get entry price for ${primarySymbol} after 5 attempts. ` +
+            `Position may not exist or exchange API is not responding correctly.`
+          );
+        }
       }
 
-      // Calculate estimated funding (won't actually earn it, but for tracking)
-      const estimatedFunding = subscription.fundingRate * quantity * entryPrice;
+      // Calculate funding that will be earned (position held through funding time)
+      const fundingEarned = subscription.fundingRate * quantity * entryPrice;
 
       console.log(`[FundingArbitrage] NON_HEDGED mode position opened:`, {
         entryPrice,
-        estimatedFunding: estimatedFunding.toFixed(4),
-        note: 'Position will close in 2-8s using fast strategies',
+        fundingEarned: fundingEarned.toFixed(4),
+        note: 'Position will be managed with TP/SL orders',
       });
 
       // Update database with entry data and EXECUTING status
@@ -1464,7 +1757,7 @@ export class FundingArbitrageService extends EventEmitter {
           status: 'EXECUTING',
           entryPrice,
           hedgeEntryPrice: null, // No hedge in NON_HEDGED mode
-          fundingEarned: 0, // No funding earned in NON_HEDGED mode
+          fundingEarned, // Will earn funding by holding position through funding time
           executedAt: new Date(),
         },
       });
@@ -1472,129 +1765,150 @@ export class FundingArbitrageService extends EventEmitter {
       // Determine close side (opposite of entry)
       const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
 
-      // Schedule immediate position closing using fast strategies
-      const closeDelay = 100; // Close almost immediately (100ms delay for database write)
-      console.log(`[FundingArbitrage] Scheduling fast position close in ${closeDelay}ms...`);
+      // ========== SET TAKE-PROFIT / STOP-LOSS ORDERS ==========
+      // Use TP/SL if configured, otherwise fall back to time-based close
+      if (subscription.takeProfit || subscription.stopLoss) {
+        console.log(`[FundingArbitrage] Setting up TP/SL orders for NON_HEDGED mode...`);
 
-      setTimeout(async () => {
         try {
-          console.log(`[FundingArbitrage] ⚡ Starting fast close for NON_HEDGED mode...`);
+          // Calculate TP/SL prices based on entry price and percentages
+          const takeProfitPrice = subscription.takeProfit
+            ? entryPrice * (1 + (positionType === 'long' ? subscription.takeProfit : -subscription.takeProfit) / 100)
+            : undefined;
 
-          // Get actual position size
-          let actualQuantity = primaryQuantity;
-          try {
-            const position = await primaryExchange.getPosition(primarySymbol);
-            const posSize = Math.abs(parseFloat(position.positionAmt || position.size || '0'));
-            if (posSize > 0) {
-              actualQuantity = posSize;
-              console.log(`[FundingArbitrage] Actual position size: ${actualQuantity}`);
-            }
-          } catch (posError: any) {
-            console.warn(`[FundingArbitrage] Could not fetch position size: ${posError.message}, using original: ${primaryQuantity}`);
-          }
+          const stopLossPrice = subscription.stopLoss
+            ? entryPrice * (1 - (positionType === 'long' ? subscription.stopLoss : -subscription.stopLoss) / 100)
+            : undefined;
 
-          // Select optimal fast close strategy (Ultra-Fast WS or Hybrid)
-          const strategy = PositionCloseStrategyFactory.getStrategy(primaryExchange, primaryExchange);
-          console.log(`[FundingArbitrage] Selected NON_HEDGED close strategy: ${strategy.name}`);
-
-          const closeStartTime = Date.now();
-
-          // Execute fast close (single position, no hedge)
-          const result = await strategy.closePositions({
-            primarySymbol,
-            hedgeSymbol: primarySymbol, // Use same symbol for both (strategy will only close primary)
-            primarySide: primaryCloseSide,
-            hedgeSide: primaryCloseSide, // Dummy value, won't be used
-            primaryQuantity: actualQuantity,
-            hedgeQuantity: 0, // No hedge to close
-            positionType,
-            maxWaitTime: 5000, // 5 seconds for limit orders
-            aggressiveMargin: 0.0005, // 0.05% aggressive pricing
-          });
-
-          const actualCloseTime = Date.now() - closeStartTime;
-          console.log(`[FundingArbitrage] ✓ NON_HEDGED fast close completed in ${actualCloseTime}ms`);
-
-          // Calculate exit price and fees
-          const primaryExitPrice = result.primaryExitPrice || entryPrice;
-          const primaryFeeRate = result.primaryFeeType === 'maker' ? 0.0002 : 0.00055;
-
-          // Entry + exit fees (2 transactions)
-          const primaryTradingFees = (actualQuantity * entryPrice * primaryFeeRate * 2);
-
-          // Calculate P&L from price movement
-          const primaryPnL = positionType === 'long'
-            ? (primaryExitPrice - entryPrice) * actualQuantity
-            : (entryPrice - primaryExitPrice) * actualQuantity;
-
-          // Realized P&L (no funding in NON_HEDGED mode, just trade P&L - fees)
-          const realizedPnl = primaryPnL - primaryTradingFees;
-
-          console.log(`[FundingArbitrage] NON_HEDGED final P&L:`, {
-            primaryPnL: primaryPnL.toFixed(4),
-            fees: primaryTradingFees.toFixed(4),
-            realizedPnl: realizedPnl.toFixed(4),
-            closeTime: actualCloseTime,
-            strategy: result.strategy,
-          });
-
-          // Update database with final results
-          await prisma.fundingArbitrageSubscription.update({
-            where: { id: subscription.id },
-            data: {
-              status: 'COMPLETED',
-              realizedPnl,
-              primaryExitPrice,
-              hedgeExitPrice: null, // No hedge
-              primaryTradingFees,
-              hedgeTradingFees: null, // No hedge fees
-              closedAt: new Date(),
-            },
-          });
-
-          // Remove from in-memory subscriptions
-          this.subscriptions.delete(subscription.id);
-
-          // Emit completion event
-          subscription.status = 'completed';
-          this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
-            subscriptionId: subscription.id,
-            symbol,
-            fundingRate: subscription.fundingRate,
+          console.log(`[FundingArbitrage] TP/SL prices calculated:`, {
             entryPrice,
-            hedgeEntryPrice: null,
-            fundingEarned: 0,
-            realizedPnl,
-            primaryExitPrice,
-            hedgeExitPrice: null,
-            primaryTradingFees,
-            hedgeTradingFees: 0,
-            closeTime: actualCloseTime,
-            strategy: result.strategy,
+            takeProfitPrice: takeProfitPrice?.toFixed(2),
+            stopLossPrice: stopLossPrice?.toFixed(2),
+            takeProfitPercent: subscription.takeProfit,
+            stopLossPercent: subscription.stopLoss,
           });
 
-          console.log(`[FundingArbitrage] ✅ NON_HEDGED deal completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)} (closed in ${actualCloseTime}ms using ${result.strategy})`);
-
-        } catch (closeError: any) {
-          console.error(`[FundingArbitrage] NON_HEDGED fast close failed: ${closeError.message}`);
-
-          // Update database with error
-          await prisma.fundingArbitrageSubscription.update({
-            where: { id: subscription.id },
-            data: {
-              status: 'ERROR',
-              errorMessage: `NON_HEDGED fast close failed: ${closeError.message}. Please close position manually.`,
-            },
+          // Set TP/SL on the exchange
+          const tpslResult = await primaryExchange.setTradingStop({
+            symbol: primarySymbol,
+            side: primarySide,
+            takeProfit: takeProfitPrice,
+            stopLoss: stopLossPrice,
           });
 
-          this.emit(FundingArbitrageService.ERROR, {
-            subscriptionId: subscription.id,
-            error: `NON_HEDGED close failed: ${closeError.message}`,
-          });
+          console.log(`[FundingArbitrage] ✓ TP/SL orders set successfully:`, tpslResult);
+          console.log(`[FundingArbitrage] Position will close automatically when TP or SL is hit`);
+
+          // Set up monitoring for TP/SL fills
+          // For now, use position monitoring to detect when position is closed
+          const monitorInterval = setInterval(async () => {
+            try {
+              const position = await primaryExchange.getPosition(primarySymbol);
+              const posSize = Math.abs(parseFloat(position.positionAmt || position.size || '0'));
+
+              // If position is closed (size = 0), TP or SL was hit
+              if (posSize === 0) {
+                clearInterval(monitorInterval);
+                console.log(`[FundingArbitrage] ✓ Position closed by TP/SL trigger`);
+
+                // Handle position close and calculate P&L
+                await this.handleNonHedgedPositionClose(
+                  subscription,
+                  primaryExchange,
+                  primarySymbol,
+                  primaryQuantity,
+                  entryPrice,
+                  fundingEarned,
+                  positionType
+                );
+              }
+            } catch (error: any) {
+              console.error(`[FundingArbitrage] Error monitoring TP/SL: ${error.message}`);
+            }
+          }, 2000); // Check every 2 seconds
+
+          // Set max hold time safety (2 hours)
+          const MAX_HOLD_TIME = 2 * 60 * 60 * 1000;
+          setTimeout(async () => {
+            clearInterval(monitorInterval);
+
+            // Check if position still open
+            try {
+              const position = await primaryExchange.getPosition(primarySymbol);
+              const posSize = Math.abs(parseFloat(position.positionAmt || position.size || '0'));
+
+              if (posSize > 0) {
+                console.log(`[FundingArbitrage] ⏰ Max hold time exceeded, force closing NON_HEDGED position...`);
+                await this.forceClosePosition(
+                  primaryExchange,
+                  primarySymbol,
+                  primaryCloseSide,
+                  posSize,
+                  primaryExchange.exchangeName
+                );
+
+                // Handle the close
+                await this.handleNonHedgedPositionClose(
+                  subscription,
+                  primaryExchange,
+                  primarySymbol,
+                  posSize,
+                  entryPrice,
+                  fundingEarned,
+                  positionType
+                );
+              }
+            } catch (error: any) {
+              console.error(`[FundingArbitrage] Error in max hold time handler: ${error.message}`);
+            }
+          }, MAX_HOLD_TIME);
+
+          console.log(`[FundingArbitrage] NON_HEDGED mode with TP/SL configured successfully`);
+
+        } catch (tpslError: any) {
+          console.error(`[FundingArbitrage] Failed to set TP/SL: ${tpslError.message}`);
+          console.log(`[FundingArbitrage] Falling back to time-based close strategy`);
+
+          // Fall back to time-based close
+          const timeUntilFunding = subscription.nextFundingTime - Date.now();
+          const closeDelay = Math.max(100, timeUntilFunding + 2000); // 2 seconds after funding
+          console.log(`[FundingArbitrage] NON_HEDGED: Position will close ${Math.floor(closeDelay / 1000)}s after funding (fallback)`);
+
+          // Keep the original setTimeout logic as fallback
+          this.scheduleNonHedgedClose(
+            subscription,
+            primaryExchange,
+            primarySymbol,
+            primaryCloseSide,
+            primaryQuantity,
+            entryPrice,
+            fundingEarned,
+            positionType,
+            closeDelay
+          );
         }
-      }, closeDelay);
+      } else {
+        // No TP/SL configured - use time-based close
+        console.log(`[FundingArbitrage] No TP/SL configured, using time-based close`);
+        const timeUntilFunding = subscription.nextFundingTime - Date.now();
+        const closeDelay = Math.max(100, timeUntilFunding + 2000); // 2 seconds after funding
+        console.log(`[FundingArbitrage] NON_HEDGED: Position will close ${Math.floor(closeDelay / 1000)}s after funding`);
+        console.log(`[FundingArbitrage] Funding in ${Math.floor(timeUntilFunding / 1000)}s`);
 
-      console.log(`[FundingArbitrage] NON_HEDGED mode order executed for ${symbol}, fast close scheduled`);
+        this.scheduleNonHedgedClose(
+          subscription,
+          primaryExchange,
+          primarySymbol,
+          primaryCloseSide,
+          primaryQuantity,
+          entryPrice,
+          fundingEarned,
+          positionType,
+          closeDelay
+        );
+      }
+
+      console.log(`[FundingArbitrage] NON_HEDGED mode order executed for ${symbol}`);
     }
   }
 
@@ -1702,6 +2016,370 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Handle NON_HEDGED position close, calculate P&L, and update database
+   * Used when TP/SL triggers or max hold time is reached
+   */
+  private async handleNonHedgedPositionClose(
+    subscription: FundingSubscription,
+    primaryExchange: BaseExchangeConnector,
+    primarySymbol: string,
+    actualQuantity: number,
+    entryPrice: number,
+    fundingEarned: number,
+    positionType: 'long' | 'short'
+  ): Promise<void> {
+    try {
+      const symbol = subscription.symbol;
+      console.log(`[FundingArbitrage] Handling NON_HEDGED position close for ${symbol}...`);
+
+      // Get actual exit price from closed position
+      let exitPrice = entryPrice; // Default to entry price
+      try {
+        const position = await primaryExchange.getPosition(primarySymbol);
+        if (position && position.avgPrice) {
+          exitPrice = parseFloat(position.avgPrice);
+        }
+      } catch (error: any) {
+        console.warn(`[FundingArbitrage] Could not fetch exit price: ${error.message}, using entry price`);
+      }
+
+      // Calculate fees (entry + exit)
+      const primaryFeeRate = 0.00055; // Assume taker fee (worst case)
+      const primaryTradingFees = (actualQuantity * entryPrice * primaryFeeRate * 2);
+
+      // Calculate P&L from price movement
+      const primaryPnL = positionType === 'long'
+        ? (exitPrice - entryPrice) * actualQuantity
+        : (entryPrice - exitPrice) * actualQuantity;
+
+      // Realized P&L = funding earned + trade P&L - fees
+      const realizedPnl = fundingEarned + primaryPnL - primaryTradingFees;
+
+      console.log(`[FundingArbitrage] NON_HEDGED position closed - P&L calculation:`, {
+        entryPrice: entryPrice.toFixed(2),
+        exitPrice: exitPrice.toFixed(2),
+        fundingEarned: fundingEarned.toFixed(4),
+        tradePnL: primaryPnL.toFixed(4),
+        fees: primaryTradingFees.toFixed(4),
+        realizedPnl: realizedPnl.toFixed(4),
+      });
+
+      // Update database and reset to ACTIVE for next cycle
+      await prisma.fundingArbitrageSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ACTIVE', // Reset to ACTIVE for recurring execution
+          realizedPnl: {
+            increment: realizedPnl, // Accumulate P&L over cycles
+          },
+          primaryExitPrice: null, // Clear execution-specific fields
+          hedgeExitPrice: null,
+          primaryTradingFees: {
+            increment: primaryTradingFees,
+          },
+          hedgeTradingFees: null,
+          closedAt: new Date(),
+          entryPrice: null, // Clear for next cycle
+          hedgeEntryPrice: null,
+          errorMessage: null,
+        },
+      });
+
+      // Reset in-memory subscription state
+      subscription.status = 'active';
+      subscription.entryPrice = null;
+      subscription.hedgeEntryPrice = null;
+      subscription.primaryExitPrice = null;
+      subscription.hedgeExitPrice = null;
+      subscription.errorMessage = null;
+
+      console.log(`[FundingArbitrage] ✅ NON_HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
+      console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+
+      // Emit completion event
+      this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
+        subscriptionId: subscription.id,
+        symbol,
+        fundingRate: subscription.fundingRate,
+        entryPrice,
+        hedgeEntryPrice: null,
+        fundingEarned,
+        realizedPnl,
+        primaryExitPrice: exitPrice,
+        hedgeExitPrice: null,
+        primaryTradingFees,
+        hedgeTradingFees: 0,
+        closeTime: 0, // Not tracked for TP/SL
+        strategy: 'TP/SL',
+        isRecurring: true,
+      });
+
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Error handling NON_HEDGED position close: ${error.message}`);
+
+      // Update database with error
+      await prisma.fundingArbitrageSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ERROR',
+          errorMessage: `Position close handler failed: ${error.message}`,
+        },
+      });
+
+      this.emit(FundingArbitrageService.ERROR, {
+        subscriptionId: subscription.id,
+        error: `Position close failed: ${error.message}`,
+      });
+    }
+  }
+
+  /**
+   * Schedule NON_HEDGED position close using time-based approach (fallback)
+   * Used when TP/SL is not configured or fails to set
+   */
+  private scheduleNonHedgedClose(
+    subscription: FundingSubscription,
+    primaryExchange: BaseExchangeConnector,
+    primarySymbol: string,
+    primaryCloseSide: OrderSide,
+    primaryQuantity: number,
+    entryPrice: number,
+    fundingEarned: number,
+    positionType: 'long' | 'short',
+    closeDelay: number
+  ): void {
+    setTimeout(async () => {
+      try {
+        console.log(`[FundingArbitrage] ⚡ Starting time-based close for NON_HEDGED mode...`);
+
+        // Get actual position size
+        let actualQuantity = primaryQuantity;
+        try {
+          const position = await primaryExchange.getPosition(primarySymbol);
+          const posSize = Math.abs(parseFloat(position.positionAmt || position.size || '0'));
+          if (posSize > 0) {
+            actualQuantity = posSize;
+            console.log(`[FundingArbitrage] Actual position size: ${actualQuantity}`);
+          }
+        } catch (posError: any) {
+          console.warn(`[FundingArbitrage] Could not fetch position size: ${posError.message}, using original: ${primaryQuantity}`);
+        }
+
+        // Select optimal fast close strategy
+        const strategy = PositionCloseStrategyFactory.getStrategy(primaryExchange, primaryExchange);
+        console.log(`[FundingArbitrage] Selected close strategy: ${strategy.name}`);
+
+        const closeStartTime = Date.now();
+
+        // Execute fast close
+        const result = await strategy.closePositions({
+          primarySymbol,
+          hedgeSymbol: primarySymbol,
+          primarySide: primaryCloseSide,
+          hedgeSide: primaryCloseSide,
+          primaryQuantity: actualQuantity,
+          hedgeQuantity: 0,
+          positionType,
+          maxWaitTime: 5000,
+          aggressiveMargin: 0.0005,
+        });
+
+        const actualCloseTime = Date.now() - closeStartTime;
+        console.log(`[FundingArbitrage] ✓ Time-based close completed in ${actualCloseTime}ms`);
+
+        // Calculate exit price and fees
+        const primaryExitPrice = result.primaryExitPrice || entryPrice;
+        const primaryFeeRate = result.primaryFeeType === 'maker' ? 0.0002 : 0.00055;
+        const primaryTradingFees = (actualQuantity * entryPrice * primaryFeeRate * 2);
+
+        // Calculate P&L
+        const primaryPnL = positionType === 'long'
+          ? (primaryExitPrice - entryPrice) * actualQuantity
+          : (entryPrice - primaryExitPrice) * actualQuantity;
+
+        const realizedPnl = fundingEarned + primaryPnL - primaryTradingFees;
+
+        console.log(`[FundingArbitrage] Time-based close P&L:`, {
+          fundingEarned: fundingEarned.toFixed(4),
+          tradePnL: primaryPnL.toFixed(4),
+          fees: primaryTradingFees.toFixed(4),
+          realizedPnl: realizedPnl.toFixed(4),
+        });
+
+        // Update database
+        await prisma.fundingArbitrageSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'ACTIVE',
+            realizedPnl: {
+              increment: realizedPnl,
+            },
+            primaryExitPrice: null,
+            hedgeExitPrice: null,
+            primaryTradingFees: {
+              increment: primaryTradingFees,
+            },
+            hedgeTradingFees: null,
+            closedAt: new Date(),
+            entryPrice: null,
+            hedgeEntryPrice: null,
+            errorMessage: null,
+          },
+        });
+
+        // Reset in-memory state
+        subscription.status = 'active';
+        subscription.entryPrice = null;
+        subscription.hedgeEntryPrice = null;
+        subscription.primaryExitPrice = null;
+        subscription.hedgeExitPrice = null;
+        subscription.errorMessage = null;
+
+        console.log(`[FundingArbitrage] ✅ Time-based cycle completed - P&L: $${realizedPnl.toFixed(4)}`);
+        console.log(`[FundingArbitrage] 🔄 Subscription reset to ACTIVE`);
+
+        // Emit completion event
+        this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
+          subscriptionId: subscription.id,
+          symbol: subscription.symbol,
+          fundingRate: subscription.fundingRate,
+          entryPrice,
+          hedgeEntryPrice: null,
+          fundingEarned,
+          realizedPnl,
+          primaryExitPrice,
+          hedgeExitPrice: null,
+          primaryTradingFees,
+          hedgeTradingFees: 0,
+          closeTime: actualCloseTime,
+          strategy: result.strategy,
+          isRecurring: true,
+        });
+
+      } catch (closeError: any) {
+        console.error(`[FundingArbitrage] Time-based close failed: ${closeError.message}`);
+
+        await prisma.fundingArbitrageSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'ERROR',
+            errorMessage: `Time-based close failed: ${closeError.message}. Please close position manually.`,
+          },
+        });
+
+        this.emit(FundingArbitrageService.ERROR, {
+          subscriptionId: subscription.id,
+          error: `Time-based close failed: ${closeError.message}`,
+        });
+      }
+    }, closeDelay);
+  }
+
+  /**
+   * Handle HEDGED position close, calculate P&L, and update database
+   * Used when TP/SL triggers or max hold time is reached in HEDGED mode
+   */
+  private async handleHedgedPositionClose(
+    subscription: FundingSubscription,
+    entryPrice: number,
+    hedgeEntryPrice: number,
+    fundingEarned: number
+  ): Promise<void> {
+    try {
+      const symbol = subscription.symbol;
+      console.log(`[FundingArbitrage] Handling HEDGED position close for ${symbol}...`);
+
+      // For HEDGED mode, P&L is primarily from funding
+      // Price movement is hedged, so no directional P&L expected
+      const primaryFeeRate = 0.00055; // Assume taker fee
+      const hedgeFeeRate = 0.00055;
+
+      const quantity = subscription.quantity;
+      const primaryTradingFees = (quantity * entryPrice * primaryFeeRate * 2);
+      const hedgeTradingFees = (quantity * hedgeEntryPrice * hedgeFeeRate * 2);
+
+      // In perfect hedge, trade P&L should be near zero (price movements offset)
+      // Main profit comes from funding
+      const realizedPnl = fundingEarned - primaryTradingFees - hedgeTradingFees;
+
+      console.log(`[FundingArbitrage] HEDGED position closed - P&L calculation:`, {
+        fundingEarned: fundingEarned.toFixed(4),
+        primaryFees: primaryTradingFees.toFixed(4),
+        hedgeFees: hedgeTradingFees.toFixed(4),
+        realizedPnl: realizedPnl.toFixed(4),
+      });
+
+      // Update database and reset to ACTIVE
+      await prisma.fundingArbitrageSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ACTIVE',
+          realizedPnl: {
+            increment: realizedPnl,
+          },
+          primaryExitPrice: null,
+          hedgeExitPrice: null,
+          primaryTradingFees: {
+            increment: primaryTradingFees,
+          },
+          hedgeTradingFees: {
+            increment: hedgeTradingFees,
+          },
+          closedAt: new Date(),
+          entryPrice: null,
+          hedgeEntryPrice: null,
+          errorMessage: null,
+        },
+      });
+
+      // Reset in-memory state
+      subscription.status = 'active';
+      subscription.entryPrice = null;
+      subscription.hedgeEntryPrice = null;
+      subscription.primaryExitPrice = null;
+      subscription.hedgeExitPrice = null;
+      subscription.errorMessage = null;
+
+      console.log(`[FundingArbitrage] ✅ HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
+      console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+
+      // Emit completion event
+      this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
+        subscriptionId: subscription.id,
+        symbol,
+        fundingRate: subscription.fundingRate,
+        entryPrice,
+        hedgeEntryPrice,
+        fundingEarned,
+        realizedPnl,
+        primaryExitPrice: null,
+        hedgeExitPrice: null,
+        primaryTradingFees,
+        hedgeTradingFees,
+        closeTime: 0,
+        strategy: 'TP/SL-HEDGED',
+        isRecurring: true,
+      });
+
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Error handling HEDGED position close: ${error.message}`);
+
+      await prisma.fundingArbitrageSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ERROR',
+          errorMessage: `HEDGED position close handler failed: ${error.message}`,
+        },
+      });
+
+      this.emit(FundingArbitrageService.ERROR, {
+        subscriptionId: subscription.id,
+        error: `HEDGED position close failed: ${error.message}`,
+      });
+    }
+  }
+
+  /**
    * Monitor funding payment via WebSocket and close positions immediately when funded
    *
    * REAL-TIME FUNDING DETECTION:
@@ -1795,7 +2473,7 @@ export class FundingArbitrageService extends EventEmitter {
           clearTimeout(monitoringTimeout);
         }
 
-        console.log(`[FundingMonitor] ✓ Funding payment detected! Closing positions immediately...`);
+        console.log(`[FundingMonitor] ✓ Funding payment detected! Closing positions with TP/SL orders...`);
 
         try {
           await this.closePositions(subscription, entryPrice, hedgeEntryPrice, expectedFunding);
@@ -2040,25 +2718,43 @@ export class FundingArbitrageService extends EventEmitter {
       strategy: result.strategy,
     });
 
-    // STEP 9: Update database with final results
+    // STEP 9: Update database with final results and reset to ACTIVE for next cycle
     await prisma.fundingArbitrageSubscription.update({
       where: { id: subscription.id },
       data: {
-        status: 'COMPLETED',
-        realizedPnl,
-        primaryExitPrice,
-        hedgeExitPrice,
-        primaryTradingFees,
-        hedgeTradingFees,
+        status: 'ACTIVE', // ✅ Reset to ACTIVE instead of COMPLETED for recurring execution
+        realizedPnl: {
+          increment: realizedPnl, // Accumulate P&L over cycles
+        },
+        primaryExitPrice: null, // Clear execution-specific fields
+        hedgeExitPrice: null,
+        primaryTradingFees: {
+          increment: primaryTradingFees, // Accumulate fees
+        },
+        hedgeTradingFees: {
+          increment: hedgeTradingFees,
+        },
         closedAt: new Date(),
+        entryPrice: null, // Clear for next cycle
+        hedgeEntryPrice: null,
+        errorMessage: null, // Clear any previous errors
+        // executedAt is kept to track when subscription was first executed
       },
     });
 
-    // STEP 10: Remove from in-memory subscriptions
-    this.subscriptions.delete(subscription.id);
+    // STEP 10: Reset in-memory subscription state for next cycle
+    subscription.status = 'active';
+    subscription.entryPrice = null;
+    subscription.hedgeEntryPrice = null;
+    subscription.primaryExitPrice = null;
+    subscription.hedgeExitPrice = null;
+    subscription.errorMessage = null;
+    // Keep subscription in memory for next execution cycle
 
-    // STEP 11: Emit completion event
-    subscription.status = 'completed';
+    console.log(`[FundingArbitrage] ✅ HEDGED mode cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)} (closed in ${actualCloseTime}ms using ${result.strategy})`);
+    console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+
+    // STEP 11: Emit cycle completion event (not final completion)
     this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
       subscriptionId: subscription.id,
       symbol,
@@ -2073,9 +2769,8 @@ export class FundingArbitrageService extends EventEmitter {
       hedgeTradingFees,
       closeTime: actualCloseTime,
       strategy: result.strategy,
+      isRecurring: true, // Indicate this is a recurring subscription
     });
-
-    console.log(`[FundingArbitrage] ✅ HEDGED mode deal completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)} (closed in ${actualCloseTime}ms using ${result.strategy})`);
   }
 
   /**
