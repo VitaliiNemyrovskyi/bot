@@ -205,6 +205,7 @@ export async function POST(request: NextRequest) {
       }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
+      authToken: z.string().optional(), // Browser session token for MEXC
       label: z.string().optional(),
       isActive: z.boolean().optional(),
     });
@@ -233,6 +234,7 @@ export async function POST(request: NextRequest) {
         environment: body.environment,
         apiKey: body.apiKey,
         apiSecret: body.apiSecret,
+        authToken: body.authToken, // Browser session token for MEXC
         label: body.label,
         isActive: body.isActive ?? true, // Default to true for new credentials
       });

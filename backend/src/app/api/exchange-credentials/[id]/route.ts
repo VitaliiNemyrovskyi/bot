@@ -129,7 +129,7 @@ export async function GET(
 /**
  * PATCH /api/exchange-credentials/:id
  *
- * Updates credential information (label, apiKey, apiSecret)
+ * Updates credential information (label, apiKey, apiSecret, authToken)
  *
  * Authentication: Required (Bearer token)
  *
@@ -141,6 +141,7 @@ export async function GET(
  *   "label"?: string,
  *   "apiKey"?: string,
  *   "apiSecret"?: string,
+ *   "authToken"?: string,  // For MEXC browser session authentication
  *   "isActive"?: boolean  // Set active status (true/false)
  * }
  *
@@ -201,14 +202,14 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { label, apiKey, apiSecret, isActive } = body;
+    const { label, apiKey, apiSecret, authToken, isActive } = body;
 
     // Validate that at least one field is provided
-    if (label === undefined && apiKey === undefined && apiSecret === undefined && isActive === undefined) {
+    if (label === undefined && apiKey === undefined && apiSecret === undefined && authToken === undefined && isActive === undefined) {
       return NextResponse.json(
         {
           success: false,
-          error: 'At least one field (label, apiKey, apiSecret, isActive) must be provided',
+          error: 'At least one field (label, apiKey, apiSecret, authToken, isActive) must be provided',
           code: CredentialErrorCode.VALIDATION_ERROR,
           timestamp: new Date().toISOString(),
         },
@@ -221,7 +222,7 @@ export async function PATCH(
       const updated = await ExchangeCredentialsService.updateCredential(
         userId,
         credentialId,
-        { label, apiKey, apiSecret, isActive }
+        { label, apiKey, apiSecret, authToken, isActive }
       );
 
       return NextResponse.json(

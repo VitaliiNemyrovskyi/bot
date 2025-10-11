@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RestClientV5 } from 'bybit-api';
 import { BingXService } from '@/lib/bingx';
+import { MEXCService } from '@/lib/mexc';
 
 /**
  * POST /api/exchange-credentials/test
@@ -9,7 +10,7 @@ import { BingXService } from '@/lib/bingx';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { exchange, environment, apiKey, apiSecret } = body;
+    const { exchange, environment, apiKey, apiSecret, authToken } = body;
 
     // Validate required fields
     if (!exchange || !environment || !apiKey || !apiSecret) {
@@ -159,6 +160,60 @@ export async function POST(request: NextRequest) {
 
         // Handle BingX-specific errors
         if (error.message?.includes('invalid') || error.message?.includes('Invalid')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key or secret is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
+    } else if (exchange.toUpperCase() === 'MEXC') {
+      // Test MEXC credentials
+      const mexcService = new MEXCService({
+        apiKey,
+        apiSecret,
+        authToken,
+        testnet: isTestnet,
+        enableRateLimit: true,
+      });
+
+      try {
+        // Test by calling getAccountInfo endpoint
+        const accountInfo = await mexcService.getAccountInfo();
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          testnet: isTestnet,
+          accountPreview: {
+            currency: accountInfo.currency,
+            equity: accountInfo.equity,
+            availableBalance: accountInfo.availableBalance,
+            cashBalance: accountInfo.cashBalance,
+            unrealized: accountInfo.unrealized,
+            accountType: 'futures',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('MEXC API validation error:', error);
+
+        // Handle MEXC-specific errors
+        if (error.message?.includes('602') || error.message?.includes('invalid') || error.message?.includes('Invalid')) {
           return NextResponse.json(
             {
               success: false,

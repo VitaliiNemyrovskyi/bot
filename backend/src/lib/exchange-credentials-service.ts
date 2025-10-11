@@ -25,6 +25,7 @@ import {
 interface CachedCredential {
   apiKey: string;
   apiSecret: string;
+  authToken?: string;
   timestamp: number;
 }
 
@@ -81,6 +82,7 @@ export class ExchangeCredentialsService {
       // Encrypt the API keys
       const encryptedApiKey = EncryptionService.encrypt(data.apiKey);
       const encryptedApiSecret = EncryptionService.encrypt(data.apiSecret);
+      const encryptedAuthToken = data.authToken ? EncryptionService.encrypt(data.authToken) : undefined;
 
       // Determine if credential should be active
       // 1. If explicitly provided in data, use that value
@@ -105,6 +107,7 @@ export class ExchangeCredentialsService {
           environment: data.environment,
           apiKey: encryptedApiKey,
           apiSecret: encryptedApiSecret,
+          authToken: encryptedAuthToken,
           label: data.label,
           isActive,
         },
@@ -181,6 +184,7 @@ export class ExchangeCredentialsService {
           environment: credential.environment,
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
+          authToken: cached.authToken,
           label: credential.label || undefined,
           createdAt: credential.createdAt,
           updatedAt: credential.updatedAt,
@@ -190,11 +194,13 @@ export class ExchangeCredentialsService {
       // Decrypt credentials
       const apiKey = EncryptionService.decrypt(credential.apiKey);
       const apiSecret = EncryptionService.decrypt(credential.apiSecret);
+      const authToken = credential.authToken ? EncryptionService.decrypt(credential.authToken) : undefined;
 
       // Cache the decrypted credentials
       this.cache.set(cacheKey, {
         apiKey,
         apiSecret,
+        authToken,
         timestamp: Date.now(),
       });
 
@@ -204,6 +210,7 @@ export class ExchangeCredentialsService {
         environment: credential.environment,
         apiKey,
         apiSecret,
+        authToken,
         label: credential.label || undefined,
         createdAt: credential.createdAt,
         updatedAt: credential.updatedAt,
@@ -275,6 +282,7 @@ export class ExchangeCredentialsService {
           environment: credential.environment,
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
+          authToken: cached.authToken,
           label: credential.label || undefined,
           createdAt: credential.createdAt,
           updatedAt: credential.updatedAt,
@@ -284,11 +292,13 @@ export class ExchangeCredentialsService {
       // Decrypt credentials
       const apiKey = EncryptionService.decrypt(credential.apiKey);
       const apiSecret = EncryptionService.decrypt(credential.apiSecret);
+      const authToken = credential.authToken ? EncryptionService.decrypt(credential.authToken) : undefined;
 
       // Cache the decrypted credentials
       this.cache.set(cacheKey, {
         apiKey,
         apiSecret,
+        authToken,
         timestamp: Date.now(),
       });
 
@@ -298,6 +308,7 @@ export class ExchangeCredentialsService {
         environment: credential.environment,
         apiKey,
         apiSecret,
+        authToken,
         label: credential.label || undefined,
         createdAt: credential.createdAt,
         updatedAt: credential.updatedAt,
@@ -351,6 +362,7 @@ export class ExchangeCredentialsService {
           environment: selectedCredential.environment,
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
+          authToken: cached.authToken,
           label: selectedCredential.label || undefined,
           createdAt: selectedCredential.createdAt,
           updatedAt: selectedCredential.updatedAt,
@@ -360,11 +372,13 @@ export class ExchangeCredentialsService {
       // Decrypt credentials
       const apiKey = EncryptionService.decrypt(selectedCredential.apiKey);
       const apiSecret = EncryptionService.decrypt(selectedCredential.apiSecret);
+      const authToken = selectedCredential.authToken ? EncryptionService.decrypt(selectedCredential.authToken) : undefined;
 
       // Cache decrypted credentials
       this.cache.set(cacheKey, {
         apiKey,
         apiSecret,
+        authToken,
         timestamp: Date.now(),
       });
 
@@ -374,6 +388,7 @@ export class ExchangeCredentialsService {
         environment: selectedCredential.environment,
         apiKey,
         apiSecret,
+        authToken,
         label: selectedCredential.label || undefined,
         createdAt: selectedCredential.createdAt,
         updatedAt: selectedCredential.updatedAt,
@@ -395,6 +410,7 @@ export class ExchangeCredentialsService {
       label?: string;
       apiKey?: string;
       apiSecret?: string;
+      authToken?: string;
       isActive?: boolean;
     }
   ): Promise<CredentialInfo> {
@@ -446,6 +462,16 @@ export class ExchangeCredentialsService {
         }
         if (data.apiSecret) {
           updateData.apiSecret = EncryptionService.encrypt(data.apiSecret);
+        }
+      }
+
+      // Handle authToken update (for MEXC browser sessions)
+      if (data.authToken !== undefined) {
+        // Empty string means clear the token
+        if (data.authToken === '') {
+          updateData.authToken = null;
+        } else {
+          updateData.authToken = EncryptionService.encrypt(data.authToken);
         }
       }
 

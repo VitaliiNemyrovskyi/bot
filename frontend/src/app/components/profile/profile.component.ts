@@ -84,7 +84,7 @@ export class ProfileComponent implements OnInit {
   // Exchange Credentials State
   credentials = signal<ExchangeCredential[]>([]);
   editingCredentialId = signal<string | null>(null);
-  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string }>({});
+  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string; authToken?: string }>({});
   showAddCredentialModal = signal<boolean>(false);
   testingConnectionId = signal<string | null>(null);
   deletingCredentialId = signal<string | null>(null);
@@ -187,6 +187,7 @@ export class ProfileComponent implements OnInit {
       environment: [EnvironmentType.MAINNET, Validators.required],
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
+      authToken: [''], // Browser session token for MEXC
       label: ['', [Validators.maxLength(50)]]
     });
 
@@ -348,6 +349,7 @@ export class ProfileComponent implements OnInit {
       label: credential.label,
       apiKey: '',  // Empty string means "keep current"
       apiSecret: '',  // Empty string means "keep current"
+      authToken: '',  // Empty string means "keep current"
       // Store original values for canceling
       _originalLabel: credential.label
     } as any);
@@ -389,11 +391,12 @@ export class ProfileComponent implements OnInit {
       return;
     }
 
-    const testData = {
+    const testData: TestConnectionRequest = {
       exchange: credential.exchange,
       environment: credential.environment,
       apiKey: apiKey,
-      apiSecret: apiSecret
+      apiSecret: apiSecret,
+      authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined
     };
 
     this.testingConnectionId.set(credential.id);
@@ -444,6 +447,11 @@ export class ProfileComponent implements OnInit {
     // Include apiSecret only if it was changed (non-empty)
     if (editData.apiSecret && editData.apiSecret.trim() !== '') {
       updateRequest.apiSecret = editData.apiSecret.trim();
+    }
+
+    // Include authToken only if it was changed (non-empty)
+    if (editData.authToken && editData.authToken.trim() !== '') {
+      updateRequest.authToken = editData.authToken.trim();
     }
 
     // Set saving state
@@ -564,6 +572,7 @@ export class ProfileComponent implements OnInit {
       environment: EnvironmentType.MAINNET,
       apiKey: '',
       apiSecret: '',
+      authToken: '',
       label: ''
     });
     this.showAddCredentialModal.set(true);
@@ -606,7 +615,8 @@ export class ProfileComponent implements OnInit {
       exchange: this.newCredentialForm.value.exchange,
       environment: this.newCredentialForm.value.environment,
       apiKey: this.newCredentialForm.value.apiKey,
-      apiSecret: this.newCredentialForm.value.apiSecret
+      apiSecret: this.newCredentialForm.value.apiSecret,
+      authToken: this.newCredentialForm.value.authToken || undefined
     };
 
     this.testingConnectionId.set('new');
@@ -644,6 +654,7 @@ export class ProfileComponent implements OnInit {
       environment: this.newCredentialForm.value.environment,
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
+      authToken: this.newCredentialForm.value.authToken || undefined,
       label: this.newCredentialForm.value.label || undefined,
       isActive: true // Set new credentials as active by default
     };

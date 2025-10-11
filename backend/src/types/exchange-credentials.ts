@@ -10,6 +10,7 @@ export interface SaveCredentialsRequest {
   environment: Environment;
   apiKey: string;
   apiSecret: string;
+  authToken?: string; // Browser session token (for exchanges like MEXC)
   label?: string;
   isActive?: boolean;
 }
@@ -42,6 +43,7 @@ export interface ActiveCredential {
   environment: Environment;
   apiKey: string; // Decrypted, for internal use only
   apiSecret: string; // Decrypted, for internal use only
+  authToken?: string; // Decrypted browser session token (for MEXC futures)
   label?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +55,7 @@ export interface ExchangeCredentialData {
   environment: Environment;
   apiKey: string; // Unencrypted
   apiSecret: string; // Unencrypted
+  authToken?: string; // Unencrypted browser session token (for MEXC)
   label?: string;
   isActive?: boolean; // Optional flag to set credential as active
 }

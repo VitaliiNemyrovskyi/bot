@@ -17,7 +17,8 @@ export enum ExchangeType {
   OKX = 'OKX',
   COINBASE = 'COINBASE',
   KRAKEN = 'KRAKEN',
-  BINGX = 'BINGX'
+  BINGX = 'BINGX',
+  MEXC = 'MEXC'
 }
 
 /**
@@ -76,6 +77,7 @@ export interface CreateExchangeCredentialRequest {
   environment: EnvironmentType;
   apiKey: string;
   apiSecret: string;
+  authToken?: string; // Browser session token (for MEXC futures trading)
   label?: string;
   isActive?: boolean; // Optional flag to set credential as active (defaults to true)
 }
@@ -88,6 +90,7 @@ export interface UpdateExchangeCredentialRequest {
   label?: string;
   apiKey?: string;
   apiSecret?: string;
+  authToken?: string; // Browser session token (for MEXC)
   isActive?: boolean;  // Set active status (true/false) - no automatic deactivation of others
 }
 
@@ -122,6 +125,7 @@ export interface TestConnectionRequest {
   environment: EnvironmentType;
   apiKey: string;
   apiSecret: string;
+  authToken?: string; // Browser session token (for MEXC)
 }
 
 /**
@@ -353,6 +357,13 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/bingx.svg',
     color: '#1E73FA',
     website: 'https://www.bingx.com',
+    supportsTestnet: true
+  },
+  [ExchangeType.MEXC]: {
+    name: 'MEXC',
+    logo: '/assets/images/exchanges/mexc.svg',
+    color: '#00D4AA',
+    website: 'https://www.mexc.com',
     supportsTestnet: true
   }
 };

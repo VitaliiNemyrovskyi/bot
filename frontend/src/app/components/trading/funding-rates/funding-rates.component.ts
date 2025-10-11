@@ -171,6 +171,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   arbitrageSearchQuery = signal<string>(''); // Symbol search filter for arbitrage table
   minSpreadThreshold = signal<number | null>(null); // Minimum spread threshold in percentage
   showOnlySubscribedArbitrage = signal<boolean>(false); // Filter to show only subscribed pairs
+  maxNextFundingHoursArbitrage = signal<number | null>(null); // Maximum hours until next funding (filter)
 
   // Subscription settings
   subscriptionSettings = signal<SubscriptionSettings>({
@@ -332,7 +333,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   });
 
   /**
-   * Filtered arbitrage opportunities based on symbol search, spread threshold, and subscription status
+   * Filtered arbitrage opportunities based on symbol search, spread threshold, subscription status, and next funding time
    */
   filteredArbitrageOpportunities = computed(() => {
     let opportunities = [...this.arbitrageOpportunities()];
@@ -359,6 +360,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       opportunities = opportunities.filter(opp =>
         this.hasArbitrageSubscription(opp.symbol)
       );
+    }
+
+    // Filter by next funding time
+    const maxHours = this.maxNextFundingHoursArbitrage();
+    if (maxHours !== null && maxHours > 0) {
+      const now = Date.now();
+      const maxTime = now + (maxHours * 60 * 60 * 1000);
+      opportunities = opportunities.filter(opp => {
+        // Check if any exchange in this opportunity has next funding time within the threshold
+        return opp.exchanges.some((exchange: any) => {
+          const fundingTime = parseInt(exchange.nextFundingTime?.toString() || '0');
+          return fundingTime > 0 && fundingTime <= maxTime;
+        });
+      });
     }
 
     return opportunities;
@@ -518,23 +533,22 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             const credentialsArray = response.data.credentials || [];
             console.log('Credentials array:', credentialsArray);
 
-            // Filter for Bybit and BingX credentials (supported exchanges)
-            // AND only active credentials
-            const supportedCreds = credentialsArray.filter((c: ExchangeCredential) =>
-              (c.exchange === 'BYBIT' || c.exchange === 'BINGX') && c.isActive === true
+            // Filter for active credentials only (all exchanges supported)
+            const activeCredentials = credentialsArray.filter((c: ExchangeCredential) =>
+              c.isActive === true
             );
-            this.credentials.set(supportedCreds);
+            this.credentials.set(activeCredentials);
 
-            console.log('Active credentials:', supportedCreds);
+            console.log('Active credentials:', activeCredentials);
 
             // Auto-select first credential (all are active now)
-            const defaultCred = supportedCreds[0];
+            const defaultCred = activeCredentials[0];
             if (defaultCred) {
               this.selectedCredentialId.set(defaultCred.id);
               this.loadTickers();
               this.setupAutoRefresh();
             } else {
-              console.warn('No active Bybit or BingX credentials found');
+              console.warn('No active credentials found');
             }
           }
           this.isLoadingCredentials.set(false);
@@ -782,6 +796,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.arbitrageSearchQuery.set('');
     this.minSpreadThreshold.set(null);
     this.showOnlySubscribedArbitrage.set(false);
+    this.maxNextFundingHoursArbitrage.set(null);
   }
 
   /**
@@ -2313,6 +2328,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         } else {
           url = `https://bingx.com/en/perpetual/${displaySymbol}`;
         }
+        break;
+
+      case 'MEXC':
+        // MEXC uses underscore format in URLs (e.g., BTC_USDT)
+        const mexcSymbol = displaySymbol.includes('_') ? displaySymbol : symbol.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2');
+        url = `https://www.mexc.com/futures/${mexcSymbol}?type=linear_swap`;
         break;
 
       default:

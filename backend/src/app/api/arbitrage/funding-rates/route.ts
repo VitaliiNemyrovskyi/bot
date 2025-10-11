@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
+import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 
 /**
@@ -87,8 +88,9 @@ export async function GET(request: NextRequest) {
 
           const apiKey = EncryptionService.decrypt(cred.apiKey);
           const apiSecret = EncryptionService.decrypt(cred.apiSecret);
+          const authToken = cred.authToken ? EncryptionService.decrypt(cred.authToken) : undefined;
 
-          console.log(`[Arbitrage] Decrypted ${cred.exchange}: hasApiKey=${!!apiKey}, apiKeyLength=${apiKey?.length}, hasApiSecret=${!!apiSecret}, apiSecretLength=${apiSecret?.length}`);
+          console.log(`[Arbitrage] Decrypted ${cred.exchange}: hasApiKey=${!!apiKey}, apiKeyLength=${apiKey?.length}, hasApiSecret=${!!apiSecret}, apiSecretLength=${apiSecret?.length}, hasAuthToken=${!!authToken}`);
 
           return {
             id: cred.id,
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
             environment: cred.environment,
             apiKey,
             apiSecret,
+            authToken,
             label: cred.label || undefined,
             createdAt: cred.createdAt,
             updatedAt: cred.updatedAt,
@@ -122,10 +125,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 3. Fetch funding rates from all exchanges in parallel
-    const fundingRatesByExchange: Map<string, any[]> = new Map();
+    // 3. Fetch funding rates from all exchanges
+    // Step 1: Fetch from non-MEXC exchanges first to build symbol list
+    const nonMexcCredentials = validActiveCredentials.filter(c => c.exchange !== 'MEXC');
+    const mexcCredentials = validActiveCredentials.filter(c => c.exchange === 'MEXC');
 
-    const fetchPromises = validActiveCredentials.map(async (credential) => {
+    const nonMexcFetchPromises = nonMexcCredentials.map(async (credential) => {
       try {
         console.log(`[Arbitrage] Fetching funding rates for ${credential.exchange} (${credential.environment})`);
         console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
@@ -148,6 +153,7 @@ export async function GET(request: NextRequest) {
               symbol: t.symbol,
               fundingRate: t.fundingRate,
               nextFundingTime: t.nextFundingTime,
+              lastPrice: t.lastPrice,
             }))
           };
         } else if (credential.exchange === 'BINGX') {
@@ -171,6 +177,7 @@ export async function GET(request: NextRequest) {
               originalSymbol: r.symbol, // Keep original for reference
               fundingRate: r.fundingRate,
               nextFundingTime: r.fundingTime,
+              lastPrice: r.markPrice || '0', // Use mark price as last price
             }))
           };
         }
@@ -182,10 +189,67 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    const results = await Promise.all(fetchPromises);
-    const validResults = results.filter(r => r !== null);
+    const nonMexcResults = await Promise.all(nonMexcFetchPromises);
+    const validNonMexcResults = nonMexcResults.filter(r => r !== null);
 
-    console.log(`[Arbitrage] Successfully fetched rates from ${validResults.length} exchanges`);
+    // Step 2: Build unique symbol list from non-MEXC exchanges
+    const uniqueSymbols = new Set<string>();
+    validNonMexcResults.forEach(result => {
+      if (result) {
+        result.rates.forEach(rate => uniqueSymbols.add(rate.symbol));
+      }
+    });
+
+    console.log(`[Arbitrage] Found ${uniqueSymbols.size} unique symbols from non-MEXC exchanges`);
+
+    // Step 3: Fetch MEXC funding rates only for symbols that exist on other exchanges
+    const mexcFetchPromises = mexcCredentials.map(async (credential) => {
+      try {
+        console.log(`[Arbitrage] Fetching funding rates for ${credential.exchange} (${credential.environment})`);
+        console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
+
+        const mexcService = new MEXCService({
+          apiKey: credential.apiKey,
+          apiSecret: credential.apiSecret,
+          authToken: credential.authToken,
+          testnet: credential.environment === 'TESTNET',
+          enableRateLimit: true,
+        });
+
+        // Convert normalized symbols to MEXC format (BTCUSDT -> BTC_USDT)
+        const mexcSymbols = Array.from(uniqueSymbols).map(sym => {
+          // Insert underscore before USDT/USDC suffix
+          return sym.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2');
+        });
+
+        console.log(`[Arbitrage] Requesting ${mexcSymbols.length} MEXC symbols (optimized from ${uniqueSymbols.size} total symbols)`);
+
+        const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
+        return {
+          credentialId: credential.id,
+          exchange: credential.exchange,
+          environment: credential.environment,
+          rates: rates.map(r => ({
+            symbol: r.symbol.replace(/_/g, ''), // Normalize symbol format (BTC_USDT -> BTCUSDT)
+            originalSymbol: r.symbol, // Keep original for reference
+            fundingRate: r.fundingRate.toString(),
+            nextFundingTime: r.nextSettleTime,
+            lastPrice: r.lastPrice?.toString() || '0',
+          }))
+        };
+      } catch (error: any) {
+        console.error(`[Arbitrage] Failed to fetch rates for ${credential.exchange}:`, error.message);
+        return null;
+      }
+    });
+
+    const mexcResults = await Promise.all(mexcFetchPromises);
+    const validMexcResults = mexcResults.filter(r => r !== null);
+
+    // Combine all results
+    const validResults = [...validNonMexcResults, ...validMexcResults];
+
+    console.log(`[Arbitrage] Successfully fetched rates from ${validResults.length} exchanges (${validNonMexcResults.length} non-MEXC + ${validMexcResults.length} MEXC)`);
 
     // 4. Organize funding rates by symbol
     const symbolMap: Map<string, any[]> = new Map();
@@ -212,6 +276,7 @@ export async function GET(request: NextRequest) {
           fundingRate: rate.fundingRate,
           nextFundingTime: rate.nextFundingTime,
           originalSymbol: rate.originalSymbol || rate.symbol,
+          lastPrice: rate.lastPrice,
         });
       });
     });

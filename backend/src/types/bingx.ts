@@ -97,6 +97,7 @@ export interface BingXFundingRate {
   symbol: string;
   fundingRate: string;
   fundingTime: number;
+  markPrice?: string;  // Mark price (fair price) from premium index
 }
 
 export interface BingXApiResponse<T> {

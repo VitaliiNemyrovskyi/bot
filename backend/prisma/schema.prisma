@@ -24,6 +24,7 @@ enum Exchange {
   KRAKEN
   COINBASE
   BINGX
+  MEXC
 }
 
 enum Environment {
@@ -106,6 +107,9 @@ model ExchangeCredentials {
   apiKey    String // Encrypted API key
   apiSecret String // Encrypted API secret
 
+  // Browser session token (for exchanges that don't support official API like MEXC futures)
+  authToken String? // Encrypted browser session token (optional)
+
   // Optional user-friendly label
   label String?
 
@@ -164,6 +168,7 @@ enum TradingPlatformType {
   KUCOIN
   BITFINEX
   BINGX
+  MEXC
 }
 
 model TradingPlatform {

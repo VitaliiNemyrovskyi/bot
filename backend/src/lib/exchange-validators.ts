@@ -1,6 +1,7 @@
 import { Exchange, Environment } from '@prisma/client';
 import { BybitService } from './bybit';
 import { BingXService } from './bingx';
+import { MEXCService } from './mexc';
 import { ValidationResult } from '../types/exchange-credentials';
 
 /**
@@ -230,6 +231,44 @@ export class ExchangeValidators {
   }
 
   /**
+   * Validates MEXC API credentials
+   */
+  static async validateMEXC(
+    apiKey: string,
+    apiSecret: string,
+    environment: Environment
+  ): Promise<ValidationResult> {
+    try {
+      const testnet = environment === Environment.TESTNET;
+
+      const mexcService = new MEXCService({
+        apiKey,
+        apiSecret,
+        testnet,
+        enableRateLimit: true,
+      });
+
+      // Try to fetch account balance to validate credentials
+      const accountInfo = await mexcService.getAccountInfo();
+
+      return {
+        valid: true,
+        details: {
+          accountType: 'futures',
+          currency: accountInfo.currency,
+          equity: accountInfo.equity,
+        },
+      };
+    } catch (error: any) {
+      console.error('MEXC API key validation failed:', error.message);
+      return {
+        valid: false,
+        error: error.message || 'Failed to validate MEXC API keys',
+      };
+    }
+  }
+
+  /**
    * Main validation dispatcher
    * Routes to the appropriate validator based on exchange
    */
@@ -257,6 +296,9 @@ export class ExchangeValidators {
 
       case Exchange.BINGX:
         return this.validateBingX(apiKey, apiSecret, environment);
+
+      case Exchange.MEXC:
+        return this.validateMEXC(apiKey, apiSecret, environment);
 
       default:
         return {

@@ -17,7 +17,7 @@ export interface FundingSubscription {
   createdAt: number;
   primaryCredentialId?: string;
   hedgeCredentialId?: string;
-  executionDelay?: number; // Seconds before funding time to execute (default: 5)
+  executionDelay?: number; // Seconds before funding time to execute PRIMARY order (default: 5)
   leverage?: number; // Leverage multiplier (1-125, recommended 1-20, default: 3)
   margin?: number; // Margin/collateral used for this position (in USDT)
 }
@@ -53,8 +53,8 @@ export interface CachedConnector {
  *
  * Manages funding rate arbitrage subscriptions:
  * - Monitors countdown to funding time
- * - Executes orders 5 seconds before funding
- * - Opens hedge position on secondary exchange
+ * - Executes PRIMARY order 5 seconds before funding (configurable)
+ * - Opens HEDGE position exactly AT funding time (countdown = 0) to avoid negative funding
  * - Emits events for UI notifications
  */
 export class FundingArbitrageService extends EventEmitter {
@@ -88,9 +88,10 @@ export class FundingArbitrageService extends EventEmitter {
 
     try {
       // Load all active subscriptions from database
+      // IMPORTANT: Include EXECUTING status to restore position closing timers after restart
       const dbSubscriptions = await prisma.fundingArbitrageSubscription.findMany({
         where: {
-          status: { in: ['ACTIVE', 'WAITING'] },
+          status: { in: ['ACTIVE', 'WAITING', 'EXECUTING'] },
         },
       });
 
@@ -99,16 +100,40 @@ export class FundingArbitrageService extends EventEmitter {
       // Restore each subscription
       for (const dbSub of dbSubscriptions) {
         try {
-          // Check if subscription is still valid (not expired)
           const timeUntilFunding = dbSub.nextFundingTime.getTime() - Date.now();
-          if (timeUntilFunding < -60000) {
-            // More than 1 minute past funding time - mark as failed
-            await prisma.fundingArbitrageSubscription.update({
-              where: { id: dbSub.id },
-              data: { status: 'ERROR', errorMessage: 'Expired - funding time passed' },
-            });
-            console.log(`[FundingArbitrage] Subscription ${dbSub.id} expired - marked as ERROR`);
-            continue;
+
+          // Handle EXECUTING subscriptions (positions already opened, waiting for close)
+          if (dbSub.status === 'EXECUTING') {
+            console.log(`[FundingArbitrage] Found EXECUTING subscription ${dbSub.id} - positions opened, checking close status...`);
+
+            // Check if funding time has passed
+            if (timeUntilFunding < -600000) {
+              // More than 10 minutes past funding - positions should have been closed
+              // Mark as ERROR so user can manually close positions
+              await prisma.fundingArbitrageSubscription.update({
+                where: { id: dbSub.id },
+                data: {
+                  status: 'ERROR',
+                  errorMessage: 'Positions not closed after restart - manual intervention required. Please check and close open positions manually.',
+                },
+              });
+              console.error(`[FundingArbitrage] ⚠️ CRITICAL: Subscription ${dbSub.id} has open positions that were not closed! Manual intervention required.`);
+              continue;
+            }
+
+            // If funding time hasn't passed yet, restore subscription and wait for funding
+            console.log(`[FundingArbitrage] Restoring EXECUTING subscription ${dbSub.id}, will schedule position closing...`);
+          } else {
+            // For ACTIVE/WAITING subscriptions, check expiration
+            if (timeUntilFunding < -60000) {
+              // More than 1 minute past funding time - mark as failed
+              await prisma.fundingArbitrageSubscription.update({
+                where: { id: dbSub.id },
+                data: { status: 'ERROR', errorMessage: 'Expired - funding time passed' },
+              });
+              console.log(`[FundingArbitrage] Subscription ${dbSub.id} expired - marked as ERROR`);
+              continue;
+            }
           }
 
           // Load exchange credentials
@@ -198,10 +223,59 @@ export class FundingArbitrageService extends EventEmitter {
             this.addConnectorReference(dbSub.hedgeCredentialId, dbSub.id, dbSub.userId);
           }
 
-          // Start countdown monitoring
-          this.startCountdownMonitoring(subscription);
+          // Handle subscription monitoring based on status
+          if (dbSub.status === 'EXECUTING') {
+            // Positions already opened - schedule position closing
+            console.log(`[FundingArbitrage] Scheduling position closing for EXECUTING subscription ${dbSub.id}...`);
 
-          console.log(`[FundingArbitrage] Restored subscription ${dbSub.id} - ${dbSub.symbol} - funding in ${Math.floor(timeUntilFunding / 1000)}s`);
+            const entryPrice = dbSub.entryPrice || 0;
+            const hedgeEntryPrice = dbSub.hedgeEntryPrice || 0;
+            const fundingEarned = dbSub.fundingEarned || 0;
+
+            // Schedule position closing - same logic as in executeArbitrageOrders
+            const delayUntilFundingCheck = Math.max(10000, timeUntilFunding + 10000);
+            console.log(`[FundingArbitrage] Will close positions in ${Math.floor(delayUntilFundingCheck / 1000)}s (10s after funding)`);
+
+            setTimeout(async () => {
+              try {
+                // Poll for funding verification (up to 60 seconds)
+                const actualFundingEarned = await this.verifyFundingWithPolling(
+                  subscription,
+                  entryPrice,
+                  30 // Max 30 attempts × 2 seconds = 60 seconds total
+                );
+
+                // Close positions after funding is confirmed
+                await this.closePositions(
+                  subscription,
+                  entryPrice,
+                  hedgeEntryPrice,
+                  actualFundingEarned !== null ? actualFundingEarned : fundingEarned
+                );
+              } catch (error: any) {
+                console.error(`[FundingArbitrage] Error in restored subscription closing:`, error);
+                this.emit(FundingArbitrageService.ERROR, {
+                  subscriptionId: subscription.id,
+                  error: error.message,
+                });
+
+                // Update database with error
+                await prisma.fundingArbitrageSubscription.update({
+                  where: { id: dbSub.id },
+                  data: {
+                    status: 'ERROR',
+                    errorMessage: `Failed to close positions after restart: ${error.message}. Please close positions manually.`,
+                  },
+                });
+              }
+            }, delayUntilFundingCheck);
+
+            console.log(`[FundingArbitrage] Restored EXECUTING subscription ${dbSub.id} - positions will close in ${Math.floor(delayUntilFundingCheck / 1000)}s`);
+          } else {
+            // Start normal countdown monitoring for ACTIVE/WAITING subscriptions
+            this.startCountdownMonitoring(subscription);
+            console.log(`[FundingArbitrage] Restored subscription ${dbSub.id} - ${dbSub.symbol} - funding in ${Math.floor(timeUntilFunding / 1000)}s`);
+          }
         } catch (error: any) {
           console.error(`[FundingArbitrage] Error restoring subscription ${dbSub.id}:`, error.message);
         }
@@ -571,6 +645,14 @@ export class FundingArbitrageService extends EventEmitter {
         userId,          // Enable persistent time sync caching
         credentialId     // Enable persistent time sync caching
       );
+    } else if (credential.exchange === 'MEXC') {
+      const { MEXCConnector } = await import('@/connectors/mexc.connector');
+      connector = new MEXCConnector(
+        credential.apiKey,
+        credential.apiSecret,
+        credential.environment === 'TESTNET',
+        credential.authToken  // Browser session token for MEXC futures trading
+      );
     } else {
       throw new Error(`Exchange ${credential.exchange} not supported`);
     }
@@ -686,7 +768,7 @@ export class FundingArbitrageService extends EventEmitter {
    * Start countdown monitoring
    */
   private startCountdownMonitoring(subscription: FundingSubscription): void {
-    const checkInterval = 1000; // Check every second
+    const checkInterval = 250; // Check every 250ms (4 times per second) for better timing accuracy
     const executionDelay = subscription.executionDelay || 5; // Default: 5 seconds before funding
 
     const timer = setInterval(async () => {
@@ -737,8 +819,44 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Get current market price for a symbol from an exchange
+   * Fetches the mark price or last price from the exchange
+   *
+   * @param connector Exchange connector
+   * @param symbol Trading pair symbol (exchange-specific format)
+   * @returns Current price as number
+   */
+  private async getCurrentPrice(
+    connector: BaseExchangeConnector,
+    symbol: string
+  ): Promise<number> {
+    try {
+      // Try to get position data which includes markPrice
+      const position = await connector.getPosition(symbol);
+
+      // Extract price from position data (prefer markPrice, fallback to lastPrice)
+      let price = 0;
+
+      if (position) {
+        price = parseFloat(position.markPrice || position.lastPrice || position.avgPrice || '0');
+      }
+
+      if (price > 0) {
+        console.log(`[FundingArbitrage] Got current price for ${symbol} from ${connector.exchangeName}: ${price}`);
+        return price;
+      }
+
+      throw new Error(`Could not get valid price for ${symbol} from ${connector.exchangeName}`);
+    } catch (error: any) {
+      console.error(`[FundingArbitrage] Error getting price for ${symbol}:`, error.message);
+      throw new Error(`Failed to get current price for ${symbol}: ${error.message}`);
+    }
+  }
+
+  /**
    * Convert normalized symbol to exchange-specific format
    * BingX requires hyphenated format: "H-USDT", "BTC-USDT"
+   * MEXC requires underscore format: "BTC_USDT"
    * Bybit requires non-hyphenated format: "HUSDT", "BTCUSDT"
    */
   private convertSymbolForExchange(normalizedSymbol: string, exchangeName: string): string {
@@ -747,6 +865,15 @@ export class FundingArbitrageService extends EventEmitter {
       // Add hyphen before USDT if not already present
       if (!normalizedSymbol.includes('-') && normalizedSymbol.endsWith('USDT')) {
         return normalizedSymbol.replace(/USDT$/, '-USDT');
+      }
+      return normalizedSymbol;
+    }
+
+    // MEXC requires underscore format
+    if (exchangeName.includes('MEXC')) {
+      // Add underscore before USDT if not already present
+      if (!normalizedSymbol.includes('_') && normalizedSymbol.endsWith('USDT')) {
+        return normalizedSymbol.replace(/USDT$/, '_USDT');
       }
       return normalizedSymbol;
     }
@@ -815,6 +942,10 @@ export class FundingArbitrageService extends EventEmitter {
         // Bybit: setLeverage(symbol, leverage, category)
         // Use "linear" for USDT perpetuals (default)
         await connectorWithLeverage.setLeverage(symbol, leverage, 'linear');
+      } else if (exchangeName.includes('MEXC')) {
+        // MEXC: setLeverage(symbol, leverage, openType)
+        // Use 2 for cross margin mode (default)
+        await connectorWithLeverage.setLeverage(symbol, leverage, 2);
       } else {
         // Generic fallback (most exchanges use: symbol, leverage)
         await connectorWithLeverage.setLeverage(symbol, leverage);
@@ -847,7 +978,7 @@ export class FundingArbitrageService extends EventEmitter {
    * Execute arbitrage orders
    */
   private async executeArbitrageOrders(subscription: FundingSubscription): Promise<void> {
-    const { symbol, positionType, quantity, primaryExchange, hedgeExchange } = subscription;
+    const { symbol, positionType, quantity, primaryExchange, hedgeExchange, margin, leverage } = subscription;
 
     // Convert symbol to exchange-specific format
     const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
@@ -868,27 +999,83 @@ export class FundingArbitrageService extends EventEmitter {
     const primarySide: OrderSide = positionType === 'long' ? 'Buy' : 'Sell';
     const hedgeSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
 
+    // IMPORTANT: Calculate separate quantities for each exchange based on current prices
+    // This ensures equal margin usage on both exchanges despite price differences
+    let primaryQuantity = quantity;
+    let hedgeQuantity = quantity;
+
+    if (margin && leverage) {
+      console.log(`[FundingArbitrage] Fetching current prices from both exchanges to calculate precise quantities...`);
+      const priceStartTime = Date.now();
+
+      try {
+        // Fetch current prices from both exchanges in parallel
+        const [primaryPriceData, hedgePriceData] = await Promise.all([
+          this.getCurrentPrice(primaryExchange, primarySymbol),
+          this.getCurrentPrice(hedgeExchange, hedgeSymbol),
+        ]);
+
+        const priceFetchTime = Date.now() - priceStartTime;
+        console.log(`[FundingArbitrage] ✓ Prices fetched in ${priceFetchTime}ms:`, {
+          primaryPrice: primaryPriceData,
+          hedgePrice: hedgePriceData,
+        });
+
+        // Calculate position value from margin and leverage
+        const positionValue = margin * leverage;
+
+        // Calculate separate quantities for each exchange
+        primaryQuantity = positionValue / primaryPriceData;
+        hedgeQuantity = positionValue / hedgePriceData;
+
+        console.log(`[FundingArbitrage] ✓ Calculated separate quantities for equal margin:`, {
+          margin,
+          leverage,
+          positionValue,
+          primaryPrice: primaryPriceData,
+          hedgePrice: hedgePriceData,
+          primaryQuantity,
+          hedgeQuantity,
+          primaryValue: primaryQuantity * primaryPriceData,
+          hedgeValue: hedgeQuantity * hedgePriceData,
+        });
+
+      } catch (priceError: any) {
+        console.error(`[FundingArbitrage] Failed to fetch current prices: ${priceError.message}`);
+        console.log(`[FundingArbitrage] Falling back to same quantity on both exchanges: ${quantity}`);
+        // Fallback: use the same quantity (old behavior)
+        primaryQuantity = quantity;
+        hedgeQuantity = quantity;
+      }
+    } else {
+      console.log(`[FundingArbitrage] No margin/leverage provided, using same quantity on both exchanges: ${quantity}`);
+    }
+
     console.log(`[FundingArbitrage] Executing ${positionType} position:`, {
       symbol,
       primarySide,
       hedgeSide,
-      quantity,
+      primaryQuantity,
+      hedgeQuantity,
     });
+
+    // Hedge will open exactly AT funding time (countdown = 0) to avoid paying negative funding
+    console.log(`[FundingArbitrage] Hedge will open AT funding time (countdown = 0) to avoid negative funding`);
 
     // STEP 0: Synchronize leverage on both exchanges BEFORE opening positions
     // Use subscription leverage setting (default: 3x if not specified)
-    const leverage = subscription.leverage ?? 3;
+    const subscriptionLeverage = leverage ?? 3;
 
     try {
-      console.log(`[FundingArbitrage] Synchronizing leverage to ${leverage}x on both exchanges...`);
+      console.log(`[FundingArbitrage] Synchronizing leverage to ${subscriptionLeverage}x on both exchanges...`);
 
       // Synchronize leverage in parallel for speed
       await Promise.all([
-        this.setExchangeLeverage(primaryExchange, primarySymbol, leverage),
-        this.setExchangeLeverage(hedgeExchange, hedgeSymbol, leverage),
+        this.setExchangeLeverage(primaryExchange, primarySymbol, subscriptionLeverage),
+        this.setExchangeLeverage(hedgeExchange, hedgeSymbol, subscriptionLeverage),
       ]);
 
-      console.log(`[FundingArbitrage] Leverage synchronized successfully on both exchanges (${leverage}x)`);
+      console.log(`[FundingArbitrage] Leverage synchronized successfully on both exchanges (${subscriptionLeverage}x)`);
     } catch (error: any) {
       console.error(`[FundingArbitrage] Failed to synchronize leverage:`, error.message);
 
@@ -911,40 +1098,27 @@ export class FundingArbitrageService extends EventEmitter {
       throw new Error(`Leverage synchronization failed: ${error.message}`);
     }
 
-    // 1. Notify user: Both orders executing
+    // 1. Notify user: Primary order executing (hedge will execute AFTER funding)
     this.emit(FundingArbitrageService.ORDER_EXECUTING, {
       subscriptionId: subscription.id,
       symbol,
       type: 'primary',
       side: primarySide,
-      quantity,
+      quantity: primaryQuantity,
       exchange: primaryExchange.exchangeName,
     });
 
-    this.emit(FundingArbitrageService.HEDGE_EXECUTING, {
-      subscriptionId: subscription.id,
-      symbol,
-      type: 'hedge',
-      side: hedgeSide,
-      quantity,
-      exchange: hedgeExchange.exchangeName,
-    });
+    // 2. Execute PRIMARY order FIRST (to receive funding)
+    console.log(`[FundingArbitrage] 📊 Opening PRIMARY position (will receive funding)...`);
+    const primaryOrderStartTime = Date.now();
 
-    // 2. Execute BOTH orders in parallel for speed ⚡
-    console.log(`[FundingArbitrage] ⚡ Executing orders in parallel...`);
-    const orderStartTime = Date.now();
+    const primaryOrder = await primaryExchange.placeMarketOrder(primarySymbol, primarySide, primaryQuantity);
 
-    const [primaryOrder, hedgeOrder] = await Promise.all([
-      primaryExchange.placeMarketOrder(primarySymbol, primarySide, quantity),
-      hedgeExchange.placeMarketOrder(hedgeSymbol, hedgeSide, quantity),
-    ]);
-
-    const orderExecutionTime = Date.now() - orderStartTime;
-    console.log(`[FundingArbitrage] ✓ Both orders executed in ${orderExecutionTime}ms (parallel)`);
+    const primaryOrderTime = Date.now() - primaryOrderStartTime;
+    console.log(`[FundingArbitrage] ✓ Primary order executed in ${primaryOrderTime}ms`);
     console.log(`[FundingArbitrage] Primary order:`, primaryOrder);
-    console.log(`[FundingArbitrage] Hedge order:`, hedgeOrder);
 
-    // 3. Notify orders executed
+    // 3. Notify primary order executed
     this.emit(FundingArbitrageService.ORDER_EXECUTED, {
       subscriptionId: subscription.id,
       symbol,
@@ -953,13 +1127,132 @@ export class FundingArbitrageService extends EventEmitter {
       timestamp: Date.now(),
     } as OrderExecutionEvent);
 
-    this.emit(FundingArbitrageService.HEDGE_EXECUTED, {
+    // 4. Calculate time to wait before opening hedge (exactly at funding time)
+    const timeUntilFunding = subscription.nextFundingTime - Date.now();
+    const delayBeforeHedge = timeUntilFunding; // Open hedge AT funding time (countdown = 0)
+    const hedgeWaitSeconds = Math.max(0, Math.floor(delayBeforeHedge / 1000));
+
+    console.log(`[FundingArbitrage] ⏳ Waiting ${hedgeWaitSeconds}s before opening hedge...`);
+    console.log(`[FundingArbitrage] Hedge will open when countdown reaches 0 (at funding time)`);
+
+    // 5. Wait until funding time, then open hedge
+    await new Promise(resolve => setTimeout(resolve, Math.max(0, delayBeforeHedge)));
+
+    console.log(`[FundingArbitrage] ✓ Funding should be paid now, opening HEDGE position...`);
+
+    // 6. Notify hedge executing
+    this.emit(FundingArbitrageService.HEDGE_EXECUTING, {
       subscriptionId: subscription.id,
       symbol,
       type: 'hedge',
-      order: hedgeOrder,
-      timestamp: Date.now(),
-    } as OrderExecutionEvent);
+      side: hedgeSide,
+      quantity: hedgeQuantity,
+      exchange: hedgeExchange.exchangeName,
+    });
+
+    // 7. Execute HEDGE order AFTER funding with rollback on failure
+    let hedgeOrder: any;
+    const hedgeOrderStartTime = Date.now();
+
+    try {
+      hedgeOrder = await hedgeExchange.placeMarketOrder(hedgeSymbol, hedgeSide, hedgeQuantity);
+
+      const hedgeOrderTime = Date.now() - hedgeOrderStartTime;
+      console.log(`[FundingArbitrage] ✓ Hedge order executed in ${hedgeOrderTime}ms (AFTER funding)`);
+      console.log(`[FundingArbitrage] Hedge order:`, hedgeOrder);
+
+      // 8. Notify hedge executed
+      this.emit(FundingArbitrageService.HEDGE_EXECUTED, {
+        subscriptionId: subscription.id,
+        symbol,
+        type: 'hedge',
+        order: hedgeOrder,
+        timestamp: Date.now(),
+      } as OrderExecutionEvent);
+    } catch (hedgeError: any) {
+      // ⚠️ CRITICAL: Hedge order failed! PRIMARY position is open and unhedged!
+      console.error(`[FundingArbitrage] ⚠️ HEDGE ORDER FAILED: ${hedgeError.message}`);
+      console.error(`[FundingArbitrage] ⚠️ PRIMARY position is OPEN and UNHEDGED - initiating emergency rollback!`);
+
+      // Determine opposite side to close primary position
+      const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
+
+      // Attempt to close PRIMARY position immediately
+      try {
+        console.log(`[FundingArbitrage] 🚨 Attempting emergency close of PRIMARY position on ${primaryExchange.exchangeName}...`);
+        await this.forceClosePosition(
+          primaryExchange,
+          primarySymbol,
+          primaryCloseSide,
+          primaryQuantity,
+          primaryExchange.exchangeName
+        );
+        console.log(`[FundingArbitrage] ✓ PRIMARY position successfully closed (rollback complete)`);
+
+        // Update database with error status
+        subscription.status = 'failed';
+        await prisma.fundingArbitrageSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'ERROR',
+            errorMessage: `Hedge order failed: ${hedgeError.message}. Primary position was automatically closed to prevent unhedged exposure. ${
+              hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
+                ? 'Please ensure you have sufficient margin in your BingX account.'
+                : ''
+            }`,
+          },
+        });
+
+        // Emit error event
+        this.emit(FundingArbitrageService.ERROR, {
+          subscriptionId: subscription.id,
+          error: `Hedge failed (auto-rolled back): ${hedgeError.message}`,
+        });
+
+        // Throw informative error
+        throw new Error(
+          `Hedge order failed: ${hedgeError.message}. ` +
+          `PRIMARY position was automatically closed to prevent unhedged exposure. ` +
+          `${hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
+            ? 'Please ensure you have sufficient margin in your BingX account before subscribing.'
+            : 'Please check your hedge exchange configuration and try again.'
+          }`
+        );
+      } catch (rollbackError: any) {
+        // ⚠️ CATASTROPHIC: Rollback failed! Position is still open!
+        console.error(`[FundingArbitrage] ⚠️⚠️⚠️ CATASTROPHIC: ROLLBACK FAILED! ${rollbackError.message}`);
+        console.error(`[FundingArbitrage] ⚠️⚠️⚠️ PRIMARY position on ${primaryExchange.exchangeName} is still OPEN!`);
+
+        // Update database with critical error status
+        subscription.status = 'failed';
+        await prisma.fundingArbitrageSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'ERROR',
+            errorMessage: `⚠️ CRITICAL: Hedge failed AND rollback failed! PRIMARY position on ${primaryExchange.exchangeName} for ${symbol} is OPEN and UNHEDGED. Manual intervention required! Hedge error: ${hedgeError.message}. Rollback error: ${rollbackError.message}`,
+          },
+        });
+
+        // Emit critical error event
+        this.emit(FundingArbitrageService.ERROR, {
+          subscriptionId: subscription.id,
+          error: `CRITICAL: Hedge failed, rollback failed - manual intervention required!`,
+        });
+
+        // Throw critical error
+        throw new Error(
+          `⚠️⚠️⚠️ CRITICAL ERROR ⚠️⚠️⚠️\n` +
+          `Hedge order failed: ${hedgeError.message}\n` +
+          `Automatic rollback FAILED: ${rollbackError.message}\n\n` +
+          `PRIMARY POSITION ON ${primaryExchange.exchangeName} FOR ${symbol} IS STILL OPEN AND UNHEDGED!\n` +
+          `You MUST manually close this position immediately to prevent losses:\n` +
+          `- Symbol: ${primarySymbol}\n` +
+          `- Side to close: ${primaryCloseSide}\n` +
+          `- Quantity: ${primaryQuantity}\n\n` +
+          `Please close this position on ${primaryExchange.exchangeName} NOW!`
+        );
+      }
+    }
 
     // 4. Get actual entry prices from positions (market orders don't return avgPrice immediately)
     let entryPrice = primaryOrder.avgPrice || primaryOrder.price || 0;
@@ -1003,8 +1296,8 @@ export class FundingArbitrageService extends EventEmitter {
     });
 
     // 6. Schedule funding verification and position closing with polling
-    const timeUntilFunding = subscription.nextFundingTime - Date.now();
-    const delayUntilFundingCheck = Math.max(10000, timeUntilFunding + 10000); // Wait 10 seconds after funding time to start polling
+    const timeUntilFundingVerification = subscription.nextFundingTime - Date.now();
+    const delayUntilFundingCheck = Math.max(10000, timeUntilFundingVerification + 10000); // Wait 10 seconds after funding time to start polling
 
     console.log(`[FundingArbitrage] Scheduling funding verification in ${Math.floor(delayUntilFundingCheck / 1000)}s`);
 
@@ -1149,6 +1442,76 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Force close a position using multiple fallback methods
+   * Tries: 1) placeReduceOnlyOrder, 2) closePosition, 3) regular market order
+   *
+   * @param connector Exchange connector
+   * @param symbol Exchange-specific symbol
+   * @param side Close direction (opposite of entry)
+   * @param quantity Position size
+   * @param exchangeName Exchange name for logging
+   * @returns Order response
+   */
+  private async forceClosePosition(
+    connector: BaseExchangeConnector,
+    symbol: string,
+    side: OrderSide,
+    quantity: number,
+    exchangeName: string
+  ): Promise<any> {
+    const methods = [
+      { name: 'reduce-only order', method: 'placeReduceOnlyOrder' },
+      { name: 'close position API', method: 'closePosition' },
+      { name: 'regular market order', method: 'placeMarketOrder' },
+    ];
+
+    let lastError: any = null;
+
+    for (const { name, method } of methods) {
+      try {
+        console.log(`[FundingArbitrage] Attempting to close ${exchangeName} position with ${name}...`);
+
+        const connectorWithMethod = connector as any;
+
+        // Check if method exists
+        if (typeof connectorWithMethod[method] !== 'function') {
+          console.log(`[FundingArbitrage] ${exchangeName} doesn't support ${name}, trying next method...`);
+          continue;
+        }
+
+        // Try to execute the method
+        let result;
+        if (method === 'closePosition') {
+          // closePosition typically takes only symbol
+          result = await connectorWithMethod[method](symbol);
+        } else {
+          // placeReduceOnlyOrder and placeMarketOrder take symbol, side, quantity
+          result = await connectorWithMethod[method](symbol, side, quantity);
+        }
+
+        console.log(`[FundingArbitrage] ✓ ${exchangeName} position closed successfully using ${name}`);
+        return result;
+
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`[FundingArbitrage] ${name} failed for ${exchangeName}: ${error.message}`);
+
+        // Continue to next method
+        if (methods.indexOf({ name, method }) < methods.length - 1) {
+          console.log(`[FundingArbitrage] Trying next close method...`);
+        }
+      }
+    }
+
+    // If we get here, all methods failed
+    throw new Error(
+      `Failed to close ${exchangeName} position after trying all methods. ` +
+      `Last error: ${lastError?.message || 'unknown'}. ` +
+      `Please manually close the position for ${symbol} on ${exchangeName} immediately!`
+    );
+  }
+
+  /**
    * Close positions after funding payment
    */
   private async closePositions(
@@ -1157,7 +1520,7 @@ export class FundingArbitrageService extends EventEmitter {
     hedgeEntryPrice: number,
     fundingEarned: number
   ): Promise<void> {
-    const { symbol, quantity, positionType, primaryExchange, hedgeExchange } = subscription;
+    const { symbol, positionType, primaryExchange, hedgeExchange } = subscription;
 
     // Convert symbol to exchange-specific format
     const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
@@ -1165,27 +1528,107 @@ export class FundingArbitrageService extends EventEmitter {
 
     console.log(`[FundingArbitrage] Closing positions for ${symbol}...`);
 
+    // IMPORTANT: Get actual position sizes from exchanges
+    // These may differ from the original quantity due to:
+    // 1. Separate quantities calculated for each exchange based on price differences
+    // 2. Order fills and slippage
+    let primaryQuantity = subscription.quantity; // Fallback to subscription quantity
+    let hedgeQuantity = subscription.quantity;   // Fallback to subscription quantity
+
+    try {
+      console.log(`[FundingArbitrage] Fetching actual position sizes from exchanges...`);
+      const [primaryPosition, hedgePosition] = await Promise.all([
+        primaryExchange.getPosition(primarySymbol),
+        hedgeExchange.getPosition(hedgeSymbol),
+      ]);
+
+      // Extract actual quantities from positions
+      if (primaryPosition) {
+        const posSize = Math.abs(parseFloat(primaryPosition.positionAmt || primaryPosition.size || '0'));
+        if (posSize > 0) {
+          primaryQuantity = posSize;
+          console.log(`[FundingArbitrage] Primary position actual size: ${primaryQuantity}`);
+        }
+      }
+
+      if (hedgePosition) {
+        const posSize = Math.abs(parseFloat(hedgePosition.positionAmt || hedgePosition.size || '0'));
+        if (posSize > 0) {
+          hedgeQuantity = posSize;
+          console.log(`[FundingArbitrage] Hedge position actual size: ${hedgeQuantity}`);
+        }
+      }
+    } catch (posError: any) {
+      console.warn(`[FundingArbitrage] Could not fetch actual position sizes: ${posError.message}`);
+      console.log(`[FundingArbitrage] Using subscription quantities as fallback`);
+    }
+
     // Close positions (opposite direction from entry)
     const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
     const hedgeCloseSide: OrderSide = positionType === 'long' ? 'Buy' : 'Sell';
 
-    // 1. Close primary position using reduce-only market order
-    const primaryCloseOrder = await primaryExchange.placeReduceOnlyOrder(
-      primarySymbol,
-      primaryCloseSide,
-      quantity
-    );
+    // CRITICAL: Close BOTH positions in PARALLEL using Promise.allSettled()
+    // This ensures we attempt to close both positions even if one fails
+    // Partial closes (one closed, one open) are extremely dangerous for arbitrage!
+    // Using forceClosePosition with multiple fallback methods for maximum reliability
+    console.log(`[FundingArbitrage] ⚡ Force-closing both positions in parallel with fallback methods...`);
+    const closeStartTime = Date.now();
 
-    console.log(`[FundingArbitrage] Primary position closed:`, primaryCloseOrder);
+    const closeResults = await Promise.allSettled([
+      this.forceClosePosition(primaryExchange, primarySymbol, primaryCloseSide, primaryQuantity, primaryExchange.exchangeName),
+      this.forceClosePosition(hedgeExchange, hedgeSymbol, hedgeCloseSide, hedgeQuantity, hedgeExchange.exchangeName),
+    ]);
 
-    // 2. Close hedge position using reduce-only market order
-    const hedgeCloseOrder = await hedgeExchange.placeReduceOnlyOrder(
-      hedgeSymbol,
-      hedgeCloseSide,
-      quantity
-    );
+    const closeTime = Date.now() - closeStartTime;
+    console.log(`[FundingArbitrage] ✓ Close attempts completed in ${closeTime}ms (parallel)`);
 
-    console.log(`[FundingArbitrage] Hedge position closed:`, hedgeCloseOrder);
+    // Check results and handle errors
+    const primaryResult = closeResults[0];
+    const hedgeResult = closeResults[1];
+
+    let primaryCloseOrder: any;
+    let hedgeCloseOrder: any;
+
+    // Handle primary close result
+    if (primaryResult.status === 'fulfilled') {
+      primaryCloseOrder = primaryResult.value;
+      console.log(`[FundingArbitrage] ✓ Primary position closed successfully:`, primaryCloseOrder);
+    } else {
+      console.error(`[FundingArbitrage] ✗ Primary position close FAILED:`, primaryResult.reason);
+    }
+
+    // Handle hedge close result
+    if (hedgeResult.status === 'fulfilled') {
+      hedgeCloseOrder = hedgeResult.value;
+      console.log(`[FundingArbitrage] ✓ Hedge position closed successfully:`, hedgeCloseOrder);
+    } else {
+      console.error(`[FundingArbitrage] ✗ Hedge position close FAILED:`, hedgeResult.reason);
+    }
+
+    // Check if we have a partial close situation (CRITICAL ERROR!)
+    if (primaryResult.status !== hedgeResult.status) {
+      const closedExchange = primaryResult.status === 'fulfilled' ? primaryExchange.exchangeName : hedgeExchange.exchangeName;
+      const failedExchange = primaryResult.status === 'rejected' ? primaryExchange.exchangeName : hedgeExchange.exchangeName;
+      const error = primaryResult.status === 'rejected' ? primaryResult.reason : hedgeResult.reason;
+
+      throw new Error(
+        `⚠️ PARTIAL CLOSE DETECTED! ⚠️ ${closedExchange} position was closed, but ${failedExchange} position FAILED to close: ${error.message}. ` +
+        `This is a critical error - you have one open position remaining! ` +
+        `Please manually close the ${failedExchange} position for ${symbol} immediately to avoid losses.`
+      );
+    }
+
+    // Check if both failed (also CRITICAL!)
+    if (primaryResult.status === 'rejected' && hedgeResult.status === 'rejected') {
+      throw new Error(
+        `⚠️ BOTH POSITIONS FAILED TO CLOSE! ⚠️ ` +
+        `Primary (${primaryExchange.exchangeName}): ${primaryResult.reason.message}. ` +
+        `Hedge (${hedgeExchange.exchangeName}): ${hedgeResult.reason.message}. ` +
+        `Please manually close both positions for ${symbol} immediately!`
+      );
+    }
+
+    // If we get here, both positions closed successfully
 
     // 3. Get actual exit prices from positions (wait a moment for position to update)
     await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second for positions to settle
@@ -1219,37 +1662,39 @@ export class FundingArbitrageService extends EventEmitter {
       }
     }
 
-    // 4. Calculate trading fees
+    // 4. Calculate trading fees using ACTUAL quantities
     // Extract fees from order responses or estimate using typical maker/taker fees
     const primaryEntryFee = primaryCloseOrder.commission || 0;
     const hedgeEntryFee = hedgeCloseOrder.commission || 0;
 
     // Estimate fees if not provided (typical taker fee: 0.055% for Bybit, 0.05% for BingX)
-    const estimatedPrimaryFee = primaryEntryFee || (quantity * entryPrice * 0.00055);
-    const estimatedHedgeFee = hedgeEntryFee || (quantity * hedgeEntryPrice * 0.0005);
+    const estimatedPrimaryFee = primaryEntryFee || (primaryQuantity * entryPrice * 0.00055);
+    const estimatedHedgeFee = hedgeEntryFee || (hedgeQuantity * hedgeEntryPrice * 0.0005);
 
     // Total fees include both entry and exit
     // For simplicity, we double the exit order fee as we had entry fees too
     const primaryTradingFees = estimatedPrimaryFee * 2;
     const hedgeTradingFees = estimatedHedgeFee * 2;
 
-    console.log(`[FundingArbitrage] Trading fees calculated:`, {
+    console.log(`[FundingArbitrage] Trading fees calculated using actual quantities:`, {
+      primaryQuantity,
+      hedgeQuantity,
       primaryTradingFees,
       hedgeTradingFees,
       totalFees: primaryTradingFees + hedgeTradingFees,
     });
 
-    // 5. Calculate P&L from price movements
+    // 5. Calculate P&L from price movements using ACTUAL quantities
     // For long primary: P&L = (exitPrice - entryPrice) * quantity
     // For short primary: P&L = (entryPrice - exitPrice) * quantity
     const primaryPnL = positionType === 'long'
-      ? (primaryExitPrice - entryPrice) * quantity
-      : (entryPrice - primaryExitPrice) * quantity;
+      ? (primaryExitPrice - entryPrice) * primaryQuantity
+      : (entryPrice - primaryExitPrice) * primaryQuantity;
 
     // Hedge has opposite P&L
     const hedgePnL = positionType === 'long'
-      ? (hedgeEntryPrice - hedgeExitPrice) * quantity
-      : (hedgeExitPrice - hedgeEntryPrice) * quantity;
+      ? (hedgeEntryPrice - hedgeExitPrice) * hedgeQuantity
+      : (hedgeExitPrice - hedgeEntryPrice) * hedgeQuantity;
 
     // Total realized P&L = funding earned + primary P&L + hedge P&L - total fees
     const realizedPnl = fundingEarned + primaryPnL + hedgePnL - primaryTradingFees - hedgeTradingFees;

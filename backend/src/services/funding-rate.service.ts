@@ -14,6 +14,7 @@ import { Exchange } from '@prisma/client';
 import NodeCache from 'node-cache';
 import prisma from '@/lib/prisma';
 import { BybitService } from '@/lib/bybit';
+import { MEXCService } from '@/lib/mexc';
 
 // Cache configuration: 5 minutes TTL for current rates
 const fundingRateCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
@@ -396,6 +397,51 @@ export async function getHistoricalFundingRates(
     }));
   } catch (error) {
     console.error(`❌ Error getting historical funding rates for ${symbol}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch and store current funding rates from MEXC
+ */
+export async function syncMEXCFundingRates(
+  apiKey: string,
+  apiSecret: string,
+  testnet: boolean = false
+): Promise<number> {
+  try {
+    const mexcService = new MEXCService({
+      apiKey,
+      apiSecret,
+      testnet,
+      enableRateLimit: true,
+    });
+
+    // Fetch all funding rates
+    const fundingRates = await mexcService.getAllFundingRates();
+
+    let syncedCount = 0;
+
+    for (const rate of fundingRates) {
+      const fundingRateData: FundingRateData = {
+        symbol: rate.symbol,
+        fundingRate: rate.fundingRate,
+        fundingRateTimestamp: new Date(),
+        nextFundingTime: new Date(rate.nextSettleTime),
+      };
+
+      await storeFundingRate(Exchange.MEXC, fundingRateData);
+      syncedCount++;
+    }
+
+    console.log(`✅ Synced ${syncedCount} funding rates from MEXC`);
+
+    // Invalidate cache
+    fundingRateCache.flushAll();
+
+    return syncedCount;
+  } catch (error) {
+    console.error('❌ Error syncing MEXC funding rates:', error);
     throw error;
   }
 }

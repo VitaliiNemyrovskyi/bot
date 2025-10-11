@@ -128,7 +128,6 @@ export async function POST(request: NextRequest) {
     const encryptedPassphrase = passphrase ? encryptApiKey(passphrase) : null;
 
     // Create user trading platform connection
-    const userPlatformKey = authResult.user.userId + '_' + platformId;
     const userPlatform = {
       id: userPlatformKey,
       userId: authResult.user.userId,

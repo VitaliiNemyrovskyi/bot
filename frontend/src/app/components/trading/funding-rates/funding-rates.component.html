@@ -90,6 +90,38 @@
             </div>
           </div>
 
+          <!-- Next Funding Filter Input -->
+          <div class="filter-control">
+            <div class="filter-input-wrapper">
+              <svg class="filter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 8V12L15 15M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <input
+                type="number"
+                class="filter-input"
+                [(ngModel)]="maxNextFundingHoursArbitrage"
+                step="1"
+                min="0"
+                placeholder="Next funding (hours, e.g., 8)"
+                aria-label="Maximum hours until next funding"
+              />
+              @if (maxNextFundingHoursArbitrage() !== null && maxNextFundingHoursArbitrage()! > 0) {
+                <button
+                  class="filter-clear-btn"
+                  (click)="maxNextFundingHoursArbitrage.set(null)"
+                  aria-label="Clear next funding filter"
+                  type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              }
+              @if (maxNextFundingHoursArbitrage() !== null && maxNextFundingHoursArbitrage()! > 0) {
+                <span class="filter-badge">≤{{ maxNextFundingHoursArbitrage() }}h</span>
+              }
+            </div>
+          </div>
+
           <!-- Show Only Subscribed Checkbox -->
           <div class="filter-control">
             <label class="checkbox-filter">
@@ -106,7 +138,7 @@
 
           <!-- Action Buttons -->
           <div class="header-actions-group">
-            @if (arbitrageSearchQuery() || (minSpreadThreshold() !== null && minSpreadThreshold()! > 0) || showOnlySubscribedArbitrage()) {
+            @if (arbitrageSearchQuery() || (minSpreadThreshold() !== null && minSpreadThreshold()! > 0) || (maxNextFundingHoursArbitrage() !== null && maxNextFundingHoursArbitrage()! > 0) || showOnlySubscribedArbitrage()) {
               <ui-button
                 variant="ghost"
                 size="small"
@@ -202,9 +234,6 @@
               <tr>
                 <th>{{ translate('arbitrage.table.symbol') }}</th>
                 <th class="text-center">{{ translate('arbitrage.table.exchanges') }}</th>
-                <th class="text-right">{{ translate('arbitrage.table.bestLong') }}</th>
-                <th class="text-right">{{ translate('arbitrage.table.bestShort') }}</th>
-                <th class="text-right">{{ translate('arbitrage.table.nextFunding') }}</th>
                 <th class="text-right">{{ translate('arbitrage.table.spread') }}</th>
                 <th class="text-center">{{ translate('arbitrage.table.opportunity') }}</th>
               </tr>
@@ -217,66 +246,61 @@
                     <span class="symbol-text">{{ opportunity.symbol }}</span>
                   </td>
 
-                  <!-- Exchanges -->
+                  <!-- Exchanges (Best Spread) -->
                   <td class="exchanges-cell text-center">
                     <div class="exchanges-badges">
+                      <!-- Best Long Exchange -->
                       @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
-                        <button
-                          class="exchange-badge exchange-badge-button"
-                          [class]="'badge-' + exchange.exchange.toLowerCase()"
-                          (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
-                          [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange">
-                          {{ exchange.exchange }}
-                        </button>
-                      }
-                    </div>
-                  </td>
-
-                  <!-- Best Long (Lowest Rate) -->
-                  <td class="text-right">
-                    <div class="position-info">
-                      <div class="exchange-label">{{ opportunity.bestLong.exchange }}</div>
-                      <div class="rate-value" [class.negative]="parseFloat(opportunity.bestLong.fundingRate) < 0">
-                        {{ (parseFloat(opportunity.bestLong.fundingRate) * 100).toFixed(4) }}%
-                      </div>
-                      <div class="environment-tag">{{ opportunity.bestLong.environment }}</div>
-                    </div>
-                  </td>
-
-                  <!-- Best Short (Highest Rate) -->
-                  <td class="text-right">
-                    <div class="position-info">
-                      <div class="exchange-label">{{ opportunity.bestShort.exchange }}</div>
-                      <div class="rate-value" [class.positive]="parseFloat(opportunity.bestShort.fundingRate) > 0">
-                        {{ (parseFloat(opportunity.bestShort.fundingRate) * 100).toFixed(4) }}%
-                      </div>
-                      <div class="environment-tag">{{ opportunity.bestShort.environment }}</div>
-                    </div>
-                  </td>
-
-                  <!-- Next Funding Time (from both exchanges) -->
-                  <td class="text-right">
-                    <div class="funding-time-info">
-                      @if (opportunity.exchanges && opportunity.exchanges.length > 0) {
-                        <!-- Best Long Exchange Funding Time -->
-                        @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
-                          @if (exchange.exchange === opportunity.bestLong.exchange && exchange.credentialId === opportunity.bestLong.credentialId) {
-                            <div class="funding-time-entry">
-                              <span class="exchange-label-small">{{ exchange.exchange }}</span>
-                              <span class="funding-time-value" [class.negative]="parseFloat(opportunity.bestLong.fundingRate) < 0">
-                                {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
-                              </span>
+                        @if (exchange.exchange === opportunity.bestLong.exchange && exchange.credentialId === opportunity.bestLong.credentialId) {
+                          <div class="exchange-info-wrapper">
+                            <button
+                              class="exchange-badge exchange-badge-button"
+                              [class]="'badge-' + exchange.exchange.toLowerCase()"
+                              (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
+                              [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Long)'">
+                              {{ exchange.exchange }}
+                            </button>
+                            <div class="exchange-details">
+                              <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
+                                Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                              </div>
+                              <div class="detail-line text-xs">
+                                Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                              </div>
+                              @if (exchange.lastPrice) {
+                                <div class="detail-line text-xs">
+                                  Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
+                                </div>
+                              }
                             </div>
-                          }
+                          </div>
                         }
-                        <!-- Best Short Exchange Funding Time -->
+                      }
+                      <!-- Best Short Exchange (only if different from Best Long) -->
+                      @if (opportunity.bestShort.exchange !== opportunity.bestLong.exchange || opportunity.bestShort.credentialId !== opportunity.bestLong.credentialId) {
                         @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
                           @if (exchange.exchange === opportunity.bestShort.exchange && exchange.credentialId === opportunity.bestShort.credentialId) {
-                            <div class="funding-time-entry">
-                              <span class="exchange-label-small">{{ exchange.exchange }}</span>
-                              <span class="funding-time-value" [class.positive]="parseFloat(opportunity.bestShort.fundingRate) > 0">
-                                {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
-                              </span>
+                            <div class="exchange-info-wrapper">
+                              <button
+                                class="exchange-badge exchange-badge-button"
+                                [class]="'badge-' + exchange.exchange.toLowerCase()"
+                                (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
+                                [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Short)'">
+                                {{ exchange.exchange }}
+                              </button>
+                              <div class="exchange-details">
+                                <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
+                                  Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                                </div>
+                                <div class="detail-line text-xs">
+                                  Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                                </div>
+                                @if (exchange.lastPrice) {
+                                  <div class="detail-line text-xs">
+                                    Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
+                                  </div>
+                                }
+                              </div>
                             </div>
                           }
                         }

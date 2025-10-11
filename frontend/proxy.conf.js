@@ -4,7 +4,8 @@ const PROXY_CONFIG = [
     target: 'http://localhost:3000',
     secure: false,
     changeOrigin: true,
-    logLevel: 'debug'
+    logLevel: 'debug',
+    timeout: 180000
   },
   {
     context: ['/placeholder'],
