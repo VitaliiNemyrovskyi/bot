@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, effect, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
@@ -123,8 +123,9 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
 
   // Expose utilities to template
-  Array = Array;
-  parseFloat = parseFloat;
+  readonly Array = Array;
+  readonly parseFloat = parseFloat;
+  readonly Math = Math;
 
   // State
   tickers = signal<TickerData[]>([]);
@@ -172,6 +173,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   minSpreadThreshold = signal<number | null>(null); // Minimum spread threshold in percentage
   showOnlySubscribedArbitrage = signal<boolean>(false); // Filter to show only subscribed pairs
   maxNextFundingHoursArbitrage = signal<number | null>(null); // Maximum hours until next funding (filter)
+  arbitrageMode = signal<'HEDGED' | 'NON_HEDGED'>('HEDGED'); // Mode toggle: HEDGED (long-term, 2 positions) or NON_HEDGED (short-term, 1 position)
 
   // Subscription settings
   subscriptionSettings = signal<SubscriptionSettings>({
@@ -187,6 +189,11 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   // Multi-sort state
   sortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
     { column: 'fundingRate', direction: 'desc' }
+  ]);
+
+  // Arbitrage table multi-sort state
+  arbitrageSortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
+    { column: 'funding', direction: 'desc' }
   ]);
 
   // UI state
@@ -223,11 +230,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       return !isNaN(fundingRate) && t.fundingRate !== '' && t.fundingRate !== null && t.fundingRate !== undefined;
     });
 
-    // Filter out pairs with no price movement (0% change in 24h)
-    filtered = filtered.filter(t => {
-      const priceChange = parseFloat(t.price24hPcnt);
-      return !isNaN(priceChange) && priceChange !== 0;
-    });
+    // Note: We do NOT filter out pairs with 0% price movement
+    // because they can still have excellent funding rates for arbitrage
 
     // Filter by search query (symbol name)
     const search = this.searchQuery().trim().toUpperCase();
@@ -380,6 +384,85 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   });
 
   /**
+   * Sorted arbitrage opportunities based on current sort columns
+   */
+  sortedArbitrageOpportunities = computed(() => {
+    const opportunities = [...this.filteredArbitrageOpportunities()];
+    const sortCols = this.arbitrageSortColumns();
+
+    if (sortCols.length === 0) {
+      return opportunities;
+    }
+
+    return opportunities.sort((a, b) => {
+      // Apply each sort column in order
+      for (const { column, direction } of sortCols) {
+        let aVal: any;
+        let bVal: any;
+
+        // Extract values based on column
+        switch (column) {
+          case 'symbol':
+            aVal = a.symbol;
+            bVal = b.symbol;
+            break;
+          case 'funding':
+            // Get the funding rate from bestLong
+            aVal = parseFloat(a.bestLong?.fundingRate || '0');
+            bVal = parseFloat(b.bestLong?.fundingRate || '0');
+            break;
+          case 'nextFunding':
+            // Get the next funding time from the correct exchange
+            // Find the exchange that matches bestLong
+            const aExchange = a.exchanges?.find((ex: any) =>
+              ex.exchange === a.bestLong?.exchange &&
+              ex.credentialId === a.bestLong?.credentialId
+            );
+            const bExchange = b.exchanges?.find((ex: any) =>
+              ex.exchange === b.bestLong?.exchange &&
+              ex.credentialId === b.bestLong?.credentialId
+            );
+            aVal = parseInt(aExchange?.nextFundingTime?.toString() || '0');
+            bVal = parseInt(bExchange?.nextFundingTime?.toString() || '0');
+            break;
+          case 'position':
+            // Sort by position type (LONG or SHORT based on funding rate)
+            const aFunding = parseFloat(a.bestLong?.fundingRate || '0');
+            const bFunding = parseFloat(b.bestLong?.fundingRate || '0');
+            aVal = aFunding < 0 ? 'LONG' : 'SHORT';
+            bVal = bFunding < 0 ? 'LONG' : 'SHORT';
+            break;
+          default:
+            continue;
+        }
+
+        // Compare values
+        let comparison = 0;
+        if (column === 'symbol' || column === 'position') {
+          // String comparison
+          if (aVal > bVal) comparison = 1;
+          else if (aVal < bVal) comparison = -1;
+        } else {
+          // Numeric comparison
+          const aNum = typeof aVal === 'number' ? aVal : parseFloat(aVal) || 0;
+          const bNum = typeof bVal === 'number' ? bVal : parseFloat(bVal) || 0;
+          if (aNum > bNum) comparison = 1;
+          else if (aNum < bNum) comparison = -1;
+        }
+
+        // If values are different, apply direction and return
+        if (comparison !== 0) {
+          return direction === 'asc' ? comparison : -comparison;
+        }
+
+        // If values are equal, continue to next sort column
+      }
+
+      return 0; // All sort columns equal
+    });
+  });
+
+  /**
    * Set of symbols with active subscriptions for efficient lookup
    */
   subscribedSymbols = computed(() => {
@@ -486,7 +569,84 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     return result;
   });
 
+  /**
+   * Profit calculation computed signal - calculates expected funding earnings
+   * Accounts for HEDGED vs NON_HEDGED modes
+   */
+  profitCalculation = computed(() => {
+    const ticker = this.selectedTicker();
+    const positionCalc = this.positionCalculation();
+    const mode = this.arbitrageMode();
+
+    if (!ticker || !positionCalc) {
+      return null;
+    }
+
+    const fundingRate = parseFloat(ticker.fundingRate);
+    const positionValue = positionCalc.positionValue;
+
+    // Calculate funding payment for primary position
+    const primaryFunding = positionValue * Math.abs(fundingRate);
+
+    // Estimate fees (entry + exit)
+    const estimatedFees = positionCalc.estimatedFee;
+
+    if (mode === 'HEDGED') {
+      // In hedged mode, assume hedge exchange has near-zero or opposite funding
+      // For now, we'll estimate hedge funding as 50% of primary (conservative)
+      const hedgeFunding = primaryFunding * 0.5;
+      const grossProfit = primaryFunding + hedgeFunding;
+      const netProfit = grossProfit - estimatedFees;
+
+      return {
+        primaryFunding,
+        hedgeFunding,
+        grossProfit,
+        estimatedFees,
+        netProfit,
+        profitPercent: (netProfit / (positionCalc.requiredMargin * 2)) * 100, // Total margin for both positions
+        mode: 'HEDGED'
+      };
+    } else {
+      // NON_HEDGED mode: single position
+      const grossProfit = primaryFunding;
+      const netProfit = grossProfit - estimatedFees;
+
+      return {
+        primaryFunding,
+        hedgeFunding: 0,
+        grossProfit,
+        estimatedFees,
+        netProfit,
+        profitPercent: (netProfit / positionCalc.requiredMargin) * 100,
+        mode: 'NON_HEDGED'
+      };
+    }
+  });
+
   private refreshSubscription?: Subscription;
+
+  constructor() {
+    // Add effect to track mode changes
+    effect(() => {
+      const mode = this.arbitrageMode();
+      console.log('[Mode Toggle] Mode changed to:', mode);
+      // When switching to NON_HEDGED mode, clear hedge credential
+      if (mode === 'NON_HEDGED') {
+        console.log('[Mode Toggle] Clearing hedge credential for NON_HEDGED mode');
+        this.hedgeCredentialId.set(null);
+      }
+    }, { allowSignalWrites: true }); // Allow signal writes inside effect
+  }
+
+  /**
+   * Set arbitrage mode with explicit logging for debugging
+   */
+  setArbitrageMode(mode: 'HEDGED' | 'NON_HEDGED'): void {
+    console.log('[setArbitrageMode] Button clicked! Current mode:', this.arbitrageMode(), '-> New mode:', mode);
+    this.arbitrageMode.set(mode);
+    console.log('[setArbitrageMode] Mode updated to:', this.arbitrageMode());
+  }
 
   ngOnInit(): void {
     this.loadSettings();
@@ -928,6 +1088,62 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
    */
   clearSort(): void {
     this.sortColumns.set([{ column: 'fundingRate', direction: 'desc' }]);
+  }
+
+  /**
+   * Sort arbitrage table by column with multi-sort support
+   * - Click: Single column sort (replaces all)
+   * - Shift+Click: Add column to multi-sort
+   * - Click same column: Toggle direction
+   */
+  sortArbitrageBy(column: string, event?: MouseEvent): void {
+    const currentSorts = this.arbitrageSortColumns();
+    const existingIndex = currentSorts.findIndex(s => s.column === column);
+
+    if (event?.shiftKey) {
+      // Shift+Click: Add to multi-sort or toggle existing
+      if (existingIndex >= 0) {
+        // Toggle direction of existing sort
+        const updated = [...currentSorts];
+        updated[existingIndex] = {
+          column,
+          direction: updated[existingIndex].direction === 'asc' ? 'desc' : 'asc'
+        };
+        this.arbitrageSortColumns.set(updated);
+      } else {
+        // Add new sort column
+        this.arbitrageSortColumns.set([...currentSorts, { column, direction: 'desc' }]);
+      }
+    } else {
+      // Regular click: Single column sort
+      if (existingIndex === 0 && currentSorts.length === 1) {
+        // Same column, toggle direction
+        this.arbitrageSortColumns.set([{
+          column,
+          direction: currentSorts[0].direction === 'asc' ? 'desc' : 'asc'
+        }]);
+      } else {
+        // New column, default to descending
+        this.arbitrageSortColumns.set([{ column, direction: 'desc' }]);
+      }
+    }
+  }
+
+  /**
+   * Get sort info for arbitrage table column (for display)
+   */
+  getArbitrageSortInfo(column: string): { index: number; direction: 'asc' | 'desc' } | null {
+    const sorts = this.arbitrageSortColumns();
+    const index = sorts.findIndex(s => s.column === column);
+    if (index === -1) return null;
+    return { index, direction: sorts[index].direction };
+  }
+
+  /**
+   * Clear arbitrage table sorting
+   */
+  clearArbitrageSort(): void {
+    this.arbitrageSortColumns.set([{ column: 'funding', direction: 'desc' }]);
   }
 
   clearFilters(): void {
@@ -1573,11 +1789,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // Get hedge credential - REQUIRED (no mock exchange)
+      // Get hedge credential - only REQUIRED for HEDGED mode
       const hedgeCred = this.hedgeCredential();
+      const mode = this.arbitrageMode();
 
-      if (!hedgeCred) {
-        this.showNotification('Hedge credential is required for funding arbitrage. Please select a hedge exchange.', 'error');
+      if (mode === 'HEDGED' && !hedgeCred) {
+        this.showNotification('Hedge credential is required for HEDGED mode. Please select a hedge exchange or switch to NON_HEDGED mode.', 'error');
         return;
       }
 
@@ -1590,12 +1807,17 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         positionType: positionType,
         quantity: positionCalc.quantity, // Use calculated quantity from USDT amount
         primaryCredentialId: credential.id,
-        hedgeExchange: hedgeCred.exchange,
-        hedgeCredentialId: hedgeCred.id,
         executionDelay: this.subscriptionSettings().executionDelay,
         leverage: this.dialogLeverage(), // Use dialog-specific leverage
-        margin: currentMargin // Current margin/position size in USDT
+        margin: currentMargin, // Current margin/position size in USDT
+        mode: mode // Add mode to request body
       };
+
+      // Only add hedge credentials if in HEDGED mode
+      if (mode === 'HEDGED' && hedgeCred) {
+        body.hedgeExchange = hedgeCred.exchange;
+        body.hedgeCredentialId = hedgeCred.id;
+      }
 
       console.log('[Subscribe] Saving margin:', currentMargin);
       console.log('Creating funding subscription:', body);
@@ -2280,6 +2502,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     if (url) {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
+  }
+
+  /**
+   * Get absolute value of a funding rate (helper for templates)
+   */
+  getAbsoluteFundingRate(fundingRate: string | number): number {
+    return Math.abs(parseFloat(fundingRate?.toString() || '0'));
   }
 
   /**

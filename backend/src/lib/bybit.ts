@@ -225,7 +225,8 @@ export class BybitService {
   private lastSyncTime: number = 0;
   private syncInterval: NodeJS.Timeout | null = null;
   private readonly SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  private readonly LARGE_OFFSET_WARNING_MS = 1000; // 1 second
+  private readonly LARGE_OFFSET_WARNING_MS = 3000; // 3 seconds
+  private readonly MAX_OFFSET_MS = 5000; // 5 seconds - Bybit's recv_window default
 
   constructor(config: BybitConfig = {}) {
     this.config = {
@@ -351,13 +352,32 @@ export class BybitService {
         latency: endTime - startTime
       });
 
-      // Warn if offset is large
+      // Check if offset exceeds maximum allowed
+      if (Math.abs(newOffset) > this.MAX_OFFSET_MS) {
+        const errorMsg =
+          `CRITICAL: Time offset (${newOffset}ms) exceeds maximum allowed (${this.MAX_OFFSET_MS}ms). ` +
+          `Bybit API will reject all requests. ` +
+          `\n\nTo fix this issue:\n` +
+          `1. Sync your system time: Run 'sudo ntpdate -s time.apple.com' (macOS) or 'sudo ntpdate pool.ntp.org' (Linux)\n` +
+          `2. Or use NTP service: 'sudo systemctl restart systemd-timesyncd' (Linux with systemd)\n` +
+          `3. Restart the server after syncing time\n`;
+        console.error(`[BybitService] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+
+      // Warn if offset is large but acceptable
       if (Math.abs(newOffset) > this.LARGE_OFFSET_WARNING_MS) {
-        console.warn(`[BybitService] WARNING: Large time offset detected: ${newOffset}ms. This may cause API request failures.`);
+        console.warn(`[BybitService] WARNING: Large time offset detected: ${newOffset}ms. This may cause API request failures if it increases.`);
       }
     } catch (error: any) {
       console.error('[BybitService] Time sync failed:', error.message);
-      // Don't throw - fall back to local time
+
+      // If this is a CRITICAL time offset error, re-throw it
+      if (error.message.includes('CRITICAL: Time offset')) {
+        throw error;
+      }
+
+      // For other errors, fall back to local time
       console.warn('[BybitService] Falling back to local time');
     }
   }
@@ -1136,6 +1156,43 @@ export class BybitService {
 
     this.wsClient.subscribeV5('order', 'linear');
     this.wsClient.on('update', callback);
+  }
+
+  /**
+   * Subscribe to wallet balance updates via WebSocket
+   * This is used to monitor funding fee credits in real-time
+   *
+   * Topic: 'wallet'
+   * Updates include: balance changes, funding fee settlements, transfers, etc.
+   *
+   * Example response data:
+   * {
+   *   id: "592324803bd2e63c-26bb-46f9-9bdd-...",
+   *   topic: "wallet",
+   *   creationTime: 1672364262474,
+   *   data: [{
+   *     accountType: "UNIFIED",
+   *     accountIMRate: "0.0162",
+   *     totalEquity: "3.81634",
+   *     totalWalletBalance: "3.01516",
+   *     coin: [{
+   *       coin: "USDT",
+   *       equity: "3.01516",
+   *       walletBalance: "3.01516",
+   *       ...
+   *     }]
+   *   }]
+   * }
+   */
+  subscribeToWallet(callback: (data: any) => void) {
+    if (!this.wsClient) {
+      throw new Error('WebSocket client not initialized. API credentials required.');
+    }
+
+    console.log('[BybitService] Subscribing to wallet updates via WebSocket...');
+    this.wsClient.subscribeV5('wallet', 'linear');
+    this.wsClient.on('update', callback);
+    console.log('[BybitService] Wallet subscription active');
   }
 
   unsubscribeAll() {

@@ -30,6 +30,27 @@
     <ui-card-header>
       <div class="card-header-content">
         <ui-card-title>{{ translate('arbitrage.title') }}</ui-card-title>
+
+        <!-- Mode Toggle -->
+        <div class="mode-toggle-wrapper">
+          <div class="mode-toggle">
+            <button
+              type="button"
+              class="mode-toggle-option"
+              [class.active]="arbitrageMode() === 'HEDGED'"
+              (click)="setArbitrageMode('HEDGED')">
+              <span class="mode-toggle-label">Хеджирование</span>
+            </button>
+            <button
+              type="button"
+              class="mode-toggle-option"
+              [class.active]="arbitrageMode() === 'NON_HEDGED'"
+              (click)="setArbitrageMode('NON_HEDGED')">
+              <span class="mode-toggle-label">Без хеджирования</span>
+            </button>
+          </div>
+        </div>
+
         <div class="header-actions">
           <!-- Symbol Search Input -->
           <div class="filter-control">
@@ -232,60 +253,162 @@
           <table class="arbitrage-table" role="table" aria-label="Arbitrage opportunities">
             <thead>
               <tr>
-                <th>{{ translate('arbitrage.table.symbol') }}</th>
+                <!-- Symbol column - always shown -->
+                <th class="sortable-header" (click)="sortArbitrageBy('symbol', $event)">
+                  <div class="header-content">
+                    <span>{{ translate('arbitrage.table.symbol') }}</span>
+                    @if (getArbitrageSortInfo('symbol'); as sortInfo) {
+                      <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
+                        @if (sortInfo.index >= 0) {
+                          <span class="sort-number">{{ sortInfo.index + 1 }}</span>
+                        }
+                        ▼
+                      </span>
+                    }
+                  </div>
+                </th>
+
+                <!-- HEDGED Mode: Show Spread column -->
+                @if (arbitrageMode() === 'HEDGED') {
+                  <th class="text-center sortable-header" (click)="sortArbitrageBy('spread', $event)">
+                    <div class="header-content">
+                      <span>{{ translate('arbitrage.table.spread') }}</span>
+                      @if (getArbitrageSortInfo('spread'); as sortInfo) {
+                        <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
+                          @if (sortInfo.index >= 0) {
+                            <span class="sort-number">{{ sortInfo.index + 1 }}</span>
+                          }
+                          ▼
+                        </span>
+                      }
+                    </div>
+                  </th>
+                }
+
+                <!-- NON_HEDGED Mode: Show Funding, Next Funding, Position columns -->
+                @if (arbitrageMode() === 'NON_HEDGED') {
+                  <th class="text-center sortable-header" (click)="sortArbitrageBy('funding', $event)">
+                    <div class="header-content">
+                      <span>{{ translate('arbitrage.table.funding') || 'Funding' }}</span>
+                      @if (getArbitrageSortInfo('funding'); as sortInfo) {
+                        <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
+                          @if (sortInfo.index >= 0) {
+                            <span class="sort-number">{{ sortInfo.index + 1 }}</span>
+                          }
+                          ▼
+                        </span>
+                      }
+                    </div>
+                  </th>
+                  <th class="text-center sortable-header" (click)="sortArbitrageBy('nextFunding', $event)">
+                    <div class="header-content">
+                      <span>{{ translate('arbitrage.table.nextFunding') || 'Next Funding' }}</span>
+                      @if (getArbitrageSortInfo('nextFunding'); as sortInfo) {
+                        <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
+                          @if (sortInfo.index >= 0) {
+                            <span class="sort-number">{{ sortInfo.index + 1 }}</span>
+                          }
+                          ▼
+                        </span>
+                      }
+                    </div>
+                  </th>
+                  <th class="text-center sortable-header" (click)="sortArbitrageBy('position', $event)">
+                    <div class="header-content">
+                      <span>{{ translate('arbitrage.table.position') || 'Position' }}</span>
+                      @if (getArbitrageSortInfo('position'); as sortInfo) {
+                        <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
+                          @if (sortInfo.index >= 0) {
+                            <span class="sort-number">{{ sortInfo.index + 1 }}</span>
+                          }
+                          ▼
+                        </span>
+                      }
+                    </div>
+                  </th>
+                }
+
+                <!-- Exchanges and Opportunity columns - always shown -->
                 <th class="text-center">{{ translate('arbitrage.table.exchanges') }}</th>
-                <th class="text-right">{{ translate('arbitrage.table.spread') }}</th>
                 <th class="text-center">{{ translate('arbitrage.table.opportunity') }}</th>
               </tr>
             </thead>
             <tbody>
-              @for (opportunity of filteredArbitrageOpportunities(); track opportunity.symbol) {
+              @for (opportunity of sortedArbitrageOpportunities(); track opportunity.symbol) {
                 <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscription(opportunity.symbol)">
                   <!-- Symbol -->
                   <td class="symbol-cell">
                     <span class="symbol-text">{{ opportunity.symbol }}</span>
                   </td>
 
-                  <!-- Exchanges (Best Spread) -->
-                  <td class="exchanges-cell text-center">
-                    <div class="exchanges-badges">
-                      <!-- Best Long Exchange -->
+                  <!-- HEDGED Mode: Show Spread column -->
+                  @if (arbitrageMode() === 'HEDGED') {
+                    <td class="text-center spread-cell">
+                      <div class="spread-value" [class.positive]="opportunity.spread > 0">
+                        {{ (opportunity.spread * 100).toFixed(4) }}%
+                      </div>
+                    </td>
+                  }
+
+                  <!-- NON_HEDGED Mode: Show Funding, Next Funding, Position columns -->
+                  @if (arbitrageMode() === 'NON_HEDGED') {
+                    <!-- Funding Rate -->
+                    <td class="text-center funding-cell">
+                      @if (getAbsoluteFundingRate(opportunity.bestLong.fundingRate) >= getAbsoluteFundingRate(opportunity.bestShort.fundingRate)) {
+                        <div class="funding-value" [class.negative]="parseFloat(opportunity.bestLong.fundingRate) < 0" [class.positive]="parseFloat(opportunity.bestLong.fundingRate) > 0">
+                          {{ (parseFloat(opportunity.bestLong.fundingRate) * 100).toFixed(4) }}%
+                        </div>
+                      } @else {
+                        <div class="funding-value" [class.negative]="parseFloat(opportunity.bestShort.fundingRate) < 0" [class.positive]="parseFloat(opportunity.bestShort.fundingRate) > 0">
+                          {{ (parseFloat(opportunity.bestShort.fundingRate) * 100).toFixed(4) }}%
+                        </div>
+                      }
+                    </td>
+
+                    <!-- Next Funding Time -->
+                    <td class="text-center next-funding-cell">
                       @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
-                        @if (exchange.exchange === opportunity.bestLong.exchange && exchange.credentialId === opportunity.bestLong.credentialId) {
-                          <div class="exchange-info-wrapper">
-                            <button
-                              class="exchange-badge exchange-badge-button"
-                              [class]="'badge-' + exchange.exchange.toLowerCase()"
-                              (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
-                              [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Long)'">
-                              {{ exchange.exchange }}
-                            </button>
-                            <div class="exchange-details">
-                              <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
-                                Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
-                              </div>
-                              <div class="detail-line text-xs">
-                                Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
-                              </div>
-                              @if (exchange.lastPrice) {
-                                <div class="detail-line text-xs">
-                                  Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
-                                </div>
-                              }
-                            </div>
+                        @if ((getAbsoluteFundingRate(opportunity.bestLong.fundingRate) >= getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                              exchange.exchange === opportunity.bestLong.exchange &&
+                              exchange.credentialId === opportunity.bestLong.credentialId) ||
+                             (getAbsoluteFundingRate(opportunity.bestLong.fundingRate) < getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                              exchange.exchange === opportunity.bestShort.exchange &&
+                              exchange.credentialId === opportunity.bestShort.credentialId)) {
+                          <div class="next-funding-value">
+                            {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
                           </div>
                         }
                       }
-                      <!-- Best Short Exchange (only if different from Best Long) -->
-                      @if (opportunity.bestShort.exchange !== opportunity.bestLong.exchange || opportunity.bestShort.credentialId !== opportunity.bestLong.credentialId) {
+                    </td>
+
+                    <!-- Position Type -->
+                    <td class="text-center position-cell">
+                      @if (getAbsoluteFundingRate(opportunity.bestLong.fundingRate) >= getAbsoluteFundingRate(opportunity.bestShort.fundingRate)) {
+                        <div class="position-badge" [class.long-position]="parseFloat(opportunity.bestLong.fundingRate) < 0" [class.short-position]="parseFloat(opportunity.bestLong.fundingRate) >= 0">
+                          {{ parseFloat(opportunity.bestLong.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
+                        </div>
+                      } @else {
+                        <div class="position-badge" [class.long-position]="parseFloat(opportunity.bestShort.fundingRate) < 0" [class.short-position]="parseFloat(opportunity.bestShort.fundingRate) >= 0">
+                          {{ parseFloat(opportunity.bestShort.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
+                        </div>
+                      }
+                    </td>
+                  }
+
+                  <!-- Exchanges (Mode-Aware Display) -->
+                  <td class="exchanges-cell text-center">
+                    <div class="exchanges-badges">
+                      @if (arbitrageMode() === 'HEDGED') {
+                        <!-- HEDGED Mode: Show both Long and Short exchanges -->
+                        <!-- Best Long Exchange -->
                         @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
-                          @if (exchange.exchange === opportunity.bestShort.exchange && exchange.credentialId === opportunity.bestShort.credentialId) {
+                          @if (exchange.exchange === opportunity.bestLong.exchange && exchange.credentialId === opportunity.bestLong.credentialId) {
                             <div class="exchange-info-wrapper">
                               <button
                                 class="exchange-badge exchange-badge-button"
                                 [class]="'badge-' + exchange.exchange.toLowerCase()"
                                 (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
-                                [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Short)'">
+                                [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Long)'">
                                 {{ exchange.exchange }}
                               </button>
                               <div class="exchange-details">
@@ -304,19 +427,73 @@
                             </div>
                           }
                         }
+                        <!-- Best Short Exchange (only if different from Best Long) -->
+                        @if (opportunity.bestShort.exchange !== opportunity.bestLong.exchange || opportunity.bestShort.credentialId !== opportunity.bestLong.credentialId) {
+                          @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                            @if (exchange.exchange === opportunity.bestShort.exchange && exchange.credentialId === opportunity.bestShort.credentialId) {
+                              <div class="exchange-info-wrapper">
+                                <button
+                                  class="exchange-badge exchange-badge-button"
+                                  [class]="'badge-' + exchange.exchange.toLowerCase()"
+                                  (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
+                                  [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best Short)'">
+                                  {{ exchange.exchange }}
+                                </button>
+                                <div class="exchange-details">
+                                  <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
+                                    Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                                  </div>
+                                  <div class="detail-line text-xs">
+                                    Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                                  </div>
+                                  @if (exchange.lastPrice) {
+                                    <div class="detail-line text-xs">
+                                      Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
+                                    </div>
+                                  }
+                                </div>
+                              </div>
+                            }
+                          }
+                        }
+                      } @else {
+                        <!-- NON_HEDGED Mode: Show only the exchange with highest absolute funding rate -->
+                        <!-- Compare |bestLong.fundingRate| vs |bestShort.fundingRate| and show the higher one -->
+                        @for (exchange of opportunity.exchanges; track exchange.exchange + exchange.credentialId) {
+                          @if ((getAbsoluteFundingRate(opportunity.bestLong.fundingRate) >= getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                                exchange.exchange === opportunity.bestLong.exchange &&
+                                exchange.credentialId === opportunity.bestLong.credentialId) ||
+                               (getAbsoluteFundingRate(opportunity.bestLong.fundingRate) < getAbsoluteFundingRate(opportunity.bestShort.fundingRate) &&
+                                exchange.exchange === opportunity.bestShort.exchange &&
+                                exchange.credentialId === opportunity.bestShort.credentialId)) {
+                            <div class="exchange-info-wrapper">
+                              <button
+                                class="exchange-badge exchange-badge-button"
+                                [class]="'badge-' + exchange.exchange.toLowerCase()"
+                                (click)="openTradingPairForExchange(opportunity.symbol, exchange.exchange, exchange.environment, exchange.originalSymbol)"
+                                [title]="'Open ' + opportunity.symbol + ' on ' + exchange.exchange + ' (Best rate: ' + (parseFloat(exchange.fundingRate) * 100).toFixed(4) + '%)'">
+                                {{ exchange.exchange }}
+                              </button>
+                              <div class="exchange-details">
+                                <div class="detail-line text-xs" [class.negative]="parseFloat(exchange.fundingRate) < 0" [class.positive]="parseFloat(exchange.fundingRate) > 0">
+                                  Funding: {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                                </div>
+                                <div class="detail-line text-xs">
+                                  Position: {{ parseFloat(exchange.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
+                                </div>
+                                <div class="detail-line text-xs">
+                                  Next: {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                                </div>
+                                @if (exchange.lastPrice) {
+                                  <div class="detail-line text-xs">
+                                    Price: ${{ parseFloat(exchange.lastPrice).toFixed(2) }}
+                                  </div>
+                                }
+                              </div>
+                            </div>
+                          }
+                        }
                       }
-                    </div>
-                  </td>
-
-                  <!-- Spread -->
-                  <td class="text-right">
-                    <div class="spread-info">
-                      <div class="spread-value" [class.high-spread]="parseFloat(opportunity.spreadPercent) > 50">
-                        {{ (parseFloat(opportunity.spread) * 100).toFixed(4) }}%
-                      </div>
-                      <div class="spread-percent">
-                        ({{ opportunity.spreadPercent }}%)
-                      </div>
                     </div>
                   </td>
 
@@ -522,102 +699,79 @@
         </div>
 
         <div class="dialog-body">
+          <!-- Basic Info -->
           <div class="dialog-info">
             <div class="info-row">
-              <span class="info-label">{{ translate('fundingRates.dialog.symbol') }}:</span>
+              <span class="info-label">Symbol:</span>
               <span class="info-value">{{ selectedTicker()!.symbol }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">{{ translate('fundingRates.dialog.fundingRate') }}:</span>
+              <span class="info-label">Funding Rate:</span>
               <span class="info-value" [ngClass]="getFundingRateClass(selectedTicker()!.fundingRate)">
                 {{ formatFundingRate(selectedTicker()!.fundingRate) }}
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">{{ translate('fundingRates.dialog.nextFunding') }}:</span>
+              <span class="info-label">Next Funding:</span>
               <span class="info-value">{{ formatNextFundingTime(selectedTicker()!.nextFundingTime) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">{{ translate('fundingRates.dialog.positionType') }}:</span>
-              <span class="info-value">
-                {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? translate('fundingRates.dialog.longReceive') : translate('fundingRates.dialog.shortReceive') }}
+              <span class="info-label">Mode:</span>
+              <span class="info-value" [class.mode-hedged]="arbitrageMode() === 'HEDGED'" [class.mode-non-hedged]="arbitrageMode() === 'NON_HEDGED'">
+                {{ arbitrageMode() === 'HEDGED' ? 'Hedged (2 positions)' : 'Non-Hedged (1 position)' }}
               </span>
             </div>
           </div>
 
-          <!-- Positions to Open -->
-          <div class="positions-info">
-            <h4 class="positions-title">{{ translate('fundingRates.dialog.positionsToOpen') }}</h4>
-            <div class="positions-grid">
-              <div class="position-item primary-position">
-                <div class="position-label">{{ translate('fundingRates.dialog.primaryPosition') }}</div>
-                <div class="position-type" [class.long-position]="parseFloat(selectedTicker()!.fundingRate) < 0" [class.short-position]="parseFloat(selectedTicker()!.fundingRate) >= 0">
-                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
-                </div>
-                <div class="position-amount">
-                  ${{ (positionSizeUsdt() || 0) * dialogLeverage() }} USDT
-                </div>
-                <div class="position-margin">
-                  Margin: ${{ positionSizeUsdt() || 0 }} USDT
-                </div>
-                <div class="position-explanation">
-                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'Receive funding payments' : 'Pay funding to receive later' }}
-                </div>
+          <!-- Exchange Information -->
+          <div class="exchanges-info">
+            <div class="exchange-item">
+              <div class="exchange-label">Primary Exchange:</div>
+              <div class="exchange-value">
+                {{ selectedCredential()?.exchange }} {{ selectedCredential()?.environment }}
               </div>
-              <div class="position-arrow">⇄</div>
-              <div class="position-item hedge-position">
-                <div class="position-label">{{ translate('fundingRates.dialog.hedgePosition') }}</div>
-                <div class="position-type" [class.long-position]="parseFloat(selectedTicker()!.fundingRate) >= 0" [class.short-position]="parseFloat(selectedTicker()!.fundingRate) < 0">
-                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'SHORT' : 'LONG' }}
+              @if (positionCalculation()) {
+                <div class="exchange-price">
+                  Price: ${{ positionCalculation()!.estimatedPrice.toFixed(2) }}
                 </div>
-                <div class="position-amount">
-                  ${{ (positionSizeUsdt() || 0) * dialogLeverage() }} USDT
-                </div>
-                <div class="position-margin">
-                  Margin: ${{ positionSizeUsdt() || 0 }} USDT
-                </div>
-                <div class="position-explanation">
-                  Hedge position (opposite direction)
-                </div>
-              </div>
+              }
             </div>
+            @if (arbitrageMode() === 'HEDGED') {
+              <div class="exchange-item">
+                <div class="exchange-label">Hedge Exchange:</div>
+                <div class="exchange-value">
+                  @if (hedgeCredential()) {
+                    {{ hedgeCredential()!.exchange }} {{ hedgeCredential()!.environment }}
+                  } @else {
+                    {{ translate('fundingRates.dialog.mockExchange') || 'Not selected' }}
+                  }
+                </div>
+                @if (positionCalculation()) {
+                  <div class="exchange-price">
+                    Price: ${{ positionCalculation()!.estimatedPrice.toFixed(2) }}
+                  </div>
+                }
+              </div>
+            }
           </div>
 
-          <!-- Balance Information -->
-          @if (isLoadingBalances()) {
-            <div class="balance-info loading">
-              <p>{{ translate('fundingRates.dialog.loadingBalances') || 'Loading balances...' }}</p>
-            </div>
-          } @else {
-            <div class="balance-info">
-              <div class="balance-row">
-                <span class="balance-label">{{ translate('fundingRates.dialog.primary') }} {{ translate('fundingRates.dialog.balance') || 'Balance' }}:</span>
-                <span class="balance-value" [class.low-balance]="primaryBalance() !== null && primaryBalance()! < 10">
-                  @if (primaryBalance() !== null) {
-                    ${{ primaryBalance()!.toFixed(2) }} USDT
-                  } @else {
-                    {{ translate('fundingRates.dialog.unavailable') || 'N/A' }}
-                  }
-                </span>
-              </div>
-              <div class="balance-row">
-                <span class="balance-label">{{ translate('fundingRates.dialog.hedge') }} {{ translate('fundingRates.dialog.balance') || 'Balance' }}:</span>
-                <span class="balance-value" [class.low-balance]="hedgeBalance() !== null && hedgeBalance()! < 10 && hedgeBalance()! !== 999999">
-                  @if (hedgeBalance() !== null) {
-                    @if (hedgeBalance() === 999999) {
-                      ∞ ({{ translate('fundingRates.dialog.mockExchange') }})
-                    } @else {
-                      ${{ hedgeBalance()!.toFixed(2) }} USDT
-                    }
-                  } @else {
-                    {{ translate('fundingRates.dialog.unavailable') || 'N/A' }}
-                  }
-                </span>
-              </div>
-            </div>
-          }
-
+          <!-- Trading Parameters -->
           <div class="dialog-form">
+            <div class="form-group">
+              <label class="form-label">Leverage</label>
+              <input
+                type="number"
+                class="form-input"
+                [ngModel]="dialogLeverage()"
+                (ngModelChange)="dialogLeverage.set($event)"
+                min="1"
+                max="125"
+                step="1"
+                placeholder="3"
+              />
+              <p class="form-hint">{{ dialogLeverage() }}x leverage multiplies your position size</p>
+            </div>
+
             <div class="form-group">
               <label class="form-label">Margin (USDT)</label>
               <input
@@ -629,74 +783,126 @@
                 min="10"
                 placeholder="e.g., 100"
               />
-              <p class="form-hint">Your collateral amount. With {{ dialogLeverage() }}x leverage, this will open a position worth ${{ (positionSizeUsdt() || 0) * dialogLeverage() }} USDT</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">{{ translate('fundingRates.settings.leverage') }}</label>
-              <input
-                type="number"
-                class="form-input"
-                [ngModel]="dialogLeverage()"
-                (ngModelChange)="dialogLeverage.set($event)"
-                min="1"
-                max="125"
-                step="1"
-                placeholder="3"
-              />
-              <p class="form-hint">Leverage for this position (1-125x). With {{ dialogLeverage() }}x leverage, ${{ positionSizeUsdt() || 0 }} margin opens a ${{ (positionSizeUsdt() || 0) * dialogLeverage() }} USDT position.</p>
+              <p class="form-hint">
+                @if (arbitrageMode() === 'HEDGED') {
+                  ${{ positionSizeUsdt() || 0 }} per exchange = ${{ (positionSizeUsdt() || 0) * 2 }} total
+                } @else {
+                  Single position margin
+                }
+              </p>
             </div>
           </div>
 
-          <!-- Position Calculation -->
-          @if (positionCalculation()) {
-            <div class="position-calculation">
-              <h4 class="calculation-title">Position Details</h4>
-              <div class="calculation-grid">
-                <div class="calc-row">
-                  <span class="calc-label">Coin Quantity:</span>
-                  <span class="calc-value">{{ positionCalculation()!.quantity.toFixed(6) }} {{ positionCalculation()!.symbol.replace('USDT', '') }}</span>
+          <!-- Balance Information -->
+          @if (isLoadingBalances()) {
+            <div class="balance-info loading">
+              <p>{{ translate('fundingRates.dialog.loadingBalances') || 'Loading balances...' }}</p>
+            </div>
+          } @else {
+            <div class="balance-info">
+              <div class="balance-row">
+                <span class="balance-label">{{ translate('fundingRates.dialog.primary') }} Balance:</span>
+                <span class="balance-value" [class.low-balance]="primaryBalance() !== null && primaryBalance()! < 10">
+                  @if (primaryBalance() !== null) {
+                    ${{ primaryBalance()!.toFixed(2) }} USDT
+                  } @else {
+                    N/A
+                  }
+                </span>
+              </div>
+              @if (arbitrageMode() === 'HEDGED') {
+                <div class="balance-row">
+                  <span class="balance-label">{{ translate('fundingRates.dialog.hedge') }} Balance:</span>
+                  <span class="balance-value" [class.low-balance]="hedgeBalance() !== null && hedgeBalance()! < 10 && hedgeBalance()! !== 999999">
+                    @if (hedgeBalance() !== null) {
+                      @if (hedgeBalance() === 999999) {
+                        ∞ ({{ translate('fundingRates.dialog.mockExchange') }})
+                      } @else {
+                        ${{ hedgeBalance()!.toFixed(2) }} USDT
+                      }
+                    } @else {
+                      N/A
+                    }
+                  </span>
                 </div>
-                <div class="calc-row">
-                  <span class="calc-label">Estimated Price:</span>
-                  <span class="calc-value">${{ positionCalculation()!.estimatedPrice.toFixed(2) }}</span>
+              }
+            </div>
+          }
+
+          <!-- Profit Calculation -->
+          @if (profitCalculation()) {
+            <div class="profit-calculation">
+              <h4 class="profit-title">Expected Profit</h4>
+              <div class="profit-grid">
+                @if (arbitrageMode() === 'HEDGED') {
+                  <div class="profit-row">
+                    <span class="profit-label">Primary Funding:</span>
+                    <span class="profit-value positive">${{ profitCalculation()!.primaryFunding.toFixed(4) }}</span>
+                  </div>
+                  <div class="profit-row">
+                    <span class="profit-label">Hedge Funding:</span>
+                    <span class="profit-value positive">${{ profitCalculation()!.hedgeFunding.toFixed(4) }}</span>
+                  </div>
+                  <div class="profit-row">
+                    <span class="profit-label">Gross Profit:</span>
+                    <span class="profit-value">${{ profitCalculation()!.grossProfit.toFixed(4) }}</span>
+                  </div>
+                } @else {
+                  <div class="profit-row">
+                    <span class="profit-label">Funding Payment:</span>
+                    <span class="profit-value positive">${{ profitCalculation()!.primaryFunding.toFixed(4) }}</span>
+                  </div>
+                }
+                <div class="profit-row">
+                  <span class="profit-label">Est. Fees:</span>
+                  <span class="profit-value negative">-${{ profitCalculation()!.estimatedFees.toFixed(4) }}</span>
                 </div>
-                <div class="calc-row">
-                  <span class="calc-label">Position Value:</span>
-                  <span class="calc-value">${{ positionCalculation()!.positionValue.toFixed(2) }} USDT</span>
+                <div class="profit-row important">
+                  <span class="profit-label">Net Profit:</span>
+                  <span class="profit-value" [class.positive]="profitCalculation()!.netProfit > 0" [class.negative]="profitCalculation()!.netProfit < 0">
+                    ${{ profitCalculation()!.netProfit.toFixed(4) }}
+                  </span>
                 </div>
-                <div class="calc-row">
-                  <span class="calc-label">Leverage:</span>
-                  <span class="calc-value">{{ positionCalculation()!.leverage }}x</span>
-                </div>
-                <div class="calc-row important">
-                  <span class="calc-label">Required Margin (per exchange):</span>
-                  <span class="calc-value">${{ positionCalculation()!.requiredMargin.toFixed(2) }} USDT</span>
-                </div>
-                <div class="calc-row">
-                  <span class="calc-label">Est. Fees (Entry+Exit):</span>
-                  <span class="calc-value">${{ positionCalculation()!.estimatedFee.toFixed(2) }} USDT</span>
+                <div class="profit-row important">
+                  <span class="profit-label">ROI:</span>
+                  <span class="profit-value" [class.positive]="profitCalculation()!.profitPercent > 0" [class.negative]="profitCalculation()!.profitPercent < 0">
+                    {{ profitCalculation()!.profitPercent.toFixed(2) }}%
+                  </span>
                 </div>
               </div>
-              <p class="calculation-note">
-                💡 Each exchange needs <strong>${{ positionCalculation()!.requiredMargin.toFixed(2) }} USDT</strong> margin
+              <p class="profit-note">
+                💡 Expected profit per funding interval (~{{ arbitrageMode() === 'HEDGED' ? '8' : '0.5-8' }} hours)
               </p>
             </div>
           }
 
-          <div class="dialog-warning">
-            <p>⚠️ {{ translate('fundingRates.dialog.warning') }}</p>
-            <ul>
-              <li>{{ translate('fundingRates.dialog.primary') }}: {{ selectedCredential()?.exchange }} {{ selectedCredential()?.environment }}</li>
-              <li>{{ translate('fundingRates.dialog.hedge') }}:
-                @if (hedgeCredential()) {
-                  {{ hedgeCredential()!.exchange }} {{ hedgeCredential()!.environment }}
-                } @else {
-                  {{ translate('fundingRates.dialog.mockExchange') }}
-                }
-              </li>
-            </ul>
-          </div>
+          <!-- Position Summary -->
+          @if (positionCalculation()) {
+            <div class="position-summary">
+              <div class="summary-row">
+                <span class="summary-label">Position Type:</span>
+                <span class="summary-value" [class.long-position]="parseFloat(selectedTicker()!.fundingRate) < 0" [class.short-position]="parseFloat(selectedTicker()!.fundingRate) >= 0">
+                  {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'LONG' : 'SHORT' }}
+                  @if (arbitrageMode() === 'HEDGED') {
+                    + {{ parseFloat(selectedTicker()!.fundingRate) < 0 ? 'SHORT' : 'LONG' }} (hedge)
+                  }
+                </span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Quantity:</span>
+                <span class="summary-value">{{ positionCalculation()!.quantity.toFixed(6) }} {{ positionCalculation()!.symbol.replace('USDT', '') }}</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Position Value:</span>
+                <span class="summary-value">
+                  ${{ positionCalculation()!.positionValue.toFixed(2) }} USDT
+                  @if (arbitrageMode() === 'HEDGED') {
+                    × 2 = ${{ (positionCalculation()!.positionValue * 2).toFixed(2) }}
+                  }
+                </span>
+              </div>
+            </div>
+          }
         </div>
 
         <div class="dialog-footer">

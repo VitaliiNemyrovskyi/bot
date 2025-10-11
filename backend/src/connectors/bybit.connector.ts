@@ -441,4 +441,26 @@ export class BybitConnector extends BaseExchangeConnector {
       throw new Error(`Failed to set leverage for ${symbol}: ${error.message}`);
     }
   }
+
+  /**
+   * Subscribe to wallet balance updates via WebSocket
+   * Used for real-time funding payment monitoring
+   *
+   * @param callback Function to call when wallet updates are received
+   */
+  subscribeToWallet(callback: (data: any) => void): void {
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    this.bybitService.subscribeToWallet(callback);
+  }
+
+  /**
+   * Get the underlying BybitService instance
+   * Used for advanced operations like WebSocket subscriptions
+   */
+  getBybitService(): BybitService {
+    return this.bybitService;
+  }
 }

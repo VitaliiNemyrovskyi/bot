@@ -19,8 +19,9 @@ import prisma from '@/lib/prisma';
  *   "positionType": "long" | "short",
  *   "quantity": 0.01,
  *   "primaryCredentialId": "cred_123",
- *   "hedgeExchange": "BYBIT" | "BINGX",
- *   "hedgeCredentialId": "cred_456" (required),
+ *   "mode": "HEDGED" | "NON_HEDGED" (optional, default: "HEDGED"),
+ *   "hedgeExchange": "BYBIT" | "BINGX" (required for HEDGED mode),
+ *   "hedgeCredentialId": "cred_456" (required for HEDGED mode),
  *   "leverage": 3 (optional, default: 3, range: 1-125, recommended: 1-20),
  *   "margin": 100.50 (optional, margin/collateral in USDT)
  * }
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
       executionDelay = 5,
       leverage = 3,
       margin,
+      mode = 'HEDGED', // Default to HEDGED mode for backward compatibility
     } = body;
 
     console.log('[FundingArbitrageAPI] Received subscription request with margin:', {
@@ -136,49 +138,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Validate hedge exchange and credentials
-    if (!hedgeExchange) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing hedge exchange configuration',
-          message: 'hedgeExchange is required',
-          timestamp: new Date().toISOString(),
-        },
-        { status: 400 }
-      );
-    }
-
-    // MOCK exchange doesn't require credentials
-    if (hedgeExchange !== 'MOCK') {
-      if (!hedgeCredentialId) {
+    // 5. Validate hedge exchange and credentials (only for HEDGED mode)
+    if (mode === 'HEDGED') {
+      if (!hedgeExchange) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Missing hedge credential',
-            message: 'hedgeCredentialId is required for non-MOCK exchanges',
+            error: 'Missing hedge exchange configuration',
+            message: 'hedgeExchange is required for HEDGED mode',
             timestamp: new Date().toISOString(),
           },
           { status: 400 }
         );
       }
 
-      // Verify hedge credentials exist
-      const hedgeCred = await ExchangeCredentialsService.getCredentialById(
-        userId,
-        hedgeCredentialId
-      );
+      // MOCK exchange doesn't require credentials
+      if (hedgeExchange !== 'MOCK') {
+        if (!hedgeCredentialId) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Missing hedge credential',
+              message: 'hedgeCredentialId is required for non-MOCK exchanges in HEDGED mode',
+              timestamp: new Date().toISOString(),
+            },
+            { status: 400 }
+          );
+        }
 
-      if (!hedgeCred) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Credential not found',
-            message: `Hedge credential ${hedgeCredentialId} not found`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 404 }
+        // Verify hedge credentials exist
+        const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+          userId,
+          hedgeCredentialId
         );
+
+        if (!hedgeCred) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Credential not found',
+              message: `Hedge credential ${hedgeCredentialId} not found`,
+              timestamp: new Date().toISOString(),
+            },
+            { status: 404 }
+          );
+        }
       }
     }
 
@@ -197,6 +201,7 @@ export async function POST(request: NextRequest) {
       executionDelay,
       leverage,
       margin,
+      mode, // Pass mode to service
     });
 
     console.log(`[FundingArbitrageAPI] Subscription created:`, subscription.id);
@@ -403,6 +408,7 @@ export async function PUT(request: NextRequest) {
       executionDelay = 5,
       leverage = 3,
       margin,
+      mode = 'HEDGED', // Default to HEDGED mode for backward compatibility
     } = body;
 
     console.log('[FundingArbitrageAPI] Updating subscription with margin:', {
@@ -483,47 +489,50 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (!hedgeExchange) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing hedge exchange configuration',
-          message: 'hedgeExchange is required',
-          timestamp: new Date().toISOString(),
-        },
-        { status: 400 }
-      );
-    }
-
-    // MOCK exchange doesn't require credentials
-    if (hedgeExchange !== 'MOCK') {
-      if (!hedgeCredentialId) {
+    // Validate hedge exchange and credentials (only for HEDGED mode)
+    if (mode === 'HEDGED') {
+      if (!hedgeExchange) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Missing hedge credential',
-            message: 'hedgeCredentialId is required for non-MOCK exchanges',
+            error: 'Missing hedge exchange configuration',
+            message: 'hedgeExchange is required for HEDGED mode',
             timestamp: new Date().toISOString(),
           },
           { status: 400 }
         );
       }
 
-      const hedgeCred = await ExchangeCredentialsService.getCredentialById(
-        userId,
-        hedgeCredentialId
-      );
+      // MOCK exchange doesn't require credentials
+      if (hedgeExchange !== 'MOCK') {
+        if (!hedgeCredentialId) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Missing hedge credential',
+              message: 'hedgeCredentialId is required for non-MOCK exchanges in HEDGED mode',
+              timestamp: new Date().toISOString(),
+            },
+            { status: 400 }
+          );
+        }
 
-      if (!hedgeCred) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Credential not found',
-            message: `Hedge credential ${hedgeCredentialId} not found`,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 404 }
+        const hedgeCred = await ExchangeCredentialsService.getCredentialById(
+          userId,
+          hedgeCredentialId
         );
+
+        if (!hedgeCred) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Credential not found',
+              message: `Hedge credential ${hedgeCredentialId} not found`,
+              timestamp: new Date().toISOString(),
+            },
+            { status: 404 }
+          );
+        }
       }
     }
 
@@ -538,9 +547,10 @@ export async function PUT(request: NextRequest) {
         quantity,
         leverage,
         margin,
+        mode, // Update mode
         primaryCredentialId,
-        hedgeExchange,
-        hedgeCredentialId,
+        hedgeExchange: mode === 'HEDGED' ? hedgeExchange : null, // Null for NON_HEDGED
+        hedgeCredentialId: mode === 'HEDGED' ? hedgeCredentialId : null, // Null for NON_HEDGED
         // Reset status to PENDING if it was ERROR/COMPLETED
         status: existingSubscription.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING',
         errorMessage: null,
@@ -569,6 +579,7 @@ export async function PUT(request: NextRequest) {
         executionDelay,
         leverage,
         margin,
+        mode, // Pass mode to service
       });
 
       return NextResponse.json(

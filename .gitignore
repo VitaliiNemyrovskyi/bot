@@ -68,3 +68,4 @@ Thumbs.db
 /index.js
 /package.json
 /package-lock.json
+frontend/dist/

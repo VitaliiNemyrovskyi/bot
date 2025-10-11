@@ -612,6 +612,11 @@ enum FundingArbitrageStatus {
   ERROR
 }
 
+enum ArbitrageMode {
+  HEDGED      // Long-term strategy with 2 positions (hedged), ~8 hours duration
+  NON_HEDGED  // Short-term strategy with 1 position (no hedge), 2-8 seconds duration
+}
+
 model FundingArbitrageSubscription {
   id     String @id @default(cuid())
   userId String
@@ -625,11 +630,14 @@ model FundingArbitrageSubscription {
   leverage        Float  @default(3) // Leverage multiplier (1-125, recommended 1-20)
   margin          Float? // Margin/collateral used for this position (in USDT)
 
+  // Arbitrage mode configuration
+  mode ArbitrageMode @default(HEDGED) // HEDGED: 2 positions (hedged), NON_HEDGED: 1 position (fast close)
+
   // Exchange configuration
   primaryExchange     String // Exchange name (e.g., "BYBIT_TESTNET")
   primaryCredentialId String // Reference to ExchangeCredentials
-  hedgeExchange       String // Hedge exchange (e.g., "BINGX", "BYBIT", "MOCK")
-  hedgeCredentialId   String? // Reference to ExchangeCredentials for hedge (null for MOCK exchange)
+  hedgeExchange       String? // Hedge exchange (e.g., "BINGX", "BYBIT", "MOCK") - optional for NON_HEDGED mode
+  hedgeCredentialId   String? // Reference to ExchangeCredentials for hedge (null for MOCK exchange or NON_HEDGED mode)
 
   // Status and execution
   status       FundingArbitrageStatus @default(ACTIVE)
