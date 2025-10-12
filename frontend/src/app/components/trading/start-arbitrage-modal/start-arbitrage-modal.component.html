@@ -1,0 +1,266 @@
+<div class="arbitrage-modal">
+  <!-- Modal Header -->
+  <div class="modal-header">
+    <h2 mat-dialog-title class="modal-title">
+      {{ translate('arbitrage.startArbitrage') }}
+    </h2>
+    <button
+      mat-icon-button
+      class="close-button"
+      (click)="onCancel()"
+      [disabled]="isSubmitting()"
+      aria-label="Close">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <!-- Modal Content -->
+  <mat-dialog-content class="modal-content">
+    <!-- Symbol Display -->
+    <div class="symbol-section">
+      <h3 class="symbol-name">{{ opportunity().symbol }}</h3>
+      <div class="spread-display" [ngClass]="spreadClass()">
+        <span class="spread-label">{{ translate('arbitrage.spread') }}:</span>
+        <span class="spread-value">{{ spreadPercent() }}%</span>
+      </div>
+    </div>
+
+    <!-- Exchange Information -->
+    <div class="exchanges-section">
+      <!-- Primary Exchange (Higher Price - SHORT) -->
+      <div class="exchange-card primary-exchange">
+        <div class="exchange-header">
+          <mat-icon class="exchange-icon">trending_down</mat-icon>
+          <h4 class="exchange-title">{{ translate('arbitrage.primaryExchange') }}</h4>
+        </div>
+        <div class="exchange-details">
+          <div class="exchange-name">{{ opportunity().primaryExchange.name }}</div>
+          <div class="exchange-price">${{ opportunity().primaryExchange.price.toFixed(2) }}</div>
+          <div class="exchange-position-type">(Higher Price - SHORT position)</div>
+        </div>
+      </div>
+
+      <!-- Hedge Exchange (Lower Price - LONG) -->
+      <div class="exchange-card hedge-exchange">
+        <div class="exchange-header">
+          <mat-icon class="exchange-icon">trending_up</mat-icon>
+          <h4 class="exchange-title">{{ translate('arbitrage.hedgeExchange') }}</h4>
+        </div>
+        <div class="exchange-details">
+          <div class="exchange-name">{{ opportunity().hedgeExchange.name }}</div>
+          <div class="exchange-price">${{ opportunity().hedgeExchange.price.toFixed(2) }}</div>
+          <div class="exchange-position-type">(Lower Price - LONG position)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <form [formGroup]="form" (ngSubmit)="onSubmit()" class="config-form">
+      <!-- Primary Exchange Settings -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <mat-icon>settings</mat-icon>
+          {{ translate('arbitrage.primaryExchange') }} {{ translate('arbitrage.configure') }}
+        </h4>
+
+        <!-- Primary Leverage -->
+        <div class="form-field">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ translate('arbitrage.primaryLeverage') }}</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="primaryLeverage"
+              min="1"
+              max="100"
+              placeholder="10">
+            <span matTextSuffix>x</span>
+            <mat-error *ngIf="isFieldInvalid('primaryLeverage')">
+              {{ getErrorMessage('primaryLeverage') }}
+            </mat-error>
+          </mat-form-field>
+          <mat-slider
+            class="leverage-slider"
+            [min]="1"
+            [max]="100"
+            [step]="1"
+            [displayWith]="formatLeverageLabel"
+            discrete>
+            <input matSliderThumb formControlName="primaryLeverage">
+          </mat-slider>
+        </div>
+
+        <!-- Primary Margin -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ translate('arbitrage.primaryMargin') }}</mat-label>
+          <input
+            matInput
+            type="number"
+            formControlName="primaryMargin"
+            min="10"
+            step="10"
+            placeholder="100">
+          <span matTextSuffix>USDT</span>
+          <mat-hint>Amount of capital to invest</mat-hint>
+          <mat-error *ngIf="isFieldInvalid('primaryMargin')">
+            {{ getErrorMessage('primaryMargin') }}
+          </mat-error>
+        </mat-form-field>
+      </div>
+
+      <!-- Hedge Exchange Settings -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <mat-icon>settings</mat-icon>
+          {{ translate('arbitrage.hedgeExchange') }} {{ translate('arbitrage.configure') }}
+        </h4>
+
+        <!-- Hedge Leverage -->
+        <div class="form-field">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ translate('arbitrage.hedgeLeverage') }}</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="hedgeLeverage"
+              min="1"
+              max="100"
+              placeholder="10">
+            <span matTextSuffix>x</span>
+            <mat-error *ngIf="isFieldInvalid('hedgeLeverage')">
+              {{ getErrorMessage('hedgeLeverage') }}
+            </mat-error>
+          </mat-form-field>
+          <mat-slider
+            class="leverage-slider"
+            [min]="1"
+            [max]="100"
+            [step]="1"
+            [displayWith]="formatLeverageLabel"
+            discrete>
+            <input matSliderThumb formControlName="hedgeLeverage">
+          </mat-slider>
+        </div>
+
+        <!-- Hedge Margin -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ translate('arbitrage.hedgeMargin') }}</mat-label>
+          <input
+            matInput
+            type="number"
+            formControlName="hedgeMargin"
+            min="10"
+            step="10"
+            placeholder="100">
+          <span matTextSuffix>USDT</span>
+          <mat-hint>Amount of capital to invest</mat-hint>
+          <mat-error *ngIf="isFieldInvalid('hedgeMargin')">
+            {{ getErrorMessage('hedgeMargin') }}
+          </mat-error>
+        </mat-form-field>
+      </div>
+
+      <!-- Advanced Settings -->
+      <mat-expansion-panel class="advanced-settings-panel" [(expanded)]="showAdvancedSettings">
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon>tune</mat-icon>
+            Advanced Settings (Optional)
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+
+        <div class="advanced-settings-content">
+          <!-- Target Spread -->
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ translate('arbitrage.targetSpread') }}</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="targetSpread"
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="0.5">
+            <span matTextSuffix>%</span>
+            <mat-hint>Auto-close when spread narrows to this level</mat-hint>
+            <mat-error *ngIf="isFieldInvalid('targetSpread')">
+              {{ getErrorMessage('targetSpread') }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Stop Loss -->
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ translate('arbitrage.stopLoss') }}</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="stopLoss"
+              min="0"
+              max="100"
+              step="0.1"
+              placeholder="3.0">
+            <span matTextSuffix>%</span>
+            <mat-hint>Close position if spread widens beyond this</mat-hint>
+            <mat-error *ngIf="isFieldInvalid('stopLoss')">
+              {{ getErrorMessage('stopLoss') }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Max Holding Time -->
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ translate('arbitrage.maxHoldingTime') }}</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="maxHoldingTime"
+              min="1"
+              step="1"
+              placeholder="24">
+            <span matTextSuffix>hours</span>
+            <mat-hint>Maximum time to hold the position</mat-hint>
+            <mat-error *ngIf="isFieldInvalid('maxHoldingTime')">
+              {{ getErrorMessage('maxHoldingTime') }}
+            </mat-error>
+          </mat-form-field>
+        </div>
+      </mat-expansion-panel>
+
+      <!-- Success/Error Messages -->
+      @if (successMessage()) {
+        <div class="message success-message">
+          <mat-icon>check_circle</mat-icon>
+          <span>{{ successMessage() }}</span>
+        </div>
+      }
+
+      @if (errorMessage()) {
+        <div class="message error-message">
+          <mat-icon>error</mat-icon>
+          <span>{{ errorMessage() }}</span>
+        </div>
+      }
+    </form>
+  </mat-dialog-content>
+
+  <!-- Modal Actions -->
+  <mat-dialog-actions class="modal-actions">
+    <button
+      mat-stroked-button
+      type="button"
+      (click)="onCancel()"
+      [disabled]="isSubmitting()">
+      {{ translate('common.cancel') }}
+    </button>
+    <button
+      mat-raised-button
+      color="primary"
+      type="submit"
+      (click)="onSubmit()"
+      [disabled]="form.invalid || isSubmitting()">
+      @if (isSubmitting()) {
+        <mat-spinner diameter="20" class="button-spinner"></mat-spinner>
+      }
+      <span>{{ translate('arbitrage.start') }}</span>
+    </button>
+  </mat-dialog-actions>
+</div>

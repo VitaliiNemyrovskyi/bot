@@ -3,12 +3,14 @@ import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
 import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
+import { CoinGeckoService } from '@/lib/coingecko';
 
 /**
  * GET /api/arbitrage/funding-rates
  *
  * Fetches funding rates from all active exchange credentials and analyzes arbitrage opportunities.
- * Returns trading pairs with their funding rates across different exchanges, sorted by spread.
+ * Returns trading pairs with their funding rates across different exchanges, sorted by price spread.
+ * Spread is calculated as the price difference between exchanges: (maxPrice - minPrice) / minPrice
  *
  * Authentication: Required (Bearer token)
  *
@@ -34,8 +36,8 @@ import { AuthService } from '@/lib/auth';
  *           "environment": "MAINNET"
  *         }
  *       ],
- *       "spread": 0.0004,
- *       "spreadPercent": 80.0,
+ *       "spread": 0.0004, // Price spread as decimal (0.04% = 0.0004)
+ *       "spreadPercent": 0.04, // Price spread as percentage
  *       "bestLong": { exchange: "BYBIT", fundingRate: "0.0001" },
  *       "bestShort": { exchange: "BINGX", fundingRate: "0.0005" },
  *       "arbitrageOpportunity": true
@@ -300,37 +302,69 @@ export async function GET(request: NextRequest) {
       // Only analyze symbols that exist on multiple exchanges
       if (exchanges.length < 2) return;
 
-      // Debug: Show all funding rates before sorting
+      // Debug: Show all funding rates and prices before sorting
       console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
-        exchanges.map(e => `${e.exchange}=${e.fundingRate}`).join(', '));
+        exchanges.map(e => `${e.exchange}=${e.fundingRate} ($${e.lastPrice})`).join(', '));
 
-      // Sort by funding rate
+      // Sort by PRICE (not funding rate) for hedged arbitrage
+      // This ensures we buy low on one exchange and sell high on another
       const sortedExchanges = [...exchanges].sort((a, b) =>
-        parseFloat(a.fundingRate) - parseFloat(b.fundingRate)
+        parseFloat(a.lastPrice) - parseFloat(b.lastPrice)
       );
 
-      const lowestRate = parseFloat(sortedExchanges[0].fundingRate);
-      const highestRate = parseFloat(sortedExchanges[sortedExchanges.length - 1].fundingRate);
-      const spread = Math.abs(highestRate - lowestRate);
-      const spreadPercent = lowestRate !== 0
-        ? (spread / Math.abs(lowestRate)) * 100
+      // Calculate price spread between primary (bestLong) and hedge (bestShort) exchanges
+      // bestLong = lowest price (primary exchange - BUY/LONG position)
+      // bestShort = highest price (hedge exchange - SELL/SHORT position)
+      const primaryExchange = sortedExchanges[0]; // Lowest price
+      const hedgeExchange = sortedExchanges[sortedExchanges.length - 1]; // Highest price
+
+      const primaryPrice = parseFloat(primaryExchange.lastPrice);
+      const hedgePrice = parseFloat(hedgeExchange.lastPrice);
+
+      // Spread as percentage: (hedgePrice - primaryPrice) / primaryPrice * 100
+      // Positive spread means hedge exchange has higher price
+      const spread = primaryPrice > 0 && !isNaN(primaryPrice) && !isNaN(hedgePrice)
+        ? ((hedgePrice - primaryPrice) / primaryPrice)
         : 0;
+      const spreadPercent = spread * 100;
+
+      // Calculate absolute price difference in USDT
+      const priceSpreadUsdt = hedgePrice - primaryPrice;
 
       // Log detailed spread calculation
       console.log(`[Arbitrage] ${symbol} spread calculation:`);
-      console.log(`  - Lowest: ${lowestRate} (${sortedExchanges[0].exchange})`);
-      console.log(`  - Highest: ${highestRate} (${sortedExchanges[sortedExchanges.length - 1].exchange})`);
-      console.log(`  - Spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(2)}%)`);
-      console.log(`  - Is opportunity: ${spread > 0.0001}`);
+      console.log(`  - Primary exchange (${primaryExchange.exchange}): $${primaryPrice}`);
+      console.log(`  - Hedge exchange (${hedgeExchange.exchange}): $${hedgePrice}`);
+      console.log(`  - Price spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(4)}%)`);
+      console.log(`  - Price spread USDT: $${priceSpreadUsdt.toFixed(3)}`);
+      console.log(`  - Is opportunity: ${Math.abs(spread) > 0.0001}`);
 
-      // Determine arbitrage opportunity (spread > 0.01% or 0.0001 in decimal)
-      const arbitrageOpportunity = spread > 0.0001;
+      // Filter out unrealistic spreads (likely symbol mismatch or data errors)
+      // Maximum realistic spread: 100% (1.0 in decimal)
+      const MAX_REALISTIC_SPREAD = 1.0; // 100%
+      const absSpread = Math.abs(spread);
+
+      if (absSpread > MAX_REALISTIC_SPREAD) {
+        console.log(`[Arbitrage] ⚠️ Filtered out ${symbol} due to unrealistic spread: ${spreadPercent.toFixed(2)}% (primary: $${primaryPrice}, hedge: $${hedgePrice})`);
+        console.log(`[Arbitrage] Likely cause: Symbol mismatch or different token contracts across exchanges`);
+        return; // Skip this symbol
+      }
+
+      // Additional validation: prices should be positive and reasonable
+      if (primaryPrice <= 0 || hedgePrice <= 0) {
+        console.log(`[Arbitrage] ⚠️ Filtered out ${symbol} due to invalid price data (primary: $${primaryPrice}, hedge: $${hedgePrice})`);
+        return; // Skip this symbol
+      }
+
+      // Determine arbitrage opportunity (absolute spread > 0.01% or 0.0001 in decimal)
+      const arbitrageOpportunity = Math.abs(spread) > 0.0001;
 
       arbitrageOpportunities.push({
         symbol,
         exchanges: sortedExchanges,
         spread: spread.toFixed(6),
         spreadPercent: spreadPercent.toFixed(2),
+        priceSpreadUsdt: priceSpreadUsdt.toFixed(3),
         bestLong: {
           exchange: sortedExchanges[0].exchange,
           credentialId: sortedExchanges[0].credentialId,
@@ -347,13 +381,25 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Sort by spread (highest first)
-    arbitrageOpportunities.sort((a, b) => parseFloat(b.spread) - parseFloat(a.spread));
+    // Sort by absolute spread (highest first)
+    arbitrageOpportunities.sort((a, b) => Math.abs(parseFloat(b.spread)) - Math.abs(parseFloat(a.spread)));
 
     console.log(`[Arbitrage] Found ${arbitrageOpportunities.length} symbols with cross-exchange data`);
     console.log(`[Arbitrage] Arbitrage opportunities: ${arbitrageOpportunities.filter(o => o.arbitrageOpportunity).length}`);
 
-    // 6. Return response
+    // 6. Fetch market cap data from CoinGecko
+    console.log('[Arbitrage] Fetching market cap data from CoinGecko...');
+    const symbols = arbitrageOpportunities.map(o => o.symbol);
+    const marketCaps = await CoinGeckoService.getMarketCaps(symbols);
+
+    // Add market cap to each opportunity
+    arbitrageOpportunities.forEach(opportunity => {
+      opportunity.marketCap = marketCaps.get(opportunity.symbol) || 0;
+    });
+
+    console.log(`[Arbitrage] Added market cap data to ${arbitrageOpportunities.length} opportunities`);
+
+    // 7. Return response
     return NextResponse.json(
       {
         success: true,

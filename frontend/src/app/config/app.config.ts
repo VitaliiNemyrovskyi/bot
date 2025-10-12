@@ -40,6 +40,10 @@ export interface AppConfig {
       };
       arbitrage: {
         fundingRates: string;
+        opportunities: string;
+        positions: string;
+        startPosition: string;
+        closePosition: string;
       };
       fundingArbitrage: {
         revenue: string;
@@ -57,6 +61,9 @@ export interface AppConfig {
         delete: string;
         activate: string;
         testConnection: string;
+      };
+      marketData: {
+        marketCaps: string;
       };
     };
   };
@@ -120,7 +127,11 @@ export const appConfig: AppConfig = {
         fundingRates: '/bingx/funding-rates'
       },
       arbitrage: {
-        fundingRates: '/arbitrage/funding-rates'
+        fundingRates: '/arbitrage/funding-rates',
+        opportunities: '/arbitrage/opportunities',
+        positions: '/arbitrage/positions',
+        startPosition: '/arbitrage/positions/start',
+        closePosition: '/arbitrage/positions/:id/close'
       },
       fundingArbitrage: {
         revenue: '/funding-arbitrage/revenue'
@@ -133,6 +144,9 @@ export const appConfig: AppConfig = {
         delete: '/exchange-credentials/:id',
         activate: '/exchange-credentials/:id/activate',
         testConnection: '/exchange-credentials/test'
+      },
+      marketData: {
+        marketCaps: '/market-data/market-caps'
       }
     }
   },

@@ -70,6 +70,7 @@ model User {
   bybitApiKey                   BybitApiKey? // One-to-one relationship (deprecated, use exchangeCredentials)
   exchangeCredentials           ExchangeCredentials[]
   fundingArbitrageSubscriptions FundingArbitrageSubscription[]
+  priceArbitragePositions       PriceArbitragePosition[]
 
   @@map("users")
 }
@@ -617,6 +618,16 @@ enum ArbitrageMode {
   NON_HEDGED  // Short-term strategy with 1 position (no hedge), 2-8 seconds duration
 }
 
+enum PriceArbitrageStatus {
+  OPENING      // Positions being opened
+  ACTIVE       // Both positions open, monitoring spread
+  CLOSING      // Closing positions
+  COMPLETED    // Successfully closed with profit/loss
+  PARTIAL      // One position failed to open/close
+  ERROR        // Error occurred
+  CANCELLED    // User cancelled manually
+}
+
 model FundingArbitrageSubscription {
   id     String @id @default(cuid())
   userId String
@@ -680,6 +691,76 @@ model FundingArbitrageSubscription {
   @@index([symbol])
   @@index([primaryExchange])
   @@map("funding_arbitrage_subscriptions")
+}
+
+model PriceArbitragePosition {
+  id     String @id @default(cuid())
+  userId String
+
+  // Symbol and exchanges
+  symbol              String // Normalized format (e.g., "BTCUSDT")
+  primaryExchange     String // Higher price exchange
+  primaryCredentialId String
+  hedgeExchange       String // Lower price exchange
+  hedgeCredentialId   String
+
+  // Position configuration
+  primaryLeverage Float // Leverage on primary exchange (1-100)
+  primaryMargin   Float // Margin in USDT on primary exchange
+  hedgeLeverage   Float // Leverage on hedge exchange (1-100)
+  hedgeMargin     Float // Margin in USDT on hedge exchange
+
+  // Entry data
+  entryPrimaryPrice  Float // Price when PRIMARY SHORT opened
+  entryHedgePrice    Float // Price when HEDGE LONG opened
+  entrySpread        Float // Spread at entry (as decimal, e.g., 0.0015)
+  entrySpreadPercent Float // Spread % at entry (e.g., 0.15 for 0.15%)
+
+  // Position details
+  primaryQuantity Float  // Quantity of PRIMARY position
+  hedgeQuantity   Float  // Quantity of HEDGE position
+  primaryOrderId  String? // Exchange order ID for primary
+  hedgeOrderId    String? // Exchange order ID for hedge
+
+  // Exit data (filled when closed)
+  exitPrimaryPrice   Float? // Price when PRIMARY position closed
+  exitHedgePrice     Float? // Price when HEDGE position closed
+  exitSpread         Float? // Spread at exit
+  exitSpreadPercent  Float? // Spread % at exit
+
+  // Financial results
+  primaryPnl  Float? // P&L from PRIMARY position
+  hedgePnl    Float? // P&L from HEDGE position
+  totalPnl    Float? // Total P&L (primary + hedge - fees)
+  primaryFees Float  @default(0) // Trading fees on primary
+  hedgeFees   Float  @default(0) // Trading fees on hedge
+
+  // Convergence configuration
+  targetSpread   Float? // Auto-close when spread <= this (as decimal, e.g., 0.001 = 0.1%)
+  maxHoldingTime Int? // Max seconds to hold (optional)
+  stopLoss       Float? // Stop-loss spread % (wider than entry = loss)
+
+  // Status and tracking
+  status       PriceArbitrageStatus @default(OPENING)
+  errorMessage String?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  openedAt  DateTime? // When both positions successfully opened
+  closedAt  DateTime? // When positions closed
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for efficient queries
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status])
+  @@index([symbol])
+  @@index([openedAt])
+  @@index([closedAt])
+  @@map("price_arbitrage_positions")
 }
 
 model ConnectorStateCache {

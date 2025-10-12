@@ -4,12 +4,14 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { interval, Subscription, of } from 'rxjs';
 import { switchMap, startWith } from 'rxjs/operators';
+import { MatDialog } from '@angular/material/dialog';
 import { AuthService } from '../../../services/auth.service';
 import { TranslationService } from '../../../services/translation.service';
-import { ArbitrageStreamService, PriceUpdate } from '../../../services/arbitrage-stream.service';
+import { PriceArbitrageService } from '../../../services/price-arbitrage.service';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { DropdownComponent, DropdownOption } from '../../ui/dropdown/dropdown.component';
+import { StartArbitrageModalComponent } from '../start-arbitrage-modal/start-arbitrage-modal.component';
 import { getEndpointUrl } from '../../../config/app.config';
 
 /**
@@ -89,22 +91,23 @@ export interface SubscriptionSettings {
   arbitrageSpreadThreshold: number | null; // Minimum spread threshold for arbitrage opportunities (in %)
 }
 
-export interface ExchangeData {
-  exchange: string;
-  credentialId: string;
-  environment: string;
-  fundingRate: string;
-  nextFundingTime: number;
-  originalSymbol?: string;
-  lastPrice: string;
-}
-
+/**
+ * Funding Rate Arbitrage Opportunity
+ * Returned by /api/arbitrage/funding-rates endpoint
+ */
 export interface FundingRateArbitrageOpportunity {
   symbol: string;
-  exchanges: ExchangeData[];
-  spread: string; // Price spread as decimal (e.g., "0.0004")
-  spreadPercent: string; // Price spread as percentage (e.g., "0.04")
-  priceSpreadUsdt: string; // Absolute price difference in USDT (e.g., "25.50")
+  exchanges: Array<{
+    exchange: string;
+    credentialId: string;
+    environment: string;
+    fundingRate: string;
+    nextFundingTime: number | string;
+    originalSymbol?: string;
+    lastPrice?: string;
+  }>;
+  spread: number; // Price spread as decimal (parsed from backend)
+  spreadPercent: number; // Price spread as percentage (parsed from backend)
   bestLong: {
     exchange: string;
     credentialId: string;
@@ -118,8 +121,9 @@ export interface FundingRateArbitrageOpportunity {
     environment: string;
   };
   arbitrageOpportunity: boolean;
-  marketCap?: number; // Market capitalization in USD from CoinGecko
 }
+
+// Market capitalizations will be loaded from CoinGecko API via backend
 
 /**
  * Enhanced Funding Rates Component
@@ -132,6 +136,7 @@ export interface FundingRateArbitrageOpportunity {
  * - Auto-refresh every 30 seconds
  * - Sortable columns
  * - Annualized rate calculation
+ * - Market cap filtering for HEDGED mode
  */
 @Component({
   selector: 'app-funding-rates',
@@ -153,7 +158,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
-  private arbitrageStreamService = inject(ArbitrageStreamService);
+  private priceArbitrageService = inject(PriceArbitrageService);
+  private dialog = inject(MatDialog);
   private cdr = inject(ChangeDetectorRef);
 
   // Expose utilities to template
@@ -194,19 +200,10 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   editingSubscription = signal<FundingSubscription | null>(null);
   startingSubscriptionId = signal<string | null>(null); // Track which subscription is being started
 
-  // HEDGED mode dialog state
-  showHedgedDialog = signal<boolean>(false);
-  selectedHedgedOpportunity = signal<any>(null);
-  hedgedPrimaryLeverage = signal<number>(3);
-  hedgedPrimaryMargin = signal<number>(100);
-  hedgedHedgeLeverage = signal<number>(3);
-  hedgedHedgeMargin = signal<number>(100);
-  isStartingHedged = signal<boolean>(false);
-
   // Row expansion state
   expandedRows = signal<Set<string>>(new Set());
 
-  // Arbitrage state
+  // Arbitrage state (Funding rate-based arbitrage opportunities)
   arbitrageOpportunities = signal<FundingRateArbitrageOpportunity[]>([]);
   isLoadingArbitrage = signal<boolean>(false);
   arbitrageError = signal<string | null>(null);
@@ -216,14 +213,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   minSpreadThreshold = signal<number | null>(null); // Minimum spread threshold in percentage
   showOnlySubscribedArbitrage = signal<boolean>(false); // Filter to show only subscribed pairs
   maxNextFundingHoursArbitrage = signal<number | null>(null); // Maximum hours until next funding (filter)
-  minMarketCapFilter = signal<number | null>(null); // Minimum market cap filter in millions USD (HEDGED mode only)
+  minMarketCapFilter = signal<number | null>(null); // Minimum market cap filter in millions USD (e.g., 100 = $100M)
   arbitrageMode = signal<'HEDGED' | 'NON_HEDGED'>('HEDGED'); // Mode toggle: HEDGED (long-term, 2 positions) or NON_HEDGED (short-term, 1 position)
 
-  // Real-time streaming state
-  realtimePrices = signal<Map<string, { price: number; change: 'up' | 'down' | 'neutral'; timestamp: number }>>(new Map());
-  isStreamConnected = signal<boolean>(false);
-  enableRealtimeStreaming = signal<boolean>(false); // Feature flag for real-time streaming
-  priceUpdateSubscription: Subscription | null = null;
+  // Market capitalization data loaded from CoinGecko API via backend
+  marketCaps = signal<Record<string, number>>({}); // symbol -> market cap in millions USD
+  isLoadingMarketCaps = signal<boolean>(false);
 
   // Subscription settings
   subscriptionSettings = signal<SubscriptionSettings>({
@@ -242,9 +237,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   ]);
 
   // Arbitrage table multi-sort state
-  // Initial sort matches initial mode (HEDGED = spread, NON_HEDGED = funding)
   arbitrageSortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
-    { column: 'spread', direction: 'desc' }  // Default HEDGED mode
+    { column: 'funding', direction: 'desc' }
   ]);
 
   // UI state
@@ -390,7 +384,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Filtered arbitrage opportunities based on symbol search, spread threshold, subscription status, and next funding time
    */
-  filteredArbitrageOpportunities = computed(() => {
+  filteredArbitrageOpportunities = computed<FundingRateArbitrageOpportunity[]>(() => {
     let opportunities = [...this.arbitrageOpportunities()];
 
     // Filter by symbol search query
@@ -405,7 +399,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     const minSpread = this.minSpreadThreshold();
     if (minSpread !== null && minSpread > 0) {
       opportunities = opportunities.filter(opp => {
-        const spreadPercent = parseFloat(opp.spread) * 100;
+        const spreadPercent = opp.spread * 100;
         return spreadPercent >= minSpread;
       });
     }
@@ -417,17 +411,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       );
     }
 
-    // Filter by next funding time
+    // Filter by next funding time (not applicable for price arbitrage)
     const maxHours = this.maxNextFundingHoursArbitrage();
     if (maxHours !== null && maxHours > 0) {
-      const now = Date.now();
-      const maxTime = now + (maxHours * 60 * 60 * 1000);
+      // This filter doesn't apply to price arbitrage opportunities
+      // Price arbitrage doesn't have funding times, so we skip this filter
+      // opportunities = opportunities; // No-op
+    }
+
+    // Filter by minimum market cap (HEDGED mode only - to filter out small/illiquid coins)
+    const minMarketCap = this.minMarketCapFilter();
+    if (minMarketCap !== null && minMarketCap > 0 && this.arbitrageMode() === 'HEDGED') {
       opportunities = opportunities.filter(opp => {
-        // Check if any exchange in this opportunity has next funding time within the threshold
-        return opp.exchanges.some((exchange: any) => {
-          const fundingTime = parseInt(exchange.nextFundingTime?.toString() || '0');
-          return fundingTime > 0 && fundingTime <= maxTime;
-        });
+        const marketCap = this.getMarketCap(opp.symbol);
+        return marketCap >= minMarketCap;
       });
     }
 
@@ -437,7 +434,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Sorted arbitrage opportunities based on current sort columns
    */
-  sortedArbitrageOpportunities = computed(() => {
+  sortedArbitrageOpportunities = computed<FundingRateArbitrageOpportunity[]>(() => {
     const opportunities = [...this.filteredArbitrageOpportunities()];
     const sortCols = this.arbitrageSortColumns();
 
@@ -457,72 +454,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             aVal = a.symbol;
             bVal = b.symbol;
             break;
-          case 'primaryExchange':
-            // Sort by primary exchange name (HEDGED mode)
-            aVal = a.bestLong?.exchange || '';
-            bVal = b.bestLong?.exchange || '';
-            break;
-          case 'hedgeExchange':
-            // Sort by hedge exchange name (HEDGED mode)
-            aVal = a.bestShort?.exchange || '';
-            bVal = b.bestShort?.exchange || '';
-            break;
-          case 'spread':
-            // Sort by price spread (HEDGED mode)
-            aVal = parseFloat(a.spread || '0');
-            bVal = parseFloat(b.spread || '0');
-            break;
           case 'funding':
-            // For NON_HEDGED mode: find maximum funding rate by absolute value,
-            // but use the actual signed value for sorting (descending)
-            // For HEDGED mode: use bestLong funding rate
-            const mode = this.arbitrageMode();
-
-            if (mode === 'NON_HEDGED') {
-              // Find exchange with maximum absolute funding rate
-              const aLongRate = parseFloat(a.bestLong?.fundingRate || '0');
-              const aShortRate = parseFloat(a.bestShort?.fundingRate || '0');
-              const bLongRate = parseFloat(b.bestLong?.fundingRate || '0');
-              const bShortRate = parseFloat(b.bestShort?.fundingRate || '0');
-
-              // Use the rate with higher absolute value, keeping the sign
-              aVal = Math.abs(aLongRate) >= Math.abs(aShortRate) ? aLongRate : aShortRate;
-              bVal = Math.abs(bLongRate) >= Math.abs(bShortRate) ? bLongRate : bShortRate;
-            } else {
-              // HEDGED mode: use bestLong funding rate
-              aVal = parseFloat(a.bestLong?.fundingRate || '0');
-              bVal = parseFloat(b.bestLong?.fundingRate || '0');
-            }
+            // Not applicable for price arbitrage - return 0
+            aVal = 0;
+            bVal = 0;
             break;
           case 'nextFunding':
-            // Get the next funding time from the exchange with highest absolute funding rate
-            // This matches the display logic in NON_HEDGED mode
-            const aAbsLong = Math.abs(parseFloat(a.bestLong?.fundingRate || '0'));
-            const aAbsShort = Math.abs(parseFloat(a.bestShort?.fundingRate || '0'));
-            const bAbsLong = Math.abs(parseFloat(b.bestLong?.fundingRate || '0'));
-            const bAbsShort = Math.abs(parseFloat(b.bestShort?.fundingRate || '0'));
-
-            // Determine which exchange to use for each opportunity (matches UI display logic)
-            const useALong = aAbsLong >= aAbsShort;
-            const useBLong = bAbsLong >= bAbsShort;
-
-            const aExchange = a.exchanges?.find((ex: any) =>
-              ex.exchange === (useALong ? a.bestLong?.exchange : a.bestShort?.exchange) &&
-              ex.credentialId === (useALong ? a.bestLong?.credentialId : a.bestShort?.credentialId)
-            );
-            const bExchange = b.exchanges?.find((ex: any) =>
-              ex.exchange === (useBLong ? b.bestLong?.exchange : b.bestShort?.exchange) &&
-              ex.credentialId === (useBLong ? b.bestLong?.credentialId : b.bestShort?.credentialId)
-            );
-            aVal = parseInt(aExchange?.nextFundingTime?.toString() || '0');
-            bVal = parseInt(bExchange?.nextFundingTime?.toString() || '0');
+            // Not applicable for price arbitrage - return 0
+            aVal = 0;
+            bVal = 0;
             break;
           case 'position':
-            // Sort by position type (LONG or SHORT based on funding rate)
-            const aFunding = parseFloat(a.bestLong?.fundingRate || '0');
-            const bFunding = parseFloat(b.bestLong?.fundingRate || '0');
-            aVal = aFunding < 0 ? 'LONG' : 'SHORT';
-            bVal = bFunding < 0 ? 'LONG' : 'SHORT';
+            // Not applicable for price arbitrage - return empty string
+            aVal = '';
+            bVal = '';
             break;
           default:
             continue;
@@ -530,7 +475,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
         // Compare values
         let comparison = 0;
-        if (column === 'symbol' || column === 'position' || column === 'primaryExchange' || column === 'hedgeExchange') {
+        if (column === 'symbol' || column === 'position') {
           // String comparison
           if (aVal > bVal) comparison = 1;
           else if (aVal < bVal) comparison = -1;
@@ -723,44 +668,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     effect(() => {
       const mode = this.arbitrageMode();
       console.log('[Mode Toggle] Mode changed to:', mode);
-
       // When switching to NON_HEDGED mode, clear hedge credential
       if (mode === 'NON_HEDGED') {
         console.log('[Mode Toggle] Clearing hedge credential for NON_HEDGED mode');
         this.hedgeCredentialId.set(null);
       }
-
-      // Update sorting based on mode
-      // HEDGED mode: Sort by spread (descending)
-      // NON_HEDGED mode: Sort by funding rate (descending, by absolute value)
-      if (mode === 'HEDGED') {
-        console.log('[Mode Toggle] Setting sort to spread (descending) for HEDGED mode');
-        this.arbitrageSortColumns.set([{ column: 'spread', direction: 'desc' }]);
-      } else {
-        console.log('[Mode Toggle] Setting sort to funding (descending) for NON_HEDGED mode');
-        this.arbitrageSortColumns.set([{ column: 'funding', direction: 'desc' }]);
-      }
-
-      // Restart streaming with new top 3 opportunities based on new sorting (if enabled)
-      if (this.enableRealtimeStreaming()) {
-        console.log('[Mode Toggle] Restarting real-time streaming with new mode');
-        this.startRealtimeStreaming();
-      }
     }, { allowSignalWrites: true }); // Allow signal writes inside effect
-
-    // Add effect to handle feature flag changes
-    effect(() => {
-      const enabled = this.enableRealtimeStreaming();
-      console.log('[RealtimeStreaming] Feature flag changed to:', enabled);
-
-      if (enabled) {
-        console.log('[RealtimeStreaming] Starting real-time streaming');
-        this.startRealtimeStreaming();
-      } else {
-        console.log('[RealtimeStreaming] Stopping real-time streaming');
-        this.stopRealtimeStreaming();
-      }
-    }, { allowSignalWrites: true });
   }
 
   /**
@@ -777,6 +690,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.loadCredentials();
     this.loadSubscriptions();
     this.loadArbitrageOpportunities(); // Load cross-exchange arbitrage data
+    this.loadMarketCaps(); // Load market cap data from CoinGecko
     this.startAutoCancelChecker();
     this.syncSettingsToFilters();
   }
@@ -788,15 +702,36 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     if (this.autoCancelInterval) {
       clearInterval(this.autoCancelInterval);
     }
-    // Disconnect from real-time streaming
-    if (this.priceUpdateSubscription) {
-      this.priceUpdateSubscription.unsubscribe();
-    }
-    this.arbitrageStreamService.disconnect();
   }
 
   translate(key: string): string {
     return this.translationService.translate(key);
+  }
+
+  /**
+   * Open the Start Arbitrage Modal for a funding rate arbitrage opportunity
+   */
+  openStartArbitrageModal(opportunity: FundingRateArbitrageOpportunity): void {
+    const dialogRef = this.dialog.open(StartArbitrageModalComponent, {
+      width: '700px',
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+      data: { opportunity },
+      disableClose: false,
+      autoFocus: true
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result?.success) {
+        console.log('[Start Arbitrage] Position started successfully:', result.position);
+        this.showNotification(
+          `Arbitrage position started for ${opportunity.symbol}`,
+          'success'
+        );
+        // Refresh opportunities list after starting a position
+        this.loadArbitrageOpportunities();
+      }
+    });
   }
 
   loadCredentials(): void {
@@ -846,6 +781,45 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
           console.error('Failed to load credentials:', err);
           this.error.set('Failed to load exchange credentials');
           this.isLoadingCredentials.set(false);
+        }
+      });
+  }
+
+  /**
+   * Load market capitalization data from CoinGecko API via backend
+   * Data is cached on backend for 5 minutes to reduce API calls
+   */
+  loadMarketCaps(): void {
+    this.isLoadingMarketCaps.set(true);
+    const token = this.authService.authState().token;
+    if (!token) {
+      console.error('Authentication required for market caps');
+      this.isLoadingMarketCaps.set(false);
+      return;
+    }
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+
+    // Use the centralized config to get the endpoint URL
+    const url = getEndpointUrl('marketData', 'marketCaps');
+
+    this.http.get<{success: boolean; data: Record<string, number>; count: number; timestamp: string}>(url, { headers })
+      .subscribe({
+        next: (response) => {
+          if (response?.success && response.data) {
+            this.marketCaps.set(response.data);
+            console.log(`✅ Loaded ${response.count} market caps from CoinGecko`);
+          } else {
+            console.error('Invalid market caps response:', response);
+          }
+          this.isLoadingMarketCaps.set(false);
+        },
+        error: (err) => {
+          console.error('Failed to load market caps:', err);
+          // Keep existing market caps on error, don't clear them
+          this.isLoadingMarketCaps.set(false);
         }
       });
   }
@@ -1035,7 +1009,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Load arbitrage opportunities from all exchanges
+   * Load funding rate arbitrage opportunities from all exchanges
    */
   loadArbitrageOpportunities(): void {
     const token = this.authService.authState().token;
@@ -1051,73 +1025,27 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    const arbitrageUrl = getEndpointUrl('arbitrage', 'fundingRates');
+    const url = getEndpointUrl('arbitrage', 'fundingRates');
 
-    this.http.get<any>(arbitrageUrl, { headers }).subscribe({
+    this.http.get<{ success: boolean; data: any[] }>(url, { headers }).subscribe({
       next: (response) => {
-        if (response.success) {
-          this.arbitrageOpportunities.set(response.data || []);
-          console.log(`[Arbitrage] Loaded ${response.data?.length || 0} opportunities`);
-          console.log('[Arbitrage] Opportunity symbols:', response.data?.map((o: any) => o.symbol));
-          console.log('[Arbitrage] First opportunity sample:', response.data?.[0]);
+        if (response.success && response.data) {
+          // Parse string values to numbers for arithmetic operations
+          const opportunities: FundingRateArbitrageOpportunity[] = response.data.map(opp => ({
+            ...opp,
+            spread: typeof opp.spread === 'string' ? parseFloat(opp.spread) : opp.spread,
+            spreadPercent: typeof opp.spreadPercent === 'string' ? parseFloat(opp.spreadPercent) : opp.spreadPercent
+          }));
 
-          // 🔍 DETAILED VERIFICATION: Check bestLong/bestShort mapping for first 3 opportunities
-          console.log('='.repeat(80));
-          console.log('🔍 HEDGED ARBITRAGE VERIFICATION - Primary vs Hedge Exchange');
-          console.log('='.repeat(80));
-
-          response.data?.slice(0, 3).forEach((opp: any, idx: number) => {
-            console.log(`\n[${idx + 1}] Symbol: ${opp.symbol}`);
-            console.log('-'.repeat(60));
-
-            // Find the actual exchange data for bestLong and bestShort
-            const bestLongExchange = opp.exchanges.find((ex: any) =>
-              ex.exchange === opp.bestLong.exchange && ex.credentialId === opp.bestLong.credentialId
-            );
-            const bestShortExchange = opp.exchanges.find((ex: any) =>
-              ex.exchange === opp.bestShort.exchange && ex.credentialId === opp.bestShort.credentialId
-            );
-
-            console.log(`Primary Exchange (bestLong):`);
-            console.log(`  Exchange: ${opp.bestLong.exchange}`);
-            console.log(`  Price: $${bestLongExchange?.lastPrice || 'N/A'}`);
-            console.log(`  Funding: ${(parseFloat(bestLongExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
-            console.log(`  → This is where we LONG (BUY)`);
-
-            console.log(`\nHedge Exchange (bestShort):`);
-            console.log(`  Exchange: ${opp.bestShort.exchange}`);
-            console.log(`  Price: $${bestShortExchange?.lastPrice || 'N/A'}`);
-            console.log(`  Funding: ${(parseFloat(bestShortExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
-            console.log(`  → This is where we SHORT (SELL)`);
-
-            console.log(`\nSpread: ${opp.spreadPercent}% ($${opp.priceSpreadUsdt})`);
-
-            // Verify correctness
-            const primaryPrice = parseFloat(bestLongExchange?.lastPrice || '0');
-            const hedgePrice = parseFloat(bestShortExchange?.lastPrice || '0');
-
-            if (primaryPrice > 0 && hedgePrice > 0) {
-              if (primaryPrice < hedgePrice) {
-                console.log(`✅ CORRECT: Primary ($${primaryPrice}) < Hedge ($${hedgePrice})`);
-                console.log(`   → We BUY LOW and SELL HIGH = PROFIT`);
-              } else {
-                console.log(`❌ ERROR: Primary ($${primaryPrice}) >= Hedge ($${hedgePrice})`);
-                console.log(`   → This would mean BUY HIGH and SELL LOW = LOSS!`);
-              }
-            }
-          });
-
-          console.log('\n' + '='.repeat(80));
-
-          // Real-time streaming is now controlled by the enableRealtimeStreaming feature flag
-          // via effect in constructor - no need to start it here
-        } else {
-          this.arbitrageError.set(response.message || 'Failed to load arbitrage data');
+          this.arbitrageOpportunities.set(opportunities);
+          console.log(`[Funding Rate Arbitrage] Loaded ${opportunities.length} opportunities`);
+          console.log('[Funding Rate Arbitrage] Opportunity symbols:', opportunities.map(o => o.symbol));
+          console.log('[Funding Rate Arbitrage] First opportunity sample:', opportunities[0]);
         }
         this.isLoadingArbitrage.set(false);
       },
       error: (error) => {
-        console.error('[Arbitrage] Error loading opportunities:', error);
+        console.error('[Funding Rate Arbitrage] Error loading opportunities:', error);
         this.arbitrageError.set(error.message || 'Failed to load arbitrage data');
         this.isLoadingArbitrage.set(false);
       }
@@ -1137,161 +1065,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.minSpreadThreshold.set(null);
     this.showOnlySubscribedArbitrage.set(false);
     this.maxNextFundingHoursArbitrage.set(null);
-  }
-
-  /**
-   * Start real-time price streaming for top arbitrage opportunities
-   *
-   * Algorithm:
-   * - HEDGED mode: Selects top 3 opportunities by maximum spread (descending)
-   * - NON_HEDGED mode: Selects top 3 opportunities by maximum absolute funding rate (descending, considering sign)
-   */
-  startRealtimeStreaming(): void {
-    // Check if feature is enabled
-    if (!this.enableRealtimeStreaming()) {
-      console.log('[RealtimeStream] Feature is disabled, skipping streaming');
-      return;
-    }
-
-    const token = this.authService.authState().token;
-    if (!token) {
-      console.warn('[RealtimeStream] Cannot start streaming: no auth token');
-      return;
-    }
-
-    const mode = this.arbitrageMode();
-
-    // Get top 3 opportunities based on current mode
-    // Sorting is already handled by sortedArbitrageOpportunities() computed signal
-    const opportunities = this.sortedArbitrageOpportunities();
-    if (opportunities.length === 0) {
-      console.log('[RealtimeStream] No opportunities to stream');
-      return;
-    }
-
-    // Select ONLY top 3 (not top 3 + bottom 3)
-    const selectedOpportunities = opportunities.slice(0, Math.min(3, opportunities.length));
-
-    console.log(`[RealtimeStream] Mode: ${mode}, Streaming top ${selectedOpportunities.length} opportunities`);
-
-    // Build subscription configuration
-    const symbols = new Set<string>();
-    const exchangeConfigs: any[] = [];
-
-    selectedOpportunities.forEach(opp => {
-      symbols.add(opp.symbol);
-
-      // Add all exchanges for this symbol
-      opp.exchanges.forEach(ex => {
-        // Find credential details
-        const credential = this.credentials().find(c => c.id === ex.credentialId);
-        if (credential) {
-          exchangeConfigs.push({
-            exchange: ex.exchange,
-            symbol: opp.symbol,
-            credentialId: ex.credentialId,
-            environment: ex.environment,
-          });
-        }
-      });
-    });
-
-    console.log(`[RealtimeStream] Starting stream for ${symbols.size} symbols across ${exchangeConfigs.length} exchanges`);
-
-    // Subscribe to price updates
-    this.arbitrageStreamService.subscribe(
-      {
-        symbols: Array.from(symbols),
-        exchanges: exchangeConfigs,
-      },
-      token
-    );
-
-    // Listen to price updates
-    if (this.priceUpdateSubscription) {
-      this.priceUpdateSubscription.unsubscribe();
-    }
-
-    this.priceUpdateSubscription = this.arbitrageStreamService.getPriceUpdates().subscribe({
-      next: (update: PriceUpdate) => {
-        this.handlePriceUpdate(update);
-      },
-      error: (error) => {
-        console.error('[RealtimeStream] Error receiving price updates:', error);
-      }
-    });
-
-    // Track connection state
-    this.arbitrageStreamService.getConnectionState().subscribe((state) => {
-      this.isStreamConnected.set(state === 'connected');
-      console.log('[RealtimeStream] Connection state:', state);
-    });
-  }
-
-  /**
-   * Handle real-time price update from SSE stream
-   */
-  handlePriceUpdate(update: PriceUpdate): void {
-    const key = `${update.exchange}:${update.symbol}`;
-
-    // Get previous price for change detection
-    const currentPrices = this.realtimePrices();
-    const previousEntry = currentPrices.get(key);
-
-    // Determine price change direction
-    let change: 'up' | 'down' | 'neutral' = 'neutral';
-    if (previousEntry) {
-      if (update.price > previousEntry.price) {
-        change = 'up';
-      } else if (update.price < previousEntry.price) {
-        change = 'down';
-      }
-    }
-
-    // Update prices map
-    const updatedPrices = new Map(currentPrices);
-    updatedPrices.set(key, {
-      price: update.price,
-      change,
-      timestamp: update.timestamp,
-    });
-    this.realtimePrices.set(updatedPrices);
-
-    // Trigger change detection
-    this.cdr.markForCheck();
-
-    console.log(`[RealtimeStream] Price update: ${update.exchange} ${update.symbol} = $${update.price.toFixed(2)} (${change})`);
-  }
-
-  /**
-   * Get real-time price for a specific exchange-symbol pair
-   */
-  getRealtimePrice(exchange: string, symbol: string): { price: number; change: 'up' | 'down' | 'neutral' } | null {
-    const key = `${exchange}:${symbol}`;
-    const entry = this.realtimePrices().get(key);
-    return entry ? { price: entry.price, change: entry.change } : null;
-  }
-
-  /**
-   * Stop real-time price streaming
-   */
-  stopRealtimeStreaming(): void {
-    console.log('[RealtimeStream] Stopping real-time streaming');
-
-    // Unsubscribe from price updates
-    if (this.priceUpdateSubscription) {
-      this.priceUpdateSubscription.unsubscribe();
-      this.priceUpdateSubscription = null;
-    }
-
-    // Disconnect from SSE stream
-    this.arbitrageStreamService.disconnect();
-
-    // Clear cached prices
-    this.realtimePrices.set(new Map());
-    this.isStreamConnected.set(false);
-
-    console.log('[RealtimeStream] Streaming stopped');
+    this.minMarketCapFilter.set(null);
   }
 
   /**
@@ -1475,13 +1249,10 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Clear arbitrage table sorting - resets to mode-specific default
+   * Clear arbitrage table sorting
    */
   clearArbitrageSort(): void {
-    const mode = this.arbitrageMode();
-    const defaultColumn = mode === 'HEDGED' ? 'spread' : 'funding';
-    console.log(`[clearArbitrageSort] Resetting sort to ${defaultColumn} for ${mode} mode`);
-    this.arbitrageSortColumns.set([{ column: defaultColumn, direction: 'desc' }]);
+    this.arbitrageSortColumns.set([{ column: 'funding', direction: 'desc' }]);
   }
 
   clearFilters(): void {
@@ -2523,76 +2294,120 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
   /**
    * Subscribe to arbitrage opportunity
-   * Opens the subscription dialog for the best long position exchange
+   * This opens the subscription dialog with the appropriate exchange selected
+   * - NON_HEDGED mode: Opens dialog with the exchange having highest absolute funding rate
+   * - HEDGED mode: Opens dialog with both exchanges pre-selected
    */
-  subscribeToArbitrage(opportunity: any): void {
+  subscribeToArbitrage(opportunity: FundingRateArbitrageOpportunity): void {
     console.log('[subscribeToArbitrage] Called with opportunity:', opportunity);
     console.log('[subscribeToArbitrage] Mode:', this.arbitrageMode());
 
     const mode = this.arbitrageMode();
 
-    // For NON_HEDGED mode: Choose the exchange with highest absolute funding rate
-    // For HEDGED mode: Use bestLong as primary
-    let primaryExchange: string;
-    let primaryCredentialId: string;
-    let primaryFundingRate: string;
+    // Determine which exchange to use based on absolute funding rate
+    const absLongRate = this.getAbsoluteFundingRate(opportunity.bestLong.fundingRate);
+    const absShortRate = this.getAbsoluteFundingRate(opportunity.bestShort.fundingRate);
+    const useLong = absLongRate >= absShortRate;
 
-    if (mode === 'NON_HEDGED') {
-      // Compare absolute funding rates and choose the higher one
-      const absLongRate = this.getAbsoluteFundingRate(opportunity.bestLong.fundingRate);
-      const absShortRate = this.getAbsoluteFundingRate(opportunity.bestShort.fundingRate);
-
-      if (absLongRate >= absShortRate) {
-        primaryExchange = opportunity.bestLong.exchange;
-        primaryCredentialId = opportunity.bestLong.credentialId;
-        primaryFundingRate = opportunity.bestLong.fundingRate;
-        console.log('[subscribeToArbitrage] NON_HEDGED: Using bestLong (higher abs rate):', { primaryExchange, absLongRate });
-      } else {
-        primaryExchange = opportunity.bestShort.exchange;
-        primaryCredentialId = opportunity.bestShort.credentialId;
-        primaryFundingRate = opportunity.bestShort.fundingRate;
-        console.log('[subscribeToArbitrage] NON_HEDGED: Using bestShort (higher abs rate):', { primaryExchange, absShortRate });
-      }
-    } else {
-      // HEDGED mode: Use bestLong as primary
-      primaryExchange = opportunity.bestLong.exchange;
-      primaryCredentialId = opportunity.bestLong.credentialId;
-      primaryFundingRate = opportunity.bestLong.fundingRate;
-      console.log('[subscribeToArbitrage] HEDGED: Using bestLong:', { primaryExchange });
-    }
+    const bestExchange = useLong ? opportunity.bestLong : opportunity.bestShort;
+    console.log('[subscribeToArbitrage] Best exchange:', bestExchange, 'useLong:', useLong);
 
     // Find the matching credential
-    const credential = this.credentials().find(c => c.id === primaryCredentialId);
+    const credential = this.credentials().find(c => c.id === bestExchange.credentialId);
+    console.log('[subscribeToArbitrage] Found credential:', credential);
+
+    if (!credential) {
+      console.error('[subscribeToArbitrage] Credential not found for ID:', bestExchange.credentialId);
+      this.showNotification(`Exchange credential not found for ${bestExchange.exchange}`, 'error');
+      return;
+    }
+
+    // Switch to the best exchange's credential
+    this.selectedCredentialId.set(bestExchange.credentialId);
+    console.log('[subscribeToArbitrage] Switched to credential:', bestExchange.credentialId);
+
+    // For HEDGED mode, also set the hedge exchange credential
+    if (mode === 'HEDGED') {
+      const hedgeExchange = useLong ? opportunity.bestShort : opportunity.bestLong;
+      this.hedgeCredentialId.set(hedgeExchange.credentialId);
+      console.log('[subscribeToArbitrage] Set hedge credential:', hedgeExchange.credentialId);
+    }
+
+    // Find the exchange data from the exchanges array
+    const exchangeData = opportunity.exchanges.find(
+      (ex: any) => ex.exchange === bestExchange.exchange && ex.credentialId === bestExchange.credentialId
+    );
+    console.log('[subscribeToArbitrage] Found exchange data:', exchangeData);
+
+    if (!exchangeData) {
+      console.error('[subscribeToArbitrage] Exchange data not found');
+      this.showNotification(`Ticker data not found for ${opportunity.symbol}`, 'error');
+      return;
+    }
+
+    // Create a ticker object from exchange data
+    const ticker: TickerData = {
+      symbol: opportunity.symbol,
+      fundingRate: exchangeData.fundingRate || '0',
+      nextFundingTime: exchangeData.nextFundingTime?.toString() || '0',
+      lastPrice: exchangeData.lastPrice || '0',
+      indexPrice: exchangeData.lastPrice || '0',
+      markPrice: exchangeData.lastPrice || '0',
+      prevPrice24h: '0',
+      price24hPcnt: '0',
+      highPrice24h: '0',
+      lowPrice24h: '0',
+      prevPrice1h: '0',
+      openInterest: '0',
+      openInterestValue: '0',
+      turnover24h: '0',
+      volume24h: '0',
+      predictedDeliveryPrice: '0',
+      basisRate: '0',
+      deliveryFeeRate: '0',
+      deliveryTime: '0',
+      ask1Size: '0',
+      bid1Price: '0',
+      ask1Price: '0',
+      bid1Size: '0'
+    };
+
+    console.log('[subscribeToArbitrage] Created ticker:', ticker);
+
+    // Open the subscription dialog
+    this.openSubscriptionDialog(ticker);
+  }
+    // Find the ticker for the best long exchange (lowest funding rate)
+    const bestLongExchange = opportunity.bestLong.exchange;
+    const bestLongCredentialId = opportunity.bestLong.credentialId;
+    console.log('[subscribeToArbitrage] Best long:', { bestLongExchange, bestLongCredentialId });
+
+    // Find the matching credential
+    const credential = this.credentials().find(c => c.id === bestLongCredentialId);
     console.log('[subscribeToArbitrage] Found credential:', credential);
     console.log('[subscribeToArbitrage] All credentials:', this.credentials());
 
     if (!credential) {
-      console.error('[subscribeToArbitrage] Credential not found for ID:', primaryCredentialId);
-      this.showNotification('Exchange credential not found for ' + primaryExchange, 'error');
+      console.error('[subscribeToArbitrage] Credential not found for ID:', bestLongCredentialId);
+      this.showNotification('Exchange credential not found for ' + bestLongExchange, 'error');
       return;
     }
 
-    // Switch to the primary exchange's credential
-    this.selectedCredentialId.set(primaryCredentialId);
-    console.log('[subscribeToArbitrage] Switched to credential:', primaryCredentialId);
+    // Switch to the best long exchange's credential
+    this.selectedCredentialId.set(bestLongCredentialId);
+    console.log('[subscribeToArbitrage] Switched to credential:', bestLongCredentialId);
 
-    // Set the hedge exchange credential (only for HEDGED mode)
-    if (mode === 'HEDGED') {
-      const bestShortCredentialId = opportunity.bestShort.credentialId;
-      this.hedgeCredentialId.set(bestShortCredentialId);
-      console.log('[subscribeToArbitrage] HEDGED: Set hedge credential:', bestShortCredentialId);
-    } else {
-      // For NON_HEDGED mode, clear hedge credential
-      this.hedgeCredentialId.set(null);
-      console.log('[subscribeToArbitrage] NON_HEDGED: Cleared hedge credential');
-    }
+    // Set the hedge exchange credential (best short)
+    const bestShortCredentialId = opportunity.bestShort.credentialId;
+    this.hedgeCredentialId.set(bestShortCredentialId);
+    console.log('[subscribeToArbitrage] Set hedge credential:', bestShortCredentialId);
 
     // Find the ticker data from the exchanges array
-    const exchangeData = opportunity.exchanges.find(
-      (ex: any) => ex.exchange === primaryExchange && ex.credentialId === primaryCredentialId
+    const exchangeData = opportunity.allExchanges.find(
+      (ex: any) => ex.exchange === bestLongExchange && ex.credentialId === bestLongCredentialId
     );
     console.log('[subscribeToArbitrage] Found exchange data:', exchangeData);
-    console.log('[subscribeToArbitrage] All exchanges:', opportunity.exchanges);
+    console.log('[subscribeToArbitrage] All exchanges:', opportunity.allExchanges);
 
     if (!exchangeData) {
       console.error('[subscribeToArbitrage] Exchange data not found');
@@ -2613,20 +2428,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         // Fallback: Create a ticker object from exchange data with better price handling
         ticker = {
           symbol: opportunity.symbol,
-          fundingRate: primaryFundingRate,
-          nextFundingTime: exchangeData.nextFundingTime?.toString() || '0',
-          lastPrice: (exchangeData.lastPrice || exchangeData.price || '0').toString(),
-          indexPrice: (exchangeData.indexPrice || exchangeData.lastPrice || exchangeData.price || '0').toString(),
-          markPrice: (exchangeData.markPrice || exchangeData.lastPrice || exchangeData.price || '0').toString(),
+          fundingRate: '0', // Not available in price arbitrage
+          nextFundingTime: '0',
+          lastPrice: (exchangeData.price || '0').toString(),
+          indexPrice: (exchangeData.price || '0').toString(),
+          markPrice: (exchangeData.price || '0').toString(),
           prevPrice24h: '0',
           price24hPcnt: '0',
           highPrice24h: '0',
           lowPrice24h: '0',
           prevPrice1h: '0',
-          openInterest: exchangeData.openInterest?.toString() || '0',
+          openInterest: '0',
           openInterestValue: '0',
           turnover24h: '0',
-          volume24h: exchangeData.volume24h?.toString() || '0',
+          volume24h: '0',
           predictedDeliveryPrice: '0',
           basisRate: '0',
           deliveryFeeRate: '0',
@@ -2641,8 +2456,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       // Update the ticker's funding rate from arbitrage data
       ticker = {
         ...ticker,
-        fundingRate: primaryFundingRate,
-        nextFundingTime: exchangeData.nextFundingTime?.toString() || ticker.nextFundingTime
+        fundingRate: '0', // Not available in price arbitrage
+        nextFundingTime: '0'
       };
 
       console.log('[subscribeToArbitrage] Using ticker:', ticker);
@@ -2653,20 +2468,14 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       this.fetchBalancesAndCalculatePosition(ticker.symbol);
 
       // Show notification about the arbitrage opportunity
-      let notificationMsg: string;
-      if (mode === 'HEDGED') {
-        const spreadPercent = (parseFloat(opportunity.spread) * 100).toFixed(4);
-        notificationMsg = `Subscribing to ${opportunity.symbol} HEDGED arbitrage: ${spreadPercent}% spread between ${primaryExchange} and ${opportunity.bestShort.exchange}`;
-      } else {
-        const fundingPercent = (parseFloat(primaryFundingRate) * 100).toFixed(4);
-        const positionType = parseFloat(primaryFundingRate) < 0 ? 'LONG' : 'SHORT';
-        notificationMsg = `Subscribing to ${opportunity.symbol} NON_HEDGED: ${positionType} position on ${primaryExchange} (${fundingPercent}% funding rate)`;
-      }
+      const spreadPercent = (opportunity.spread * 100).toFixed(4);
+      const notificationMsg = `Subscribing to ${opportunity.symbol} arbitrage: ${spreadPercent}% spread`;
       console.log('[subscribeToArbitrage] Showing notification:', notificationMsg);
       this.showNotification(notificationMsg, 'info');
 
       console.log('[subscribeToArbitrage] Completed successfully');
     }, 500); // Give tickers time to load
+    */
   }
 
   /**
@@ -2955,109 +2764,67 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Get market cap for a symbol
+   * Get market capitalization for a trading symbol
+   * Extracts the base currency from the symbol and looks up its market cap
+   * @param symbol Trading symbol (e.g., "BTCUSDT", "ETHUSDT")
+   * @returns Market cap in millions USD, or 0 if not found
    */
   getMarketCap(symbol: string): number {
-    // TODO: Implement market cap fetching
-    return 0;
+    // Extract base currency from symbol (remove USDT, USDC, USD suffix)
+    const baseCurrency = symbol.replace(/(USDT|USDC|USD)$/, '').toLowerCase();
+
+    // Look up market cap from API-loaded data
+    return this.marketCaps()[baseCurrency] || 0;
   }
 
   /**
-   * Format market cap value for display
+   * Format market capitalization for display
+   * Converts millions to B (billions) or T (trillions) for readability
+   * @param marketCapMillions Market cap in millions USD
+   * @returns Formatted string (e.g., "$1.2T", "$400B", "$50M")
    */
-  formatMarketCap(value: number): string {
-    if (value === 0) return '';
+  formatMarketCap(marketCapMillions: number): string {
+    if (marketCapMillions === 0) {
+      return 'N/A';
+    }
 
-    if (value >= 1e12) {
-      return `$${(value / 1e12).toFixed(2)}T`;
-    } else if (value >= 1e9) {
-      return `$${(value / 1e9).toFixed(2)}B`;
-    } else if (value >= 1e6) {
-      return `$${(value / 1e6).toFixed(2)}M`;
-    } else if (value >= 1e3) {
-      return `$${(value / 1e3).toFixed(2)}K`;
+    if (marketCapMillions >= 1000000) {
+      // Trillions
+      return `$${(marketCapMillions / 1000000).toFixed(1)}T`;
+    } else if (marketCapMillions >= 1000) {
+      // Billions
+      return `$${(marketCapMillions / 1000).toFixed(0)}B`;
     } else {
-      return `$${value.toFixed(2)}`;
+      // Millions
+      return `$${marketCapMillions.toFixed(0)}M`;
     }
   }
 
   /**
-   * Start hedged arbitrage - opens a modal to configure leverage and margin for both exchanges
+   * Convert normalized symbol to exchange-specific format
+   * Used for opening trading pair links with correct symbol format
+   * @param normalizedSymbol Normalized symbol (e.g., "BTCUSDT")
+   * @param exchange Exchange name
+   * @returns Exchange-specific symbol format
    */
-  startHedgedArbitrage(opportunity: any): void {
-    console.log('Starting hedged arbitrage for:', opportunity);
+  getExchangeSpecificSymbol(normalizedSymbol: string, exchange: string): string {
+    switch (exchange) {
+      case 'BINGX':
+        // BingX uses hyphens: BTCUSDT -> BTC-USDT
+        return normalizedSymbol.replace(/^(.+)(USDT|USDC|USD)$/, '$1-$2');
 
-    // Store the selected opportunity
-    this.selectedHedgedOpportunity.set(opportunity);
+      case 'MEXC':
+        // MEXC uses underscores: BTCUSDT -> BTC_USDT
+        return normalizedSymbol.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2');
 
-    // Initialize leverage and margin with default values
-    const defaultLeverage = this.subscriptionSettings().leverage || 3;
-    this.hedgedPrimaryLeverage.set(defaultLeverage);
-    this.hedgedHedgeLeverage.set(defaultLeverage);
-    this.hedgedPrimaryMargin.set(100);
-    this.hedgedHedgeMargin.set(100);
-
-    // Show the HEDGED mode dialog
-    this.showHedgedDialog.set(true);
-  }
-
-  /**
-   * Close the HEDGED mode dialog
-   */
-  closeHedgedDialog(): void {
-    this.showHedgedDialog.set(false);
-    this.selectedHedgedOpportunity.set(null);
-  }
-
-  /**
-   * Execute hedged arbitrage - opens positions on both exchanges simultaneously
-   */
-  async executeHedgedArbitrage(): Promise<void> {
-    const opportunity = this.selectedHedgedOpportunity();
-    if (!opportunity) {
-      this.showNotification('No opportunity selected', 'error');
-      return;
-    }
-
-    // Validate inputs
-    if (this.hedgedPrimaryMargin() <= 0 || this.hedgedHedgeMargin() <= 0) {
-      this.showNotification('Margin must be greater than 0', 'error');
-      return;
-    }
-
-    if (this.hedgedPrimaryLeverage() < 1 || this.hedgedHedgeLeverage() < 1) {
-      this.showNotification('Leverage must be at least 1', 'error');
-      return;
-    }
-
-    this.isStartingHedged.set(true);
-
-    try {
-      // TODO: Implement API call to open positions on both exchanges
-      // PRIMARY = HIGH price exchange (bestShort) - where we SHORT
-      // HEDGE = LOW price exchange (bestLong) - where we LONG
-      console.log('Executing hedged arbitrage:', {
-        symbol: opportunity.symbol,
-        primaryExchange: opportunity.bestShort.exchange,
-        primaryCredentialId: opportunity.bestShort.credentialId,
-        primaryLeverage: this.hedgedPrimaryLeverage(),
-        primaryMargin: this.hedgedPrimaryMargin(),
-        hedgeExchange: opportunity.bestLong.exchange,
-        hedgeCredentialId: opportunity.bestLong.credentialId,
-        hedgeLeverage: this.hedgedHedgeLeverage(),
-        hedgeMargin: this.hedgedHedgeMargin(),
-      });
-
-      // For now, just show success notification
-      this.showNotification(`Hedged arbitrage for ${opportunity.symbol} started successfully!`, 'success');
-
-      // Close the dialog
-      this.closeHedgedDialog();
-    } catch (error) {
-      console.error('Error executing hedged arbitrage:', error);
-      this.showNotification(`Failed to execute hedged arbitrage: ${error}`, 'error');
-    } finally {
-      this.isStartingHedged.set(false);
+      case 'BYBIT':
+      case 'BINANCE':
+      case 'OKX':
+      case 'KRAKEN':
+      case 'COINBASE':
+      default:
+        // These exchanges use the normalized format (no separator)
+        return normalizedSymbol;
     }
   }
 }

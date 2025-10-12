@@ -366,4 +366,114 @@ export class MEXCConnector extends BaseExchangeConnector {
       throw new Error(`Failed to set leverage via API for ${symbol}: ${error.message}. Cached value will be used instead.`);
     }
   }
+
+  /**
+   * Get current market price for a symbol (REST API)
+   * Uses MEXC's ticker endpoint to get the last traded price
+   */
+  async getMarketPrice(symbol: string): Promise<number> {
+    console.log(`[MEXCConnector] Fetching market price for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('MEXC connector not initialized');
+    }
+
+    try {
+      // MEXC uses getTickers() which returns all tickers
+      // We need to filter for our specific symbol
+      const tickers = await this.mexcService.getTickers();
+      const ticker = tickers.find((t) => t.symbol === symbol);
+
+      if (!ticker) {
+        throw new Error(`No ticker data found for ${symbol}`);
+      }
+
+      const lastPrice = ticker.lastPrice;
+
+      if (isNaN(lastPrice) || lastPrice <= 0) {
+        throw new Error(`Invalid price data for ${symbol}: ${ticker.lastPrice}`);
+      }
+
+      console.log(`[MEXCConnector] Current price for ${symbol}: $${lastPrice}`);
+      return lastPrice;
+    } catch (error: any) {
+      console.error(`[MEXCConnector] Error fetching market price for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Subscribe to real-time price updates via WebSocket
+   * Uses MEXC's WebSocket ticker stream
+   *
+   * MEXC WebSocket endpoint: wss://contract.mexc.com/ws
+   * Subscribe format: { "method": "sub.ticker", "param": { "symbol": "BTC_USDT" } }
+   * Response format: { "channel": "push.ticker", "data": { "lastPrice": 50000.5, "timestamp": 1234567890 } }
+   *
+   * @param symbol - Trading pair symbol (e.g., "BTC_USDT")
+   * @param callback - Callback function called on each price update
+   * @returns Unsubscribe function to stop receiving updates
+   */
+  async subscribeToPriceStream(
+    symbol: string,
+    callback: (price: number, timestamp: number) => void
+  ): Promise<() => void> {
+    console.log(`[MEXCConnector] Subscribing to price stream for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('MEXC connector not initialized');
+    }
+
+    try {
+      const { websocketManager } = await import('@/services/websocket-manager.service');
+
+      // MEXC WebSocket configuration
+      const wsUrl = 'wss://contract.mexc.com/ws';
+
+      const config = {
+        url: wsUrl,
+        subscribeMessage: {
+          method: 'sub.ticker',
+          param: {
+            symbol,
+          },
+        },
+        heartbeatInterval: 20000, // 20 seconds
+        reconnectDelay: 1000,
+        maxReconnectDelay: 30000,
+      };
+
+      // Subscribe using WebSocket manager
+      const unsubscribe = await websocketManager.subscribe(
+        'mexc',
+        symbol,
+        config,
+        (data: any) => {
+          try {
+            // MEXC WebSocket ticker format:
+            // { "channel": "push.ticker", "data": { "lastPrice": 50000.5, "timestamp": 1234567890 }, "symbol": "BTC_USDT" }
+            if (data.channel === 'push.ticker' && data.data && data.symbol === symbol) {
+              const tickerData = data.data;
+              const price = parseFloat(tickerData.lastPrice);
+              const timestamp = tickerData.timestamp || Date.now();
+
+              if (!isNaN(price) && price > 0) {
+                callback(price, timestamp);
+              } else {
+                console.warn(`[MEXCConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.lastPrice);
+              }
+            }
+          } catch (error: any) {
+            console.error(`[MEXCConnector] Error processing WebSocket update for ${symbol}:`, error.message);
+          }
+        }
+      );
+
+      console.log(`[MEXCConnector] Successfully subscribed to price stream for ${symbol}`);
+      return unsubscribe;
+    } catch (error: any) {
+      console.error(`[MEXCConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
 }

@@ -543,4 +543,92 @@ export class BybitConnector extends BaseExchangeConnector {
   getBybitService(): BybitService {
     return this.bybitService;
   }
+
+  /**
+   * Get current market price for a symbol (REST API)
+   * Uses Bybit's ticker endpoint to get the last traded price
+   */
+  async getMarketPrice(symbol: string): Promise<number> {
+    console.log(`[BybitConnector] Fetching market price for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    try {
+      const tickers = await this.bybitService.getTicker('linear', symbol);
+
+      if (!tickers || tickers.length === 0) {
+        throw new Error(`No ticker data found for ${symbol}`);
+      }
+
+      const ticker = tickers[0];
+      const lastPrice = parseFloat(ticker.lastPrice);
+
+      if (isNaN(lastPrice) || lastPrice <= 0) {
+        throw new Error(`Invalid price data for ${symbol}: ${ticker.lastPrice}`);
+      }
+
+      console.log(`[BybitConnector] Current price for ${symbol}: $${lastPrice}`);
+      return lastPrice;
+    } catch (error: any) {
+      console.error(`[BybitConnector] Error fetching market price for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Subscribe to real-time price updates via WebSocket
+   * Uses Bybit's existing WebSocket infrastructure to stream ticker updates
+   *
+   * @param symbol - Trading pair symbol (e.g., "BTCUSDT")
+   * @param callback - Callback function called on each price update
+   * @returns Unsubscribe function to stop receiving updates
+   */
+  async subscribeToPriceStream(
+    symbol: string,
+    callback: (price: number, timestamp: number) => void
+  ): Promise<() => void> {
+    console.log(`[BybitConnector] Subscribing to price stream for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    try {
+      // Create wrapper callback to extract price and timestamp
+      const wrappedCallback = (data: any) => {
+        try {
+          // Bybit WebSocket ticker update format:
+          // { topic: 'tickers.BTCUSDT', type: 'snapshot', data: { symbol, lastPrice, ... }, ts: 1234567890 }
+          if (data.topic && data.topic.includes('tickers') && data.data) {
+            const tickerData = data.data;
+            const price = parseFloat(tickerData.lastPrice);
+            const timestamp = data.ts || Date.now();
+
+            if (!isNaN(price) && price > 0) {
+              callback(price, timestamp);
+            } else {
+              console.warn(`[BybitConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.lastPrice);
+            }
+          }
+        } catch (error: any) {
+          console.error(`[BybitConnector] Error processing WebSocket update for ${symbol}:`, error.message);
+        }
+      };
+
+      // Subscribe using BybitService WebSocket
+      this.bybitService.subscribeToTicker(symbol, wrappedCallback);
+      console.log(`[BybitConnector] Successfully subscribed to price stream for ${symbol}`);
+
+      // Return unsubscribe function
+      return () => {
+        console.log(`[BybitConnector] Unsubscribing from price stream for ${symbol}`);
+        this.bybitService.unsubscribeAll();
+      };
+    } catch (error: any) {
+      console.error(`[BybitConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
 }

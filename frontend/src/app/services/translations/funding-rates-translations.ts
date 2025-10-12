@@ -65,6 +65,7 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.trade': 'Trade',
     'fundingRates.actions.refresh': 'Refresh',
     'fundingRates.actions.startNow': 'Start Now',
+    'fundingRates.actions.start': 'Start',
     'fundingRates.actions.edit': 'Edit',
     'fundingRates.actions.cancel': 'Cancel',
     'fundingRates.actions.close': 'Close',
@@ -167,6 +168,26 @@ export const fundingRatesTranslations = {
     'fundingRates.info.exchange': 'Exchange',
     'fundingRates.info.environment': 'Environment',
     'fundingRates.info.pairs': 'pairs',
+
+    // Arbitrage Mode
+    'arbitrage.mode.hedged': 'Hedge',
+    'arbitrage.mode.nonHedged': 'Funding',
+
+    // Arbitrage Table (Additional)
+    'arbitrage.table.funding': 'Funding',
+    'arbitrage.table.position': 'Position',
+
+    // Hedged Mode Dialog
+    'fundingRates.hedged.title': 'Start Hedged Arbitrage',
+    'fundingRates.hedged.totalMargin': 'Total Margin Required',
+    'fundingRates.hedged.note': 'Positions will be opened simultaneously on both exchanges without delays',
+
+    // Additional Dialog Fields
+    'fundingRates.dialog.margin': 'Margin',
+
+    // Additional Settings
+    'fundingRates.settings.arbitrageSpreadThreshold': 'Min Spread for HEDGED Mode (%)',
+    'fundingRates.settings.arbitrageSpreadThresholdHelp': 'Minimum spread threshold for hedged arbitrage opportunities (default: no filter)',
   },
 
   uk: {
@@ -228,6 +249,7 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.trade': 'Торгувати',
     'fundingRates.actions.refresh': 'Оновити',
     'fundingRates.actions.startNow': 'Почати Зараз',
+    'fundingRates.actions.start': 'Почати',
     'fundingRates.actions.edit': 'Редагувати',
     'fundingRates.actions.cancel': 'Скасувати',
     'fundingRates.actions.close': 'Закрити',
@@ -330,5 +352,25 @@ export const fundingRatesTranslations = {
     'fundingRates.info.exchange': 'Біржа',
     'fundingRates.info.environment': 'Середовище',
     'fundingRates.info.pairs': 'пар',
+
+    // Arbitrage Mode
+    'arbitrage.mode.hedged': 'Хедж',
+    'arbitrage.mode.nonHedged': 'Фандинг',
+
+    // Arbitrage Table (Additional)
+    'arbitrage.table.funding': 'Фандинг',
+    'arbitrage.table.position': 'Позиція',
+
+    // Hedged Mode Dialog
+    'fundingRates.hedged.title': 'Почати Хеджований Арбітраж',
+    'fundingRates.hedged.totalMargin': 'Загальна Необхідна Маржа',
+    'fundingRates.hedged.note': 'Позиції будуть відкриті одночасно на обох біржах без затримок',
+
+    // Additional Dialog Fields
+    'fundingRates.dialog.margin': 'Маржа',
+
+    // Additional Settings
+    'fundingRates.settings.arbitrageSpreadThreshold': 'Мін. Спред для ХЕДЖ Режиму (%)',
+    'fundingRates.settings.arbitrageSpreadThresholdHelp': 'Мінімальний поріг спреду для хеджованих можливостей арбітражу (за замовчуванням: без фільтра)',
   }
 };

@@ -481,4 +481,113 @@ export class BingXConnector extends BaseExchangeConnector {
       throw new Error(`Failed to set leverage for ${symbol}: ${error.message}`);
     }
   }
+
+  /**
+   * Get current market price for a symbol (REST API)
+   * Uses BingX's ticker endpoint to get the last traded price
+   */
+  async getMarketPrice(symbol: string): Promise<number> {
+    console.log(`[BingXConnector] Fetching market price for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // BingX uses getTickers() which returns all tickers
+      // We need to filter for our specific symbol
+      const tickers = await this.bingxService.getTickers();
+      const ticker = tickers.find((t) => t.symbol === symbol);
+
+      if (!ticker) {
+        throw new Error(`No ticker data found for ${symbol}`);
+      }
+
+      const lastPrice = parseFloat(ticker.lastPrice);
+
+      if (isNaN(lastPrice) || lastPrice <= 0) {
+        throw new Error(`Invalid price data for ${symbol}: ${ticker.lastPrice}`);
+      }
+
+      console.log(`[BingXConnector] Current price for ${symbol}: $${lastPrice}`);
+      return lastPrice;
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error fetching market price for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Subscribe to real-time price updates via WebSocket
+   * Uses BingX's WebSocket ticker stream
+   *
+   * BingX WebSocket endpoint: wss://open-api-swap.bingx.com/swap-market
+   * Subscribe format: { "id": "unique-id", "dataType": "SYMBOL@ticker" }
+   * Response format: { "dataType": "SYMBOL@ticker", "data": { "c": "lastPrice", "E": timestamp } }
+   *
+   * @param symbol - Trading pair symbol (e.g., "BTC-USDT")
+   * @param callback - Callback function called on each price update
+   * @returns Unsubscribe function to stop receiving updates
+   */
+  async subscribeToPriceStream(
+    symbol: string,
+    callback: (price: number, timestamp: number) => void
+  ): Promise<() => void> {
+    console.log(`[BingXConnector] Subscribing to price stream for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      const { websocketManager } = await import('@/services/websocket-manager.service');
+
+      // BingX WebSocket configuration
+      const wsUrl = 'wss://open-api-swap.bingx.com/swap-market';
+      const dataType = `${symbol}@ticker`;
+
+      const config = {
+        url: wsUrl,
+        subscribeMessage: {
+          id: `${Date.now()}`,
+          dataType,
+        },
+        heartbeatInterval: 20000, // 20 seconds
+        reconnectDelay: 1000,
+        maxReconnectDelay: 30000,
+      };
+
+      // Subscribe using WebSocket manager
+      const unsubscribe = await websocketManager.subscribe(
+        'bingx',
+        symbol,
+        config,
+        (data: any) => {
+          try {
+            // BingX WebSocket ticker format:
+            // { "dataType": "BTC-USDT@ticker", "data": { "c": "50000.5", "E": 1234567890 } }
+            if (data.dataType && data.dataType.includes('@ticker') && data.data) {
+              const tickerData = data.data;
+              const price = parseFloat(tickerData.c); // 'c' = close/last price
+              const timestamp = tickerData.E || Date.now();
+
+              if (!isNaN(price) && price > 0) {
+                callback(price, timestamp);
+              } else {
+                console.warn(`[BingXConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.c);
+              }
+            }
+          } catch (error: any) {
+            console.error(`[BingXConnector] Error processing WebSocket update for ${symbol}:`, error.message);
+          }
+        }
+      );
+
+      console.log(`[BingXConnector] Successfully subscribed to price stream for ${symbol}`);
+      return unsubscribe;
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
 }

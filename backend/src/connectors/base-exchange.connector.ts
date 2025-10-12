@@ -95,4 +95,22 @@ export abstract class BaseExchangeConnector {
   isConnected(): boolean {
     return this.isInitialized;
   }
+
+  /**
+   * Get current market price for a symbol (REST API)
+   * @param symbol - Trading pair symbol (e.g., "BTCUSDT")
+   * @returns Current market price
+   */
+  abstract getMarketPrice(symbol: string): Promise<number>;
+
+  /**
+   * Subscribe to real-time price updates via WebSocket
+   * @param symbol - Trading pair symbol (e.g., "BTCUSDT")
+   * @param callback - Callback function that receives price updates
+   * @returns Unsubscribe function to stop receiving updates
+   */
+  abstract subscribeToPriceStream(
+    symbol: string,
+    callback: (price: number, timestamp: number) => void
+  ): Promise<() => void>;
 }
