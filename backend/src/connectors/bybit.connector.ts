@@ -149,6 +149,77 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Place a market order with take-profit and stop-loss (ATOMIC)
+   * Opens position with TP/SL protection in a single API call
+   * This prevents the dangerous gap between opening position and setting TP/SL
+   */
+  async placeMarketOrderWithTPSL(
+    symbol: string,
+    side: OrderSide,
+    quantity: number,
+    takeProfit?: number,
+    stopLoss?: number
+  ): Promise<any> {
+    console.log(`[BybitConnector] Placing ATOMIC market ${side} order with TP/SL:`, {
+      symbol,
+      quantity,
+      takeProfit,
+      stopLoss,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    // Validate that at least one protection is provided
+    if (!takeProfit && !stopLoss) {
+      console.warn('[BybitConnector] No TP/SL provided, falling back to regular market order');
+      return this.placeMarketOrder(symbol, side, quantity);
+    }
+
+    try {
+      // Validate and adjust quantity to meet trading rules
+      const validatedQty = await this.validateAndAdjustQuantity(symbol, quantity);
+
+      // Build order request with TP/SL
+      const orderRequest: any = {
+        category: 'linear',
+        symbol,
+        side,
+        orderType: 'Market',
+        qty: validatedQty,
+      };
+
+      // Add take-profit if provided
+      if (takeProfit) {
+        orderRequest.takeProfit = takeProfit.toString();
+        orderRequest.tpTriggerBy = 'LastPrice'; // Trigger by last traded price for faster execution
+        console.log(`[BybitConnector] ✓ Take-profit: $${takeProfit} (trigger: LastPrice)`);
+      }
+
+      // Add stop-loss if provided
+      if (stopLoss) {
+        orderRequest.stopLoss = stopLoss.toString();
+        orderRequest.slTriggerBy = 'LastPrice'; // Trigger by last traded price for faster execution
+        console.log(`[BybitConnector] ✓ Stop-loss: $${stopLoss} (trigger: LastPrice)`);
+      }
+
+      const result = await this.bybitService.placeOrder(orderRequest);
+
+      console.log('[BybitConnector] ✓ ATOMIC order placed with TP/SL protection:', {
+        orderId: result.orderId,
+        takeProfit,
+        stopLoss,
+      });
+
+      return result;
+    } catch (error: any) {
+      console.error('[BybitConnector] Error placing atomic market order with TP/SL:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Place a limit order
    */
   async placeLimitOrder(
@@ -382,18 +453,21 @@ export class BybitConnector extends BaseExchangeConnector {
         category: 'linear',
         symbol: params.symbol,
         positionIdx: 0, // 0 for one-way mode
+        tpslMode: 'Full', // Full position TP/SL
       };
 
       // Add take-profit if provided
       if (params.takeProfit) {
         request.takeProfit = params.takeProfit.toString();
-        console.log(`[BybitConnector] Take-profit price: $${params.takeProfit}`);
+        request.tpTriggerBy = 'LastPrice'; // Trigger TP based on last traded price (faster execution)
+        console.log(`[BybitConnector] Take-profit price: $${params.takeProfit} (trigger: LastPrice)`);
       }
 
       // Add stop-loss if provided
       if (params.stopLoss) {
         request.stopLoss = params.stopLoss.toString();
-        console.log(`[BybitConnector] Stop-loss price: $${params.stopLoss}`);
+        request.slTriggerBy = 'LastPrice'; // Trigger SL based on last traded price
+        console.log(`[BybitConnector] Stop-loss price: $${params.stopLoss} (trigger: LastPrice)`);
       }
 
       // Call Bybit API
@@ -501,6 +575,12 @@ export class BybitConnector extends BaseExchangeConnector {
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error setting leverage:', error.message);
+
+      // "leverage not modified" means leverage is already at the desired value - this is OK!
+      if (error.message && error.message.toLowerCase().includes('leverage not modified')) {
+        console.log(`[BybitConnector] ✓ Leverage already set to ${leverage}x for ${symbol}, continuing...`);
+        return { success: true, leverageAlreadySet: true };
+      }
 
       // Provide helpful error messages for common issues
       if (error.message.includes('position') || error.message.includes('Position')) {

@@ -480,6 +480,22 @@ export class TranslationService {
       'fundingRates.dialog.seconds': 'seconds',
       'fundingRates.actions.cancel': 'Cancel',
       'fundingRates.actions.save': 'Save',
+      'fundingRates.actions.subscribe': 'Subscribe',
+      'fundingRates.actions.close': 'Close',
+      'fundingRates.actions.viewTradeHistory': 'View Trade History',
+
+      // Trade History Modal
+      'fundingRates.tradeHistory.title': 'Trade History',
+      'fundingRates.tradeHistory.loading': 'Loading trade history...',
+      'fundingRates.tradeHistory.retry': 'Retry',
+      'fundingRates.tradeHistory.noTrades': 'No Completed Trades Yet',
+      'fundingRates.tradeHistory.noTradesDescription': 'Your completed funding arbitrage trades will appear here',
+      'fundingRates.tradeHistory.columns.opened': 'Opened',
+      'fundingRates.tradeHistory.columns.closed': 'Closed',
+      'fundingRates.tradeHistory.columns.positionSize': 'Position Size',
+      'fundingRates.tradeHistory.columns.fundingEarned': 'Funding Earned',
+      'fundingRates.tradeHistory.columns.pnl': 'P&L',
+      'fundingRates.tradeHistory.columns.duration': 'Duration',
 
       // Trading Platform Modal
       'modal.account': 'Account',
@@ -2559,6 +2575,22 @@ export class TranslationService {
       'fundingRates.dialog.seconds': 'секунд',
       'fundingRates.actions.cancel': 'Скасувати',
       'fundingRates.actions.save': 'Зберегти',
+      'fundingRates.actions.subscribe': 'Підписатися',
+      'fundingRates.actions.close': 'Закрити',
+      'fundingRates.actions.viewTradeHistory': 'Переглянути Історію Угод',
+
+      // Trade History Modal
+      'fundingRates.tradeHistory.title': 'Історія Угод',
+      'fundingRates.tradeHistory.loading': 'Завантаження історії угод...',
+      'fundingRates.tradeHistory.retry': 'Повторити',
+      'fundingRates.tradeHistory.noTrades': 'Ще Немає Завершених Угод',
+      'fundingRates.tradeHistory.noTradesDescription': 'Ваші завершені угоди фандінг-арбітражу з\'являться тут',
+      'fundingRates.tradeHistory.columns.opened': 'Відкрито',
+      'fundingRates.tradeHistory.columns.closed': 'Закрито',
+      'fundingRates.tradeHistory.columns.positionSize': 'Розмір Позиції',
+      'fundingRates.tradeHistory.columns.fundingEarned': 'Заробіток Фандінгу',
+      'fundingRates.tradeHistory.columns.pnl': 'P&L',
+      'fundingRates.tradeHistory.columns.duration': 'Тривалість',
 
       // Trading Platform Modal
       'modal.account': 'Акаунт',

@@ -4,12 +4,18 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { interval, Subscription, of } from 'rxjs';
 import { switchMap, startWith } from 'rxjs/operators';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+// MatDialog removed - using ui-dialog component directly
 import { AuthService } from '../../../services/auth.service';
 import { TranslationService } from '../../../services/translation.service';
 import { ArbitrageStreamService, PriceUpdate } from '../../../services/arbitrage-stream.service';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { DropdownComponent, DropdownOption } from '../../ui/dropdown/dropdown.component';
+import { TradeHistoryComponent, TradeHistoryDialogData } from '../trade-history/trade-history.component';
 import { getEndpointUrl } from '../../../config/app.config';
 
 /**
@@ -80,6 +86,21 @@ export interface CompletedDeal {
   createdAt: string;
 }
 
+export interface TradeHistoryRecord {
+  id: string;
+  symbol: string;
+  executedAt: string;
+  closedAt: string;
+  positionSizeUsdt: number;
+  fundingEarned: number;
+  realizedPnl: number;
+  entryPrice: number;
+  exitPrice: number;
+  leverage: number;
+  quantity: number;
+  status: string;
+}
+
 export interface SubscriptionSettings {
   defaultQuantity: number;           // Default number of coins to trade
   leverage: number;                   // Trading leverage (1-100x)
@@ -139,12 +160,17 @@ export interface FundingRateArbitrageOpportunity {
   imports: [
     CommonModule,
     FormsModule,
+    MatIconModule,
+    MatButtonModule,
+    MatTooltipModule,
+    MatProgressSpinnerModule,
     CardComponent,
     CardHeaderComponent,
     CardTitleComponent,
     CardContentComponent,
     ButtonComponent,
-    DropdownComponent
+    DropdownComponent,
+    TradeHistoryComponent
   ],
   templateUrl: './funding-rates.component.html',
   styleUrl: './funding-rates.component.scss'
@@ -155,6 +181,11 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   private translationService = inject(TranslationService);
   private arbitrageStreamService = inject(ArbitrageStreamService);
   private cdr = inject(ChangeDetectorRef);
+
+  // Trade History Dialog State
+  showTradeHistoryDialog = signal<boolean>(false);
+  tradeHistorySymbol = signal<string | undefined>(undefined);
+  tradeHistoryExchange = signal<string | undefined>(undefined);
 
   // Expose utilities to template
   readonly Array = Array;
@@ -190,6 +221,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   selectedTicker = signal<TickerData | null>(null);
   positionSizeUsdt = signal<number>(100); // Changed from subscriptionQuantity to USDT-based
   dialogLeverage = signal<number>(3); // Dialog-specific leverage (separate from global settings)
+  dialogTakeProfitPercent = signal<number>(90); // Take profit percentage (90% of expected funding)
+  dialogStopLossPercent = signal<number>(20); // Stop loss percentage (20% of expected funding)
   isSubscribing = signal<boolean>(false);
   editingSubscription = signal<FundingSubscription | null>(null);
   startingSubscriptionId = signal<string | null>(null); // Track which subscription is being started
@@ -1783,6 +1816,22 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Open trade history dialog
+   * @param symbol - Optional symbol filter (e.g., 'BTCUSDT')
+   * @param exchange - Optional exchange filter (e.g., 'BYBIT')
+   */
+  openTradeHistoryDialog(symbol?: string, exchange?: string): void {
+    console.log('[FundingRates] Opening trade history dialog', { symbol, exchange });
+
+    // Set dialog parameters
+    this.tradeHistorySymbol.set(symbol);
+    this.tradeHistoryExchange.set(exchange);
+
+    // Open dialog
+    this.showTradeHistoryDialog.set(true);
+  }
+
+  /**
    * Start auto-cancel checker (runs every 30 seconds)
    */
   private autoCancelInterval?: any;
@@ -3059,5 +3108,51 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     } finally {
       this.isStartingHedged.set(false);
     }
+  }
+
+
+  /**
+   * Formats duration between two timestamps
+   */
+  formatDuration(startTime: string, endTime: string): string {
+    const start = new Date(startTime).getTime();
+    const end = new Date(endTime).getTime();
+    const diffMs = end - start;
+
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) {
+      return `${diffDays}d ${diffHours % 24}h`;
+    } else if (diffHours > 0) {
+      return `${diffHours}h ${diffMinutes % 60}m`;
+    } else {
+      return `${diffMinutes}m`;
+    }
+  }
+
+  /**
+   * Formats datetime for display
+   */
+  formatDateTime(dateString: string): string {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(date);
+  }
+
+  /**
+   * Returns CSS class based on P&L value
+   */
+  getPnlColorClass(pnl: number): string {
+    if (pnl > 0) return 'positive';
+    if (pnl < 0) return 'negative';
+    return 'neutral';
   }
 }

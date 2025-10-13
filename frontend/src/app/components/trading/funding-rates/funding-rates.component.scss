@@ -3681,3 +3681,373 @@
     }
   }
 }
+
+// ============================================================================
+// TRADE HISTORY MODAL STYLES
+// ============================================================================
+
+// Trade History Button
+.trade-history-btn {
+  margin-left: 8px;
+  opacity: 0.8;
+  transition: all 0.2s ease;
+
+  &:hover {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Modal Overlay
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+// Modal Container
+.modal-container {
+  background: var(--surface-color, #ffffff);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// Trade History Modal
+.trade-history-modal {
+  width: 90vw;
+  max-width: 1200px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+
+    .modal-title-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .modal-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        color: var(--primary-color, #2196F3);
+      }
+
+      .modal-title {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .modal-subtitle {
+          font-size: 14px;
+          font-weight: 400;
+          color: var(--text-secondary, #666);
+        }
+      }
+    }
+
+    .close-btn {
+      mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+    }
+  }
+
+  .modal-content {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+    min-height: 300px;
+
+    // Loading State
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      gap: 16px;
+
+      p {
+        margin: 0;
+        color: var(--text-secondary, #666);
+      }
+    }
+
+    // Error State
+    .error-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      gap: 16px;
+
+      .error-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: var(--error-color, #f44336);
+      }
+
+      .error-message {
+        margin: 0;
+        color: var(--text-primary, #333);
+        font-size: 16px;
+        text-align: center;
+      }
+    }
+
+    // Empty State
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      gap: 12px;
+
+      .empty-icon {
+        font-size: 64px;
+        width: 64px;
+        height: 64px;
+        color: var(--text-disabled, #bbb);
+      }
+
+      .empty-message {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--text-primary, #333);
+      }
+
+      .empty-description {
+        margin: 0;
+        font-size: 14px;
+        color: var(--text-secondary, #666);
+        text-align: center;
+      }
+    }
+
+    // Table Container
+    .table-container {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-color, #e0e0e0);
+    }
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-color, #e0e0e0);
+    gap: 12px;
+  }
+}
+
+// Trade History Table
+.trade-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--surface-color, #fff);
+
+  thead {
+    background-color: var(--background-secondary, #f5f5f5);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+
+    tr {
+      th {
+        padding: 16px;
+        text-align: left;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary, #666);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        border-bottom: 2px solid var(--border-color, #e0e0e0);
+
+        &.text-right {
+          text-align: right;
+        }
+      }
+    }
+  }
+
+  tbody {
+    .trade-row {
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--row-hover, rgba(0, 0, 0, 0.02));
+      }
+
+      &:not(:last-child) {
+        border-bottom: 1px solid var(--border-light, #f0f0f0);
+      }
+
+      td {
+        padding: 16px;
+        font-size: 14px;
+        color: var(--text-primary, #333);
+
+        &.text-right {
+          text-align: right;
+        }
+
+        .datetime-cell {
+          font-family: 'Roboto Mono', monospace;
+          font-size: 13px;
+          color: var(--text-primary, #333);
+          white-space: nowrap;
+        }
+
+        .amount-cell {
+          font-weight: 500;
+          font-family: 'Roboto Mono', monospace;
+          white-space: nowrap;
+
+          &.positive {
+            color: var(--success-color, #4caf50);
+          }
+        }
+
+        .pnl-cell {
+          font-weight: 600;
+          font-family: 'Roboto Mono', monospace;
+          white-space: nowrap;
+
+          &.positive {
+            color: var(--success-color, #4caf50);
+          }
+
+          &.negative {
+            color: var(--error-color, #f44336);
+          }
+
+          &.neutral {
+            color: var(--text-secondary, #666);
+          }
+        }
+
+        .duration-cell {
+          font-family: 'Roboto Mono', monospace;
+          font-size: 13px;
+          color: var(--text-secondary, #666);
+          white-space: nowrap;
+        }
+      }
+    }
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .trade-history-modal {
+    width: 95vw;
+    max-height: 90vh;
+
+    .modal-header {
+      padding: 16px;
+
+      .modal-title-section {
+        gap: 8px;
+
+        .modal-icon {
+          font-size: 24px;
+          width: 24px;
+          height: 24px;
+        }
+
+        .modal-title {
+          font-size: 18px;
+
+          .modal-subtitle {
+            font-size: 12px;
+          }
+        }
+      }
+    }
+
+    .modal-content {
+      padding: 16px;
+    }
+
+    .modal-footer {
+      padding: 12px 16px;
+    }
+  }
+
+  .trade-history-table {
+    font-size: 12px;
+
+    thead tr th {
+      padding: 12px 8px;
+      font-size: 11px;
+    }
+
+    tbody .trade-row td {
+      padding: 12px 8px;
+      font-size: 12px;
+
+      .datetime-cell,
+      .amount-cell,
+      .pnl-cell,
+      .duration-cell {
+        font-size: 11px;
+      }
+    }
+  }
+}

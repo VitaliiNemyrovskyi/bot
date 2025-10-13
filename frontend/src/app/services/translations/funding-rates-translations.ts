@@ -71,6 +71,8 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.close': 'Close',
     'fundingRates.actions.save': 'Save',
     'fundingRates.actions.clearSort': 'Clear Sort',
+    'fundingRates.actions.viewTradeHistory': 'View Trade History',
+    'fundingRates.actions.viewAllHistory': 'Trade History',
 
     // Active Subscriptions
     'fundingRates.subscriptions.title': 'Active Funding Subscriptions',
@@ -255,6 +257,8 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.close': 'Закрити',
     'fundingRates.actions.save': 'Зберегти',
     'fundingRates.actions.clearSort': 'Очистити Сортування',
+    'fundingRates.actions.viewTradeHistory': 'Історія Трейдів',
+    'fundingRates.actions.viewAllHistory': 'Історія Трейдів',
 
     // Active Subscriptions
     'fundingRates.subscriptions.title': 'Активні Підписки на Фінансування',

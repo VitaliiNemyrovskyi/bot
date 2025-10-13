@@ -1,0 +1,224 @@
+<!-- Trade History Dialog using ui-dialog component -->
+<ui-dialog
+  [open]="open"
+  (openChange)="onDialogOpenChange($event)"
+  [title]="'📊 Trade History'"
+  [size]="'fullscreen'"
+  [closable]="true"
+  [closeOnBackdrop]="true"
+  [showHeader]="true">
+
+  <ui-dialog-content>
+    <!-- Loading State -->
+    <div *ngIf="tradeHistoryService.isLoading()" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading trade history...</p>
+    </div>
+
+    <!-- Error State -->
+    <div *ngIf="tradeHistoryService.error() && !tradeHistoryService.isLoading()" class="error-state">
+      <span class="error-icon">⚠️</span>
+      <p>{{ tradeHistoryService.error() }}</p>
+      <ui-button variant="primary" size="medium" (clicked)="refresh()">
+        <span>🔄 Retry</span>
+      </ui-button>
+    </div>
+
+    <!-- Main Content -->
+    <div *ngIf="!tradeHistoryService.isLoading() && !tradeHistoryService.error()" class="trade-history-content">
+
+      <!-- Filters Section -->
+      <div class="filters-card">
+        <div class="filters-row">
+          <!-- Symbol Filter -->
+          <div class="filter-field">
+            <label for="symbol-filter" class="filter-label">Symbol</label>
+            <select
+              id="symbol-filter"
+              class="filter-select"
+              [(ngModel)]="selectedSymbol"
+              (change)="applyFilters()">
+              <option value="">All Symbols</option>
+              <option *ngFor="let symbol of availableSymbols" [value]="symbol">
+                {{ symbol }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Exchange Filter -->
+          <div class="filter-field">
+            <label for="exchange-filter" class="filter-label">Exchange</label>
+            <select
+              id="exchange-filter"
+              class="filter-select"
+              [(ngModel)]="selectedExchange"
+              (change)="applyFilters()">
+              <option value="">All Exchanges</option>
+              <option *ngFor="let exchange of availableExchanges" [value]="exchange">
+                {{ exchange }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Actions -->
+          <div class="filter-actions">
+            <ui-button variant="ghost" size="small" (clicked)="clearFilters()">
+              <span>❌ Clear</span>
+            </ui-button>
+            <ui-button variant="ghost" size="small" (clicked)="refresh()">
+              <span>🔄 Refresh</span>
+            </ui-button>
+            <ui-button
+              [variant]="autoRefreshEnabled ? 'primary' : 'ghost'"
+              size="small"
+              (clicked)="toggleAutoRefresh()">
+              <span>{{ autoRefreshEnabled ? '⏸️ Pause' : '▶️ Auto' }}</span>
+            </ui-button>
+            <ui-button variant="primary" size="small" (clicked)="exportToCSV()">
+              <span>📥 Export CSV</span>
+            </ui-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Statistics Cards -->
+      <div *ngIf="tradeHistoryService.hasTrades()" class="statistics-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value">{{ tradeHistoryService.statistics().totalTrades }}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-value" [class.positive]="tradeHistoryService.statistics().winRate >= 50">
+            {{ tradeHistoryService.statistics().winRate.toFixed(1) }}%
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Total P&L</div>
+          <div
+            class="stat-value"
+            [class.positive]="tradeHistoryService.statistics().totalPnl >= 0"
+            [class.negative]="tradeHistoryService.statistics().totalPnl < 0">
+            {{ tradeHistoryService.statistics().totalPnl.toFixed(2) }} USDT
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Net Profit</div>
+          <div
+            class="stat-value"
+            [class.positive]="tradeHistoryService.statistics().netProfit >= 0"
+            [class.negative]="tradeHistoryService.statistics().netProfit < 0">
+            {{ tradeHistoryService.statistics().netProfit.toFixed(2) }} USDT
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Total Funding</div>
+          <div class="stat-value positive">
+            +{{ tradeHistoryService.statistics().totalFunding.toFixed(2) }} USDT
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Total Fees</div>
+          <div class="stat-value negative">
+            -{{ tradeHistoryService.statistics().totalFees.toFixed(2) }} USDT
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="!tradeHistoryService.hasTrades()" class="empty-state">
+        <span class="empty-icon">📭</span>
+        <h3>No Trade History</h3>
+        <p>Your completed trades will appear here</p>
+      </div>
+
+      <!-- Trades Table -->
+      <div *ngIf="tradeHistoryService.hasTrades()" class="table-card">
+        <div class="table-wrapper">
+          <table class="trades-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Exchange</th>
+                <th>Type</th>
+                <th>Opened</th>
+                <th>Closed</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>P&L</th>
+                <th>Funding</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let trade of tradeHistoryService.trades()">
+                <!-- Symbol -->
+                <td>
+                  <strong>{{ trade.symbol }}</strong>
+                </td>
+
+                <!-- Exchange -->
+                <td>
+                  <span class="exchange-chip">{{ trade.exchange }}</span>
+                </td>
+
+                <!-- Position Type -->
+                <td>
+                  <span class="position-chip" [class]="getPositionTypeClass(trade.positionType)">
+                    {{ trade.positionType | uppercase }}
+                  </span>
+                </td>
+
+                <!-- Executed At -->
+                <td>
+                  {{ formatDate(trade.executedAt) }}
+                </td>
+
+                <!-- Closed At -->
+                <td>
+                  {{ formatDate(trade.closedAt) }}
+                </td>
+
+                <!-- Entry Price -->
+                <td>
+                  ${{ formatPrice(trade.entryPrice) }}
+                </td>
+
+                <!-- Exit Price -->
+                <td>
+                  ${{ formatPrice(trade.exitPrice) }}
+                </td>
+
+                <!-- PnL -->
+                <td>
+                  <span [class]="formatPnl(trade.realizedPnl).class">
+                    {{ formatPnl(trade.realizedPnl).text }}
+                  </span>
+                </td>
+
+                <!-- Funding -->
+                <td>
+                  <span class="positive">
+                    +{{ trade.fundingEarned.toFixed(2) }} USDT
+                  </span>
+                </td>
+
+                <!-- Status -->
+                <td>
+                  <span class="status-chip" [class]="getStatusClass(trade.status)">
+                    {{ trade.status }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </ui-dialog-content>
+</ui-dialog>

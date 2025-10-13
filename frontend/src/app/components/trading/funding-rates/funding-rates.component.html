@@ -12,6 +12,15 @@
         <span>⚙️ {{ translate('fundingRates.filters.settings') }}</span>
       </ui-button>
 
+      <!-- Trade History Report (General) -->
+      <ui-button
+        variant="ghost"
+        size="small"
+        (clicked)="openTradeHistoryDialog()"
+        aria-label="View all trade history">
+        <span>📊 {{ translate('fundingRates.actions.viewAllHistory') }}</span>
+      </ui-button>
+
       <!-- Clear Sort (only show if multi-sort active) -->
       @if (sortColumns().length > 1) {
         <ui-button
@@ -725,6 +734,16 @@
                           <span>{{ translate('fundingRates.actions.subscribe') }}</span>
                         </ui-button>
                       }
+
+                      <!-- Trade History Report Button -->
+                      <button
+                        mat-icon-button
+                        class="trade-history-btn"
+                        (click)="openTradeHistoryDialog(opportunity.symbol, opportunity.bestLong.exchange)"
+                        [matTooltip]="translate('fundingRates.actions.viewTradeHistory')"
+                        matTooltipPosition="above">
+                        <mat-icon>assessment</mat-icon>
+                      </button>
                     }
                   </td>
                 </tr>
@@ -960,6 +979,38 @@
                 }
               </p>
             </div>
+
+            @if (arbitrageMode() === 'NON_HEDGED') {
+              <div class="form-group">
+                <label class="form-label">Take Profit (%)</label>
+                <input
+                  type="number"
+                  class="form-input"
+                  [ngModel]="dialogTakeProfitPercent()"
+                  (ngModelChange)="dialogTakeProfitPercent.set($event)"
+                  min="1"
+                  max="100"
+                  step="1"
+                  placeholder="90"
+                />
+                <p class="form-hint">Take profit at {{ dialogTakeProfitPercent() }}% of expected funding</p>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Stop Loss (%)</label>
+                <input
+                  type="number"
+                  class="form-input"
+                  [ngModel]="dialogStopLossPercent()"
+                  (ngModelChange)="dialogStopLossPercent.set($event)"
+                  min="1"
+                  max="100"
+                  step="1"
+                  placeholder="20"
+                />
+                <p class="form-hint">Stop loss at {{ dialogStopLossPercent() }}% of expected funding</p>
+              </div>
+            }
           </div>
 
           <!-- Balance Information -->
@@ -1473,4 +1524,12 @@
       </div>
     </div>
   }
+
+  <!-- Trade History Dialog -->
+  <app-trade-history
+    [open]="showTradeHistoryDialog()"
+    [initialSymbol]="tradeHistorySymbol() || ''"
+    [initialExchange]="tradeHistoryExchange() || ''"
+    (openChange)="showTradeHistoryDialog.set($event)">
+  </app-trade-history>
 </div>

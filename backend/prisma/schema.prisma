@@ -637,6 +637,7 @@ model FundingArbitrageSubscription {
   fundingRate     Float // The funding rate at subscription time
   nextFundingTime DateTime // When the next funding occurs
   positionType    String // "long" or "short"
+  side            String? // "Buy" or "Sell" - for Bybit Funding Strategy
   quantity        Float // Position size
   leverage        Float  @default(3) // Leverage multiplier (1-125, recommended 1-20)
   margin          Float? // Margin/collateral used for this position (in USDT)
@@ -644,7 +645,14 @@ model FundingArbitrageSubscription {
   // Arbitrage mode configuration
   mode ArbitrageMode @default(HEDGED) // HEDGED: 2 positions (hedged), NON_HEDGED: 1 position (fast close)
 
-  // Take-Profit and Stop-Loss configuration
+  // Bybit Funding Strategy configuration
+  executionDelay     Int?   @default(5) // Seconds before funding to open position (for NON_HEDGED mode)
+  takeProfitPercent  Float? // Take-profit as % of expected funding (e.g., 90 = 90%)
+  stopLossPercent    Float? // Stop-loss as % of expected funding (e.g., 20 = 20%)
+  positionReopenCount Int?  @default(0) // Number of times position was reopened in current cycle
+  strategyId         String? // In-memory strategy ID (for tracking active strategies)
+
+  // Legacy TP/SL configuration (kept for compatibility)
   takeProfit Float? // Take-profit percentage (e.g., 0.5 = 0.5% profit target)
   stopLoss   Float? // Stop-loss percentage (e.g., 0.3 = 0.3% maximum loss)
 

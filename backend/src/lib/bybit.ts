@@ -224,7 +224,7 @@ export class BybitService {
   private timeOffset: number = 0;
   private lastSyncTime: number = 0;
   private syncInterval: NodeJS.Timeout | null = null;
-  private readonly SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly SYNC_INTERVAL_MS = 5 * 1000; // 5 seconds for precise timing strategies
   private readonly LARGE_OFFSET_WARNING_MS = 10000; // 10 seconds
   private readonly MAX_OFFSET_MS = 30000; // 30 seconds - matches increased recv_window
 
@@ -336,21 +336,26 @@ export class BybitService {
       const serverTime = await this.getServerTime();
       const endTime = Date.now();
 
-      // Calculate network latency and adjust
-      const latency = (endTime - startTime) / 2;
-      const adjustedServerTime = serverTime + latency;
+      // Calculate network latency and offset with proper compensation
+      // Formula: offset = serverTime - (localTime + latency/2)
+      // Where localTime is the midpoint between request and response
+      const roundTripTime = endTime - startTime;
+      const latency = roundTripTime / 2;
+      const midpoint = startTime + latency; // Estimated time when server processed request
 
-      // Calculate offset
-      const newOffset = adjustedServerTime - endTime;
+      // Calculate offset: serverTime - midpoint
+      const newOffset = serverTime - midpoint;
       this.timeOffset = newOffset;
       this.lastSyncTime = endTime;
 
-      // Log sync status
+      // Log sync status with detailed timing info
       console.log('[BybitService] Time synchronized:', {
         serverTime,
         localTime: endTime,
-        offset: newOffset,
-        latency: endTime - startTime
+        midpoint,
+        roundTripTime,
+        latency,
+        offset: newOffset
       });
 
       // Check if offset exceeds maximum allowed
@@ -393,7 +398,7 @@ export class BybitService {
 
   /**
    * Start periodic time synchronization
-   * Syncs time every 5-10 minutes to handle clock drift
+   * Syncs time every 5 seconds for precise timing strategies
    */
   startPeriodicSync(): void {
     if (this.syncInterval) {
@@ -401,7 +406,7 @@ export class BybitService {
       return;
     }
 
-    console.log(`[BybitService] Starting periodic time sync (interval: ${this.SYNC_INTERVAL_MS / 60000} minutes)`);
+    console.log(`[BybitService] Starting periodic time sync (interval: ${this.SYNC_INTERVAL_MS / 1000} seconds)`);
 
     this.syncInterval = setInterval(async () => {
       console.log('[BybitService] Performing periodic time sync...');
