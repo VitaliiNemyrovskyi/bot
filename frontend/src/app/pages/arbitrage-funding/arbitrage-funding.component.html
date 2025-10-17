@@ -1,0 +1,367 @@
+<div class="arbitrage-funding-page">
+  <!-- Header -->
+  <div class="page-header">
+    <h1 class="page-title">Funding Rate Arbitrage</h1>
+    <p class="page-subtitle">Public funding rates from all exchanges - No API keys required</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-section">
+    <div class="filters">
+      <!-- Search by symbol -->
+      <div class="filter-group">
+        <label>Search Symbol</label>
+        <input
+          type="text"
+          placeholder="BTC, ETH, SOL..."
+          [(ngModel)]="searchQuery"
+          (ngModelChange)="searchQuery.set($event)"
+          class="search-input"
+        />
+      </div>
+
+      <!-- Minimum funding spread filter -->
+      <div class="filter-group">
+        <label>Min Funding Spread (%)</label>
+        <input
+          type="number"
+          step="0.01"
+          placeholder="0.05"
+          [(ngModel)]="minFundingSpread"
+          (ngModelChange)="minFundingSpread.set($event)"
+          class="number-input"
+        />
+      </div>
+
+      <!-- Clear filters button -->
+      <button
+        *ngIf="searchQuery() || minFundingSpread()"
+        (click)="clearFilters()"
+        class="btn-clear"
+      >
+        <ui-icon name="clear" [size]="18"></ui-icon>
+        Clear Filters
+      </button>
+    </div>
+
+    <!-- Refresh and status -->
+    <div class="status-section">
+      <div class="last-updated">
+        <ui-icon name="schedule" [size]="18"></ui-icon>
+        <span>{{ getTimeSinceUpdate() }}</span>
+      </div>
+      <button
+        (click)="refresh()"
+        [disabled]="isLoading()"
+        class="btn-refresh"
+      >
+        <ui-icon name="refresh" [size]="20" [class]="isLoading() ? 'spinning' : ''"></ui-icon>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Error message -->
+  <div *ngIf="error()" class="error-message">
+    <ui-icon name="error" [size]="24"></ui-icon>
+    <span>{{ error() }}</span>
+  </div>
+
+  <!-- Loading spinner -->
+  <div *ngIf="isLoading() && opportunities().length === 0" class="loading-container">
+    <ui-icon name="refresh" [size]="40" class="spinning"></ui-icon>
+    <p>Loading funding rates...</p>
+  </div>
+
+  <!-- Opportunities table -->
+  <div *ngIf="!isLoading() || opportunities().length > 0" class="table-container">
+    <div class="results-count">
+      Found {{ filteredOpportunities().length }} opportunities
+    </div>
+
+    <table class="opportunities-table">
+      <thead>
+        <tr>
+          <th (click)="toggleSort('symbol')" class="sortable">
+            Symbol
+            <ui-icon
+              *ngIf="sortColumn() === 'symbol'"
+              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [size]="16"
+            ></ui-icon>
+          </th>
+          <th (click)="toggleSort('fundingSpread')" class="sortable">
+            Spread
+            <ui-icon
+              *ngIf="sortColumn() === 'fundingSpread'"
+              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [size]="16"
+            ></ui-icon>
+          </th>
+          <th>Time to Funding</th>
+          <th (click)="toggleSort('estimatedAPR')" class="sortable">
+            Estimated APR
+            <ui-icon
+              *ngIf="sortColumn() === 'estimatedAPR'"
+              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [size]="16"
+            ></ui-icon>
+          </th>
+          <th>Total Fees</th>
+          <th (click)="toggleSort('netAPR')" class="sortable">
+            Net APR
+            <ui-icon
+              *ngIf="sortColumn() === 'netAPR'"
+              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [size]="16"
+            ></ui-icon>
+          </th>
+          <th>Best Long</th>
+          <th>Best Short</th>
+          <th (click)="toggleSort('priceSpread')" class="sortable">
+            Price Spread
+            <ui-icon
+              *ngIf="sortColumn() === 'priceSpread'"
+              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [size]="16"
+            ></ui-icon>
+          </th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let opp of filteredOpportunities()">
+          <tr class="opportunity-row">
+            <!-- Symbol -->
+            <td class="symbol-cell">
+              <span class="symbol" [title]="getExchangesTooltip(opp)">{{ opp.symbol }}</span>
+            </td>
+
+            <!-- Max Funding Spread -->
+            <td class="funding-spread-cell">
+              <span
+                class="funding-spread"
+                [ngClass]="getFundingSpreadColorClass(opp.maxFundingSpread)"
+              >
+                {{ opp.maxFundingSpreadPercent }}
+              </span>
+            </td>
+
+            <!-- Time to Funding -->
+            <td class="time-to-funding-cell">
+              <span class="time-to-funding">{{ opp.timeToFunding }}</span>
+            </td>
+
+            <!-- Estimated APR -->
+            <td class="estimated-apr-cell">
+              <span class="estimated-apr" [ngClass]="getAPRColorClass(opp.estimatedAPR)">
+                {{ opp.estimatedAPRFormatted }}
+              </span>
+            </td>
+
+            <!-- Total Fees -->
+            <td class="total-fees-cell">
+              <span class="total-fees">{{ opp.totalFeesFormatted }}</span>
+            </td>
+
+            <!-- Net APR -->
+            <td class="net-apr-cell">
+              <span class="net-apr" [ngClass]="getAPRColorClass(opp.netAPR)">
+                {{ opp.netAPRFormatted }}
+              </span>
+            </td>
+
+            <!-- Best Long -->
+            <td class="best-long-cell">
+              <div class="best-exchange">
+                <span class="exchange-name">{{ opp.bestLong.exchange }}</span>
+                <span class="funding-rate">{{ formatFundingRate(opp.bestLong.fundingRate) }}</span>
+                <span class="price">${{ opp.bestLong.lastPrice }}</span>
+              </div>
+            </td>
+
+            <!-- Best Short -->
+            <td class="best-short-cell">
+              <div class="best-exchange">
+                <span class="exchange-name">{{ opp.bestShort.exchange }}</span>
+                <span class="funding-rate">{{ formatFundingRate(opp.bestShort.fundingRate) }}</span>
+                <span class="price">${{ opp.bestShort.lastPrice }}</span>
+              </div>
+            </td>
+
+            <!-- Price Spread -->
+            <td class="price-spread-cell">
+              <div class="price-spread-info">
+                <span class="spread-percent">{{ opp.priceSpreadPercent }}</span>
+                <span class="spread-usdt">{{ opp.priceSpreadUsdt }}</span>
+              </div>
+            </td>
+
+            <!-- Actions -->
+            <td class="actions-cell">
+              <!-- PHASE2: Expand button for historical metrics -->
+              <button
+                (click)="toggleExpandRow(opp.symbol)"
+                class="btn-expand"
+                [class.expanded]="expandedRowSymbol() === opp.symbol"
+                title="View historical stability metrics"
+              >
+                <ui-icon
+                  [name]="expandedRowSymbol() === opp.symbol ? 'expand_less' : 'expand_more'"
+                  [size]="20"
+                ></ui-icon>
+              </button>
+              <a
+                [routerLink]="['/arbitrage/chart', opp.symbol, opp.bestLong.exchange, opp.bestShort.exchange]"
+                class="btn-view-chart"
+                title="View Chart"
+              >
+                <ui-icon name="show_chart" [size]="18"></ui-icon>
+              </a>
+            </td>
+          </tr>
+
+          <!-- PHASE2: Expandable row for detailed metrics -->
+          <tr *ngIf="expandedRowSymbol() === opp.symbol" class="expanded-row">
+          <td colspan="10" class="expanded-content">
+            <div class="phase2-stability-section">
+              <h4 class="section-title">
+                <ui-icon name="analytics" [size]="20"></ui-icon>
+                Spread Stability Analysis
+              </h4>
+
+              @if (isLoadingPhase2(opp.symbol)) {
+                <div class="loading-metrics">
+                  <ui-icon name="refresh" [size]="24" class="spinning"></ui-icon>
+                  <span>Loading historical data...</span>
+                </div>
+              } @else {
+                @if (getPhase2Metrics(opp.symbol); as metrics) {
+                  @if (metrics.spreadHistory7d || metrics.spreadHistory30d) {
+                    <div class="stability-metrics-grid">
+                      <!-- 7-Day Metrics Card -->
+                      @if (metrics.spreadHistory7d) {
+                        <div class="metric-card">
+                          <h5>7-Day Stability</h5>
+                          <div class="metric-row">
+                            <span class="label">Average Spread:</span>
+                            <span class="value">{{ metrics.spreadHistory7d.averageFormatted }}</span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Std Deviation:</span>
+                            <span class="value">{{ metrics.spreadHistory7d.standardDeviationFormatted }}</span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Stability Score:</span>
+                            <span class="value stability-score"
+                                  [ngClass]="'rating-' + metrics.spreadHistory7d.stabilityRating">
+                              {{ metrics.spreadHistory7d.stabilityScore }}/100
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Rating:</span>
+                            <span class="badge" [ngClass]="'badge-' + metrics.spreadHistory7d.stabilityRating">
+                              {{ metrics.spreadHistory7d.stabilityRating }}
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Data Quality:</span>
+                            <span class="badge" [ngClass]="'badge-' + metrics.spreadHistory7d.dataQuality">
+                              {{ metrics.spreadHistory7d.dataQuality }}
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Sample Size:</span>
+                            <span class="value">{{ metrics.spreadHistory7d.sampleSize }}</span>
+                          </div>
+                        </div>
+                      }
+
+                      <!-- 30-Day Metrics Card -->
+                      @if (metrics.spreadHistory30d) {
+                        <div class="metric-card">
+                          <h5>30-Day Stability</h5>
+                          <div class="metric-row">
+                            <span class="label">Average Spread:</span>
+                            <span class="value">{{ metrics.spreadHistory30d.averageFormatted }}</span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Std Deviation:</span>
+                            <span class="value">{{ metrics.spreadHistory30d.standardDeviationFormatted }}</span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Stability Score:</span>
+                            <span class="value stability-score"
+                                  [ngClass]="'rating-' + metrics.spreadHistory30d.stabilityRating">
+                              {{ metrics.spreadHistory30d.stabilityScore }}/100
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Rating:</span>
+                            <span class="badge" [ngClass]="'badge-' + metrics.spreadHistory30d.stabilityRating">
+                              {{ metrics.spreadHistory30d.stabilityRating }}
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Data Quality:</span>
+                            <span class="badge" [ngClass]="'badge-' + metrics.spreadHistory30d.dataQuality">
+                              {{ metrics.spreadHistory30d.dataQuality }}
+                            </span>
+                          </div>
+                          <div class="metric-row">
+                            <span class="label">Sample Size:</span>
+                            <span class="value">{{ metrics.spreadHistory30d.sampleSize }}</span>
+                          </div>
+                        </div>
+                      }
+
+                      <!-- Trend Card -->
+                      @if (metrics.spreadStabilityTrend) {
+                        <div class="metric-card trend-card">
+                          <h5>Stability Trend</h5>
+                          <div class="trend-indicator" [ngClass]="'trend-' + metrics.spreadStabilityTrend">
+                            <ui-icon [name]="getTrendIcon(metrics.spreadStabilityTrend)" [size]="32"></ui-icon>
+                            <span class="trend-text">{{ metrics.spreadStabilityTrend | titlecase }}</span>
+                          </div>
+                          @if (metrics.spreadStabilityConfidence !== undefined) {
+                            <div class="confidence-bar">
+                              <span class="label">Confidence:</span>
+                              <div class="bar-container">
+                                <div class="bar-fill"
+                                     [style.width.%]="metrics.spreadStabilityConfidence * 100"></div>
+                              </div>
+                              <span class="value">{{ (metrics.spreadStabilityConfidence * 100).toFixed(0) }}%</span>
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="no-data">
+                      <ui-icon name="info" [size]="24"></ui-icon>
+                      <p>No historical data available for this pair</p>
+                    </div>
+                  }
+                } @else {
+                  <div class="no-data">
+                    <ui-icon name="info" [size]="24"></ui-icon>
+                    <p>No historical data available for this pair</p>
+                  </div>
+                }
+              }
+            </div>
+          </td>
+        </tr>
+        </ng-container>
+
+        <!-- Empty state -->
+        <tr *ngIf="filteredOpportunities().length === 0" class="empty-row">
+          <td colspan="10" class="empty-cell">
+            <ui-icon name="info" [size]="48"></ui-icon>
+            <p>No opportunities found. Try adjusting your filters.</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
