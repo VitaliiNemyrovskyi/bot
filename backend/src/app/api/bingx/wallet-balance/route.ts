@@ -8,7 +8,7 @@ import { AuthService } from '@/lib/auth';
  * Fetches wallet balance from BingX account.
  *
  * Query Parameters:
- * - environment (optional): TESTNET or MAINNET - Default: TESTNET
+ * - credentialId (optional): Specific credential ID to use
  *
  * Authentication: Required (Bearer token)
  *
@@ -28,7 +28,6 @@ import { AuthService } from '@/lib/auth';
  *       "freezedMargin": "0.00"
  *     }
  *   },
- *   "testnet": boolean,
  *   "timestamp": "2025-10-06T13:00:00.000Z"
  * }
  */
@@ -53,55 +52,63 @@ export async function GET(request: NextRequest) {
 
     // 2. Get query parameters
     const { searchParams } = new URL(request.url);
-    const environment = searchParams.get('environment')?.toUpperCase() || 'TESTNET';
     const credentialId = searchParams.get('credentialId');
 
-    // 3. Load credentials
+    // 3. Load BingX credentials (by ID if provided, otherwise active)
     const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
 
     let credentials;
     if (credentialId) {
-      // Load specific credential by ID
-      console.log(`[BingX Balance] Loading credential by ID: ${credentialId} for user: ${userId}`);
+      console.log(`[BingX Balance] Loading specific credential: ${credentialId} for user: ${userId}`);
       credentials = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
+
+      if (!credentials || credentials.exchange !== 'BINGX') {
+        console.warn(`[BingX Balance] Invalid or unauthorized BingX credential: ${credentialId}`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid credential',
+            message: 'The specified credential is invalid or does not belong to you.',
+            code: 'INVALID_CREDENTIAL',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 403 }
+        );
+      }
     } else {
-      // Fall back to environment-based loading
-      console.log(`[BingX Balance] Loading credentials for user: ${userId}, environment: ${environment}`);
-      credentials = await ExchangeCredentialsService.getCredentialsByEnvironment(
+      console.log(`[BingX Balance] Loading active credentials for user: ${userId}`);
+      credentials = await ExchangeCredentialsService.getActiveCredentials(
         userId,
-        'BINGX' as any,
-        environment as any
+        'BINGX' as any
       );
+
+      if (!credentials) {
+        console.warn(`[BingX Balance] No active BingX credentials found for user: ${userId}`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'API credentials not configured',
+            message: 'Please configure and activate your BingX API credentials first.',
+            code: 'NO_API_KEYS',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 403 }
+        );
+      }
     }
 
-    if (!credentials) {
-      console.warn(`[BingX Balance] No ${environment} API keys found for user: ${userId}`);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'API credentials not configured',
-          message: `Please configure your BingX ${environment} API credentials first.`,
-          code: 'NO_API_KEYS',
-          timestamp: new Date().toISOString(),
-        },
-        { status: 403 }
-      );
-    }
+    console.log(`[BingX Balance] Credentials loaded - ID: ${credentials.id}`);
 
-    console.log(`[BingX Balance] Credentials loaded - environment: ${credentials.environment}`);
-
-    // 4. Create BingXService with persistent cache support
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 4. Create BingXService with persistent cache support (mainnet only)
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId: userId,           // Enable persistent time sync caching
       credentialId: credentialId || credentials.id, // Enable persistent time sync caching
     });
 
-    console.log(`[BingX Balance] BingX service created - testnet: ${isTestnet}, cache enabled: true`);
+    console.log(`[BingX Balance] BingX service created - cache enabled: true`);
 
     // Sync time with BingX server (uses cache if available, ~0ms vs 200-600ms)
     await bingxService.syncTime();
@@ -117,7 +124,6 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         data: balance,
-        testnet: isTestnet,
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

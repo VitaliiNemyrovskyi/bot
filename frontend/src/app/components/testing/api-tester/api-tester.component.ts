@@ -4,7 +4,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { HttpErrorResponse } from '@angular/common/http';
 import { ExchangeCredentialsService } from '../../../services/exchange-credentials.service';
 import { TradingService } from '../../../services/trading.service';
-import { ExchangeType, EnvironmentType, ExchangeCredential } from '../../../models/exchange-credentials.model';
+import { ExchangeType, ExchangeCredential } from '../../../models/exchange-credentials.model';
 
 /**
  * Order Type enumeration for exchange orders

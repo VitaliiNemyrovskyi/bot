@@ -21,15 +21,6 @@ export enum ExchangeType {
   MEXC = 'MEXC'
 }
 
-/**
- * Exchange environment types
- * TESTNET: Demo/testing environment with fake money
- * MAINNET: Production environment with real money
- */
-export enum EnvironmentType {
-  TESTNET = 'TESTNET',
-  MAINNET = 'MAINNET'
-}
 
 /**
  * Credential status
@@ -48,13 +39,12 @@ export enum CredentialStatus {
 
 /**
  * Exchange Credential Entity
- * Represents a single API credential for an exchange in a specific environment
+ * Represents a single API credential for an exchange
  */
 export interface ExchangeCredential {
   id: string;
   userId: string;
   exchange: ExchangeType;
-  environment: EnvironmentType;
   apiKeyPreview: string;
   label?: string;
   isActive: boolean;
@@ -74,7 +64,6 @@ export interface ExchangeCredential {
  */
 export interface CreateExchangeCredentialRequest {
   exchange: ExchangeType;
-  environment: EnvironmentType;
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC futures trading)
@@ -122,7 +111,6 @@ export interface ExchangeCredentialsListResponse {
  */
 export interface TestConnectionRequest {
   exchange: ExchangeType;
-  environment: EnvironmentType;
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC)
@@ -134,7 +122,6 @@ export interface TestConnectionRequest {
 export interface TestConnectionResponse {
   success: boolean;
   message: string;
-  testnet: boolean;
   accountPreview?: {
     accountId?: string;
     totalEquity?: string;
@@ -213,8 +200,6 @@ export enum ExchangeCredentialErrorCode {
 export interface CredentialDisplayModel extends ExchangeCredential {
   exchangeName: string;
   exchangeLogo: string;
-  environmentName: string;
-  environmentColor: string;
   statusColor: string;
   createdAtFormatted: string;
   updatedAtFormatted: string;
@@ -225,7 +210,6 @@ export interface CredentialDisplayModel extends ExchangeCredential {
  */
 export interface CredentialFormModel {
   exchange: ExchangeType | null;
-  environment: EnvironmentType | null;
   apiKey: string;
   apiSecret: string;
   label: string;
@@ -236,7 +220,6 @@ export interface CredentialFormModel {
  */
 export interface CredentialFilterOptions {
   exchange?: ExchangeType;
-  environment?: EnvironmentType;
   isActive?: boolean;
   searchQuery?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'exchange' | 'label';
@@ -269,7 +252,6 @@ export function isExchangeCredential(obj: any): obj is ExchangeCredential {
     typeof obj.id === 'string' &&
     typeof obj.userId === 'string' &&
     Object.values(ExchangeType).includes(obj.exchange) &&
-    Object.values(EnvironmentType).includes(obj.environment) &&
     typeof obj.apiKeyPreview === 'string' &&
     typeof obj.isActive === 'boolean'
   );
@@ -296,12 +278,6 @@ export function isValidExchangeType(value: string): value is ExchangeType {
   return Object.values(ExchangeType).includes(value as ExchangeType);
 }
 
-/**
- * Type guard to check if string is valid EnvironmentType
- */
-export function isValidEnvironmentType(value: string): value is EnvironmentType {
-  return Object.values(EnvironmentType).includes(value as EnvironmentType);
-}
 
 // ============================================================================
 // CONSTANTS
@@ -322,21 +298,21 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/bybit.svg',
     color: '#F7A600',
     website: 'https://www.bybit.com',
-    supportsTestnet: true
+    supportsTestnet: false
   },
   [ExchangeType.BINANCE]: {
     name: 'Binance',
     logo: '/assets/images/exchanges/binance.svg',
     color: '#F3BA2F',
     website: 'https://www.binance.com',
-    supportsTestnet: true
+    supportsTestnet: false
   },
   [ExchangeType.OKX]: {
     name: 'OKX',
     logo: '/assets/images/exchanges/okx.svg',
     color: '#000000',
     website: 'https://www.okx.com',
-    supportsTestnet: true
+    supportsTestnet: false
   },
   [ExchangeType.COINBASE]: {
     name: 'Coinbase',
@@ -357,39 +333,17 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/bingx.svg',
     color: '#1E73FA',
     website: 'https://www.bingx.com',
-    supportsTestnet: true
+    supportsTestnet: false
   },
   [ExchangeType.MEXC]: {
     name: 'MEXC',
     logo: '/assets/images/exchanges/mexc.svg',
     color: '#00D4AA',
     website: 'https://www.mexc.com',
-    supportsTestnet: true
+    supportsTestnet: false
   }
 };
 
-/**
- * Environment metadata
- */
-export const ENVIRONMENT_METADATA: Record<EnvironmentType, {
-  name: string;
-  color: string;
-  icon: string;
-  description: string;
-}> = {
-  [EnvironmentType.TESTNET]: {
-    name: 'Testnet',
-    color: '#FF9800',
-    icon: 'science',
-    description: 'Test environment with fake money for safe experimentation'
-  },
-  [EnvironmentType.MAINNET]: {
-    name: 'Mainnet',
-    color: '#2196F3',
-    icon: 'verified_user',
-    description: 'Production environment with real money'
-  }
-};
 
 /**
  * Status metadata
@@ -451,19 +405,6 @@ export function getExchangeColor(exchange: ExchangeType): string {
   return EXCHANGE_METADATA[exchange]?.color ?? '#000000';
 }
 
-/**
- * Get environment display name
- */
-export function getEnvironmentName(environment: EnvironmentType): string {
-  return ENVIRONMENT_METADATA[environment]?.name ?? environment;
-}
-
-/**
- * Get environment color
- */
-export function getEnvironmentColor(environment: EnvironmentType): string {
-  return ENVIRONMENT_METADATA[environment]?.color ?? '#000000';
-}
 
 /**
  * Get status display name
@@ -504,8 +445,6 @@ export function toDisplayModel(credential: ExchangeCredential): CredentialDispla
     ...credential,
     exchangeName: getExchangeName(credential.exchange),
     exchangeLogo: getExchangeLogo(credential.exchange),
-    environmentName: getEnvironmentName(credential.environment),
-    environmentColor: getEnvironmentColor(credential.environment),
     statusColor: credential.status ? getStatusColor(credential.status) : '#9E9E9E',
     createdAtFormatted: formatRelativeTime(credential.createdAt),
     updatedAtFormatted: formatRelativeTime(credential.updatedAt)
@@ -564,10 +503,6 @@ export function filterCredentials(
 
   if (options.exchange) {
     filtered = filtered.filter(c => c.exchange === options.exchange);
-  }
-
-  if (options.environment) {
-    filtered = filtered.filter(c => c.environment === options.environment);
   }
 
   if (options.isActive !== undefined) {

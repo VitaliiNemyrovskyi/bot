@@ -43,7 +43,6 @@ import { AuthService } from '@/lib/auth';
  *   },
  *   "accountType": "UNIFIED",
  *   "coin": "USDT",
- *   "testnet": boolean,
  *   "timestamp": "2025-10-01T13:00:00.000Z"
  * }
  *
@@ -76,7 +75,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const accountType = (searchParams.get('accountType') || 'UNIFIED').toUpperCase();
     const coin = searchParams.get('coin') || undefined;
-    const environment = searchParams.get('environment')?.toUpperCase() || 'TESTNET';
     const credentialId = searchParams.get('credentialId');
 
     // 3. Validate accountType
@@ -94,51 +92,60 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Load credentials from new exchange_credentials table
+    // 4. Load Bybit credentials (by ID if provided, otherwise active)
     const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
 
     let credentials;
     if (credentialId) {
-      // Load specific credential by ID
-      console.log(`[WalletBalance] Loading credential by ID: ${credentialId} for user: ${userId}`);
+      console.log(`[WalletBalance] Loading specific credential: ${credentialId} for user: ${userId}`);
       credentials = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
+
+      if (!credentials || credentials.exchange !== 'BYBIT') {
+        console.warn(`[WalletBalance] Invalid or unauthorized Bybit credential: ${credentialId}`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid credential',
+            message: 'The specified credential is invalid or does not belong to you.',
+            code: 'INVALID_CREDENTIAL',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 403 }
+        );
+      }
     } else {
-      // Fall back to environment-based loading
-      console.log(`[WalletBalance] Loading credentials for user: ${userId}, environment: ${environment}`);
-      credentials = await ExchangeCredentialsService.getCredentialsByEnvironment(
+      console.log(`[WalletBalance] Loading active credentials for user: ${userId}`);
+      credentials = await ExchangeCredentialsService.getActiveCredentials(
         userId,
-        'BYBIT' as any,
-        environment as any
+        'BYBIT' as any
       );
+
+      if (!credentials) {
+        console.warn(`[WalletBalance] No active Bybit credentials found for user: ${userId}`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'API credentials not configured',
+            message: 'Please configure and activate your Bybit API credentials first. Go to Settings → Exchange Credentials.',
+            code: 'NO_API_KEYS',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 403 }
+        );
+      }
     }
 
-    if (!credentials) {
-      console.warn(`[WalletBalance] No ${environment} API keys found for user: ${userId}`);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'API credentials not configured',
-          message: `Please configure your Bybit ${environment} API credentials first. Go to Settings → Exchange Credentials.`,
-          code: 'NO_API_KEYS',
-          timestamp: new Date().toISOString(),
-        },
-        { status: 403 }
-      );
-    }
+    console.log(`[WalletBalance] Credentials loaded - ID: ${credentials.id}`);
 
-    console.log(`[WalletBalance] Credentials loaded - environment: ${credentials.environment}`);
-
-    // 5. Create BybitService with loaded credentials
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 5. Create BybitService with loaded credentials (mainnet only)
     const bybitService = new BybitService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId,
     });
 
-    console.log(`[WalletBalance] Bybit service created - testnet: ${isTestnet}`);
+    console.log(`[WalletBalance] Bybit service created`);
 
     // 6. Fetch wallet balance from Bybit
     console.log(`[WalletBalance] Fetching balance - accountType: ${accountType}, coin: ${coin || 'all'}`);

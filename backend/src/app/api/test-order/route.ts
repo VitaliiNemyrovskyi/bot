@@ -158,7 +158,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[TestOrder] Credentials loaded:', {
       exchange: credentials.exchange,
-      environment: credentials.environment,
       label: credentials.label,
     });
 
@@ -237,11 +236,9 @@ async function handleBingXOrder(
 ) {
   console.log('[BingX] Initializing BingX service...');
 
-  const isTestnet = credentials.environment === 'TESTNET';
   const bingxService = new BingXService({
     apiKey: credentials.apiKey,
     apiSecret: credentials.apiSecret,
-    testnet: isTestnet,
     enableRateLimit: true,
     userId,
     credentialId,
@@ -362,7 +359,6 @@ async function handleBingXOrder(
     },
     debug: {
       exchange: 'BINGX',
-      environment: credentials.environment,
       testMode,
       timeSyncStatus,
       quantityAdjustment,
@@ -393,11 +389,9 @@ async function handleBybitOrder(
 ) {
   console.log('[Bybit] Initializing Bybit service...');
 
-  const isTestnet = credentials.environment === 'TESTNET';
   const bybitService = new BybitService({
     apiKey: credentials.apiKey,
     apiSecret: credentials.apiSecret,
-    testnet: isTestnet,
     enableRateLimit: true,
     userId,
   });
@@ -497,7 +491,6 @@ async function handleBybitOrder(
     },
     debug: {
       exchange: 'BYBIT',
-      environment: credentials.environment,
       testMode,
       timeSyncStatus,
       instrumentInfo: {

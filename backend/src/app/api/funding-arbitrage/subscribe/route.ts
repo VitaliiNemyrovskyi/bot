@@ -59,6 +59,8 @@ export async function POST(request: NextRequest) {
       leverage = 3,
       margin,
       mode = 'HEDGED', // Default to HEDGED mode for backward compatibility
+      takeProfitPercent,
+      stopLossPercent,
     } = body;
 
     console.log('[FundingArbitrageAPI] Received subscription request with margin:', {
@@ -202,6 +204,8 @@ export async function POST(request: NextRequest) {
       leverage,
       margin,
       mode, // Pass mode to service
+      takeProfitPercent,
+      stopLossPercent,
     });
 
     console.log(`[FundingArbitrageAPI] Subscription created:`, subscription.id);
@@ -271,33 +275,35 @@ export async function GET(request: NextRequest) {
     // 2. Get user subscriptions
     const subscriptions = await fundingArbitrageService.getUserSubscriptions(userId);
 
-    // 3. Return response
+    // 3. Return response with subscription data
     return NextResponse.json(
       {
         success: true,
-        data: subscriptions.map((sub) => ({
-          subscriptionId: sub.id,
-          symbol: sub.symbol,
-          fundingRate: sub.fundingRate,
-          nextFundingTime: sub.nextFundingTime,
-          positionType: sub.positionType,
-          quantity: sub.quantity,
-          status: sub.status,
-          createdAt: sub.createdAt,
-          leverage: sub.leverage, // Include leverage from subscription
-          margin: sub.margin, // Include margin from subscription
-          // Exchange credentials for editing subscriptions
-          primaryCredentialId: sub.primaryCredentialId,
-          hedgeCredentialId: sub.hedgeCredentialId,
-          primaryExchange: sub.primaryExchange?.exchangeName || 'UNKNOWN',
-          hedgeExchange: sub.hedgeExchange?.exchangeName || 'UNKNOWN',
-          // Deal results (for completed deals)
-          entryPrice: sub.entryPrice,
-          hedgeEntryPrice: sub.hedgeEntryPrice,
-          fundingEarned: sub.fundingEarned,
-          realizedPnl: sub.realizedPnl,
-          executedAt: sub.executedAt,
-        })),
+        data: subscriptions.map((sub) => {
+          return {
+            subscriptionId: sub.id,
+            symbol: sub.symbol,
+            fundingRate: sub.fundingRate, // Use funding rate from subscription
+            nextFundingTime: sub.nextFundingTime, // Use next funding time from subscription
+            positionType: sub.positionType,
+            quantity: sub.quantity,
+            status: sub.status,
+            createdAt: sub.createdAt,
+            leverage: sub.leverage, // Include leverage from subscription
+            margin: sub.margin, // Include margin from subscription
+            // Exchange credentials for editing subscriptions
+            primaryCredentialId: sub.primaryCredentialId,
+            hedgeCredentialId: sub.hedgeCredentialId,
+            primaryExchange: sub.primaryExchange?.exchangeName || 'UNKNOWN',
+            hedgeExchange: sub.hedgeExchange?.exchangeName || 'UNKNOWN',
+            // Deal results (for completed deals)
+            entryPrice: sub.entryPrice,
+            hedgeEntryPrice: sub.hedgeEntryPrice,
+            fundingEarned: sub.fundingEarned,
+            realizedPnl: sub.realizedPnl,
+            executedAt: sub.executedAt,
+          };
+        }),
         count: subscriptions.length,
         timestamp: new Date().toISOString(),
       },
@@ -409,6 +415,8 @@ export async function PUT(request: NextRequest) {
       leverage = 3,
       margin,
       mode = 'HEDGED', // Default to HEDGED mode for backward compatibility
+      takeProfitPercent,
+      stopLossPercent,
     } = body;
 
     console.log('[FundingArbitrageAPI] Updating subscription with margin:', {
@@ -580,6 +588,8 @@ export async function PUT(request: NextRequest) {
         leverage,
         margin,
         mode, // Pass mode to service
+        takeProfitPercent,
+        stopLossPercent,
       });
 
       return NextResponse.json(

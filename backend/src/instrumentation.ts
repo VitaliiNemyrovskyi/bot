@@ -21,6 +21,11 @@ export async function register() {
       const { bybitFundingStrategyService } = await import('@/services/bybit-funding-strategy.service');
       await bybitFundingStrategyService.initialize();
       console.log('[Instrumentation] Bybit funding strategy service initialized');
+
+      // Initialize graduated entry arbitrage service to restore active positions
+      const { graduatedEntryArbitrageService } = await import('@/services/graduated-entry-arbitrage.service');
+      await graduatedEntryArbitrageService.initialize();
+      console.log('[Instrumentation] Graduated entry arbitrage service initialized');
     } catch (error: any) {
       console.error('[Instrumentation] Error initializing services:', error.message);
     }

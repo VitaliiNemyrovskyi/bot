@@ -111,6 +111,44 @@ export interface FundingArbitrageRevenueResponse {
 }
 
 /**
+ * Subscribe to Hedged Arbitrage Request Parameters
+ */
+export interface FundingArbitrageSubscribeRequest {
+  symbol: string;
+  fundingRate: number;
+  nextFundingTime: number;
+  positionType: 'long' | 'short';
+  quantity: number;
+  primaryCredentialId: string;
+  hedgeExchange: string;
+  hedgeCredentialId: string;
+  leverage: number;
+  margin: number;
+  mode: 'HEDGED';
+}
+
+/**
+ * Subscribe Response
+ */
+export interface FundingArbitrageSubscribeResponse {
+  success: boolean;
+  data: {
+    subscriptionId: string;
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: number;
+    positionType: string;
+    quantity: number;
+    leverage: number;
+    margin: number;
+    status: string;
+    createdAt: string;
+  };
+  message: string;
+  timestamp: string;
+}
+
+/**
  * Funding Arbitrage Service
  *
  * Handles all funding arbitrage revenue operations including:
@@ -188,6 +226,22 @@ export class FundingArbitrageService {
       filters.endDate,
       filters.exchange || undefined,
       filters.symbol || undefined
+    );
+  }
+
+  /**
+   * Subscribe to funding arbitrage (start hedged arbitrage position)
+   * @param request - Subscription request parameters
+   * @returns Observable<FundingArbitrageSubscribeResponse>
+   */
+  subscribe(request: FundingArbitrageSubscribeRequest): Observable<FundingArbitrageSubscribeResponse> {
+    const url = getEndpointUrl('fundingArbitrage', 'subscribe');
+
+    return this.http.post<FundingArbitrageSubscribeResponse>(url, request).pipe(
+      catchError(error => {
+        const errorMessage = this.handleError(error);
+        return throwError(() => new Error(errorMessage));
+      })
     );
   }
 

@@ -16,11 +16,9 @@ import {
 import {
   ExchangeCredential,
   ExchangeType,
-  EnvironmentType,
   getExchangeName,
   getExchangeLogo,
-  EXCHANGE_METADATA,
-  ENVIRONMENT_METADATA
+  EXCHANGE_METADATA
 } from '../../models/exchange-credentials.model';
 import { TranslationService } from '../../services/translation.service';
 
@@ -89,13 +87,6 @@ export class TradingPlatformInfoModalComponent implements OnInit, OnDestroy {
   readonly exchangeName = computed(() => getExchangeName(this.credential().exchange));
   readonly exchangeLogo = computed(() => getExchangeLogo(this.credential().exchange));
   readonly exchangeColor = computed(() => EXCHANGE_METADATA[this.credential().exchange]?.color);
-  readonly isTestnet = computed(() => this.credential().environment === EnvironmentType.TESTNET);
-  readonly environmentName = computed(() =>
-    this.credential().environment === EnvironmentType.TESTNET ? 'Testnet' : 'Mainnet'
-  );
-  readonly environmentColor = computed(() =>
-    ENVIRONMENT_METADATA[this.credential().environment]?.color
-  );
 
   readonly totalEquity = computed(() => {
     const info = this.userInfo();

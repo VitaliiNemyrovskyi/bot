@@ -14,7 +14,6 @@ export interface CachedConnectorState extends ConnectorState {
   userId: string;
   credentialId: string;
   exchange: string;
-  environment: string;
   expiresAt: Date;
   hitCount: number;
 }
@@ -96,7 +95,6 @@ export class ConnectorStateCacheService {
     userId: string,
     credentialId: string,
     exchange: string,
-    environment: string,
     state: ConnectorState,
     ttlMs: number = this.DEFAULT_TTL_MS
   ): Promise<void> {
@@ -112,7 +110,6 @@ export class ConnectorStateCacheService {
           userId,
           credentialId,
           exchange,
-          environment,
           timeOffset: state.timeOffset,
           lastSyncTime: state.lastSyncTime,
           expiresAt,
@@ -188,7 +185,6 @@ export class ConnectorStateCacheService {
         userId: cache.userId,
         credentialId: cache.credentialId,
         exchange: cache.exchange,
-        environment: cache.environment,
         timeOffset: cache.timeOffset,
         lastSyncTime: cache.lastSyncTime,
         expiresAt: cache.expiresAt,

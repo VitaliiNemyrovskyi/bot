@@ -72,7 +72,7 @@ export class PriceArbitrageService {
    * @returns Observable of the created position
    */
   startArbitrage(params: StartPriceArbitrageParams): Observable<PriceArbitragePositionDTO> {
-    const url = getEndpointUrl('arbitrage', 'positions/start');
+    const url = getEndpointUrl('arbitrage', 'startPosition');
 
     return this.http.post<PriceArbitragePositionResponse>(url, params, {
       headers: this.getHeaders()

@@ -22,8 +22,10 @@ export interface FundingSubscription {
   leverage?: number; // Leverage multiplier (1-125, recommended 1-20, default: 3)
   margin?: number; // Margin/collateral used for this position (in USDT)
   mode?: 'HEDGED' | 'NON_HEDGED'; // Arbitrage mode (default: HEDGED)
-  takeProfit?: number; // Take-profit percentage (e.g., 0.5 = 0.5% profit target)
-  stopLoss?: number; // Stop-loss percentage (e.g., 0.3 = 0.3% maximum loss)
+  takeProfit?: number; // [LEGACY] Take-profit percentage (e.g., 0.5 = 0.5% profit target)
+  stopLoss?: number; // [LEGACY] Stop-loss percentage (e.g., 0.3 = 0.3% maximum loss)
+  takeProfitPercent?: number; // Take-profit as % of expected funding (e.g., 90 = 90% of funding)
+  stopLossPercent?: number; // Stop-loss as % of expected funding (e.g., 20 = 20% of funding)
   // Execution tracking fields (cleared after each cycle for recurring subscriptions)
   entryPrice?: number | null;
   hedgeEntryPrice?: number | null;
@@ -335,6 +337,8 @@ export class FundingArbitrageService extends EventEmitter {
     leverage?: number;
     margin?: number;
     mode?: 'HEDGED' | 'NON_HEDGED'; // Default: HEDGED
+    takeProfitPercent?: number;
+    stopLossPercent?: number;
   }): Promise<FundingSubscription> {
     // Save to database first (default leverage: 3x if not provided)
     const leverage = params.leverage ?? 3;
@@ -364,6 +368,8 @@ export class FundingArbitrageService extends EventEmitter {
         primaryCredentialId: params.primaryCredentialId || '',
         hedgeExchange: mode === 'HEDGED' && params.hedgeExchange ? params.hedgeExchange.exchangeName : null,
         hedgeCredentialId: params.hedgeCredentialId,
+        takeProfitPercent: params.takeProfitPercent,
+        stopLossPercent: params.stopLossPercent,
         status: 'ACTIVE',
       },
     });
@@ -386,6 +392,8 @@ export class FundingArbitrageService extends EventEmitter {
       leverage,
       margin,
       mode,
+      takeProfitPercent: params.takeProfitPercent,
+      stopLossPercent: params.stopLossPercent,
     };
 
     // Cache connectors for instant execution later
@@ -441,6 +449,8 @@ export class FundingArbitrageService extends EventEmitter {
     leverage?: number;
     margin?: number;
     mode?: 'HEDGED' | 'NON_HEDGED'; // Default: HEDGED
+    takeProfitPercent?: number;
+    stopLossPercent?: number;
   }): Promise<FundingSubscription> {
     const mode = params.mode || 'HEDGED';
     console.log(`[FundingArbitrage] Creating ${mode} subscription with credential caching...`);
@@ -521,6 +531,8 @@ export class FundingArbitrageService extends EventEmitter {
       leverage: params.leverage,
       margin: params.margin,
       mode,
+      takeProfitPercent: params.takeProfitPercent,
+      stopLossPercent: params.stopLossPercent,
     });
   }
 
@@ -1003,6 +1015,30 @@ export class FundingArbitrageService extends EventEmitter {
         return; // Not an error - leverage is already correct
       }
 
+      // BingX rate limiting (code 100410) - non-fatal, subscription can proceed with current leverage
+      if (error.message.includes('code:100410') || error.message.includes('disabled period')) {
+        console.warn(
+          `[FundingArbitrage] ⚠️ BingX rate limiting detected for ${symbol}. ` +
+          `Skipping leverage change for now. Subscription will use current leverage setting. ` +
+          `Error: ${error.message}`
+        );
+        return; // Non-fatal - allow subscription to proceed
+      }
+
+      // Generic rate limiting or temporary errors - non-fatal
+      if (
+        error.message.toLowerCase().includes('rate limit') ||
+        error.message.toLowerCase().includes('too many requests') ||
+        error.message.toLowerCase().includes('fetch failed') ||
+        error.message.toLowerCase().includes('timeout')
+      ) {
+        console.warn(
+          `[FundingArbitrage] ⚠️ Temporary error setting leverage on ${exchangeName}: ${error.message}. ` +
+          `Subscription will use current leverage setting.`
+        );
+        return; // Non-fatal - allow subscription to proceed
+      }
+
       // If error is about existing positions, provide helpful context
       if (error.message.toLowerCase().includes('position')) {
         throw new Error(
@@ -1153,7 +1189,7 @@ export class FundingArbitrageService extends EventEmitter {
         primarySide,
         primaryQuantity,
       });
-      console.log(`[FundingArbitrage] NON_HEDGED mode: Single position will be closed using fast strategies (2-8s)`);
+      console.log(`[FundingArbitrage] NON_HEDGED mode: Single position will be managed with TP/SL conditional orders`);
     }
 
     // STEP 0: Synchronize leverage BEFORE opening positions
@@ -1209,11 +1245,62 @@ export class FundingArbitrageService extends EventEmitter {
       exchange: primaryExchange.exchangeName,
     });
 
-    // 2. Execute PRIMARY order FIRST (to receive funding)
+    // 2. Get TP/SL percentages if configured (for NON_HEDGED mode with BingX atomic order)
+    // BingX connector will fetch current price and calculate TP/SL prices automatically
+    let takeProfitPercent: number | undefined = undefined;
+    let stopLossPercent: number | undefined = undefined;
+    const hasTpSl = subscription.takeProfitPercent || subscription.stopLossPercent ||
+                    subscription.takeProfit || subscription.stopLoss;
+
+    if (subscriptionMode === 'NON_HEDGED' && hasTpSl) {
+      // Use new fields (takeProfitPercent/stopLossPercent) if available, otherwise fall back to legacy fields
+      takeProfitPercent = subscription.takeProfitPercent ?? subscription.takeProfit;
+      stopLossPercent = subscription.stopLossPercent ?? subscription.stopLoss;
+
+      console.log(`[FundingArbitrage] TP/SL percentages for order:`, {
+        takeProfitPercent,
+        stopLossPercent,
+      });
+    }
+
+    // 3. Execute PRIMARY order FIRST (to receive funding)
     console.log(`[FundingArbitrage] 📊 Opening PRIMARY position (will receive funding)...`);
     const primaryOrderStartTime = Date.now();
 
-    const primaryOrder = await primaryExchange.placeMarketOrder(primarySymbol, primarySide, primaryQuantity);
+    let primaryOrder: any;
+    const isBingX = primaryExchange.exchangeName.includes('BINGX');
+
+    // Use atomic order with TP/SL for BingX if TP/SL is configured
+    console.log(`[FundingArbitrage] 🔍 Checking TP/SL conditions:`, {
+      isBingX,
+      subscriptionMode,
+      takeProfitPercent,
+      stopLossPercent,
+      willUseTpSl: isBingX && subscriptionMode === 'NON_HEDGED' && (takeProfitPercent || stopLossPercent)
+    });
+
+    if (isBingX && subscriptionMode === 'NON_HEDGED' && (takeProfitPercent || stopLossPercent)) {
+      console.log(`[FundingArbitrage] ✅ Using atomic order with TP/SL for BingX...`);
+      console.log(`[FundingArbitrage] 📤 Calling placeMarketOrderWithTPSL with:`, {
+        symbol: primarySymbol,
+        side: primarySide,
+        quantity: primaryQuantity,
+        takeProfitPercent,
+        stopLossPercent
+      });
+
+      primaryOrder = await (primaryExchange as any).placeMarketOrderWithTPSL(
+        primarySymbol,
+        primarySide,
+        primaryQuantity,
+        takeProfitPercent,
+        stopLossPercent
+      );
+    } else {
+      console.log(`[FundingArbitrage] ⚠️ Using standard market order (no TP/SL)`);
+      // Standard market order for other exchanges or when no TP/SL
+      primaryOrder = await primaryExchange.placeMarketOrder(primarySymbol, primarySide, primaryQuantity);
+    }
 
     const primaryOrderTime = Date.now() - primaryOrderStartTime;
     console.log(`[FundingArbitrage] ✓ Primary order executed in ${primaryOrderTime}ms`);
@@ -1767,36 +1854,57 @@ export class FundingArbitrageService extends EventEmitter {
 
       // ========== SET TAKE-PROFIT / STOP-LOSS ORDERS ==========
       // Use TP/SL if configured, otherwise fall back to time-based close
-      if (subscription.takeProfit || subscription.stopLoss) {
+      // Check BOTH new (takeProfitPercent/stopLossPercent) and legacy (takeProfit/stopLoss) fields
+      const hasTpSl = subscription.takeProfitPercent || subscription.stopLossPercent ||
+                      subscription.takeProfit || subscription.stopLoss;
+
+      if (hasTpSl) {
         console.log(`[FundingArbitrage] Setting up TP/SL orders for NON_HEDGED mode...`);
 
         try {
+          // Use new fields (takeProfitPercent/stopLossPercent) if available, otherwise fall back to legacy fields
+          const tpPercent = subscription.takeProfitPercent ?? subscription.takeProfit;
+          const slPercent = subscription.stopLossPercent ?? subscription.stopLoss;
+
           // Calculate TP/SL prices based on entry price and percentages
-          const takeProfitPrice = subscription.takeProfit
-            ? entryPrice * (1 + (positionType === 'long' ? subscription.takeProfit : -subscription.takeProfit) / 100)
+          const takeProfitPrice = tpPercent
+            ? entryPrice * (1 + (positionType === 'long' ? tpPercent : -tpPercent) / 100)
             : undefined;
 
-          const stopLossPrice = subscription.stopLoss
-            ? entryPrice * (1 - (positionType === 'long' ? subscription.stopLoss : -subscription.stopLoss) / 100)
+          const stopLossPrice = slPercent
+            ? entryPrice * (1 - (positionType === 'long' ? slPercent : -slPercent) / 100)
             : undefined;
 
           console.log(`[FundingArbitrage] TP/SL prices calculated:`, {
             entryPrice,
             takeProfitPrice: takeProfitPrice?.toFixed(2),
             stopLossPrice: stopLossPrice?.toFixed(2),
-            takeProfitPercent: subscription.takeProfit,
-            stopLossPercent: subscription.stopLoss,
+            takeProfitPercent: tpPercent,
+            stopLossPercent: slPercent,
           });
 
-          // Set TP/SL on the exchange
-          const tpslResult = await primaryExchange.setTradingStop({
-            symbol: primarySymbol,
-            side: primarySide,
-            takeProfit: takeProfitPrice,
-            stopLoss: stopLossPrice,
-          });
+          // Check exchange type for TP/SL implementation
+          const isBingX = primaryExchange.exchangeName.includes('BINGX');
 
-          console.log(`[FundingArbitrage] ✓ TP/SL orders set successfully:`, tpslResult);
+          if (isBingX) {
+            // ========== BingX: TP/SL already set in atomic order ==========
+            console.log(`[FundingArbitrage] ✓ BingX TP/SL already set in atomic order (no separate orders needed)`);
+            // TP/SL was set atomically with the market order, no additional orders needed
+
+          } else {
+            // ========== Bybit/Other: Use setTradingStop ==========
+            console.log(`[FundingArbitrage] Using native setTradingStop for ${primaryExchange.exchangeName}...`);
+
+            const tpslResult = await primaryExchange.setTradingStop({
+              symbol: primarySymbol,
+              side: primarySide,
+              takeProfit: takeProfitPrice,
+              stopLoss: stopLossPrice,
+            });
+
+            console.log(`[FundingArbitrage] ✓ TP/SL orders set successfully:`, tpslResult);
+          }
+
           console.log(`[FundingArbitrage] Position will close automatically when TP or SL is hit`);
 
           // Set up monitoring for TP/SL fills
@@ -2801,7 +2909,7 @@ export class FundingArbitrageService extends EventEmitter {
       const startTime = Date.now();
 
       let primaryConnector: BaseExchangeConnector;
-      let hedgeConnector: BaseExchangeConnector;
+      let hedgeConnector: BaseExchangeConnector | undefined;
 
       try {
         // Fast path: use cached connectors
@@ -2811,23 +2919,34 @@ export class FundingArbitrageService extends EventEmitter {
           false // Use cached if available
         );
 
-        if (!dbSub.hedgeCredentialId) {
-          throw new Error(`No hedge credential for subscription ${dbSub.id}`);
+        // Get subscription mode (default to HEDGED for backwards compatibility)
+        const subscriptionMode = dbSub.mode || 'HEDGED';
+
+        // Only initialize hedge connector if in HEDGED mode
+        if (subscriptionMode === 'HEDGED') {
+          if (!dbSub.hedgeCredentialId) {
+            throw new Error(`No hedge credential for HEDGED subscription ${dbSub.id}`);
+          }
+
+          hedgeConnector = await this.getOrCreateConnector(
+            dbSub.userId,
+            dbSub.hedgeCredentialId,
+            false // Use cached if available
+          );
+        } else {
+          // NON_HEDGED mode: no hedge connector needed
+          console.log(`[FundingArbitrage] NON_HEDGED mode - skipping hedge connector initialization`);
+          hedgeConnector = undefined;
         }
 
-        hedgeConnector = await this.getOrCreateConnector(
-          dbSub.userId,
-          dbSub.hedgeCredentialId,
-          false // Use cached if available
-        );
-
         const loadTime = Date.now() - startTime;
-        console.log(`[FundingArbitrage] ✓ Connectors loaded in ${loadTime}ms (cached: ${loadTime < 1000})`);
+        console.log(`[FundingArbitrage] ✓ Connectors loaded in ${loadTime}ms (mode: ${subscriptionMode}, cached: ${loadTime < 1000})`);
       } catch (error: any) {
         throw new Error(`Failed to initialize connectors: ${error.message}`);
       }
 
       // Recreate subscription object
+      const subscriptionMode = dbSub.mode || 'HEDGED';
       subscription = {
         id: dbSub.id,
         symbol: dbSub.symbol,
@@ -2844,6 +2963,11 @@ export class FundingArbitrageService extends EventEmitter {
         hedgeCredentialId: dbSub.hedgeCredentialId || undefined,
         leverage: dbSub.leverage,
         margin: dbSub.margin || undefined,
+        mode: subscriptionMode,
+        takeProfit: dbSub.takeProfit || undefined,
+        stopLoss: dbSub.stopLoss || undefined,
+        takeProfitPercent: dbSub.takeProfitPercent || undefined,
+        stopLossPercent: dbSub.stopLossPercent || undefined,
       };
 
       // Add subscription references to cached connectors

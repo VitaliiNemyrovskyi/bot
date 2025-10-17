@@ -8,7 +8,6 @@ export interface MEXCConfig {
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (optional, overrides API key/secret if provided)
-  testnet?: boolean;
   enableRateLimit?: boolean;
 }
 

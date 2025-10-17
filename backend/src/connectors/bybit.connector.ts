@@ -10,20 +10,28 @@ export class BybitConnector extends BaseExchangeConnector {
   private bybitService: BybitService;
   private apiKey: string;
   private apiSecret: string;
-  private testnet: boolean;
+  private userId?: string;
+  private credentialId?: string;
 
-  constructor(apiKey: string, apiSecret: string, testnet: boolean = true) {
+  constructor(
+    apiKey: string,
+    apiSecret: string,
+    userId?: string,
+    credentialId?: string
+  ) {
     super();
-    this.exchangeName = testnet ? 'BYBIT_TESTNET' : 'BYBIT';
+    this.exchangeName = 'BYBIT';
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
-    this.testnet = testnet;
+    this.userId = userId;
+    this.credentialId = credentialId;
 
     this.bybitService = new BybitService({
       apiKey,
       apiSecret,
-      testnet,
       enableRateLimit: true,
+      userId,
+      credentialId,
     });
   }
 
@@ -31,7 +39,7 @@ export class BybitConnector extends BaseExchangeConnector {
    * Initialize Bybit connection
    */
   async initialize(): Promise<void> {
-    console.log(`[BybitConnector] Initializing Bybit connector (testnet: ${this.testnet})...`);
+    console.log('[BybitConnector] Initializing Bybit connector...');
 
     try {
       // Synchronize time with Bybit server
@@ -335,6 +343,24 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get all positions or positions for a specific symbol
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    try {
+      const positions = await this.bybitService.getPositions('linear', symbol);
+      console.log('[BybitConnector] Positions retrieved:', positions.length);
+      return positions;
+    } catch (error: any) {
+      console.error('[BybitConnector] Error getting positions:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get order status
    */
   async getOrderStatus(orderId: string): Promise<any> {
@@ -360,21 +386,50 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
-   * Close position
+   * Close position using direct Bybit API
+   *
+   * Fetches current position and places a reduce-only market order
+   * to close it completely.
    */
   async closePosition(symbol: string): Promise<any> {
-    console.log(`[BybitConnector] Closing position for ${symbol}`);
+    console.log(`[BybitConnector] ========================================`);
+    console.log(`[BybitConnector] CLOSING POSITION for ${symbol}`);
+    console.log(`[BybitConnector] ========================================`);
 
     if (!this.isInitialized) {
       throw new Error('Bybit connector not initialized');
     }
 
     try {
-      const result = await this.bybitService.closePosition('linear', symbol, 'Buy');
-      console.log('[BybitConnector] Position closed:', result);
-      return result;
+      // Get current position
+      const position = await this.getPosition(symbol);
+
+      if (!position || position.side === 'None' || parseFloat(position.size) === 0) {
+        console.log(`[BybitConnector] No open position found for ${symbol}`);
+        return { success: true, message: 'No open positions to close' };
+      }
+
+      // Determine close side (opposite of position side)
+      const closeSide: OrderSide = position.side === 'Buy' ? 'Sell' : 'Buy';
+      const quantity = Math.abs(parseFloat(position.size));
+
+      console.log(`[BybitConnector] Position details:`, {
+        side: position.side,
+        size: position.size,
+        closeSide,
+        quantity
+      });
+
+      // Place reduce-only market order to close position
+      const result = await this.placeReduceOnlyOrder(symbol, closeSide, quantity);
+
+      console.log(`[BybitConnector] ✓ Position closed successfully:`, result);
+      console.log(`[BybitConnector] ========================================`);
+
+      return { success: true, order: result };
     } catch (error: any) {
-      console.error('[BybitConnector] Error closing position:', error.message);
+      console.error(`[BybitConnector] ✗ Error closing position:`, error.message);
+      console.error(`[BybitConnector] ========================================`);
       throw error;
     }
   }

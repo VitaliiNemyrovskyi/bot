@@ -73,6 +73,7 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.clearSort': 'Clear Sort',
     'fundingRates.actions.viewTradeHistory': 'View Trade History',
     'fundingRates.actions.viewAllHistory': 'Trade History',
+    'fundingRates.actions.viewChart': 'View Chart',
 
     // Active Subscriptions
     'fundingRates.subscriptions.title': 'Active Funding Subscriptions',
@@ -90,6 +91,16 @@ export const fundingRatesTranslations = {
     'fundingRates.deals.fundingEarned': 'Funding Earned',
     'fundingRates.deals.realizedPnl': 'Realized P&L',
     'fundingRates.deals.executed': 'Executed',
+
+    // Bybit Funding Strategies
+    'fundingRates.bybitStrategies.title': 'Active Bybit Funding Strategies',
+    'fundingRates.bybitStrategies.status': 'Status',
+    'fundingRates.bybitStrategies.side': 'Side',
+    'fundingRates.bybitStrategies.leverage': 'Leverage',
+    'fundingRates.bybitStrategies.entryPrice': 'Entry',
+    'fundingRates.bybitStrategies.positionSize': 'Position',
+    'fundingRates.bybitStrategies.nextFunding': 'Next Funding',
+    'fundingRates.bybitStrategies.actions.stop': 'Stop',
 
     // Subscribe Dialog
     'fundingRates.dialog.title': 'Subscribe to Funding Arbitrage',
@@ -178,6 +189,12 @@ export const fundingRatesTranslations = {
     // Arbitrage Table (Additional)
     'arbitrage.table.funding': 'Funding',
     'arbitrage.table.position': 'Position',
+    'arbitrage.table.fundingPeriodicity': 'Funding Periodicity',
+    'arbitrage.table.fundingSpread': 'Funding Spread',
+    'arbitrage.table.primaryExchange': 'Primary Exchange',
+    'arbitrage.table.hedgeExchange': 'Hedge Exchange',
+    'arbitrage.table.spread': 'Spread',
+    'arbitrage.table.opportunity': 'Opportunity',
 
     // Hedged Mode Dialog
     'fundingRates.hedged.title': 'Start Hedged Arbitrage',
@@ -190,6 +207,58 @@ export const fundingRatesTranslations = {
     // Additional Settings
     'fundingRates.settings.arbitrageSpreadThreshold': 'Min Spread for HEDGED Mode (%)',
     'fundingRates.settings.arbitrageSpreadThresholdHelp': 'Minimum spread threshold for hedged arbitrage opportunities (default: no filter)',
+
+    // Market Cap Filter
+    'fundingRates.filters.marketCapFilter': 'Market Cap Filter',
+    'fundingRates.filters.allMarketCaps': 'All Market Caps',
+    'fundingRates.filters.marketCap100K': '100K and more',
+    'fundingRates.filters.marketCap200K': '200K and more',
+    'fundingRates.filters.marketCap500K': '500K and more',
+    'fundingRates.filters.marketCap1M': '1M and more',
+    'fundingRates.filters.marketCap10M': '10M and more',
+    'fundingRates.filters.marketCap50M': '50M and more',
+    'fundingRates.filters.marketCap100M': '100M and more',
+    'fundingRates.filters.marketCap500M': '500M and more',
+    'fundingRates.filters.marketCap1B': '1B and more',
+    'fundingRates.filters.marketCap5B': '5B and more',
+    'fundingRates.filters.marketCap10B': '10B and more',
+    'fundingRates.filters.marketCap50B': '50B and more',
+    'fundingRates.filters.marketCap100B': '100B and more',
+
+    // Expandable Rows
+    'fundingRates.actions.expand': 'Expand',
+    'fundingRates.actions.collapse': 'Collapse',
+    'fundingRates.sections.regularSubscription': 'Regular Funding Subscription',
+    'fundingRates.sections.bybitStrategies': 'Bybit Funding Strategies',
+    'fundingRates.sections.hedgedArbitrage': 'Hedged Arbitrage',
+    'fundingRates.sections.tickerDetails': 'Ticker Details',
+    'fundingRates.sections.allExchanges': 'Funding Rates on All Exchanges',
+    'fundingRates.labels.status': 'Status',
+    'fundingRates.labels.side': 'Side',
+    'fundingRates.labels.quantity': 'Quantity',
+    'fundingRates.labels.leverage': 'Leverage',
+    'fundingRates.labels.mode': 'Mode',
+    'fundingRates.labels.margin': 'Margin',
+    'fundingRates.labels.takeProfit': 'Take Profit',
+    'fundingRates.labels.stopLoss': 'Stop Loss',
+    'fundingRates.labels.pnl': 'P&L',
+    'fundingRates.labels.primary': 'Primary',
+    'fundingRates.labels.hedge': 'Hedge',
+    'fundingRates.labels.exchange': 'Exchange',
+    'fundingRates.labels.fundingRate': 'Funding Rate',
+    'fundingRates.labels.nextFunding': 'Next Funding',
+    'fundingRates.labels.countdown': 'Countdown',
+    'fundingRates.labels.price': 'Price',
+    'fundingRates.actions.stop': 'Stop',
+
+    // Ticker Details
+    'fundingRates.details.indexPrice': 'Index Price',
+    'fundingRates.details.markPrice': 'Mark Price',
+    'fundingRates.details.high24h': '24h High',
+    'fundingRates.details.low24h': '24h Low',
+    'fundingRates.details.openInterest': 'Open Interest',
+    'fundingRates.details.volume24h': 'Volume 24h',
+    'fundingRates.details.turnover24h': 'Turnover 24h',
   },
 
   uk: {
@@ -259,6 +328,7 @@ export const fundingRatesTranslations = {
     'fundingRates.actions.clearSort': 'Очистити Сортування',
     'fundingRates.actions.viewTradeHistory': 'Історія Трейдів',
     'fundingRates.actions.viewAllHistory': 'Історія Трейдів',
+    'fundingRates.actions.viewChart': 'Переглянути Графік',
 
     // Active Subscriptions
     'fundingRates.subscriptions.title': 'Активні Підписки на Фінансування',
@@ -276,6 +346,16 @@ export const fundingRatesTranslations = {
     'fundingRates.deals.fundingEarned': 'Зароблено Фінансування',
     'fundingRates.deals.realizedPnl': 'Реалізований P&L',
     'fundingRates.deals.executed': 'Виконано',
+
+    // Bybit Funding Strategies
+    'fundingRates.bybitStrategies.title': 'Активні Стратегії Фандингу Bybit',
+    'fundingRates.bybitStrategies.status': 'Статус',
+    'fundingRates.bybitStrategies.side': 'Сторона',
+    'fundingRates.bybitStrategies.leverage': 'Плече',
+    'fundingRates.bybitStrategies.entryPrice': 'Вхід',
+    'fundingRates.bybitStrategies.positionSize': 'Позиція',
+    'fundingRates.bybitStrategies.nextFunding': 'Наступне Фінансування',
+    'fundingRates.bybitStrategies.actions.stop': 'Зупинити',
 
     // Subscribe Dialog
     'fundingRates.dialog.title': 'Підписка на Арбітраж Фінансування',
@@ -364,6 +444,12 @@ export const fundingRatesTranslations = {
     // Arbitrage Table (Additional)
     'arbitrage.table.funding': 'Фандинг',
     'arbitrage.table.position': 'Позиція',
+    'arbitrage.table.fundingPeriodicity': 'Періодичність Фандингу',
+    'arbitrage.table.fundingSpread': 'Спред Фандингу',
+    'arbitrage.table.primaryExchange': 'Основна Біржа',
+    'arbitrage.table.hedgeExchange': 'Хедж Біржа',
+    'arbitrage.table.spread': 'Спред',
+    'arbitrage.table.opportunity': 'Можливість',
 
     // Hedged Mode Dialog
     'fundingRates.hedged.title': 'Почати Хеджований Арбітраж',
@@ -376,5 +462,313 @@ export const fundingRatesTranslations = {
     // Additional Settings
     'fundingRates.settings.arbitrageSpreadThreshold': 'Мін. Спред для ХЕДЖ Режиму (%)',
     'fundingRates.settings.arbitrageSpreadThresholdHelp': 'Мінімальний поріг спреду для хеджованих можливостей арбітражу (за замовчуванням: без фільтра)',
+
+    // Market Cap Filter
+    'fundingRates.filters.marketCapFilter': 'Фільтр Ринкової Капіталізації',
+    'fundingRates.filters.allMarketCaps': 'Всі Капіталізації',
+    'fundingRates.filters.marketCap100K': '100тис і більше',
+    'fundingRates.filters.marketCap200K': '200тис і більше',
+    'fundingRates.filters.marketCap500K': '500тис і більше',
+    'fundingRates.filters.marketCap1M': '1млн і більше',
+    'fundingRates.filters.marketCap10M': '10млн і більше',
+    'fundingRates.filters.marketCap50M': '50млн і більше',
+    'fundingRates.filters.marketCap100M': '100млн і більше',
+    'fundingRates.filters.marketCap500M': '500млн і більше',
+    'fundingRates.filters.marketCap1B': '1млрд і більше',
+    'fundingRates.filters.marketCap5B': '5млрд і більше',
+    'fundingRates.filters.marketCap10B': '10млрд і більше',
+    'fundingRates.filters.marketCap50B': '50млрд і більше',
+    'fundingRates.filters.marketCap100B': '100млрд і більше',
+
+    // Expandable Rows
+    'fundingRates.actions.expand': 'Розгорнути',
+    'fundingRates.actions.collapse': 'Згорнути',
+    'fundingRates.sections.regularSubscription': 'Звичайна Підписка на Фінансування',
+    'fundingRates.sections.bybitStrategies': 'Стратегії Фандингу Bybit',
+    'fundingRates.sections.hedgedArbitrage': 'Хеджований Арбітраж',
+    'fundingRates.sections.tickerDetails': 'Деталі Тікера',
+    'fundingRates.sections.allExchanges': 'Ставки Фінансування на Всіх Біржах',
+    'fundingRates.labels.status': 'Статус',
+    'fundingRates.labels.side': 'Сторона',
+    'fundingRates.labels.quantity': 'Кількість',
+    'fundingRates.labels.leverage': 'Плече',
+    'fundingRates.labels.mode': 'Режим',
+    'fundingRates.labels.margin': 'Маржа',
+    'fundingRates.labels.takeProfit': 'Тейк Профіт',
+    'fundingRates.labels.stopLoss': 'Стоп Лосс',
+    'fundingRates.labels.pnl': 'P&L',
+    'fundingRates.labels.primary': 'Основна',
+    'fundingRates.labels.hedge': 'Хедж',
+    'fundingRates.labels.exchange': 'Біржа',
+    'fundingRates.labels.fundingRate': 'Ставка Фінансування',
+    'fundingRates.labels.nextFunding': 'Наступне Фінансування',
+    'fundingRates.labels.countdown': 'Зворотний Відлік',
+    'fundingRates.labels.price': 'Ціна',
+    'fundingRates.actions.stop': 'Зупинити',
+
+    // Ticker Details
+    'fundingRates.details.indexPrice': 'Індексна Ціна',
+    'fundingRates.details.markPrice': 'Маркувальна Ціна',
+    'fundingRates.details.high24h': 'Макс. 24г',
+    'fundingRates.details.low24h': 'Мін. 24г',
+    'fundingRates.details.openInterest': 'Відкритий Інтерес',
+    'fundingRates.details.volume24h': 'Обсяг 24г',
+    'fundingRates.details.turnover24h': 'Оборот 24г',
+  },
+
+  // Russian translations
+  ru: {
+    // Page Title
+    'fundingRates.title': 'Ставки Финансирования и Арбитраж',
+    'fundingRates.loading': 'Загрузка...',
+    'fundingRates.loading.credentials': 'Загрузка учетных данных...',
+
+    // Exchange Selection
+    'fundingRates.exchange.title': 'Выбор Биржи',
+    'fundingRates.exchange.select': 'Выберите Учетные Данные Биржи',
+    'fundingRates.exchange.noCredentials': 'Нет настроенных учетных данных биржи',
+    'fundingRates.exchange.addCredential': 'Добавить Учетные Данные',
+
+    // Filters
+    'fundingRates.filters.title': 'Фильтры',
+    'fundingRates.filters.collapsed': 'Фильтры свернуты',
+    'fundingRates.filters.search': 'Поиск Символа',
+    'fundingRates.filters.searchPlaceholder': 'напр., BTC, ETH',
+    'fundingRates.filters.positionType': 'Тип Позиции',
+    'fundingRates.filters.all': 'Все',
+    'fundingRates.filters.long': 'Только Лонг',
+    'fundingRates.filters.short': 'Только Шорт',
+    'fundingRates.filters.minFundingRate': 'Мин. Абс. Ставка Финансирования',
+    'fundingRates.filters.maxFundingTime': 'Макс. Время до Финансирования (часы)',
+    'fundingRates.filters.settings': 'Настройки',
+    'fundingRates.filters.allPositions': 'Все Позиции',
+    'fundingRates.filters.longNegative': 'Лонг (Отрицательное Финансирование)',
+    'fundingRates.filters.shortPositive': 'Шорт (Положительное Финансирование)',
+    'fundingRates.filters.absolute': 'абсолютное',
+    'fundingRates.filters.example': 'напр.',
+    'fundingRates.filters.nextFundingWithin': 'Следующее Финансирование В Течение',
+    'fundingRates.filters.hours': 'часов',
+    'fundingRates.filters.clearFilters': 'Очистить Фильтры',
+    'fundingRates.filters.activeFilters': 'Активные Фильтры',
+    'fundingRates.filters.minRate': 'Мин. Ставка',
+    'fundingRates.filters.within': 'В Течение',
+    'fundingRates.filters.multiSortActive': 'Многоуровневая сортировка активна',
+    'fundingRates.filters.sortingBy': 'Сортировка по',
+    'fundingRates.filters.columns': 'столбцам',
+
+    // Table Headers
+    'fundingRates.table.title': 'Ставки Финансирования',
+    'fundingRates.table.collapsed': 'Таблица свернута',
+    'fundingRates.table.symbol': 'Символ',
+    'fundingRates.table.lastPrice': 'Последняя Цена',
+    'fundingRates.table.change24h': 'Изменение 24ч',
+    'fundingRates.table.fundingRate': 'Ставка Финансирования (8ч)',
+    'fundingRates.table.annualizedRate': 'Годовая Ставка',
+    'fundingRates.table.nextFunding': 'Следующее Финансирование',
+    'fundingRates.table.countdown': 'Обратный отсчет',
+    'fundingRates.table.openInterest': 'Открытый Интерес',
+    'fundingRates.table.volume24h': 'Объем 24ч',
+    'fundingRates.table.actions': 'Действия',
+
+    // Actions
+    'fundingRates.actions.subscribe': 'Подписаться',
+    'fundingRates.actions.subscribing': 'Подписка...',
+    'fundingRates.actions.trade': 'Торговать',
+    'fundingRates.actions.refresh': 'Обновить',
+    'fundingRates.actions.startNow': 'Начать Сейчас',
+    'fundingRates.actions.start': 'Начать',
+    'fundingRates.actions.edit': 'Редактировать',
+    'fundingRates.actions.cancel': 'Отменить',
+    'fundingRates.actions.close': 'Закрыть',
+    'fundingRates.actions.save': 'Сохранить',
+    'fundingRates.actions.clearSort': 'Очистить Сортировку',
+    'fundingRates.actions.viewTradeHistory': 'История Трейдов',
+    'fundingRates.actions.viewAllHistory': 'История Трейдов',
+    'fundingRates.actions.viewChart': 'Посмотреть График',
+
+    // Active Subscriptions
+    'fundingRates.subscriptions.title': 'Активные Подписки на Финансирование',
+    'fundingRates.subscriptions.type': 'Тип',
+    'fundingRates.subscriptions.rate': 'Ставка',
+    'fundingRates.subscriptions.quantity': 'Кол-во',
+    'fundingRates.subscriptions.executing': 'Выполняется...',
+
+    // Completed Deals
+    'fundingRates.deals.title': 'Завершенные Сделки',
+    'fundingRates.deals.fundingRate': 'Ставка Финансирования',
+    'fundingRates.deals.quantity': 'Количество',
+    'fundingRates.deals.entryPrice': 'Цена Входа',
+    'fundingRates.deals.hedgeEntry': 'Вход Хеджа',
+    'fundingRates.deals.fundingEarned': 'Заработано Финансирование',
+    'fundingRates.deals.realizedPnl': 'Реализованный P&L',
+    'fundingRates.deals.executed': 'Выполнено',
+
+    // Bybit Funding Strategies
+    'fundingRates.bybitStrategies.title': 'Активные Стратегии Фандинга Bybit',
+    'fundingRates.bybitStrategies.status': 'Статус',
+    'fundingRates.bybitStrategies.side': 'Сторона',
+    'fundingRates.bybitStrategies.leverage': 'Плечо',
+    'fundingRates.bybitStrategies.entryPrice': 'Вход',
+    'fundingRates.bybitStrategies.positionSize': 'Позиция',
+    'fundingRates.bybitStrategies.nextFunding': 'Следующее Финансирование',
+    'fundingRates.bybitStrategies.actions.stop': 'Остановить',
+
+    // Subscribe Dialog
+    'fundingRates.dialog.title': 'Подписка на Арбитраж Финансирования',
+    'fundingRates.dialog.symbol': 'Символ',
+    'fundingRates.dialog.fundingRate': 'Ставка Финансирования (8ч)',
+    'fundingRates.dialog.annualRate': 'Годовая Ставка',
+    'fundingRates.dialog.nextFunding': 'Следующее Финансирование',
+    'fundingRates.dialog.strategy': 'Стратегия',
+    'fundingRates.dialog.quantity': 'Количество',
+    'fundingRates.dialog.estimatedFunding': 'Ожидаемый Платеж Финансирования',
+    'fundingRates.dialog.perCycle': 'за цикл',
+    'fundingRates.dialog.positionType': 'Тип Позиции',
+    'fundingRates.dialog.longReceive': 'ЛОНГ (Получать Финансирование)',
+    'fundingRates.dialog.shortReceive': 'ШОРТ (Получать Финансирование)',
+    'fundingRates.dialog.amountToTrade': 'Количество для торговли на каждой бирже',
+    'fundingRates.dialog.currentLeverage': 'Текущая настройка плеча',
+    'fundingRates.dialog.changeIn': 'Изменить в',
+    'fundingRates.dialog.warning': 'Это откроет позиции на обеих биржах за 5 секунд до финансирования',
+    'fundingRates.dialog.primary': 'Основная',
+    'fundingRates.dialog.hedge': 'Хедж',
+    'fundingRates.dialog.mockExchange': 'Тестовая Биржа (для тестирования)',
+    'fundingRates.dialog.coins': 'монет',
+    'fundingRates.dialog.seconds': 'секунд',
+    'fundingRates.dialog.activeSubscription': 'Активная Подписка',
+    'fundingRates.dialog.status': 'Статус',
+    'fundingRates.dialog.timeRemaining': 'Осталось Времени',
+    'fundingRates.dialog.useSubscribeButton': 'Нажмите кнопку "Подписаться" в колонке Действия для создания подписки.',
+    'fundingRates.dialog.loadingBalances': 'Загрузка балансов...',
+    'fundingRates.dialog.positionsToOpen': 'Позиции для Открытия',
+    'fundingRates.dialog.primaryPosition': 'Позиция на Основной Бирже',
+    'fundingRates.dialog.hedgePosition': 'Позиция на Хедж Бирже',
+    'fundingRates.dialog.balance': 'Баланс',
+
+    // Settings Dialog
+    'fundingRates.settings.title': 'Настройки Подписки',
+    'fundingRates.settings.defaultQuantity': 'Количество по Умолчанию',
+    'fundingRates.settings.leverage': 'Плечо',
+    'fundingRates.settings.executionDelay': 'Задержка Выполнения',
+    'fundingRates.settings.executionDelayHelp': 'Выполнять ордера за столько секунд до времени финансирования (1-60 секунд)',
+    'fundingRates.settings.autoCancel': 'Настройки Авто-Отмены',
+    'fundingRates.settings.enableAutoCancel': 'Включить Авто-Отмену',
+    'fundingRates.settings.autoCancelThreshold': 'Авто-отмена если ставка упадет ниже',
+    'fundingRates.settings.autoCancelHelp': 'Автоматически отменять подписки, когда ставка финансирования упадет ниже порога',
+    'fundingRates.settings.defaultQuantityHelp': 'Количество монет для торговли по умолчанию при подписке',
+    'fundingRates.settings.leverageHelp': 'Множитель плеча (1x - 100x). Примечание: Выше плечо = выше риск',
+    'fundingRates.settings.autoCancelThresholdHelp': 'Отменить подписку, если абсолютная ставка финансирования упадет ниже этого значения (напр., 0.01 = 1%)',
+
+    // Messages
+    'fundingRates.messages.subscriptionCreated': 'Подписка успешно создана!',
+    'fundingRates.messages.subscriptionCanceled': 'Подписка отменена',
+    'fundingRates.messages.subscriptionAlreadyRemoved': 'Подписка уже удалена',
+    'fundingRates.messages.executionStarted': 'Выполнение подписки начато!',
+    'fundingRates.messages.settingsSaved': 'Настройки успешно сохранены',
+    'fundingRates.messages.authRequired': 'Требуется аутентификация',
+    'fundingRates.messages.noCredentialSelected': 'Пожалуйста, сначала выберите учетные данные биржи',
+
+    // Errors
+    'fundingRates.errors.loadFailed': 'Не удалось загрузить ставки финансирования',
+    'fundingRates.errors.subscribeFailed': 'Не удалось создать подписку',
+    'fundingRates.errors.cancelFailed': 'Не удалось отменить подписку',
+    'fundingRates.errors.startFailed': 'Не удалось начать выполнение подписки',
+    'fundingRates.errors.loadCredentialsFailed': 'Не удалось загрузить учетные данные',
+    'fundingRates.errors.loadSubscriptionsFailed': 'Не удалось загрузить подписки',
+
+    // Empty States
+    'fundingRates.empty.noData': 'Нет доступных ставок финансирования. Пожалуйста, выберите учетные данные биржи и обновите.',
+    'fundingRates.empty.noMatches': 'Ни одна ставка финансирования не соответствует вашим фильтрам',
+    'fundingRates.empty.noSubscriptions': 'Нет активных подписок',
+    'fundingRates.empty.noDeals': 'Еще нет завершенных сделок',
+    'fundingRates.empty.noCredentialsHelp': 'Пожалуйста, добавьте свои API учетные данные биржи в Настройках',
+
+    // Info
+    'fundingRates.info.totalPairs': 'Всего Пар',
+    'fundingRates.info.updateInterval': 'Обновляется каждые 30 секунд',
+    'fundingRates.info.positiveFunding': 'Положительное финансирование: Шорты платят лонгам (ШОРТ)',
+    'fundingRates.info.negativeFunding': 'Отрицательное финансирование: Лонги платят шортам (ЛОНГ)',
+    'fundingRates.info.filtered': 'Отфильтровано',
+    'fundingRates.info.exchange': 'Биржа',
+    'fundingRates.info.environment': 'Окружение',
+    'fundingRates.info.pairs': 'пар',
+
+    // Arbitrage Mode
+    'arbitrage.mode.hedged': 'Хедж',
+    'arbitrage.mode.nonHedged': 'Фандинг',
+
+    // Arbitrage Table (Additional)
+    'arbitrage.table.funding': 'Фандинг',
+    'arbitrage.table.position': 'Позиция',
+    'arbitrage.table.fundingPeriodicity': 'Периодичность Фандинга',
+    'arbitrage.table.fundingSpread': 'Спред Фандинга',
+    'arbitrage.table.primaryExchange': 'Основная Биржа',
+    'arbitrage.table.hedgeExchange': 'Хедж Биржа',
+    'arbitrage.table.spread': 'Спред',
+    'arbitrage.table.opportunity': 'Возможность',
+
+    // Hedged Mode Dialog
+    'fundingRates.hedged.title': 'Начать Хеджированный Арбитраж',
+    'fundingRates.hedged.totalMargin': 'Общая Необходимая Маржа',
+    'fundingRates.hedged.note': 'Позиции будут открыты одновременно на обеих биржах без задержек',
+
+    // Additional Dialog Fields
+    'fundingRates.dialog.margin': 'Маржа',
+
+    // Additional Settings
+    'fundingRates.settings.arbitrageSpreadThreshold': 'Мин. Спред для ХЕДЖ Режима (%)',
+    'fundingRates.settings.arbitrageSpreadThresholdHelp': 'Минимальный порог спреда для хеджированных возможностей арбитража (по умолчанию: без фильтра)',
+
+    // Market Cap Filter
+    'fundingRates.filters.marketCapFilter': 'Фильтр Рыночной Капитализации',
+    'fundingRates.filters.allMarketCaps': 'Все Капитализации',
+    'fundingRates.filters.marketCap100K': '100тыс и больше',
+    'fundingRates.filters.marketCap200K': '200тыс и больше',
+    'fundingRates.filters.marketCap500K': '500тыс и больше',
+    'fundingRates.filters.marketCap1M': '1млн и больше',
+    'fundingRates.filters.marketCap10M': '10млн и больше',
+    'fundingRates.filters.marketCap50M': '50млн и больше',
+    'fundingRates.filters.marketCap100M': '100млн и больше',
+    'fundingRates.filters.marketCap500M': '500млн и больше',
+    'fundingRates.filters.marketCap1B': '1млрд и больше',
+    'fundingRates.filters.marketCap5B': '5млрд и больше',
+    'fundingRates.filters.marketCap10B': '10млрд и больше',
+    'fundingRates.filters.marketCap50B': '50млрд и больше',
+    'fundingRates.filters.marketCap100B': '100млрд и больше',
+
+    // Expandable Rows
+    'fundingRates.actions.expand': 'Развернуть',
+    'fundingRates.actions.collapse': 'Свернуть',
+    'fundingRates.sections.regularSubscription': 'Обычная Подписка на Финансирование',
+    'fundingRates.sections.bybitStrategies': 'Стратегии Фандинга Bybit',
+    'fundingRates.sections.hedgedArbitrage': 'Хеджированный Арбитраж',
+    'fundingRates.sections.tickerDetails': 'Детали Тикера',
+    'fundingRates.sections.allExchanges': 'Ставки Финансирования на Всех Биржах',
+    'fundingRates.labels.status': 'Статус',
+    'fundingRates.labels.side': 'Сторона',
+    'fundingRates.labels.quantity': 'Количество',
+    'fundingRates.labels.leverage': 'Плечо',
+    'fundingRates.labels.mode': 'Режим',
+    'fundingRates.labels.margin': 'Маржа',
+    'fundingRates.labels.takeProfit': 'Тейк Профит',
+    'fundingRates.labels.stopLoss': 'Стоп Лосс',
+    'fundingRates.labels.pnl': 'P&L',
+    'fundingRates.labels.primary': 'Основная',
+    'fundingRates.labels.hedge': 'Хедж',
+    'fundingRates.labels.exchange': 'Биржа',
+    'fundingRates.labels.fundingRate': 'Ставка Финансирования',
+    'fundingRates.labels.nextFunding': 'Следующее Финансирование',
+    'fundingRates.labels.countdown': 'Обратный Отсчет',
+    'fundingRates.labels.price': 'Цена',
+    'fundingRates.actions.stop': 'Остановить',
+
+    // Ticker Details
+    'fundingRates.details.indexPrice': 'Индексная Цена',
+    'fundingRates.details.markPrice': 'Маркировочная Цена',
+    'fundingRates.details.high24h': 'Макс. 24ч',
+    'fundingRates.details.low24h': 'Мин. 24ч',
+    'fundingRates.details.openInterest': 'Открытый Интерес',
+    'fundingRates.details.volume24h': 'Объем 24ч',
+    'fundingRates.details.turnover24h': 'Оборот 24ч',
   }
 };

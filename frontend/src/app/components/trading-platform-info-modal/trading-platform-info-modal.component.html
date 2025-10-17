@@ -9,9 +9,6 @@
         <div class="header-title">
           <h2>{{ exchangeName() }} {{ translate('modal.account') }}</h2>
           <div class="header-badges">
-            <span class="env-badge" [class.testnet]="isTestnet()" [style.background-color]="environmentColor()">
-              {{ environmentName() }}
-            </span>
             @if (credential().label) {
               <span class="label-badge">{{ credential().label }}</span>
             }

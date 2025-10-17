@@ -14,7 +14,9 @@
       (input)="onInput($event)"
       (blur)="onBlur()"
     />
+    <span *ngIf="suffix" class="input-suffix">{{ suffix }}</span>
     <span *ngIf="icon && iconPosition === 'right'" [class]="'input-icon input-icon-right ' + icon"></span>
   </div>
+  <div *ngIf="hint && !error" class="input-hint-text">{{ hint }}</div>
   <div *ngIf="error" class="input-error-text">{{ error }}</div>
 </div>

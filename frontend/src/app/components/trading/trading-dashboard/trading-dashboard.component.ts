@@ -456,9 +456,8 @@ export class TradingDashboardComponent implements OnInit, OnDestroy {
    */
   private formatCredentialLabel(credential: ExchangeCredential): string {
     const exchangeName = getExchangeName(credential.exchange);
-    const env = credential.environment === 'TESTNET' ? '🧪 Testnet' : '🔴 Live';
     const label = credential.label ? ` - ${credential.label}` : '';
-    return `${exchangeName} (${env})${label}`;
+    return `${exchangeName}${label}`;
   }
 
   /**
@@ -471,12 +470,6 @@ export class TradingDashboardComponent implements OnInit, OnDestroy {
     const cred = this.selectedCredential();
     console.log('Selected credential:', cred);
     console.log('Chart symbol before load:', this.chartSymbol);
-
-    // Switch WebSocket environment based on credential
-    if (cred && cred.exchange.toUpperCase() === 'BYBIT') {
-      this.bybitService.setWebSocketEnvironment(cred.environment);
-      console.log(`✅ WebSocket environment switched to: ${cred.environment}`);
-    }
 
     this.loadTradingSymbols();
     this.loadAllData();

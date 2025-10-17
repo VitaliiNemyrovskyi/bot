@@ -4,6 +4,179 @@ import { BingXService } from '@/lib/bingx';
 import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 import { CoinGeckoService } from '@/lib/coingecko';
+import { CCXTService } from '@/lib/ccxt-service';
+// CCXT migration for funding rates API
+
+/**
+ * Fetch funding rates from an exchange using CCXT with fallback to legacy services
+ * @param credential - Exchange credential
+ * @param userId - User ID for logging
+ * @returns Exchange funding rates or null on failure
+ */
+async function fetchExchangeFundingRates(
+  credential: any,
+  userId: string
+): Promise<{
+  credentialId: string;
+  exchange: string;
+  environment: string;
+  rates: Array<{
+    symbol: string;
+    originalSymbol?: string;
+    fundingRate: string;
+    nextFundingTime: number;
+    lastPrice: string;
+  }>;
+} | null> {
+  const exchangeUpper = credential.exchange.toUpperCase();
+
+  console.log(`[Arbitrage] Fetching funding rates for ${exchangeUpper} (${credential.environment})`);
+  console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
+
+  // Try CCXT first for all exchanges
+  try {
+    console.log(`[Arbitrage] ${exchangeUpper} - Attempting CCXT fetch`);
+
+    const ccxtService = new CCXTService(credential.exchange.toLowerCase(), {
+      apiKey: credential.apiKey,
+      apiSecret: credential.apiSecret,
+      testnet: credential.environment === 'TESTNET',
+      enableRateLimit: true,
+    });
+
+    await ccxtService.loadMarkets();
+    const fundingRates = await ccxtService.getAllFundingRates();
+
+    console.log(`[Arbitrage] ${exchangeUpper} CCXT - Successfully fetched ${fundingRates.length} funding rates`);
+
+    return {
+      credentialId: credential.id,
+      exchange: credential.exchange,
+      environment: credential.environment,
+      rates: fundingRates.map(r => {
+        // Normalize symbol: remove slashes, special characters, and perpetual contract suffixes
+        // Examples:
+        // BTC/USDT:USDT -> BTCUSDT (remove / and :USDT)
+        // BTC/USDT -> BTCUSDT (remove /)
+        // BTC-USDT -> BTCUSDT (remove -)
+        let normalizedSymbol = r.symbol.replace(/[\/\-_]/g, ''); // Remove slashes, hyphens, underscores
+        normalizedSymbol = normalizedSymbol.replace(/:.*$/, ''); // Remove colon and everything after it (e.g., :USDT)
+        return {
+          symbol: normalizedSymbol,
+          originalSymbol: r.symbol,
+          fundingRate: r.fundingRate,
+          nextFundingTime: r.nextFundingTime,
+          lastPrice: r.markPrice,
+        };
+      })
+    };
+  } catch (ccxtError: any) {
+    console.error(`[Arbitrage] ${exchangeUpper} CCXT fetch failed:`, ccxtError.message);
+    console.log(`[Arbitrage] ${exchangeUpper} - Falling back to legacy service`);
+
+    // Fallback to legacy services
+    try {
+      if (exchangeUpper === 'BYBIT') {
+        const bybitService = new BybitService({
+          apiKey: credential.apiKey,
+          apiSecret: credential.apiSecret,
+          testnet: credential.environment === 'TESTNET',
+          enableRateLimit: true,
+          userId,
+        });
+
+        const tickers = await bybitService.getTicker('linear');
+        console.log(`[Arbitrage] ${exchangeUpper} legacy - Successfully fetched ${tickers.length} tickers`);
+
+        return {
+          credentialId: credential.id,
+          exchange: credential.exchange,
+          environment: credential.environment,
+          rates: tickers.map(t => ({
+            symbol: t.symbol,
+            fundingRate: t.fundingRate,
+            nextFundingTime: t.nextFundingTime,
+            lastPrice: t.lastPrice,
+          }))
+        };
+      } else if (exchangeUpper === 'BINGX') {
+        const bingxService = new BingXService({
+          apiKey: credential.apiKey,
+          apiSecret: credential.apiSecret,
+          testnet: credential.environment === 'TESTNET',
+          enableRateLimit: true,
+        });
+
+        // Sync time with BingX server before making requests
+        await bingxService.syncTime();
+
+        const rates = await bingxService.getAllFundingRates();
+        console.log(`[Arbitrage] ${exchangeUpper} legacy - Successfully fetched ${rates.length} funding rates`);
+
+        return {
+          credentialId: credential.id,
+          exchange: credential.exchange,
+          environment: credential.environment,
+          rates: rates.map(r => ({
+            symbol: r.symbol.replace(/-/g, ''), // Normalize symbol format (BTC-USDT -> BTCUSDT)
+            originalSymbol: r.symbol, // Keep original for reference
+            fundingRate: r.fundingRate,
+            nextFundingTime: r.fundingTime,
+            lastPrice: r.markPrice || '0', // Use mark price as last price
+          }))
+        };
+      } else if (exchangeUpper === 'MEXC') {
+        // MEXC is handled separately due to special symbol filtering logic
+        console.log(`[Arbitrage] ${exchangeUpper} - MEXC requires special handling, returning null for now`);
+        return null;
+      } else {
+        console.error(`[Arbitrage] ${exchangeUpper} - No legacy fallback available`);
+        return null;
+      }
+    } catch (legacyError: any) {
+      console.error(`[Arbitrage] ${exchangeUpper} legacy fetch also failed:`, legacyError.message);
+      return null;
+    }
+  }
+}
+
+/**
+ * Determine funding interval based on exchange and next funding time
+ * @param exchange - Exchange name (BYBIT, BINGX, MEXC, etc.)
+ * @param nextFundingTime - Next funding time timestamp
+ * @returns Funding interval string (e.g., "8h", "4h", "1h")
+ */
+function determineFundingInterval(exchange: string, nextFundingTime: number): string {
+  // Default intervals for each exchange
+  const defaultIntervals: Record<string, string> = {
+    'BYBIT': '8h',
+    'BINGX': '8h',
+    'MEXC': '8h',
+    'OKX': '8h',
+  };
+
+  // If we have a default for this exchange, return it
+  if (defaultIntervals[exchange]) {
+    return defaultIntervals[exchange];
+  }
+
+  // Otherwise, try to determine from the next funding time
+  const fundingDate = new Date(nextFundingTime);
+  const fundingHour = fundingDate.getUTCHours();
+
+  // Check if funding time aligns with 8h intervals (00:00, 08:00, 16:00 UTC)
+  if (fundingHour % 8 === 0) {
+    return '8h';
+  }
+  // Check if funding time aligns with 4h intervals
+  else if (fundingHour % 4 === 0) {
+    return '4h';
+  }
+  // Assume 1h if no pattern matches
+  else {
+    return '1h';
+  }
+}
 
 /**
  * GET /api/arbitrage/funding-rates
@@ -132,64 +305,10 @@ export async function GET(request: NextRequest) {
     const nonMexcCredentials = validActiveCredentials.filter(c => c.exchange !== 'MEXC');
     const mexcCredentials = validActiveCredentials.filter(c => c.exchange === 'MEXC');
 
-    const nonMexcFetchPromises = nonMexcCredentials.map(async (credential) => {
-      try {
-        console.log(`[Arbitrage] Fetching funding rates for ${credential.exchange} (${credential.environment})`);
-        console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
-
-        if (credential.exchange === 'BYBIT') {
-          const bybitService = new BybitService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-            userId,
-          });
-
-          const tickers = await bybitService.getTicker('linear');
-          return {
-            credentialId: credential.id,
-            exchange: credential.exchange,
-            environment: credential.environment,
-            rates: tickers.map(t => ({
-              symbol: t.symbol,
-              fundingRate: t.fundingRate,
-              nextFundingTime: t.nextFundingTime,
-              lastPrice: t.lastPrice,
-            }))
-          };
-        } else if (credential.exchange === 'BINGX') {
-          const bingxService = new BingXService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-          });
-
-          // Sync time with BingX server before making requests
-          await bingxService.syncTime();
-
-          const rates = await bingxService.getAllFundingRates();
-          return {
-            credentialId: credential.id,
-            exchange: credential.exchange,
-            environment: credential.environment,
-            rates: rates.map(r => ({
-              symbol: r.symbol.replace(/-/g, ''), // Normalize symbol format (BTC-USDT -> BTCUSDT)
-              originalSymbol: r.symbol, // Keep original for reference
-              fundingRate: r.fundingRate,
-              nextFundingTime: r.fundingTime,
-              lastPrice: r.markPrice || '0', // Use mark price as last price
-            }))
-          };
-        }
-
-        return null;
-      } catch (error: any) {
-        console.error(`[Arbitrage] Failed to fetch rates for ${credential.exchange}:`, error.message);
-        return null;
-      }
-    });
+    // Use the new helper function with CCXT + fallback
+    const nonMexcFetchPromises = nonMexcCredentials.map(credential =>
+      fetchExchangeFundingRates(credential, userId)
+    );
 
     const nonMexcResults = await Promise.all(nonMexcFetchPromises);
     const validNonMexcResults = nonMexcResults.filter(r => r !== null);
@@ -207,38 +326,92 @@ export async function GET(request: NextRequest) {
     // Step 3: Fetch MEXC funding rates only for symbols that exist on other exchanges
     const mexcFetchPromises = mexcCredentials.map(async (credential) => {
       try {
-        console.log(`[Arbitrage] Fetching funding rates for ${credential.exchange} (${credential.environment})`);
+        console.log(`[Arbitrage] Fetching funding rates for MEXC (${credential.environment})`);
         console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
 
-        const mexcService = new MEXCService({
-          apiKey: credential.apiKey,
-          apiSecret: credential.apiSecret,
-          authToken: credential.authToken,
-          testnet: credential.environment === 'TESTNET',
-          enableRateLimit: true,
-        });
+        // Try CCXT first for MEXC
+        try {
+          console.log(`[Arbitrage] MEXC - Attempting CCXT fetch`);
 
-        // Convert normalized symbols to MEXC format (BTCUSDT -> BTC_USDT)
-        const mexcSymbols = Array.from(uniqueSymbols).map(sym => {
-          // Insert underscore before USDT/USDC suffix
-          return sym.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2');
-        });
+          const ccxtService = new CCXTService('mexc', {
+            apiKey: credential.apiKey,
+            apiSecret: credential.apiSecret,
+            testnet: credential.environment === 'TESTNET',
+            enableRateLimit: true,
+          });
 
-        console.log(`[Arbitrage] Requesting ${mexcSymbols.length} MEXC symbols (optimized from ${uniqueSymbols.size} total symbols)`);
+          await ccxtService.loadMarkets();
+          const allFundingRates = await ccxtService.getAllFundingRates();
 
-        const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
-        return {
-          credentialId: credential.id,
-          exchange: credential.exchange,
-          environment: credential.environment,
-          rates: rates.map(r => ({
-            symbol: r.symbol.replace(/_/g, ''), // Normalize symbol format (BTC_USDT -> BTCUSDT)
-            originalSymbol: r.symbol, // Keep original for reference
-            fundingRate: r.fundingRate.toString(),
-            nextFundingTime: r.nextSettleTime,
-            lastPrice: r.lastPrice?.toString() || '0',
-          }))
-        };
+          // Filter to only include symbols that exist on other exchanges
+          const filteredRates = allFundingRates.filter(r => {
+            let normalizedSymbol = r.symbol.replace(/[\/\-_]/g, '');
+            normalizedSymbol = normalizedSymbol.replace(/:.*$/, ''); // Remove colon and everything after
+            return uniqueSymbols.has(normalizedSymbol);
+          });
+
+          console.log(`[Arbitrage] MEXC CCXT - Successfully fetched ${filteredRates.length}/${allFundingRates.length} funding rates (filtered to match other exchanges)`);
+
+          return {
+            credentialId: credential.id,
+            exchange: credential.exchange,
+            environment: credential.environment,
+            rates: filteredRates.map(r => {
+              let normalizedSymbol = r.symbol.replace(/[\/\-_]/g, '');
+              normalizedSymbol = normalizedSymbol.replace(/:.*$/, ''); // Remove colon and everything after
+              return {
+                symbol: normalizedSymbol,
+                originalSymbol: r.symbol,
+                fundingRate: r.fundingRate,
+                nextFundingTime: r.nextFundingTime,
+                lastPrice: r.markPrice,
+              };
+            })
+          };
+        } catch (ccxtError: any) {
+          console.error(`[Arbitrage] MEXC CCXT fetch failed:`, ccxtError.message);
+          console.log(`[Arbitrage] MEXC - Falling back to legacy service`);
+
+          // Fallback to legacy MEXC service
+          const mexcService = new MEXCService({
+            apiKey: credential.apiKey,
+            apiSecret: credential.apiSecret,
+            authToken: credential.authToken,
+            testnet: credential.environment === 'TESTNET',
+            enableRateLimit: true,
+          });
+
+          // Convert normalized symbols to MEXC format (BTCUSDT -> BTC_USDT)
+          const mexcSymbols = Array.from(uniqueSymbols).map(sym => {
+            // Insert underscore before USDT/USDC suffix
+            return sym.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2');
+          });
+
+          console.log(`[Arbitrage] MEXC legacy - Fetching tickers and funding rates for ${mexcSymbols.length} symbols`);
+
+          // First, get all tickers for lastPrice data
+          const allTickers = await mexcService.getTickers();
+          const tickerMap = new Map(allTickers.map(t => [t.symbol, t]));
+
+          // Use optimized batch method to avoid rate limiting
+          console.log(`[Arbitrage] MEXC - Using getFundingRatesForSymbols() for ${mexcSymbols.length} symbols`);
+          const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
+
+          console.log(`[Arbitrage] MEXC legacy - Successfully fetched ${rates.length}/${mexcSymbols.length} funding rates`);
+
+          return {
+            credentialId: credential.id,
+            exchange: credential.exchange,
+            environment: credential.environment,
+            rates: rates.map(r => ({
+              symbol: r.symbol.replace(/_/g, ''), // Normalize symbol format (BTC_USDT -> BTCUSDT)
+              originalSymbol: r.symbol, // Keep original for reference
+              fundingRate: r.fundingRate.toString(),
+              nextFundingTime: r.nextSettleTime,
+              lastPrice: r.lastPrice?.toString() || '0',
+            }))
+          };
+        }
       } catch (error: any) {
         console.error(`[Arbitrage] Failed to fetch rates for ${credential.exchange}:`, error.message);
         return null;
@@ -271,12 +444,16 @@ export async function GET(request: NextRequest) {
           symbolMap.set(rate.symbol, []);
         }
 
+        // Determine funding interval based on exchange and next funding time
+        const fundingInterval = determineFundingInterval(result.exchange, rate.nextFundingTime);
+
         symbolMap.get(rate.symbol)!.push({
           exchange: result.exchange,
           credentialId: result.credentialId,
           environment: result.environment,
           fundingRate: rate.fundingRate,
           nextFundingTime: rate.nextFundingTime,
+          fundingInterval,
           originalSymbol: rate.originalSymbol || rate.symbol,
           lastPrice: rate.lastPrice,
         });
@@ -306,17 +483,18 @@ export async function GET(request: NextRequest) {
       console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
         exchanges.map(e => `${e.exchange}=${e.fundingRate} ($${e.lastPrice})`).join(', '));
 
-      // Sort by PRICE (not funding rate) for hedged arbitrage
-      // This ensures we buy low on one exchange and sell high on another
+      // Sort by FUNDING RATE for funding arbitrage
+      // Primary (Long): lowest funding rate (most negative) - we receive more funding
+      // Hedge (Short): highest funding rate (most positive/least negative) - we pay less funding
       const sortedExchanges = [...exchanges].sort((a, b) =>
-        parseFloat(a.lastPrice) - parseFloat(b.lastPrice)
+        parseFloat(a.fundingRate) - parseFloat(b.fundingRate)
       );
 
-      // Calculate price spread between primary (bestLong) and hedge (bestShort) exchanges
-      // bestLong = lowest price (primary exchange - BUY/LONG position)
-      // bestShort = highest price (hedge exchange - SELL/SHORT position)
-      const primaryExchange = sortedExchanges[0]; // Lowest price
-      const hedgeExchange = sortedExchanges[sortedExchanges.length - 1]; // Highest price
+      // Calculate funding spread between primary (bestLong) and hedge (bestShort) exchanges
+      // bestLong = lowest funding rate (primary exchange - LONG position receives funding)
+      // bestShort = highest funding rate (hedge exchange - SHORT position pays less)
+      const primaryExchange = sortedExchanges[0]; // Lowest (most negative) funding rate
+      const hedgeExchange = sortedExchanges[sortedExchanges.length - 1]; // Highest (least negative/most positive) funding rate
 
       const primaryPrice = parseFloat(primaryExchange.lastPrice);
       const hedgePrice = parseFloat(hedgeExchange.lastPrice);

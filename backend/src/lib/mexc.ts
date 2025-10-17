@@ -118,6 +118,76 @@ export class MEXCService {
   }
 
   /**
+   * Make public API request (no authentication)
+   * Used for public endpoints like funding rates, tickers, etc.
+   */
+  private async makePublicRequest<T>(
+    method: 'GET' | 'POST',
+    endpoint: string,
+    params: Record<string, any> = {}
+  ): Promise<MEXCApiResponse<T>> {
+    let url = `${this.baseUrl}${endpoint}`;
+
+    console.log('[MEXCService] Making public request:', {
+      endpoint,
+      method,
+      paramsCount: Object.keys(params).length
+    });
+
+    // For GET requests, add parameters to query string
+    if (method === 'GET' && Object.keys(params).length > 0) {
+      const queryString = Object.entries(params)
+        .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+        .join('&');
+      url = `${url}?${queryString}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: method === 'POST' ? JSON.stringify(params) : undefined
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[MEXCService] Public API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+          endpoint
+        });
+        throw new Error(`MEXC API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success || data.code !== 0) {
+        console.error('[MEXCService] Public API returned error:', {
+          endpoint,
+          code: data.code,
+          success: data.success
+        });
+      } else {
+        console.log('[MEXCService] Public request successful:', {
+          endpoint,
+          code: data.code
+        });
+      }
+
+      return data as MEXCApiResponse<T>;
+    } catch (error: any) {
+      console.error('[MEXCService] Public API request failed:', {
+        error: error.message,
+        endpoint
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Make authenticated API request
    * @param useSessionToken - If true, uses browser session token instead of API keys (only for trading operations)
    */
@@ -603,13 +673,13 @@ export class MEXCService {
   }
 
   /**
-   * Get all tickers (market data)
+   * Get all tickers (market data) (PUBLIC ENDPOINT - no auth required)
    * Endpoint: GET /api/v1/contract/ticker
    */
   async getTickers(): Promise<MEXCTicker[]> {
     console.log('[MEXCService] Fetching all tickers...');
 
-    const response = await this.makeRequest<MEXCTicker[]>(
+    const response = await this.makePublicRequest<MEXCTicker[]>(
       'GET',
       '/api/v1/contract/ticker',
       {}
@@ -637,20 +707,20 @@ export class MEXCService {
   }
 
   /**
-   * Get funding rate for a symbol
+   * Get funding rate for a symbol (PUBLIC ENDPOINT - no auth required)
    * Endpoint: GET /api/v1/contract/funding_rate/{symbol}
    */
   async getFundingRate(symbol: string): Promise<MEXCFundingRate> {
     console.log('[MEXCService] Fetching funding rate for:', symbol);
 
-    const response = await this.makeRequest<MEXCFundingRate>(
+    const response = await this.makePublicRequest<MEXCFundingRate>(
       'GET',
       `/api/v1/contract/funding_rate/${symbol}`,
       {}
     );
 
     if (!response.success || response.code !== 0) {
-      throw new Error(`Failed to get funding rate: code ${response.code}`);
+      throw new Error(`Failed to get funding rate for ${symbol}: code ${response.code}`);
     }
 
     return response.data;
@@ -692,57 +762,55 @@ export class MEXCService {
   }
 
   /**
-   * Get funding rates for specific symbols only (SUPER OPTIMIZED)
-   * Uses ticker data which already includes fundingRate for ALL symbols in ONE request
-   * Then fetches nextSettleTime only for symbols with non-zero funding rates
+   * Get funding rates for specific symbols only
+   * Fetches individual funding rates with batching to avoid rate limiting
    * @param targetSymbols - Array of symbols in MEXC format (e.g., ['BTC_USDT', 'ETH_USDT'])
    */
   async getFundingRatesForSymbols(targetSymbols: string[]): Promise<MEXCFundingRate[]> {
-    console.log(`[MEXCService] Fetching funding rates for ${targetSymbols.length} specific symbols (super optimized)...`);
+    console.log(`[MEXCService] Fetching funding rates for ${targetSymbols.length} specific symbols with batching (NEW CODE)...`);
 
-    // Get all tickers in ONE request - much faster than individual requests
+    // Get all tickers for lastPrice data
     const allTickers = await this.getTickers();
+    const tickerMap = new Map(allTickers.map(t => [t.symbol, t]));
 
-    // Create a map for quick lookup
-    const symbolSet = new Set(targetSymbols);
+    // Process in batches to avoid rate limiting (100 symbols per batch with 1s delay between batches)
+    const BATCH_SIZE = 100;
+    const BATCH_DELAY_MS = 1000;
 
-    // Filter to only requested symbols that have funding rates
-    const matchedTickers = allTickers.filter(t =>
-      symbolSet.has(t.symbol) &&
-      t.fundingRate !== undefined &&
-      t.fundingRate !== 0
-    );
+    const allFundingRates: MEXCFundingRate[] = [];
 
-    console.log(`[MEXCService] Found ${matchedTickers.length}/${targetSymbols.length} requested symbols with funding rates in ticker data`);
+    for (let i = 0; i < targetSymbols.length; i += BATCH_SIZE) {
+      const batch = targetSymbols.slice(i, i + BATCH_SIZE);
+      console.log(`[MEXCService] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(targetSymbols.length / BATCH_SIZE)} (${batch.length} symbols)`);
 
-    // Create ticker map for lastPrice lookup
-    const tickerMap = new Map(matchedTickers.map(t => [t.symbol, t]));
+      // Fetch funding rates for this batch in parallel
+      const batchPromises = batch.map(symbol =>
+        this.getFundingRate(symbol).then(fundingRate => {
+          // Add lastPrice from ticker data
+          const ticker = tickerMap.get(symbol);
+          return {
+            ...fundingRate,
+            lastPrice: ticker?.lastPrice || 0,
+          };
+        }).catch(err => {
+          console.log(`[MEXCService] Failed to fetch funding rate for ${symbol}: ${err.message}`);
+          return null; // Skip failed symbols
+        })
+      );
 
-    // For symbols with funding rates, fetch full details to get nextSettleTime
-    const detailPromises = matchedTickers.map(ticker =>
-      this.getFundingRate(ticker.symbol).catch(err => {
-        // Silently use ticker data if detail fetch fails
-        console.log(`[MEXCService] Using ticker data for ${ticker.symbol} (detail fetch failed)`);
-        return {
-          symbol: ticker.symbol,
-          fundingRate: ticker.fundingRate,
-          nextSettleTime: Date.now() + (8 * 60 * 60 * 1000), // Default to 8 hours from now
-          lastPrice: ticker.lastPrice, // Include lastPrice from ticker
-        };
-      }).then(detail => {
-        // Add lastPrice from ticker to detail result
-        const tickerData = tickerMap.get(detail.symbol);
-        return {
-          ...detail,
-          lastPrice: tickerData?.lastPrice || 0,
-        };
-      })
-    );
+      const batchResults = await Promise.all(batchPromises);
+      const validResults = batchResults.filter((r): r is MEXCFundingRate => r !== null);
+      allFundingRates.push(...validResults);
 
-    const fundingRates = await Promise.all(detailPromises);
+      // Delay between batches to avoid rate limiting (except for the last batch)
+      if (i + BATCH_SIZE < targetSymbols.length) {
+        console.log(`[MEXCService] Waiting ${BATCH_DELAY_MS}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
 
-    console.log(`[MEXCService] Retrieved ${fundingRates.length} funding rates with details`);
-    return fundingRates;
+    console.log(`[MEXCService] Retrieved ${allFundingRates.length}/${targetSymbols.length} funding rates successfully`);
+    return allFundingRates;
   }
 
   /**

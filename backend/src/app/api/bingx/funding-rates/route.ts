@@ -8,9 +8,6 @@ import { AuthService } from '@/lib/auth';
  * Fetches funding rates for all trading pairs from BingX.
  * This endpoint fetches tickers first, then gets funding rate for each symbol.
  *
- * Query Parameters:
- * - environment (optional): TESTNET or MAINNET - Default: uses active credentials
- *
  * Authentication: Required (Bearer token)
  *
  * Response (Success - 200):
@@ -23,7 +20,6 @@ import { AuthService } from '@/lib/auth';
  *       "fundingTime": 1234567890000
  *     }
  *   ],
- *   "testnet": boolean,
  *   "timestamp": "2025-10-06T13:00:00.000Z"
  * }
  */
@@ -93,14 +89,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[BingX Funding Rates] Credentials loaded - ID: ${credentials.id}, environment: ${credentials.environment}`);
+    console.log(`[BingX Funding Rates] Credentials loaded - ID: ${credentials.id}`);
 
-    // 3. Create BingXService
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 3. Create BingXService (mainnet only)
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
     });
 
@@ -125,7 +119,6 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         data: fundingRates,
-        testnet: isTestnet,
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

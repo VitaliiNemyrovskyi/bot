@@ -57,7 +57,7 @@
           <option [value]="null">Select Credential...</option>
           @for (cred of availableCredentials(); track cred.id) {
             <option [value]="cred.id">
-              {{ cred.label || cred.apiKeyPreview }} ({{ cred.environment }})
+              {{ cred.label || cred.apiKeyPreview }}
             </option>
           }
         </select>

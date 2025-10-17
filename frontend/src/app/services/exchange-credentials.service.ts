@@ -3,7 +3,6 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, take, throwError } from 'rxjs';
 import { catchError, tap, map } from 'rxjs/operators';
 import { getEndpointUrl, getParameterizedUrl } from '../config/app.config';
-import { ExchangeEnvironmentService } from './exchange-environment.service';
 import {
   ExchangeCredential,
   ExchangeType,
@@ -79,11 +78,9 @@ export class ExchangeCredentialsService {
   // ============================================================================
 
   constructor(
-    private http: HttpClient,
-    private environmentService: ExchangeEnvironmentService
+    private http: HttpClient
   ) {
-    // Note: We no longer filter credentials by environment
-    // The Profile -> Trading Platforms tab shows all credentials for all environments
+    // Credentials service manages exchange credentials
   }
 
   // ============================================================================

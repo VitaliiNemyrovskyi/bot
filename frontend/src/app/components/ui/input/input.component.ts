@@ -1,4 +1,4 @@
-import { Component, Input, forwardRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, forwardRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -20,24 +20,35 @@ export class InputComponent implements ControlValueAccessor {
   @Input() type: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' = 'text';
   @Input() placeholder: string = '';
   @Input() label: string = '';
+  @Input() hint: string = '';
   @Input() error: string = '';
   @Input() disabled: boolean = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
   @Input() fullWidth: boolean = false;
   @Input() icon?: string;
   @Input() iconPosition: 'left' | 'right' = 'left';
+  @Input() suffix?: string;
   @Input() min?: number | string;
   @Input() max?: number | string;
   @Input() step?: number | string;
 
-  value: any = '';
+  // Support for direct value binding
+  @Input() set value(val: any) {
+    this._value = val;
+  }
+  get value(): any {
+    return this._value;
+  }
+  @Output() valueChange = new EventEmitter<any>();
+
+  private _value: any = '';
   touched: boolean = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};
 
   writeValue(value: any): void {
-    this.value = value;
+    this._value = value;
   }
 
   registerOnChange(fn: any): void {
@@ -54,8 +65,9 @@ export class InputComponent implements ControlValueAccessor {
 
   onInput(event: Event): void {
     const target = event.target as HTMLInputElement;
-    this.value = target.value;
-    this.onChange(this.value);
+    this._value = target.value;
+    this.onChange(this._value);
+    this.valueChange.emit(this._value);
   }
 
   onBlur(): void {
@@ -132,14 +144,23 @@ export class TextareaComponent implements ControlValueAccessor {
   @Input() rows: number = 4;
   @Input() fullWidth: boolean = false;
 
-  value: any = '';
+  // Support for direct value binding
+  @Input() set value(val: any) {
+    this._value = val;
+  }
+  get value(): any {
+    return this._value;
+  }
+  @Output() valueChange = new EventEmitter<any>();
+
+  private _value: any = '';
   touched: boolean = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};
 
   writeValue(value: any): void {
-    this.value = value;
+    this._value = value;
   }
 
   registerOnChange(fn: any): void {
@@ -156,8 +177,9 @@ export class TextareaComponent implements ControlValueAccessor {
 
   onInput(event: Event): void {
     const target = event.target as HTMLTextAreaElement;
-    this.value = target.value;
-    this.onChange(this.value);
+    this._value = target.value;
+    this.onChange(this._value);
+    this.valueChange.emit(this._value);
   }
 
   onBlur(): void {

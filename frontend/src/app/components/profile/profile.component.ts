@@ -8,10 +8,8 @@ import { ThemeService } from '../../services/theme.service';
 import { UserService } from '../../services/user.service';
 import { GoogleAuthService } from '../../services/google-auth.service';
 import { ExchangeCredentialsService } from '../../services/exchange-credentials.service';
-import { ExchangeEnvironmentService } from '../../services/exchange-environment.service';
 import {
   CreateExchangeCredentialRequest,
-  EnvironmentType,
   EXCHANGE_METADATA,
   ExchangeCredential,
   ExchangeType,
@@ -112,7 +110,6 @@ export class ProfileComponent implements OnInit {
 
   // Enum references for template
   readonly ExchangeType = ExchangeType;
-  readonly EnvironmentType = EnvironmentType;
   readonly EXCHANGE_METADATA = EXCHANGE_METADATA;
   readonly getExchangeName = getExchangeName;
   readonly exchanges = Object.values(ExchangeType);
@@ -171,7 +168,6 @@ export class ProfileComponent implements OnInit {
     private userService: UserService,
     private googleAuthService: GoogleAuthService,
     public exchangeCredentialsService: ExchangeCredentialsService,
-    private exchangeEnvironmentService: ExchangeEnvironmentService,
     private router: Router
   ) {
     this.userInfoForm = this.fb.group({
@@ -184,7 +180,6 @@ export class ProfileComponent implements OnInit {
 
     this.newCredentialForm = this.fb.group({
       exchange: ['', Validators.required],
-      environment: [EnvironmentType.MAINNET, Validators.required],
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
       authToken: [''], // Browser session token for MEXC
@@ -393,7 +388,6 @@ export class ProfileComponent implements OnInit {
 
     const testData: TestConnectionRequest = {
       exchange: credential.exchange,
-      environment: credential.environment,
       apiKey: apiKey,
       apiSecret: apiSecret,
       authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined
@@ -569,7 +563,6 @@ export class ProfileComponent implements OnInit {
   openAddCredentialModal(): void {
     this.newCredentialForm.reset({
       exchange: '',
-      environment: EnvironmentType.MAINNET,
       apiKey: '',
       apiSecret: '',
       authToken: '',
@@ -613,7 +606,6 @@ export class ProfileComponent implements OnInit {
 
     const testData: TestConnectionRequest = {
       exchange: this.newCredentialForm.value.exchange,
-      environment: this.newCredentialForm.value.environment,
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
       authToken: this.newCredentialForm.value.authToken || undefined
@@ -651,7 +643,6 @@ export class ProfileComponent implements OnInit {
 
     const data: CreateExchangeCredentialRequest = {
       exchange: this.newCredentialForm.value.exchange,
-      environment: this.newCredentialForm.value.environment,
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
       authToken: this.newCredentialForm.value.authToken || undefined,

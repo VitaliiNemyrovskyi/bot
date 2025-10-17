@@ -1,4 +1,4 @@
-import { Exchange, Environment } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 
 /**
  * Type definitions for Exchange Credentials API
@@ -7,7 +7,6 @@ import { Exchange, Environment } from '@prisma/client';
 // Request types
 export interface SaveCredentialsRequest {
   exchange: Exchange;
-  environment: Environment;
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for exchanges like MEXC)
@@ -24,7 +23,6 @@ export interface CredentialInfo {
   id: string;
   userId: string;
   exchange: Exchange;
-  environment: Environment;
   apiKeyPreview: string; // Last 4 characters only
   label?: string;
   isActive: boolean;
@@ -40,7 +38,6 @@ export interface GroupedCredentials {
 export interface ActiveCredential {
   id: string;
   exchange: Exchange;
-  environment: Environment;
   apiKey: string; // Decrypted, for internal use only
   apiSecret: string; // Decrypted, for internal use only
   authToken?: string; // Decrypted browser session token (for MEXC futures)
@@ -52,7 +49,6 @@ export interface ActiveCredential {
 // Service layer types
 export interface ExchangeCredentialData {
   exchange: Exchange;
-  environment: Environment;
   apiKey: string; // Unencrypted
   apiSecret: string; // Unencrypted
   authToken?: string; // Unencrypted browser session token (for MEXC)

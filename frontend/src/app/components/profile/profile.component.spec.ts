@@ -10,8 +10,7 @@ import { ThemeService } from '../../services/theme.service';
 import { UserService } from '../../services/user.service';
 import { GoogleAuthService } from '../../services/google-auth.service';
 import { ExchangeCredentialsService } from '../../services/exchange-credentials.service';
-import { ExchangeEnvironmentService } from '../../services/exchange-environment.service';
-import { ExchangeCredential, ExchangeType, EnvironmentType } from '../../models/exchange-credentials.model';
+import { ExchangeCredential, ExchangeType } from '../../models/exchange-credentials.model';
 
 describe('ProfileComponent - Confirmation Modal Tests', () => {
   let component: ProfileComponent;
@@ -22,7 +21,6 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
   let mockUserService: jasmine.SpyObj<UserService>;
   let mockGoogleAuthService: jasmine.SpyObj<GoogleAuthService>;
   let mockExchangeCredentialsService: jasmine.SpyObj<ExchangeCredentialsService>;
-  let mockExchangeEnvironmentService: jasmine.SpyObj<ExchangeEnvironmentService>;
 
   const mockUser = {
     id: '123',
@@ -35,7 +33,6 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
   const mockCredential: ExchangeCredential = {
     id: 'cred-123',
     exchange: ExchangeType.BINANCE,
-    environment: EnvironmentType.MAINNET,
     apiKeyPreview: 'ABC...XYZ',
     label: 'My Binance Account',
     isActive: true,
@@ -68,7 +65,6 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
     ], {
       credentials: jasmine.createSpy().and.returnValue([])
     });
-    mockExchangeEnvironmentService = jasmine.createSpyObj('ExchangeEnvironmentService', ['getEnvironments']);
 
     // Setup default mock return values
     mockAuthService.logout.and.returnValue(of(void 0));
@@ -88,8 +84,7 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
         { provide: ThemeService, useValue: mockThemeService },
         { provide: UserService, useValue: mockUserService },
         { provide: GoogleAuthService, useValue: mockGoogleAuthService },
-        { provide: ExchangeCredentialsService, useValue: mockExchangeCredentialsService },
-        { provide: ExchangeEnvironmentService, useValue: mockExchangeEnvironmentService }
+        { provide: ExchangeCredentialsService, useValue: mockExchangeCredentialsService }
       ]
     }).compileComponents();
 
@@ -600,9 +595,9 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
       it('should reset form after confirming discard', fakeAsync(() => {
         component.newCredentialForm.setValue({
           exchange: ExchangeType.BINANCE,
-          environment: EnvironmentType.MAINNET,
           apiKey: 'test-key',
           apiSecret: 'test-secret',
+          authToken: '',
           label: 'Test'
         });
         component.newCredentialForm.markAsDirty();

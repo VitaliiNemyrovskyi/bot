@@ -13,9 +13,6 @@ import { AuthService } from '@/lib/auth';
  *
  * Authentication: Required (Bearer token)
  *
- * Query Parameters:
- * - environment (optional): TESTNET or MAINNET - Default: TESTNET
- *
  * This endpoint loads the user's saved BingX API credentials from the database
  * and uses them to fetch account information.
  *
@@ -23,7 +20,6 @@ import { AuthService } from '@/lib/auth';
  * {
  *   "success": true,
  *   "timestamp": "2025-10-06T00:00:00Z",
- *   "testnet": boolean,
  *   "data": {
  *     "accountInfo": {...},
  *     "walletBalance": {...},
@@ -80,14 +76,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`[BingX UserInfo] Credentials loaded - environment: ${credentials.environment}`);
+    console.log(`[BingX UserInfo] Credentials loaded - ID: ${credentials.id}`);
 
-    // 4. Create BingXService with loaded credentials
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 4. Create BingXService with loaded credentials (mainnet only)
     const service = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
     });
 
@@ -108,7 +102,6 @@ export async function GET(request: NextRequest) {
     const response: any = {
       success: true,
       timestamp: new Date().toISOString(),
-      testnet: isTestnet,
       data: {}
     };
 

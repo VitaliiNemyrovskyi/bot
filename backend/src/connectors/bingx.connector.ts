@@ -14,29 +14,25 @@ export class BingXConnector extends BaseExchangeConnector {
   private bingxService: BingXService;
   private apiKey: string;
   private apiSecret: string;
-  private testnet: boolean;
   private userId?: string;
   private credentialId?: string;
 
   constructor(
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = true,
     userId?: string,
     credentialId?: string
   ) {
     super();
-    this.exchangeName = testnet ? 'BINGX_TESTNET' : 'BINGX';
+    this.exchangeName = 'BINGX';
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
-    this.testnet = testnet;
     this.userId = userId;
     this.credentialId = credentialId;
 
     this.bingxService = new BingXService({
       apiKey,
       apiSecret,
-      testnet,
       enableRateLimit: true,
       userId,
       credentialId,
@@ -44,10 +40,41 @@ export class BingXConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Convert normalized symbol format to BingX format
+   * BingX requires hyphenated format (e.g., "BTC-USDT" instead of "BTCUSDT")
+   * @param symbol Symbol in normalized format (e.g., "BTCUSDT", "CDLUSDT")
+   * @returns Symbol in BingX format (e.g., "BTC-USDT", "CDL-USDT")
+   */
+  private normalizeSymbolForBingX(symbol: string): string {
+    // If already has hyphen, return as-is
+    if (symbol.includes('-')) {
+      return symbol;
+    }
+
+    // BingX perpetual futures use USDT or USDC as quote currency
+    // Insert hyphen before the quote currency
+    if (symbol.endsWith('USDT')) {
+      const base = symbol.slice(0, -4); // Remove 'USDT'
+      return `${base}-USDT`;
+    }
+
+    if (symbol.endsWith('USDC')) {
+      const base = symbol.slice(0, -4); // Remove 'USDC'
+      return `${base}-USDC`;
+    }
+
+    // If no known quote currency, return as-is and let API handle error
+    console.warn(`[BingXConnector] Symbol ${symbol} does not end with USDT or USDC, cannot normalize`);
+    return symbol;
+  }
+
+  /**
    * Initialize BingX connection
+   *
+   * Includes automatic retry logic for timestamp synchronization issues
    */
   async initialize(): Promise<void> {
-    console.log(`[BingXConnector] Initializing BingX connector (testnet: ${this.testnet})...`);
+    console.log(`[BingXConnector] Initializing BingX connector...`);
 
     try {
       // Synchronize time with BingX server - CRITICAL for authentication
@@ -63,6 +90,11 @@ export class BingXConnector extends BaseExchangeConnector {
         if (syncStatus.lastSyncTime === 0) {
           throw new Error('Time synchronization failed - no sync time recorded');
         }
+
+        // Warn if offset is large (but not fatal at this point)
+        if (Math.abs(syncStatus.offset) > 1500) {
+          console.warn(`[BingXConnector] ⚠️ Large time offset detected: ${syncStatus.offset}ms. This may cause issues.`);
+        }
       } catch (syncError: any) {
         console.error('[BingXConnector] Time sync failed:', syncError.message);
         throw new Error(`Failed to sync time with BingX server: ${syncError.message}. Authenticated API calls will fail without proper time synchronization.`);
@@ -71,9 +103,36 @@ export class BingXConnector extends BaseExchangeConnector {
       // Start periodic time sync after successful initial sync
       this.bingxService.startPeriodicSync();
 
-      // Test connection by fetching account info
+      // Test connection by fetching account info (with retry on timestamp errors)
       console.log('[BingXConnector] Testing authenticated connection...');
-      await this.bingxService.getAccountInfo();
+      let retryCount = 0;
+      const MAX_RETRIES = 1;
+
+      while (retryCount <= MAX_RETRIES) {
+        try {
+          await this.bingxService.getAccountInfo();
+          break; // Success!
+        } catch (testError: any) {
+          // Check if this is a timestamp-related error
+          const isTimestampError =
+            testError.message.includes('timestamp') ||
+            testError.message.includes('time') ||
+            testError.message.includes('invalid');
+
+          if (isTimestampError && retryCount < MAX_RETRIES) {
+            console.warn(`[BingXConnector] Timestamp error detected, forcing time re-sync (retry ${retryCount + 1}/${MAX_RETRIES})...`);
+
+            // Force a fresh time sync (bypass cache)
+            await this.bingxService.syncTime(true);
+
+            retryCount++;
+            continue;
+          }
+
+          // Not a timestamp error or out of retries
+          throw testError;
+        }
+      }
 
       this.isInitialized = true;
       console.log('[BingXConnector] BingX connector initialized successfully');
@@ -82,7 +141,12 @@ export class BingXConnector extends BaseExchangeConnector {
 
       // Provide more helpful error message for timestamp issues
       if (error.message.includes('timestamp') || error.message.includes('time')) {
-        throw new Error(`Failed to initialize BingX connector: ${error.message}. Please ensure your system time is synchronized and you have network connectivity to BingX servers.`);
+        const syncStatus = this.bingxService.getTimeSyncStatus();
+        throw new Error(
+          `Failed to initialize BingX connector: ${error.message}. ` +
+          `Time offset: ${syncStatus.offset}ms, Last sync: ${new Date(syncStatus.lastSyncTime).toISOString()}. ` +
+          `Please ensure your system time is synchronized and you have network connectivity to BingX servers.`
+        );
       }
 
       throw new Error(`Failed to initialize BingX connector: ${error.message}`);
@@ -111,8 +175,12 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Convert symbol to BingX format (e.g., CDLUSDT -> CDL-USDT)
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
       // Get trading rules for quantity adjustment
-      const adjustedQuantity = await this.adjustQuantityForSymbol(symbol, quantity);
+      const adjustedQuantity = await this.adjustQuantityForSymbol(bingxSymbol, quantity);
 
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
@@ -130,7 +198,7 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       const orderParams: any = {
-        symbol,
+        symbol: bingxSymbol,
         side: bingxSide,
         type: 'MARKET',
         quantity: adjustedQuantity,
@@ -145,6 +213,159 @@ export class BingXConnector extends BaseExchangeConnector {
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing market order:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Place a market order with Take Profit and Stop Loss in ATOMIC request
+   *
+   * CRITICAL: Uses current market price with slippage buffer to calculate TP/SL
+   * This prevents issues where SL ends up on wrong side due to price movement.
+   *
+   * Slippage buffer logic:
+   * - LONG: Assumes entry slightly HIGHER than current (adds 0.1% buffer to entry)
+   *   - SL calculation uses buffered entry: (currentPrice * 1.001) * (1 - slPercent/100)
+   * - SHORT: Assumes entry slightly LOWER than current (subtracts 0.1% buffer)
+   *   - SL calculation uses buffered entry: (currentPrice * 0.999) * (1 + slPercent/100)
+   *
+   * TP/SL Calculation Logic (with slippage buffer):
+   * - Long (Buy): TP = currentPrice * (1 + tpPercent/100), SL = (currentPrice * 1.001) * (1 - slPercent/100)
+   * - Short (Sell): TP = currentPrice * (1 - tpPercent/100), SL = (currentPrice * 0.999) * (1 + slPercent/100)
+   *
+   * @param symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param side Order side ('Buy' for long, 'Sell' for short)
+   * @param quantity Position size
+   * @param takeProfitPercent Take profit percentage (e.g., 2 = 2% profit) (optional)
+   * @param stopLossPercent Stop loss percentage (e.g., 1 = 1% loss) (optional)
+   * @param workingType Price type for TP/SL: "MARK_PRICE" or "CONTRACT_PRICE" (default: "MARK_PRICE")
+   * @returns Order result with TP/SL
+   */
+  async placeMarketOrderWithTPSL(
+    symbol: string,
+    side: OrderSide,
+    quantity: number,
+    takeProfitPercent?: number,
+    stopLossPercent?: number,
+    workingType: 'MARK_PRICE' | 'CONTRACT_PRICE' = 'MARK_PRICE'
+  ): Promise<any> {
+    console.log(`[BingXConnector] Placing ATOMIC market ${side} order with TP/SL:`, {
+      symbol,
+      quantity,
+      takeProfitPercent,
+      stopLossPercent,
+      workingType,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Convert symbol to BingX format (e.g., CDLUSDT -> CDL-USDT)
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
+      // Get current market price
+      const currentPrice = await this.getMarketPrice(symbol);
+      console.log(`[BingXConnector] Current market price: ${currentPrice}`);
+
+      // Calculate TP/SL prices with slippage buffer
+      let takeProfitPrice: number | undefined;
+      let stopLossPrice: number | undefined;
+
+      // Slippage buffer: 0.1% to account for execution price difference
+      const SLIPPAGE_BUFFER = 0.001; // 0.1%
+
+      if (takeProfitPercent !== undefined && takeProfitPercent > 0) {
+        if (side === 'Buy') {
+          // Long: TP above current price (price increases)
+          takeProfitPrice = currentPrice * (1 + takeProfitPercent / 100);
+        } else {
+          // Short: TP below current price (price decreases)
+          takeProfitPrice = currentPrice * (1 - takeProfitPercent / 100);
+        }
+        console.log(`[BingXConnector] Calculated TP price: ${takeProfitPrice} (${takeProfitPercent}%)`);
+      }
+
+      if (stopLossPercent !== undefined && stopLossPercent > 0) {
+        if (side === 'Buy') {
+          // Long: Assume entry slightly HIGHER due to slippage, then calculate SL below
+          const bufferedEntry = currentPrice * (1 + SLIPPAGE_BUFFER);
+          stopLossPrice = bufferedEntry * (1 - stopLossPercent / 100);
+          console.log(`[BingXConnector] LONG SL calculation: currentPrice=${currentPrice}, bufferedEntry=${bufferedEntry}, stopLoss=${stopLossPrice} (${stopLossPercent}%)`);
+        } else {
+          // Short: Assume entry slightly LOWER due to slippage, then calculate SL above
+          const bufferedEntry = currentPrice * (1 - SLIPPAGE_BUFFER);
+          stopLossPrice = bufferedEntry * (1 + stopLossPercent / 100);
+          console.log(`[BingXConnector] SHORT SL calculation: currentPrice=${currentPrice}, bufferedEntry=${bufferedEntry}, stopLoss=${stopLossPrice} (${stopLossPercent}%)`);
+        }
+      }
+
+      // Get trading rules for quantity adjustment
+      const adjustedQuantity = await this.adjustQuantityForSymbol(bingxSymbol, quantity);
+
+      const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
+
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use LONG for BUY, SHORT for SELL
+        positionSide = bingxSide === 'BUY' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
+      // Build ATOMIC order with TP/SL
+      const orderParams: any = {
+        symbol: bingxSymbol,
+        side: bingxSide,
+        type: 'MARKET',
+        quantity: adjustedQuantity,
+        positionSide,
+      };
+
+      // Add Take Profit if specified (simple numeric format)
+      if (takeProfitPrice !== undefined && takeProfitPrice > 0) {
+        const takeProfit = {
+          price: takeProfitPrice,
+          stopPrice: takeProfitPrice, // Required by BingX API
+          type: 'TAKE_PROFIT_MARKET',
+          workingType: 'MARK_PRICE',
+        }
+        orderParams.takeProfit = JSON.stringify(takeProfit);
+
+        orderParams.takeProfitTriggerBy = workingType === 'MARK_PRICE' ? 'MarkPrice' : 'LastPrice';
+        console.log(`[BingXConnector] ✓ Take Profit configured (ATOMIC): price=${takeProfitPrice}`);
+      }
+
+      // Add Stop Loss if specified (simple numeric format)
+      if (stopLossPrice !== undefined && stopLossPrice > 0) {
+        const stopLoss = {
+          price: stopLossPrice,
+          stopPrice: stopLossPrice, // Required by BingX API
+          type: 'STOP_MARKET',
+          workingType: ''
+        };
+        orderParams.stopLoss = JSON.stringify(stopLoss);
+
+        console.log(`[BingXConnector] ✓ Stop Loss configured (ATOMIC): price=${stopLossPrice}`);
+      }
+
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Placing ATOMIC order with TP/SL`);
+      console.log(`[BingXConnector] Full order params:`, JSON.stringify(orderParams, null, 2));
+
+      // Place ATOMIC order with TP/SL
+      const result = await this.bingxService.placeOrder(orderParams);
+
+      console.log('[BingXConnector] ✓ ATOMIC market order with TP/SL placed successfully');
+      return result;
+    } catch (error: any) {
+      console.error('[BingXConnector] Error placing ATOMIC market order with TP/SL:', error.message);
       throw error;
     }
   }
@@ -224,6 +445,10 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
       // Check account position mode
@@ -240,7 +465,7 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       const orderParams: any = {
-        symbol,
+        symbol: bingxSymbol,
         side: bingxSide,
         type: 'LIMIT',
         quantity,
@@ -272,7 +497,10 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      const result = await this.bingxService.cancelOrder(symbol, orderId);
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+
+      const result = await this.bingxService.cancelOrder(bingxSymbol, orderId);
       console.log('[BingXConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
@@ -308,12 +536,15 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
-      const positions = await this.bingxService.getPositions(symbol);
-      const position = positions.find((p) => p.symbol === symbol);
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+
+      const positions = await this.bingxService.getPositions(bingxSymbol);
+      const position = positions.find((p) => p.symbol === bingxSymbol);
 
       if (!position || parseFloat(position.positionAmt) === 0) {
         return {
-          symbol,
+          symbol: bingxSymbol,
           positionSide: 'None',
           positionAmt: '0',
           avgPrice: '0',
@@ -325,6 +556,30 @@ export class BingXConnector extends BaseExchangeConnector {
       return position;
     } catch (error: any) {
       console.error('[BingXConnector] Error getting position:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all positions or positions for a specific symbol
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      let querySymbol = symbol;
+      if (symbol) {
+        // Convert symbol to BingX format
+        querySymbol = this.normalizeSymbolForBingX(symbol);
+      }
+
+      const positions = await this.bingxService.getPositions(querySymbol);
+      console.log('[BingXConnector] Positions retrieved:', positions.length);
+      return positions;
+    } catch (error: any) {
+      console.error('[BingXConnector] Error getting positions:', error.message);
       throw error;
     }
   }
@@ -348,31 +603,49 @@ export class BingXConnector extends BaseExchangeConnector {
   }
 
   /**
-   * Close position
+   * Close position using native BingX API with closePosition=true
+   *
+   * Uses BingX's native closePosition parameter which works correctly
+   * with isolated margin and all position modes.
    */
   async closePosition(symbol: string): Promise<any> {
-    console.log(`[BingXConnector] Closing position for ${symbol}`);
+    console.log(`[BingXConnector] ========================================`);
+    console.log(`[BingXConnector] CLOSING POSITION for ${symbol} using NATIVE API`);
+    console.log(`[BingXConnector] ========================================`);
 
     if (!this.isInitialized) {
       throw new Error('BingX connector not initialized');
     }
 
     try {
-      // First check if there's an open position
-      const position = await this.getPosition(symbol);
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
 
-      if (!position || position.positionSide === 'None') {
-        throw new Error(`No open position for ${symbol}`);
+      // Get current position to determine side
+      const positions = await this.bingxService.getPositions(bingxSymbol);
+      const position = positions.find((p) => p.symbol === bingxSymbol && parseFloat(p.positionAmt || '0') !== 0);
+
+      if (!position) {
+        console.log(`[BingXConnector] No open position found for ${bingxSymbol}`);
+        return { success: true, message: 'No position to close' };
       }
 
-      // Determine position side from the current position
+      // Determine position side from BingX position data
+      // BingX uses positionSide: 'LONG' or 'SHORT'
       const positionSide = position.positionSide as 'LONG' | 'SHORT';
-      const result = await this.bingxService.closePosition(symbol, positionSide);
+      console.log(`[BingXConnector] Found ${positionSide} position with size ${position.positionAmt}`);
 
-      console.log('[BingXConnector] Position closed:', result);
+      // Use native BingX closePosition method with closePosition=true parameter
+      const result = await this.bingxService.closePosition(bingxSymbol, positionSide);
+
+      console.log(`[BingXConnector] ✓ Position closed successfully via NATIVE API:`, result);
+      console.log(`[BingXConnector] ========================================`);
+
       return result;
     } catch (error: any) {
-      console.error('[BingXConnector] Error closing position:', error.message);
+      console.error(`[BingXConnector] ✗ Error closing position via NATIVE API:`, error.message);
+      console.error(`[BingXConnector] ========================================`);
       throw error;
     }
   }
@@ -399,6 +672,10 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
       const bingxSide = side === 'Buy' ? 'BUY' : 'SELL';
 
       // Check account position mode
@@ -415,7 +692,7 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       const orderParams: any = {
-        symbol,
+        symbol: bingxSymbol,
         side: bingxSide,
         type: 'MARKET',
         quantity,
@@ -463,7 +740,11 @@ export class BingXConnector extends BaseExchangeConnector {
         throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 125.`);
       }
 
-      const result = await this.bingxService.setLeverage(symbol, leverage, side);
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
+      const result = await this.bingxService.setLeverage(bingxSymbol, leverage, side);
       console.log('[BingXConnector] Leverage set successfully:', result);
       return result;
     } catch (error: any) {
@@ -483,6 +764,140 @@ export class BingXConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Place Take Profit conditional order (closes position when price reaches TP)
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @param stopPrice Trigger price for take profit
+   * @param side Original position side ('Buy' for long, 'Sell' for short)
+   * @returns Order result
+   */
+  async placeTakeProfitOrder(
+    symbol: string,
+    stopPrice: number,
+    side: OrderSide
+  ): Promise<any> {
+    console.log(`[BingXConnector] Placing Take Profit order:`, {
+      symbol,
+      stopPrice,
+      originalSide: side,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
+      // Opposite side to close the position
+      // If we have a BUY position (long), we SELL to close
+      // If we have a SELL position (short), we BUY to close
+      const bingxSide = side === 'Buy' ? 'SELL' : 'BUY';
+
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use original position side (LONG for Buy, SHORT for Sell)
+        positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
+      const orderParams: any = {
+        symbol: bingxSymbol,
+        side: bingxSide,
+        type: 'TAKE_PROFIT_MARKET',
+        stopPrice,
+        closePosition: true, // Close entire position when triggered
+        positionSide,
+      };
+
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Placing TP order with positionSide=${positionSide}`);
+
+      const result = await this.bingxService.placeOrder(orderParams);
+
+      console.log('[BingXConnector] Take Profit order placed:', result);
+      return result;
+    } catch (error: any) {
+      console.error('[BingXConnector] Error placing Take Profit order:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Place Stop Loss conditional order (closes position when price reaches SL)
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @param stopPrice Trigger price for stop loss
+   * @param side Original position side ('Buy' for long, 'Sell' for short)
+   * @returns Order result
+   */
+  async placeStopLossOrder(
+    symbol: string,
+    stopPrice: number,
+    side: OrderSide
+  ): Promise<any> {
+    console.log(`[BingXConnector] Placing Stop Loss order:`, {
+      symbol,
+      stopPrice,
+      originalSide: side,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
+
+      // Opposite side to close the position
+      // If we have a BUY position (long), we SELL to close
+      // If we have a SELL position (short), we BUY to close
+      const bingxSide = side === 'Buy' ? 'SELL' : 'BUY';
+
+      // Check account position mode
+      const isHedgeMode = await this.bingxService.getPositionMode();
+
+      // Determine positionSide based on mode
+      let positionSide: string;
+      if (isHedgeMode) {
+        // Hedge Mode: Use original position side (LONG for Buy, SHORT for Sell)
+        positionSide = side === 'Buy' ? 'LONG' : 'SHORT';
+      } else {
+        // One-Way Mode: MUST use BOTH
+        positionSide = 'BOTH';
+      }
+
+      const orderParams: any = {
+        symbol: bingxSymbol,
+        side: bingxSide,
+        type: 'STOP_MARKET',
+        stopPrice,
+        closePosition: true, // Close entire position when triggered
+        positionSide,
+      };
+
+      console.log(`[BingXConnector] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Placing SL order with positionSide=${positionSide}`);
+
+      const result = await this.bingxService.placeOrder(orderParams);
+
+      console.log('[BingXConnector] Stop Loss order placed:', result);
+      return result;
+    } catch (error: any) {
+      console.error('[BingXConnector] Error placing Stop Loss order:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get current market price for a symbol (REST API)
    * Uses BingX's ticker endpoint to get the last traded price
    */
@@ -494,22 +909,25 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+
       // BingX uses getTickers() which returns all tickers
       // We need to filter for our specific symbol
       const tickers = await this.bingxService.getTickers();
-      const ticker = tickers.find((t) => t.symbol === symbol);
+      const ticker = tickers.find((t) => t.symbol === bingxSymbol);
 
       if (!ticker) {
-        throw new Error(`No ticker data found for ${symbol}`);
+        throw new Error(`No ticker data found for ${bingxSymbol}`);
       }
 
       const lastPrice = parseFloat(ticker.lastPrice);
 
       if (isNaN(lastPrice) || lastPrice <= 0) {
-        throw new Error(`Invalid price data for ${symbol}: ${ticker.lastPrice}`);
+        throw new Error(`Invalid price data for ${bingxSymbol}: ${ticker.lastPrice}`);
       }
 
-      console.log(`[BingXConnector] Current price for ${symbol}: $${lastPrice}`);
+      console.log(`[BingXConnector] Current price for ${bingxSymbol}: $${lastPrice}`);
       return lastPrice;
     } catch (error: any) {
       console.error(`[BingXConnector] Error fetching market price for ${symbol}:`, error.message);
@@ -540,11 +958,15 @@ export class BingXConnector extends BaseExchangeConnector {
     }
 
     try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized for WebSocket: ${symbol} -> ${bingxSymbol}`);
+
       const { websocketManager } = await import('@/services/websocket-manager.service');
 
       // BingX WebSocket configuration
       const wsUrl = 'wss://open-api-swap.bingx.com/swap-market';
-      const dataType = `${symbol}@ticker`;
+      const dataType = `${bingxSymbol}@ticker`;
 
       const config = {
         url: wsUrl,
@@ -560,7 +982,7 @@ export class BingXConnector extends BaseExchangeConnector {
       // Subscribe using WebSocket manager
       const unsubscribe = await websocketManager.subscribe(
         'bingx',
-        symbol,
+        bingxSymbol,
         config,
         (data: any) => {
           try {
@@ -574,16 +996,16 @@ export class BingXConnector extends BaseExchangeConnector {
               if (!isNaN(price) && price > 0) {
                 callback(price, timestamp);
               } else {
-                console.warn(`[BingXConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.c);
+                console.warn(`[BingXConnector] Invalid price in WebSocket update for ${bingxSymbol}:`, tickerData.c);
               }
             }
           } catch (error: any) {
-            console.error(`[BingXConnector] Error processing WebSocket update for ${symbol}:`, error.message);
+            console.error(`[BingXConnector] Error processing WebSocket update for ${bingxSymbol}:`, error.message);
           }
         }
       );
 
-      console.log(`[BingXConnector] Successfully subscribed to price stream for ${symbol}`);
+      console.log(`[BingXConnector] Successfully subscribed to price stream for ${bingxSymbol}`);
       return unsubscribe;
     } catch (error: any) {
       console.error(`[BingXConnector] Error subscribing to price stream for ${symbol}:`, error.message);

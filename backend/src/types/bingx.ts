@@ -7,7 +7,6 @@
 export interface BingXConfig {
   apiKey: string;
   apiSecret: string;
-  testnet?: boolean;
   enableRateLimit?: boolean;
 }
 
@@ -52,6 +51,8 @@ export interface BingXOrderRequest {
   reduceOnly?: boolean;
   timeInForce?: 'GTC' | 'IOC' | 'FOK';
   closePosition?: boolean;
+  // NOTE: BingX does NOT support atomic TP/SL in market orders
+  // TP/SL are placed as separate conditional orders (TAKE_PROFIT_MARKET, STOP_MARKET)
 }
 
 export interface BingXOrder {

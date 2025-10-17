@@ -27,11 +27,6 @@ enum Exchange {
   MEXC
 }
 
-enum Environment {
-  TESTNET
-  MAINNET
-}
-
 model User {
   id           String  @id @default(cuid())
   email        String  @unique
@@ -71,6 +66,7 @@ model User {
   exchangeCredentials           ExchangeCredentials[]
   fundingArbitrageSubscriptions FundingArbitrageSubscription[]
   priceArbitragePositions       PriceArbitragePosition[]
+  graduatedEntryPositions       GraduatedEntryPosition[]
 
   @@map("users")
 }
@@ -83,8 +79,8 @@ model BybitApiKey {
   apiKey    String // Encrypted Bybit API key
   apiSecret String // Encrypted Bybit API secret
 
-  // Configuration
-  testnet Boolean @default(true)
+  // Configuration (deprecated - always uses mainnet now)
+  testnet Boolean @default(false)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -101,8 +97,7 @@ model ExchangeCredentials {
   userId String
 
   // Exchange information
-  exchange    Exchange
-  environment Environment
+  exchange Exchange
 
   // Encrypted API credentials
   apiKey    String // Encrypted API key
@@ -127,7 +122,6 @@ model ExchangeCredentials {
   // Indexes for efficient queries
   @@index([userId])
   @@index([userId, exchange])
-  @@index([userId, exchange, environment])
   @@index([userId, exchange, isActive])
   @@map("exchange_credentials")
 }
@@ -782,8 +776,7 @@ model ConnectorStateCache {
   credentialId String
 
   // Exchange information
-  exchange    String // "BYBIT", "BINGX", etc.
-  environment String // "TESTNET", "MAINNET"
+  exchange String // "BYBIT", "BINGX", etc.
 
   // Cached connector state
   timeOffset   Int      @default(0) // Time offset in milliseconds
@@ -808,4 +801,73 @@ model ConnectorStateCache {
   @@index([expiresAt])
   @@index([userId, exchange])
   @@map("connector_state_cache")
+}
+
+enum GraduatedEntryStatus {
+  INITIALIZING // Setting up connectors and leverage
+  EXECUTING    // Executing graduated entry orders
+  ACTIVE       // Positions opened, monitoring both exchanges
+  COMPLETED    // Positions closed successfully
+  LIQUIDATED   // One or both positions were liquidated
+  ERROR        // Error occurred during execution
+  CANCELLED    // User cancelled/stopped position
+}
+
+model GraduatedEntryPosition {
+  id     String @id @default(cuid())
+  userId String
+
+  // Position identifier (e.g., "arb_1_1234567890")
+  positionId String @unique
+
+  // Symbol information
+  symbol String // e.g., "BTCUSDT"
+
+  // Primary exchange configuration
+  primaryExchange     String // Exchange name (e.g., "BYBIT")
+  primaryCredentialId String // Reference to ExchangeCredentials
+  primarySide         String // "long" or "short"
+  primaryLeverage     Float  // Leverage (1-125)
+  primaryQuantity     Float  // Total quantity to trade
+  primaryFilledQty    Float  @default(0) // Quantity filled so far
+  primaryOrderIds     String[] // Array of order IDs from primary exchange
+
+  // Hedge exchange configuration
+  hedgeExchange     String // Exchange name (e.g., "BINGX")
+  hedgeCredentialId String // Reference to ExchangeCredentials
+  hedgeSide         String // "long" or "short"
+  hedgeLeverage     Float  // Leverage (1-125)
+  hedgeQuantity     Float  // Total quantity to trade
+  hedgeFilledQty    Float  @default(0) // Quantity filled so far
+  hedgeOrderIds     String[] // Array of order IDs from hedge exchange
+
+  // Graduated entry settings
+  graduatedParts   Int // Number of parts (e.g., 5)
+  graduatedDelayMs Int // Delay between parts in milliseconds (e.g., 2000)
+  currentPart      Int @default(0) // Current part being executed (0 = not started)
+
+  // Position status
+  status              GraduatedEntryStatus @default(INITIALIZING)
+  primaryStatus       String               @default("pending") // pending, executing, completed, error
+  hedgeStatus         String               @default("pending") // pending, executing, completed, error
+  errorMessage        String?
+  primaryErrorMessage String?
+  hedgeErrorMessage   String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for efficient queries
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status])
+  @@index([positionId])
+  @@index([symbol])
+  @@map("graduated_entry_positions")
 }

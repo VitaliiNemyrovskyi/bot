@@ -18,8 +18,8 @@ export async function GET(
 ) {
   try {
     // Authenticate user
-    const user = await AuthService.authenticateRequest(request);
-    if (!user) {
+    const { success, user } = await AuthService.authenticateRequest(request);
+    if (!success || !user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -102,8 +102,8 @@ export async function DELETE(
 ) {
   try {
     // Authenticate user
-    const user = await AuthService.authenticateRequest(request);
-    if (!user) {
+    const { success, user } = await AuthService.authenticateRequest(request);
+    if (!success || !user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }

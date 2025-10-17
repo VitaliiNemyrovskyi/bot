@@ -814,59 +814,45 @@ export class BybitFundingStrategyService extends EventEmitter {
   }
 
   /**
-   * Calculate TP/SL prices based on expected funding
+   * Calculate TP/SL prices based on percentage of entry price
    *
    * Formula:
-   * - Expected Funding = Margin * Leverage * Funding Rate
-   * - TP Profit = Expected Funding * (takeProfitPercent / 100)
-   * - TP Price = Entry Price ± (TP Profit / Position Size)
+   * - takeProfitPercent: Percentage profit target (e.g., 90 = 90% gain)
+   * - stopLossPercent: Percentage loss limit (e.g., 20 = 20% loss)
    *
    * For BUY (LONG):
-   *   TP Price = Entry + (TP Profit / Size)
-   *   SL Price = Entry - (SL Profit / Size)
+   *   TP Price = Entry * (1 + takeProfitPercent / 100)   // Price goes UP for profit
+   *   SL Price = Entry * (1 - stopLossPercent / 100)     // Price goes DOWN for loss
    *
    * For SELL (SHORT):
-   *   TP Price = Entry - (TP Profit / Size)
-   *   SL Price = Entry + (SL Profit / Size)
+   *   TP Price = Entry * (1 - takeProfitPercent / 100)   // Price goes DOWN for profit
+   *   SL Price = Entry * (1 + stopLossPercent / 100)     // Price goes UP for loss
    */
   private calculateTPSL(strategy: ActiveStrategy, entryPrice: number, side: 'Buy' | 'Sell'): {
     takeProfitPrice: number;
     stopLossPrice: number;
   } {
-    const { margin, leverage, takeProfitPercent, stopLossPercent } = strategy.config;
-    const fundingRate = strategy.fundingRate;
+    const { takeProfitPercent, stopLossPercent } = strategy.config;
 
-    // Expected funding payment
-    const expectedFunding = margin * leverage * Math.abs(fundingRate);
-
-    // TP and SL in USDT
-    const tpProfit = expectedFunding * (takeProfitPercent / 100);
-    const slLoss = expectedFunding * (stopLossPercent / 100);
-
-    // Position size
-    const positionValue = margin * leverage;
-    const positionSize = positionValue / entryPrice;
-
-    // Calculate TP/SL prices
+    // Calculate TP/SL prices based on percentage of entry price
     let takeProfitPrice: number;
     let stopLossPrice: number;
 
     if (side === 'Buy') {
-      // LONG position: TP above entry, SL below entry
-      takeProfitPrice = entryPrice + (tpProfit / positionSize);
-      stopLossPrice = entryPrice - (slLoss / positionSize);
+      // LONG position: TP above entry (price increases), SL below entry (price decreases)
+      takeProfitPrice = entryPrice * (1 + takeProfitPercent / 100);
+      stopLossPrice = entryPrice * (1 - stopLossPercent / 100);
     } else {
-      // SHORT position: TP below entry, SL above entry
-      takeProfitPrice = entryPrice - (tpProfit / positionSize);
-      stopLossPrice = entryPrice + (slLoss / positionSize);
+      // SHORT position: TP below entry (price decreases), SL above entry (price increases)
+      takeProfitPrice = entryPrice * (1 - takeProfitPercent / 100);
+      stopLossPrice = entryPrice * (1 + stopLossPercent / 100);
     }
 
     console.log(`[FundingStrategy] ${strategy.id} - TP/SL calculation:`, {
-      entryPrice,
-      fundingRate,
-      expectedFunding: expectedFunding.toFixed(2),
-      tpProfit: tpProfit.toFixed(2),
-      slLoss: slLoss.toFixed(2),
+      side,
+      entryPrice: entryPrice.toFixed(4),
+      takeProfitPercent: `${takeProfitPercent}%`,
+      stopLossPercent: `${stopLossPercent}%`,
       takeProfitPrice: takeProfitPrice.toFixed(4),
       stopLossPrice: stopLossPrice.toFixed(4),
     });
@@ -1421,6 +1407,32 @@ export class BybitFundingStrategyService extends EventEmitter {
       const side = this.determinePreciseTimingSide(config.positionSide, fundingRate);
       console.log(`[PreciseTimingStrategy] ${strategyId} - Determined position side: ${side} (funding rate: ${(fundingRate * 100).toFixed(4)}%)`);
 
+      // Save to database
+      const dbRecord = await prisma.fundingArbitrageSubscription.create({
+        data: {
+          userId: config.userId,
+          symbol: config.symbol,
+          fundingRate,
+          nextFundingTime: new Date(nextFundingTime),
+          positionType: side.toLowerCase(), // "buy" -> "long", "sell" -> "short"
+          side,
+          quantity: 0, // Will be calculated when position opens
+          leverage: config.leverage,
+          margin: config.margin,
+          mode: 'NON_HEDGED', // Bybit Funding Strategy uses single position
+          executionDelay: 0, // Not used for precise timing (uses timingOffset instead)
+          takeProfitPercent: config.takeProfitPercent,
+          stopLossPercent: config.stopLossPercent,
+          positionReopenCount: 0,
+          strategyId,
+          primaryExchange: testnet ? 'BYBIT_TESTNET' : 'BYBIT_MAINNET',
+          primaryCredentialId: credentialId || 'unknown',
+          status: 'ACTIVE',
+        },
+      });
+
+      console.log(`[PreciseTimingStrategy] Strategy saved to DB with ID: ${dbRecord.id}`);
+
       // STEP 4: Calculate target execution time with latency compensation
       // Target time = funding time + timingOffset
       // But we need to send the order EARLIER by the estimated latency
@@ -1438,6 +1450,7 @@ export class BybitFundingStrategyService extends EventEmitter {
       // STEP 5: Create ActiveStrategy instance (simplified for single position)
       const strategy: ActiveStrategy = {
         id: strategyId,
+        dbId: dbRecord.id,
         config: {
           userId: config.userId,
           symbol: config.symbol,

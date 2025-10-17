@@ -11,22 +11,19 @@ export class MEXCConnector extends BaseExchangeConnector {
   private apiKey: string;
   private apiSecret: string;
   private authToken?: string;
-  private testnet: boolean;
   private leverageCache: Map<string, number> = new Map(); // Cache leverage per symbol
 
-  constructor(apiKey: string, apiSecret: string, testnet: boolean = true, authToken?: string) {
+  constructor(apiKey: string, apiSecret: string, authToken?: string) {
     super();
-    this.exchangeName = testnet ? 'MEXC_TESTNET' : 'MEXC';
+    this.exchangeName = 'MEXC';
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.authToken = authToken;
-    this.testnet = testnet;
 
     this.mexcService = new MEXCService({
       apiKey,
       apiSecret,
       authToken,
-      testnet,
       enableRateLimit: true,
     });
   }
@@ -35,7 +32,7 @@ export class MEXCConnector extends BaseExchangeConnector {
    * Initialize MEXC connection
    */
   async initialize(): Promise<void> {
-    console.log(`[MEXCConnector] Initializing MEXC connector (testnet: ${this.testnet})...`);
+    console.log(`[MEXCConnector] Initializing MEXC connector...`);
 
     try {
       // Test connection by fetching account info

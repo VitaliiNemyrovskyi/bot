@@ -2,20 +2,24 @@ import { Component, OnInit, OnDestroy, inject, signal, computed, effect, ChangeD
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { interval, Subscription, of } from 'rxjs';
 import { switchMap, startWith } from 'rxjs/operators';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-// MatDialog removed - using ui-dialog component directly
 import { AuthService } from '../../../services/auth.service';
 import { TranslationService } from '../../../services/translation.service';
 import { ArbitrageStreamService, PriceUpdate } from '../../../services/arbitrage-stream.service';
+import { PriceArbitrageService } from '../../../services/price-arbitrage.service';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { DropdownComponent, DropdownOption } from '../../ui/dropdown/dropdown.component';
 import { TradeHistoryComponent, TradeHistoryDialogData } from '../trade-history/trade-history.component';
+import { StartBybitStrategyModalComponent, StartBybitStrategyModalData } from '../start-bybit-strategy-modal/start-bybit-strategy-modal.component';
+import { BybitFundingStrategyService } from '../../../services/bybit-funding-strategy.service';
+import { ActiveStrategy } from '../../../models/bybit-funding-strategy.model';
 import { getEndpointUrl } from '../../../config/app.config';
 
 /**
@@ -116,8 +120,16 @@ export interface ExchangeData {
   environment: string;
   fundingRate: string;
   nextFundingTime: number;
+  fundingInterval?: string; // Funding interval (e.g., "8h", "4h", "1h")
   originalSymbol?: string;
   lastPrice: string;
+  indexPrice?: string;
+  markPrice?: string;
+  highPrice24h?: string;
+  lowPrice24h?: string;
+  openInterest?: string;
+  volume24h?: string;
+  turnover24h?: string;
 }
 
 export interface FundingRateArbitrageOpportunity {
@@ -126,6 +138,9 @@ export interface FundingRateArbitrageOpportunity {
   spread: string; // Price spread as decimal (e.g., "0.0004")
   spreadPercent: string; // Price spread as percentage (e.g., "0.04")
   priceSpreadUsdt: string; // Absolute price difference in USDT (e.g., "25.50")
+  fundingPeriodicity?: string; // Funding periodicity (e.g., "2г 35хв/8h")
+  fundingSpread?: number; // Funding rate spread (difference between PRIMARY and HEDGE funding rates)
+  fundingSpreadPercent?: string; // Funding spread as percentage string (e.g., "0.15")
   bestLong: {
     exchange: string;
     credentialId: string;
@@ -170,7 +185,8 @@ export interface FundingRateArbitrageOpportunity {
     CardContentComponent,
     ButtonComponent,
     DropdownComponent,
-    TradeHistoryComponent
+    TradeHistoryComponent,
+    StartBybitStrategyModalComponent
   ],
   templateUrl: './funding-rates.component.html',
   styleUrl: './funding-rates.component.scss'
@@ -180,12 +196,19 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private arbitrageStreamService = inject(ArbitrageStreamService);
+  private priceArbitrageService = inject(PriceArbitrageService);
+  private bybitFundingStrategyService = inject(BybitFundingStrategyService);
   private cdr = inject(ChangeDetectorRef);
+  private router = inject(Router);
 
   // Trade History Dialog State
   showTradeHistoryDialog = signal<boolean>(false);
   tradeHistorySymbol = signal<string | undefined>(undefined);
   tradeHistoryExchange = signal<string | undefined>(undefined);
+
+  // Bybit Strategy Modal State
+  showBybitStrategyModal = signal<boolean>(false);
+  bybitStrategyModalData = signal<StartBybitStrategyModalData | null>(null);
 
   // Expose utilities to template
   readonly Array = Array;
@@ -216,6 +239,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   // Subscription state
   subscriptions = signal<Map<string, FundingSubscription>>(new Map());
   completedDeals = signal<CompletedDeal[]>([]);
+  activeBybitStrategies = signal<ActiveStrategy[]>([]);
   notifications = signal<string[]>([]);
   showSubscriptionDialog = signal<boolean>(false);
   selectedTicker = signal<TickerData | null>(null);
@@ -236,12 +260,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   hedgedHedgeMargin = signal<number>(100);
   isStartingHedged = signal<boolean>(false);
 
-  // Row expansion state
-  expandedRows = signal<Set<string>>(new Set());
+  // Row expansion state (only one row can be expanded at a time)
+  expandedRowSymbol = signal<string | null>(null);
 
   // Arbitrage state
   arbitrageOpportunities = signal<FundingRateArbitrageOpportunity[]>([]);
   isLoadingArbitrage = signal<boolean>(false);
+  isArbitrageRequestInProgress = signal<boolean>(false); // Prevents concurrent requests
   arbitrageError = signal<string | null>(null);
   showArbitrageSection = signal<boolean>(true);
   arbitrageFiltersCollapsed = signal<boolean>(false);
@@ -250,6 +275,28 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   showOnlySubscribedArbitrage = signal<boolean>(false); // Filter to show only subscribed pairs
   maxNextFundingHoursArbitrage = signal<number | null>(null); // Maximum hours until next funding (filter)
   minMarketCapFilter = signal<number | null>(null); // Minimum market cap filter in millions USD (HEDGED mode only)
+  minMarketCapFilterValue = signal<string>(''); // Selected dropdown value for market cap filter
+
+  // Market cap filter options for dropdown (uses translation keys)
+  get marketCapOptions(): DropdownOption[] {
+    return [
+      { value: '', label: this.translate('fundingRates.filters.allMarketCaps') },
+      { value: '0.1', label: this.translate('fundingRates.filters.marketCap100K') },
+      { value: '0.2', label: this.translate('fundingRates.filters.marketCap200K') },
+      { value: '0.5', label: this.translate('fundingRates.filters.marketCap500K') },
+      { value: '1', label: this.translate('fundingRates.filters.marketCap1M') },
+      { value: '10', label: this.translate('fundingRates.filters.marketCap10M') },
+      { value: '50', label: this.translate('fundingRates.filters.marketCap50M') },
+      { value: '100', label: this.translate('fundingRates.filters.marketCap100M') },
+      { value: '500', label: this.translate('fundingRates.filters.marketCap500M') },
+      { value: '1000', label: this.translate('fundingRates.filters.marketCap1B') },
+      { value: '5000', label: this.translate('fundingRates.filters.marketCap5B') },
+      { value: '10000', label: this.translate('fundingRates.filters.marketCap10B') },
+      { value: '50000', label: this.translate('fundingRates.filters.marketCap50B') },
+      { value: '100000', label: this.translate('fundingRates.filters.marketCap100B') }
+    ];
+  }
+
   arbitrageMode = signal<'HEDGED' | 'NON_HEDGED'>('HEDGED'); // Mode toggle: HEDGED (long-term, 2 positions) or NON_HEDGED (short-term, 1 position)
 
   // Real-time streaming state
@@ -275,9 +322,9 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   ]);
 
   // Arbitrage table multi-sort state
-  // Initial sort matches initial mode (HEDGED = spread, NON_HEDGED = funding)
+  // Initial sort matches initial mode (HEDGED = fundingSpread, NON_HEDGED = funding)
   arbitrageSortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
-    { column: 'spread', direction: 'desc' }  // Default HEDGED mode
+    { column: 'fundingSpread', direction: 'desc' }  // Default HEDGED mode - sort by funding spread
   ]);
 
   // UI state
@@ -464,6 +511,32 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       });
     }
 
+    // Filter by minimum market cap (HEDGED mode only)
+    const minMarketCap = this.minMarketCapFilter();
+    if (minMarketCap !== null && minMarketCap > 0) {
+      const beforeCount = opportunities.length;
+
+      opportunities = opportunities.filter(opp => {
+        // Market cap is already stored in millions USD (from backend)
+        // Filter value is also in millions (e.g., 0.1 for $100K, 1 for $1M, 1000 for $1B)
+
+        // Check if marketCap exists
+        if (!opp.marketCap) {
+          return false;
+        }
+
+        // Ensure both values are numbers
+        const oppMarketCap = typeof opp.marketCap === 'number' ? opp.marketCap : parseFloat(String(opp.marketCap));
+        const filterValue = typeof minMarketCap === 'number' ? minMarketCap : parseFloat(String(minMarketCap));
+
+        // Check if marketCap exists and is within range
+        const hasValidMarketCap = !isNaN(oppMarketCap) && oppMarketCap > 0;
+        return hasValidMarketCap && oppMarketCap >= filterValue;
+      });
+
+      console.log(`[FundingRates] Market Cap Filter: ${beforeCount} → ${opportunities.length} opportunities (≥ $${minMarketCap}M)`);
+    }
+
     return opportunities;
   });
 
@@ -504,6 +577,26 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             // Sort by price spread (HEDGED mode)
             aVal = parseFloat(a.spread || '0');
             bVal = parseFloat(b.spread || '0');
+            break;
+          case 'fundingPeriodicity':
+            // Sort by funding periodicity (extract hours and minutes)
+            const parseTime = (periodicity: string | undefined): number => {
+              if (!periodicity) return 0;
+              const match = periodicity.match(/(\d+)г\s+(\d+)хв/);
+              if (match) {
+                const hours = parseInt(match[1], 10);
+                const minutes = parseInt(match[2], 10);
+                return hours * 60 + minutes; // Convert to total minutes
+              }
+              return 0;
+            };
+            aVal = parseTime(a.fundingPeriodicity);
+            bVal = parseTime(b.fundingPeriodicity);
+            break;
+          case 'fundingSpread':
+            // Sort by funding spread (HEDGED mode)
+            aVal = a.fundingSpread || 0;
+            bVal = b.fundingSpread || 0;
             break;
           case 'funding':
             // For NON_HEDGED mode: find maximum funding rate by absolute value,
@@ -809,7 +902,9 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.loadSettings();
     this.loadCredentials();
     this.loadSubscriptions();
-    this.loadArbitrageOpportunities(); // Load cross-exchange arbitrage data
+    this.loadActiveBybitStrategies(); // Load active Bybit funding strategies
+    this.loadArbitrageOpportunities(); // Load cross-exchange arbitrage data (initial load)
+    this.startArbitrageAutoRefresh(); // Start auto-refresh every 15 seconds
     this.startAutoCancelChecker();
     this.syncSettingsToFilters();
   }
@@ -820,6 +915,10 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     }
     if (this.autoCancelInterval) {
       clearInterval(this.autoCancelInterval);
+    }
+    if (this.arbitrageRefreshInterval) {
+      clearInterval(this.arbitrageRefreshInterval);
+      console.log('[ArbitrageAutoRefresh] Auto-refresh stopped');
     }
     // Disconnect from real-time streaming
     if (this.priceUpdateSubscription) {
@@ -1069,15 +1168,30 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
   /**
    * Load arbitrage opportunities from all exchanges
+   * @param silent If true, reduces console logging (for auto-refresh)
    */
-  loadArbitrageOpportunities(): void {
+  loadArbitrageOpportunities(silent: boolean = false): void {
+    // Prevent concurrent requests - skip if previous request is still in progress
+    if (this.isArbitrageRequestInProgress()) {
+      if (!silent) {
+        console.log('[Arbitrage] Skipping request - previous request still in progress');
+      }
+      return;
+    }
+
     const token = this.authService.authState().token;
     if (!token) {
       this.arbitrageError.set('Authentication required');
       return;
     }
 
-    this.isLoadingArbitrage.set(true);
+    // Mark request as in progress
+    this.isArbitrageRequestInProgress.set(true);
+
+    // Don't show loading spinner for silent refresh
+    if (!silent) {
+      this.isLoadingArbitrage.set(true);
+    }
     this.arbitrageError.set(null);
 
     const headers = new HttpHeaders({
@@ -1089,70 +1203,116 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.http.get<any>(arbitrageUrl, { headers }).subscribe({
       next: (response) => {
         if (response.success) {
-          this.arbitrageOpportunities.set(response.data || []);
-          console.log(`[Arbitrage] Loaded ${response.data?.length || 0} opportunities`);
-          console.log('[Arbitrage] Opportunity symbols:', response.data?.map((o: any) => o.symbol));
-          console.log('[Arbitrage] First opportunity sample:', response.data?.[0]);
+          // Process data to add calculated fields
+          const processedData = (response.data || []).map((opportunity: any) => {
+            // Get the earliest next funding time from exchanges to calculate periodicity
+            const fundingTimes = opportunity.exchanges
+              .map((ex: any) => ex.nextFundingTime)
+              .filter((time: number) => time > 0);
+            const earliestFundingTime = fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
 
-          // 🔍 DETAILED VERIFICATION: Check bestLong/bestShort mapping for first 3 opportunities
-          console.log('='.repeat(80));
-          console.log('🔍 HEDGED ARBITRAGE VERIFICATION - Primary vs Hedge Exchange');
-          console.log('='.repeat(80));
+            // Calculate funding periodicity
+            const fundingPeriodicity = this.calculateFundingPeriodicity(earliestFundingTime);
 
-          response.data?.slice(0, 3).forEach((opp: any, idx: number) => {
-            console.log(`\n[${idx + 1}] Symbol: ${opp.symbol}`);
-            console.log('-'.repeat(60));
-
-            // Find the actual exchange data for bestLong and bestShort
-            const bestLongExchange = opp.exchanges.find((ex: any) =>
-              ex.exchange === opp.bestLong.exchange && ex.credentialId === opp.bestLong.credentialId
-            );
-            const bestShortExchange = opp.exchanges.find((ex: any) =>
-              ex.exchange === opp.bestShort.exchange && ex.credentialId === opp.bestShort.credentialId
+            // Calculate funding spread
+            const { spread, spreadPercent } = this.calculateFundingSpread(
+              opportunity.bestLong?.fundingRate || '0',
+              opportunity.bestShort?.fundingRate || '0'
             );
 
-            console.log(`Primary Exchange (bestLong):`);
-            console.log(`  Exchange: ${opp.bestLong.exchange}`);
-            console.log(`  Price: $${bestLongExchange?.lastPrice || 'N/A'}`);
-            console.log(`  Funding: ${(parseFloat(bestLongExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
-            console.log(`  → This is where we LONG (BUY)`);
-
-            console.log(`\nHedge Exchange (bestShort):`);
-            console.log(`  Exchange: ${opp.bestShort.exchange}`);
-            console.log(`  Price: $${bestShortExchange?.lastPrice || 'N/A'}`);
-            console.log(`  Funding: ${(parseFloat(bestShortExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
-            console.log(`  → This is where we SHORT (SELL)`);
-
-            console.log(`\nSpread: ${opp.spreadPercent}% ($${opp.priceSpreadUsdt})`);
-
-            // Verify correctness
-            const primaryPrice = parseFloat(bestLongExchange?.lastPrice || '0');
-            const hedgePrice = parseFloat(bestShortExchange?.lastPrice || '0');
-
-            if (primaryPrice > 0 && hedgePrice > 0) {
-              if (primaryPrice < hedgePrice) {
-                console.log(`✅ CORRECT: Primary ($${primaryPrice}) < Hedge ($${hedgePrice})`);
-                console.log(`   → We BUY LOW and SELL HIGH = PROFIT`);
-              } else {
-                console.log(`❌ ERROR: Primary ($${primaryPrice}) >= Hedge ($${hedgePrice})`);
-                console.log(`   → This would mean BUY HIGH and SELL LOW = LOSS!`);
-              }
-            }
+            return {
+              ...opportunity,
+              fundingPeriodicity,
+              fundingSpread: spread,
+              fundingSpreadPercent: spreadPercent
+            };
           });
 
-          console.log('\n' + '='.repeat(80));
+          this.arbitrageOpportunities.set(processedData);
+
+          if (!silent) {
+            console.log(`[Arbitrage] Loaded ${processedData?.length || 0} opportunities`);
+            console.log('[Arbitrage] Opportunity symbols:', processedData?.map((o: any) => o.symbol));
+            console.log('[Arbitrage] First opportunity sample:', processedData?.[0]);
+
+            // 🔍 DETAILED VERIFICATION: Check bestLong/bestShort mapping for first 3 opportunities
+            console.log('='.repeat(80));
+            console.log('🔍 HEDGED ARBITRAGE VERIFICATION - Primary vs Hedge Exchange');
+            console.log('='.repeat(80));
+          }
+
+          if (!silent) {
+            processedData?.slice(0, 3).forEach((opp: any, idx: number) => {
+              console.log(`\n[${idx + 1}] Symbol: ${opp.symbol}`);
+              console.log('-'.repeat(60));
+
+              // Find the actual exchange data for bestLong and bestShort
+              const bestLongExchange = opp.exchanges.find((ex: any) =>
+                ex.exchange === opp.bestLong.exchange && ex.credentialId === opp.bestLong.credentialId
+              );
+              const bestShortExchange = opp.exchanges.find((ex: any) =>
+                ex.exchange === opp.bestShort.exchange && ex.credentialId === opp.bestShort.credentialId
+              );
+
+              console.log(`Primary Exchange (bestLong):`);
+              console.log(`  Exchange: ${opp.bestLong.exchange}`);
+              console.log(`  Price: $${bestLongExchange?.lastPrice || 'N/A'}`);
+              console.log(`  Funding: ${(parseFloat(bestLongExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
+              console.log(`  → This is where we LONG (BUY)`);
+
+              console.log(`\nHedge Exchange (bestShort):`);
+              console.log(`  Exchange: ${opp.bestShort.exchange}`);
+              console.log(`  Price: $${bestShortExchange?.lastPrice || 'N/A'}`);
+              console.log(`  Funding: ${(parseFloat(bestShortExchange?.fundingRate || '0') * 100).toFixed(4)}%`);
+              console.log(`  → This is where we SHORT (SELL)`);
+
+              console.log(`\nSpread: ${opp.spreadPercent}% ($${opp.priceSpreadUsdt})`);
+
+              // Verify correctness
+              const primaryPrice = parseFloat(bestLongExchange?.lastPrice || '0');
+              const hedgePrice = parseFloat(bestShortExchange?.lastPrice || '0');
+
+              if (primaryPrice > 0 && hedgePrice > 0) {
+                if (primaryPrice < hedgePrice) {
+                  console.log(`✅ CORRECT: Primary ($${primaryPrice}) < Hedge ($${hedgePrice})`);
+                  console.log(`   → We BUY LOW and SELL HIGH = PROFIT`);
+                } else {
+                  console.log(`❌ ERROR: Primary ($${primaryPrice}) >= Hedge ($${hedgePrice})`);
+                  console.log(`   → This would mean BUY HIGH and SELL LOW = LOSS!`);
+                }
+              }
+            });
+
+            console.log('\n' + '='.repeat(80));
+          }
 
           // Real-time streaming is now controlled by the enableRealtimeStreaming feature flag
           // via effect in constructor - no need to start it here
         } else {
           this.arbitrageError.set(response.message || 'Failed to load arbitrage data');
         }
-        this.isLoadingArbitrage.set(false);
+
+        // Mark request as completed
+        this.isArbitrageRequestInProgress.set(false);
+
+        // Only hide loading spinner if not in silent mode
+        if (!silent) {
+          this.isLoadingArbitrage.set(false);
+        }
       },
       error: (error) => {
-        console.error('[Arbitrage] Error loading opportunities:', error);
+        if (!silent) {
+          console.error('[Arbitrage] Error loading opportunities:', error);
+        }
         this.arbitrageError.set(error.message || 'Failed to load arbitrage data');
-        this.isLoadingArbitrage.set(false);
+
+        // Mark request as completed (even on error)
+        this.isArbitrageRequestInProgress.set(false);
+
+        // Only hide loading spinner if not in silent mode
+        if (!silent) {
+          this.isLoadingArbitrage.set(false);
+        }
       }
     });
   }
@@ -1165,11 +1325,24 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.arbitrageFiltersCollapsed.update(v => !v);
   }
 
+  /**
+   * Handle market cap filter change from dropdown
+   */
+  onMarketCapFilterChange(value: string): void {
+    if (value === '' || value === null) {
+      this.minMarketCapFilter.set(null);
+    } else {
+      this.minMarketCapFilter.set(parseFloat(value));
+    }
+  }
+
   clearArbitrageFilters(): void {
     this.arbitrageSearchQuery.set('');
     this.minSpreadThreshold.set(null);
     this.showOnlySubscribedArbitrage.set(false);
     this.maxNextFundingHoursArbitrage.set(null);
+    this.minMarketCapFilter.set(null);
+    this.minMarketCapFilterValue.set('');
   }
 
   /**
@@ -1559,8 +1732,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     return `${num >= 0 ? '+' : ''}${percentage}%`;
   }
 
-  formatNextFundingTime(timestamp: string): string {
-    const ts = parseInt(timestamp);
+  formatNextFundingTime(timestamp: string | number): string {
+    const ts = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp;
     if (isNaN(ts)) return '-';
 
     const date = new Date(ts);
@@ -1694,33 +1867,6 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Toggle row expansion for inline subscription form
    */
-  toggleRowExpansion(symbol: string): void {
-    const expanded = new Set(this.expandedRows());
-    if (expanded.has(symbol)) {
-      expanded.delete(symbol);
-    } else {
-      expanded.add(symbol);
-      // Pre-fill quantity if there's an existing subscription
-      const subscription = this.getActiveSubscription(symbol);
-      if (subscription) {
-        // Convert quantity back to USDT based on current price (approximate)
-        const ticker = this.filteredTickers().find(t => t.symbol === symbol);
-        if (ticker) {
-          const price = parseFloat(ticker.lastPrice) || parseFloat(ticker.markPrice) || 0;
-          this.positionSizeUsdt.set(subscription.quantity * price);
-        }
-        this.editingSubscription.set(subscription);
-      }
-    }
-    this.expandedRows.set(expanded);
-  }
-
-  /**
-   * Check if row is expanded
-   */
-  isRowExpanded(symbol: string): boolean {
-    return this.expandedRows().has(symbol);
-  }
 
   /**
    * Get active subscription for a symbol
@@ -1835,11 +1981,32 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
    * Start auto-cancel checker (runs every 30 seconds)
    */
   private autoCancelInterval?: any;
+  private arbitrageRefreshInterval?: any;
 
   startAutoCancelChecker(): void {
     this.autoCancelInterval = setInterval(() => {
       this.checkAutoCancelConditions();
     }, 30000); // Check every 30 seconds
+  }
+
+  /**
+   * Start arbitrage opportunities auto-refresh (runs every 15 seconds)
+   * Silently updates the table data without UI reload
+   */
+  startArbitrageAutoRefresh(): void {
+    // Clear existing interval if any
+    if (this.arbitrageRefreshInterval) {
+      clearInterval(this.arbitrageRefreshInterval);
+    }
+
+    // Start new interval - silent mode (no logs, no loading spinner)
+    this.arbitrageRefreshInterval = setInterval(() => {
+      this.loadArbitrageOpportunities(true); // true = silent mode
+      this.loadSubscriptions(); // Also refresh subscription data (including funding rates)
+      this.loadActiveBybitStrategies(); // Also refresh Bybit funding strategies
+    }, 60000); // Refresh every 60 seconds (1 minute)
+
+    console.log('[ArbitrageAutoRefresh] Auto-refresh started (60s interval, silent mode)');
   }
 
   /**
@@ -2122,14 +2289,65 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
             console.log('[loadSubscriptions] Active subscription symbols:', Array.from(subsMap.values()).map(s => s.symbol));
             console.log('[loadSubscriptions] Completed deals:', completedDealsList.length);
 
+            // Log funding rates for debugging
+            Array.from(subsMap.values()).forEach(sub => {
+              console.log(`[loadSubscriptions] ${sub.symbol} funding rate: ${sub.fundingRate}`);
+            });
+
             this.subscriptions.set(subsMap);
             this.completedDeals.set(completedDealsList);
+
+            // Trigger change detection to update UI
+            this.cdr.detectChanges();
           }
         },
         error: (err) => {
           console.error('Failed to load subscriptions:', err);
         }
       });
+  }
+
+  /**
+   * Load active Bybit funding strategies from the server
+   */
+  loadActiveBybitStrategies(): void {
+    console.log('[loadActiveBybitStrategies] Calling API to load strategies...');
+    this.bybitFundingStrategyService.getActiveStrategies().subscribe({
+      next: (strategies) => {
+        console.log('[loadActiveBybitStrategies] Loaded strategies:', strategies);
+        console.log('[loadActiveBybitStrategies] Number of strategies:', strategies.length);
+        this.activeBybitStrategies.set(strategies);
+        console.log('[loadActiveBybitStrategies] Signal updated, current value:', this.activeBybitStrategies());
+        // Manually trigger change detection to ensure UI updates
+        this.cdr.detectChanges();
+      },
+      error: (error) => {
+        console.error('[loadActiveBybitStrategies] Failed to load strategies:', error);
+        // Don't show error notification to avoid spamming user
+        // Set empty array so UI shows correct state
+        this.activeBybitStrategies.set([]);
+      }
+    });
+  }
+
+  /**
+   * Stop a Bybit funding strategy
+   */
+  stopBybitStrategy(strategyId: string): void {
+    if (!confirm('Are you sure you want to stop this strategy?')) {
+      return;
+    }
+
+    this.bybitFundingStrategyService.stopStrategy(strategyId).subscribe({
+      next: () => {
+        this.showNotification('Strategy stopped successfully', 'success');
+        this.loadActiveBybitStrategies(); // Reload strategies
+      },
+      error: (error) => {
+        console.error('[stopBybitStrategy] Error:', error);
+        this.showNotification(`Failed to stop strategy: ${error.message}`, 'error');
+      }
+    });
   }
 
   /**
@@ -2194,11 +2412,18 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         positionType: positionType,
         quantity: positionCalc.quantity, // Use calculated quantity from USDT amount
         primaryCredentialId: credential.id,
+        primaryExchange: credential.exchange, // Add exchange information
         executionDelay: this.subscriptionSettings().executionDelay,
         leverage: this.dialogLeverage(), // Use dialog-specific leverage
         margin: currentMargin, // Current margin/position size in USDT
         mode: mode // Add mode to request body
       };
+
+      // Add TP/SL parameters for NON_HEDGED mode
+      if (mode === 'NON_HEDGED') {
+        body.takeProfitPercent = this.dialogTakeProfitPercent();
+        body.stopLossPercent = this.dialogStopLossPercent();
+      }
 
       // Only add hedge credentials if in HEDGED mode
       if (mode === 'HEDGED' && hedgeCred) {
@@ -2216,20 +2441,6 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
       ).toPromise();
 
       if (response.success) {
-        const subscription: FundingSubscription = {
-          subscriptionId: response.data.subscriptionId,
-          symbol: response.data.symbol,
-          fundingRate: response.data.fundingRate,
-          nextFundingTime: response.data.nextFundingTime,
-          positionType: response.data.positionType,
-          quantity: response.data.quantity,
-          status: response.data.status
-        };
-
-        const subs = this.subscriptions();
-        subs.set(subscription.subscriptionId, subscription);
-        this.subscriptions.set(new Map(subs));
-
         const message = editingSub
           ? `✅ Updated subscription for ${ticker.symbol}`
           : `✅ Subscribed to ${ticker.symbol} funding arbitrage`;
@@ -2237,7 +2448,12 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         this.showNotification(message, 'success');
 
         this.closeSubscriptionDialog();
-        this.startCountdownMonitoring(subscription);
+
+        // Reload subscriptions to get complete data with all fields
+        this.loadSubscriptions();
+
+        // Also reload arbitrage opportunities to update subscription indicators
+        this.loadArbitrageOpportunities(true);
       }
     } catch (error: any) {
       console.error('Error subscribing to funding rate:', error);
@@ -2343,9 +2559,15 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
    * Show notification
    */
   private showNotification(message: string, type: 'success' | 'error' | 'info'): void {
+    console.log('📢 showNotification called:', { message, type });
     const notifications = this.notifications();
-    notifications.push(`[${type.toUpperCase()}] ${message}`);
+    console.log('   Current notifications:', notifications);
+    const formattedMessage = `[${type.toUpperCase()}] ${message}`;
+    console.log('   Formatted message:', formattedMessage);
+    notifications.push(formattedMessage);
+    console.log('   After push:', notifications);
     this.notifications.set([...notifications]);
+    console.log('   Signal updated. New notifications():', this.notifications());
 
     // Auto-remove after 5 seconds
     setTimeout(() => {
@@ -2384,6 +2606,52 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     } else {
       return `${secs}s`;
     }
+  }
+
+  /**
+   * Calculate funding periodicity in format "HH:MM / 8h"
+   * Returns time until next funding and the interval
+   */
+  calculateFundingPeriodicity(nextFundingTime: number, fundingInterval: string = '8h'): string {
+    if (!nextFundingTime || nextFundingTime === 0) {
+      return 'N/A';
+    }
+
+    const now = Date.now();
+    const timeRemaining = nextFundingTime - now;
+
+    if (timeRemaining <= 0) {
+      return `--:-- / ${fundingInterval}`;
+    }
+
+    // Calculate hours and minutes until next funding
+    const totalSeconds = Math.floor(timeRemaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+    // Format hours and minutes with leading zeros
+    const hoursStr = String(hours).padStart(2, '0');
+    const minutesStr = String(minutes).padStart(2, '0');
+
+    return `${hoursStr}:${minutesStr} / ${fundingInterval}`;
+  }
+
+  /**
+   * Calculate funding spread between PRIMARY (bestLong) and HEDGE (bestShort)
+   * Returns the absolute difference in funding rates
+   */
+  private calculateFundingSpread(bestLongRate: string, bestShortRate: string): { spread: number; spreadPercent: string } {
+    const longRate = parseFloat(bestLongRate || '0');
+    const shortRate = parseFloat(bestShortRate || '0');
+
+    // Calculate the absolute difference
+    const spread = Math.abs(longRate - shortRate);
+    const spreadPercent = (spread * 100).toFixed(4);
+
+    return {
+      spread,
+      spreadPercent
+    };
   }
 
   /**
@@ -2913,12 +3181,19 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         break;
 
       case 'BINGX':
+        // Remove CCXT perpetual contract suffix and slashes (e.g., BTC/USDT:USDT -> BTCUSDT)
+        const cleanSymbol = symbol.replace(/:.*$/, '').replace(/\//g, '');
+        // Convert to BingX format with hyphen (e.g., BTCUSDT -> BTC-USDT)
+        const bingxSymbol = cleanSymbol.includes('-') ? cleanSymbol :
+          (cleanSymbol.endsWith('USDT') ? `${cleanSymbol.slice(0, -4)}-USDT` :
+          (cleanSymbol.endsWith('USDC') ? `${cleanSymbol.slice(0, -4)}-USDC` : cleanSymbol));
+
         if (environment === 'TESTNET') {
           // BingX Testnet perpetual trading page
-          url = `https://testnet-futures.bingx.com/en/perpetual/${symbol}`;
+          url = `https://testnet-futures.bingx.com/en/perpetual/${bingxSymbol}`;
         } else {
           // BingX Mainnet perpetual trading page
-          url = `https://bingx.com/en/perpetual/${symbol}`;
+          url = `https://bingx.com/en/perpetual/${bingxSymbol}`;
         }
         break;
 
@@ -2980,10 +3255,17 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
       case 'BINGX':
         // BingX uses hyphens in their URLs (e.g., DOOD-USDT instead of DOODUSDT)
+        // Remove CCXT perpetual contract suffix and slashes (e.g., BTC/USDT:USDT -> BTCUSDT)
+        const cleanBingxSymbol = displaySymbol.replace(/:.*$/, '').replace(/\//g, '');
+        // Convert to BingX format with hyphen (e.g., BTCUSDT -> BTC-USDT)
+        const bingxDisplaySymbol = cleanBingxSymbol.includes('-') ? cleanBingxSymbol :
+          (cleanBingxSymbol.endsWith('USDT') ? `${cleanBingxSymbol.slice(0, -4)}-USDT` :
+          (cleanBingxSymbol.endsWith('USDC') ? `${cleanBingxSymbol.slice(0, -4)}-USDC` : cleanBingxSymbol));
+
         if (environment === 'TESTNET') {
-          url = `https://testnet-futures.bingx.com/en/perpetual/${displaySymbol}`;
+          url = `https://testnet-futures.bingx.com/en/perpetual/${bingxDisplaySymbol}`;
         } else {
-          url = `https://bingx.com/en/perpetual/${displaySymbol}`;
+          url = `https://bingx.com/en/perpetual/${bingxDisplaySymbol}`;
         }
         break;
 
@@ -3051,6 +3333,20 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Open arbitrage chart page for the selected opportunity
+   */
+  openArbitrageChart(opportunity: any): void {
+    console.log('Opening arbitrage chart for:', opportunity);
+
+    const symbol = opportunity.symbol;
+    const primary = opportunity.bestShort?.exchange || 'UNKNOWN';
+    const hedge = opportunity.bestLong?.exchange || 'UNKNOWN';
+
+    // Navigate to the chart page
+    this.router.navigate(['/arbitrage/chart', symbol, primary, hedge]);
+  }
+
+  /**
    * Close the HEDGED mode dialog
    */
   closeHedgedDialog(): void {
@@ -3082,10 +3378,24 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     this.isStartingHedged.set(true);
 
     try {
-      // TODO: Implement API call to open positions on both exchanges
-      // PRIMARY = HIGH price exchange (bestShort) - where we SHORT
-      // HEDGE = LOW price exchange (bestLong) - where we LONG
-      console.log('Executing hedged arbitrage:', {
+      // Find exchange data from exchanges array
+      const bestLongExchange = opportunity.exchanges.find((ex: any) =>
+        ex.exchange === opportunity.bestLong.exchange && ex.credentialId === opportunity.bestLong.credentialId
+      );
+      const bestShortExchange = opportunity.exchanges.find((ex: any) =>
+        ex.exchange === opportunity.bestShort.exchange && ex.credentialId === opportunity.bestShort.credentialId
+      );
+
+      if (!bestLongExchange || !bestShortExchange) {
+        this.showNotification('Missing exchange data', 'error');
+        this.isStartingHedged.set(false);
+        return;
+      }
+
+      // Build params for Price Arbitrage API
+      // PRIMARY = bestShort (high price exchange) - we SHORT here
+      // HEDGE = bestLong (low price exchange) - we LONG here
+      const params = {
         symbol: opportunity.symbol,
         primaryExchange: opportunity.bestShort.exchange,
         primaryCredentialId: opportunity.bestShort.credentialId,
@@ -3095,17 +3405,37 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         hedgeCredentialId: opportunity.bestLong.credentialId,
         hedgeLeverage: this.hedgedHedgeLeverage(),
         hedgeMargin: this.hedgedHedgeMargin(),
+        entryPrimaryPrice: parseFloat(bestShortExchange.lastPrice),
+        entryHedgePrice: parseFloat(bestLongExchange.lastPrice),
+        // Optional: можно добавить targetSpread, stopLoss, maxHoldingTime
+      };
+
+      console.log('Executing price arbitrage (hedged mode):', params);
+
+      // Call the Price Arbitrage API - positions open immediately
+      this.priceArbitrageService.startArbitrage(params).subscribe({
+        next: (response) => {
+          console.log('Price arbitrage started successfully:', response);
+          this.showNotification(`Hedged arbitrage for ${opportunity.symbol} started successfully!`, 'success');
+
+          // Close the dialog
+          this.closeHedgedDialog();
+
+          // Refresh active positions
+          // Note: может понадобиться обновить список активных позиций если такой есть
+        },
+        error: (error) => {
+          console.error('Error executing price arbitrage:', error);
+          this.showNotification(`Failed to execute arbitrage: ${error.message}`, 'error');
+          this.isStartingHedged.set(false);
+        },
+        complete: () => {
+          this.isStartingHedged.set(false);
+        }
       });
-
-      // For now, just show success notification
-      this.showNotification(`Hedged arbitrage for ${opportunity.symbol} started successfully!`, 'success');
-
-      // Close the dialog
-      this.closeHedgedDialog();
-    } catch (error) {
-      console.error('Error executing hedged arbitrage:', error);
-      this.showNotification(`Failed to execute hedged arbitrage: ${error}`, 'error');
-    } finally {
+    } catch (error: any) {
+      console.error('Error executing price arbitrage:', error);
+      this.showNotification(`Failed to execute arbitrage: ${error.message || error}`, 'error');
       this.isStartingHedged.set(false);
     }
   }
@@ -3154,5 +3484,241 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     if (pnl > 0) return 'positive';
     if (pnl < 0) return 'negative';
     return 'neutral';
+  }
+
+  /**
+   * Open Bybit Strategy Modal for a specific opportunity
+   */
+  openBybitStrategyModal(opportunity: FundingRateArbitrageOpportunity): void {
+    // Find Bybit exchange data from the opportunity
+    const bybitExchange = opportunity.exchanges.find(e =>
+      e.exchange === 'BYBIT_MAINNET' || e.exchange === 'BYBIT_TESTNET' || e.exchange === 'BYBIT'
+    );
+
+    if (!bybitExchange) {
+      this.showNotification(this.translate('bybitStrategy.messages.noBybitData'), 'error');
+      return;
+    }
+
+    // Prepare modal data - don't pass credentialId, let backend use active credential
+    const modalData: StartBybitStrategyModalData = {
+      symbol: opportunity.symbol,
+      fundingRate: parseFloat(bybitExchange.fundingRate),
+      nextFundingTime: bybitExchange.nextFundingTime,
+      credentialId: '' // Empty string means backend will use active credential
+    };
+
+    // Set modal data and open modal
+    this.bybitStrategyModalData.set(modalData);
+    this.showBybitStrategyModal.set(true);
+  }
+
+  /**
+   * Close Bybit Strategy Modal
+   */
+  closeBybitStrategyModal(): void {
+    console.log('[FundingRates] closeBybitStrategyModal called');
+    this.showBybitStrategyModal.set(false);
+    // Refresh strategies list when modal closes (strategy may have been created)
+    console.log('[FundingRates] Calling loadActiveBybitStrategies from closeBybitStrategyModal');
+    this.loadActiveBybitStrategies();
+  }
+
+  /**
+   * Handle strategy started event
+   */
+  onStrategyStarted(): void {
+    console.log('[FundingRates] onStrategyStarted called');
+    this.showNotification(this.translate('bybitStrategy.messages.success'), 'success');
+    // Refresh active strategies list immediately after strategy creation
+    console.log('[FundingRates] Calling loadActiveBybitStrategies from onStrategyStarted');
+    this.loadActiveBybitStrategies();
+  }
+
+  /**
+   * Open subscription modal for a specific exchange
+   * @param symbol - Trading symbol
+   * @param exchangeData - Exchange data from the opportunity
+   */
+  openSubscribeModalForExchange(symbol: string, exchangeData: ExchangeData): void {
+    console.log('🚀 [FundingRates] openSubscribeModalForExchange called:', { symbol, exchange: exchangeData.exchange });
+
+    // Check if this is a Bybit exchange - use Bybit modal
+    const isBybit = exchangeData.exchange === 'BYBIT' ||
+                    exchangeData.exchange === 'BYBIT_MAINNET' ||
+                    exchangeData.exchange === 'BYBIT_TESTNET';
+
+    if (isBybit) {
+      console.log('   → Opening Bybit Strategy Modal');
+      // Use Bybit Strategy Modal for Bybit exchanges
+      const modalData: StartBybitStrategyModalData = {
+        symbol: symbol,
+        fundingRate: parseFloat(exchangeData.fundingRate),
+        nextFundingTime: exchangeData.nextFundingTime,
+        credentialId: exchangeData.credentialId || '' // Use exchange's credential or empty for active
+      };
+
+      this.bybitStrategyModalData.set(modalData);
+      this.showBybitStrategyModal.set(true);
+    } else {
+      console.log('   → Opening general subscription dialog for', exchangeData.exchange);
+
+      // Find the credential for this exchange
+      const credential = this.credentials().find(c => c.id === exchangeData.credentialId);
+      if (!credential) {
+        console.error('   ❌ Credential not found for ID:', exchangeData.credentialId);
+        this.showNotification(`Credential not found for ${exchangeData.exchange}`, 'error');
+        return;
+      }
+
+      console.log('   ✅ Found credential:', { exchange: credential.exchange, id: credential.id });
+
+      // For non-Bybit exchanges, use the general subscription dialog
+      // Convert ExchangeData to TickerData format
+      const tickerData: TickerData = {
+        symbol: symbol,
+        fundingRate: exchangeData.fundingRate,
+        nextFundingTime: exchangeData.nextFundingTime.toString(),
+        lastPrice: exchangeData.lastPrice || '0',
+        markPrice: exchangeData.markPrice || '0',
+        indexPrice: '0',
+        openInterest: '0',
+        volume24h: '0',
+        turnover24h: '0',
+        price24hPcnt: '0',
+        // Additional required fields with default values
+        prevPrice24h: '0',
+        highPrice24h: '0',
+        lowPrice24h: '0',
+        prevPrice1h: '0',
+        openInterestValue: '0',
+        predictedDeliveryPrice: '0',
+        basisRate: '0',
+        deliveryFeeRate: '0',
+        deliveryTime: '0',
+        ask1Size: '0',
+        bid1Price: '0',
+        ask1Price: '0',
+        bid1Size: '0'
+      };
+
+      // Set the selected ticker, credential and open the dialog
+      this.selectedTicker.set(tickerData);
+      this.selectedCredentialId.set(credential.id); // IMPORTANT: Set the correct credential ID (selectedCredential will auto-update)
+      this.dialogLeverage.set(this.subscriptionSettings().leverage);
+      this.arbitrageMode.set('NON_HEDGED'); // IMPORTANT: Set mode to NON_HEDGED for single-exchange subscriptions
+      this.showSubscriptionDialog.set(true);
+      this.positionSizeUsdt.set(100); // Default position size in USDT
+      console.log('   ✅ Subscription dialog opened with credential:', credential.exchange);
+    }
+  }
+
+  /**
+   * Toggle row expansion (only one row can be expanded at a time)
+   */
+  toggleExpandRow(symbol: string): void {
+    const currentExpanded = this.expandedRowSymbol();
+    if (currentExpanded === symbol) {
+      // Collapse if clicking on the same row
+      this.expandedRowSymbol.set(null);
+    } else {
+      // Expand new row (automatically collapses previous)
+      this.expandedRowSymbol.set(symbol);
+    }
+  }
+
+  /**
+   * Check if a row is currently expanded
+   */
+  isRowExpanded(symbol: string): boolean {
+    return this.expandedRowSymbol() === symbol;
+  }
+
+  /**
+   * Check if a symbol has any active subscriptions or strategies
+   */
+  hasActiveSubscriptionsOrStrategies(symbol: string): boolean {
+    // Check regular funding subscriptions
+    const hasRegularSubscription = this.subscriptions().has(symbol);
+
+    // Check Bybit funding strategies
+    const hasBybitStrategy = this.activeBybitStrategies().some(
+      strategy => strategy.symbol === symbol
+    );
+
+    // Check hedged arbitrage subscriptions
+    // Need to check if this symbol appears in any arbitrage opportunity subscriptions
+    const hasArbitrageSubscription = Array.from(this.subscriptions().values()).some(
+      sub => sub.symbol === symbol && (sub as any).hedgeExchange
+    );
+
+    return hasRegularSubscription || hasBybitStrategy || hasArbitrageSubscription;
+  }
+
+  /**
+   * Get subscription for a specific symbol and exchange
+   * @param symbol - Trading symbol
+   * @param exchange - Exchange name (e.g., 'BYBIT', 'BINGX', 'MEXC')
+   * @returns FundingSubscription if found, undefined otherwise
+   */
+  getSubscriptionForExchange(symbol: string, exchange: string): FundingSubscription | undefined {
+    // Check regular subscriptions (single exchange) by iterating through Map values
+    // The Map uses subscriptionId as key, not symbol, so we need to iterate through values
+    const regularSub = Array.from(this.subscriptions().values()).find(
+      sub => sub.symbol === symbol &&
+             sub.primaryExchange === exchange &&
+             (!(sub as any).hedgeExchange || (sub as any).hedgeExchange === 'UNKNOWN')
+    );
+    if (regularSub) {
+      return regularSub;
+    }
+
+    // Check Bybit strategies (they have their own structure)
+    const bybitStrategy = this.activeBybitStrategies().find(s => s.symbol === symbol);
+    if (bybitStrategy && (exchange === 'BYBIT' || exchange === 'BYBIT_MAINNET' || exchange === 'BYBIT_TESTNET')) {
+      // Convert ActiveStrategy to FundingSubscription format for display
+      return {
+        subscriptionId: bybitStrategy.id,
+        symbol: bybitStrategy.symbol,
+        fundingRate: 0, // Not stored in ActiveStrategy
+        nextFundingTime: 0, // Not stored in ActiveStrategy
+        positionType: bybitStrategy.side === 'Buy' ? 'long' : 'short',
+        quantity: 0, // Not directly available
+        status: bybitStrategy.status,
+        primaryExchange: 'BYBIT',
+        leverage: bybitStrategy.leverage,
+        margin: bybitStrategy.margin
+      } as FundingSubscription;
+    }
+
+    // Check arbitrage subscriptions (dual exchange)
+    const arbitrageSubs = Array.from(this.subscriptions().values()).filter(
+      sub => sub.symbol === symbol && (sub as any).hedgeExchange && (sub as any).hedgeExchange !== 'UNKNOWN'
+    );
+
+    for (const sub of arbitrageSubs) {
+      if (sub.primaryExchange === exchange || (sub as any).hedgeExchange === exchange) {
+        return sub;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get all active subscriptions for a specific symbol
+   */
+  getSubscriptionsForSymbol(symbol: string): {
+    regular: FundingSubscription | undefined;
+    bybitStrategies: ActiveStrategy[];
+    arbitrage: FundingSubscription[];
+  } {
+    return {
+      regular: this.subscriptions().get(symbol),
+      bybitStrategies: this.activeBybitStrategies().filter(s => s.symbol === symbol),
+      arbitrage: Array.from(this.subscriptions().values()).filter(
+        sub => sub.symbol === symbol && (sub as any).hedgeExchange
+      )
+    };
   }
 }

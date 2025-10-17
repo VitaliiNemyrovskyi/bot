@@ -1,9 +1,8 @@
-import { Injectable, effect } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import { getEndpointUrl, buildUrlWithQuery } from '../config/app.config';
-import { ExchangeEnvironmentService } from './exchange-environment.service';
 
 /**
  * BingX Account Information Interface
@@ -113,15 +112,9 @@ export class BingXUserService {
   public readonly error$ = this.errorSubject.asObservable();
 
   constructor(
-    private http: HttpClient,
-    private environmentService: ExchangeEnvironmentService
+    private http: HttpClient
   ) {
-    // React to environment changes - clear cached data when environment switches
-    effect(() => {
-      const env = this.environmentService.currentEnvironment();
-      console.log('[BingXUserService] Environment changed to:', env);
-      this.clearUserInfo();
-    }, { allowSignalWrites: true });
+    // BingX User Service initialized
   }
 
   /**
@@ -230,11 +223,7 @@ export class BingXUserService {
    */
   getWalletBalance(): Observable<any> {
     const baseUrl = getEndpointUrl('bingx', 'walletBalance');
-    const env = this.environmentService.currentEnvironment();
-    const params: Record<string, string> = {
-      environment: env
-    };
-    const url = buildUrlWithQuery(baseUrl, params);
+    const url = baseUrl;
 
     return this.http.get<any>(url).pipe(
       catchError(error => {
@@ -249,10 +238,7 @@ export class BingXUserService {
    */
   getTickers(symbol?: string): Observable<any> {
     const baseUrl = getEndpointUrl('bingx', 'tickers');
-    const env = this.environmentService.currentEnvironment();
-    const params: Record<string, string> = {
-      environment: env
-    };
+    const params: Record<string, string> = {};
     if (symbol) {
       params['symbol'] = symbol;
     }

@@ -155,34 +155,16 @@
           <!-- Market Cap Filter (HEDGED mode only) -->
           @if (arbitrageMode() === 'HEDGED') {
             <div class="filter-control">
-              <div class="filter-input-wrapper">
-                <svg class="filter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2V22M17 5H9.5C8.57174 5 7.6815 5.36875 7.02513 6.02513C6.36875 6.6815 6 7.57174 6 8.5C6 9.42826 6.36875 10.3185 7.02513 10.9749C7.6815 11.6313 8.57174 12 9.5 12H14.5C15.4283 12 16.3185 12.3687 16.9749 13.0251C17.6313 13.6815 18 14.5717 18 15.5C18 16.4283 17.6313 17.3185 16.9749 17.9749C16.3185 18.6313 15.4283 19 14.5 19H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <input
-                  type="number"
-                  class="filter-input"
-                  [(ngModel)]="minMarketCapFilter"
-                  step="100"
-                  min="0"
-                  placeholder="Min market cap ($M, e.g., 1000)"
-                  aria-label="Minimum market cap in millions USD"
-                />
-                @if (minMarketCapFilter() !== null && minMarketCapFilter()! > 0) {
-                  <button
-                    class="filter-clear-btn"
-                    (click)="minMarketCapFilter.set(null)"
-                    aria-label="Clear market cap filter"
-                    type="button">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                }
-                @if (minMarketCapFilter() !== null && minMarketCapFilter()! > 0) {
-                  <span class="filter-badge">${{ minMarketCapFilter() }}M+</span>
-                }
-              </div>
+              <ui-dropdown
+                [options]="marketCapOptions"
+                [(ngModel)]="minMarketCapFilterValue"
+                (ngModelChange)="onMarketCapFilterChange($event)"
+                [placeholder]="translate('fundingRates.filters.marketCapFilter')"
+                size="small"
+                [searchable]="false"
+                width="medium"
+                class="market-cap-filter">
+              </ui-dropdown>
             </div>
           }
 
@@ -360,11 +342,11 @@
                     </div>
                   </th>
 
-                  <!-- Spread -->
-                  <th class="text-center sortable-header" (click)="sortArbitrageBy('spread', $event)">
+                  <!-- Funding Spread -->
+                  <th class="text-center sortable-header" (click)="sortArbitrageBy('fundingSpread', $event)">
                     <div class="header-content">
-                      <span>{{ translate('arbitrage.table.spread') }}</span>
-                      @if (getArbitrageSortInfo('spread'); as sortInfo) {
+                      <span>{{ translate('arbitrage.table.fundingSpread') || 'Funding Spread' }}</span>
+                      @if (getArbitrageSortInfo('fundingSpread'); as sortInfo) {
                         <span class="sort-indicator" [class.asc]="sortInfo.direction === 'asc'" [class.desc]="sortInfo.direction === 'desc'">
                           @if (sortInfo.index >= 0) {
                             <span class="sort-number">{{ sortInfo.index + 1 }}</span>
@@ -376,18 +358,63 @@
                   </th>
 
                   <!-- Action -->
-                  <th class="text-center">{{ translate('arbitrage.table.opportunity') }}</th>
+                  <th class="text-left">{{ translate('arbitrage.table.opportunity') }}</th>
                 </tr>
               </thead>
               <tbody>
                 @for (opportunity of sortedArbitrageOpportunities(); track opportunity.symbol) {
-                  <tr [class.opportunity-row]="opportunity.arbitrageOpportunity">
+                  <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscriptionsOrStrategies(opportunity.symbol)">
                     <!-- Symbol -->
                     <td class="symbol-cell">
                       <div class="symbol-wrapper">
+                        @if (hasActiveSubscriptionsOrStrategies(opportunity.symbol)) {
+                          <button
+                            class="expand-icon"
+                            (click)="toggleExpandRow(opportunity.symbol)"
+                            [class.expanded]="isRowExpanded(opportunity.symbol)"
+                            title="{{ isRowExpanded(opportunity.symbol) ? translate('fundingRates.actions.collapse') : translate('fundingRates.actions.expand') }}">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                          </button>
+                        }
                         <span class="symbol-text">{{ opportunity.symbol }}</span>
+                        <!-- Display market cap if available -->
                         @if (opportunity.marketCap && opportunity.marketCap > 0) {
                           <span class="symbol-price text-xs">{{ formatMarketCap(opportunity.marketCap) }}</span>
+                        } @else {
+                          <!-- Fallback: Display average price between Primary and Hedge exchanges -->
+                          @for (primaryEx of opportunity.exchanges; track primaryEx.exchange + primaryEx.credentialId) {
+                            @if (primaryEx.exchange === opportunity.bestShort.exchange && primaryEx.credentialId === opportunity.bestShort.credentialId) {
+                              @for (hedgeEx of opportunity.exchanges; track hedgeEx.exchange + hedgeEx.credentialId) {
+                                @if (hedgeEx.exchange === opportunity.bestLong.exchange && hedgeEx.credentialId === opportunity.bestLong.credentialId) {
+                                  @if (primaryEx.lastPrice && hedgeEx.lastPrice) {
+                                    @if (getRealtimePrice(primaryEx.exchange, opportunity.symbol); as primaryRealtime) {
+                                      @if (getRealtimePrice(hedgeEx.exchange, opportunity.symbol); as hedgeRealtime) {
+                                        <span class="symbol-price text-xs realtime-price">
+                                          ${{ ((primaryRealtime.price + hedgeRealtime.price) / 2).toFixed(3) }}
+                                        </span>
+                                      } @else {
+                                        <span class="symbol-price text-xs">
+                                          ${{ ((primaryRealtime.price + parseFloat(hedgeEx.lastPrice)) / 2).toFixed(3) }}
+                                        </span>
+                                      }
+                                    } @else {
+                                      @if (getRealtimePrice(hedgeEx.exchange, opportunity.symbol); as hedgeRealtime) {
+                                        <span class="symbol-price text-xs">
+                                          ${{ ((parseFloat(primaryEx.lastPrice) + hedgeRealtime.price) / 2).toFixed(3) }}
+                                        </span>
+                                      } @else {
+                                        <span class="symbol-price text-xs">
+                                          ${{ ((parseFloat(primaryEx.lastPrice) + parseFloat(hedgeEx.lastPrice)) / 2).toFixed(3) }}
+                                        </span>
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
                         }
                       </div>
                     </td>
@@ -422,6 +449,18 @@
                                   ${{ parseFloat(exchange.lastPrice).toFixed(3) }}
                                 </div>
                               }
+                            }
+                            @if (exchange.fundingRate) {
+                              <div class="exchange-funding text-xs"
+                                   [class.positive]="parseFloat(exchange.fundingRate) > 0"
+                                   [class.negative]="parseFloat(exchange.fundingRate) < 0">
+                                {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                              </div>
+                            }
+                            @if (exchange.nextFundingTime) {
+                              <div class="exchange-periodicity text-xs">
+                                {{ calculateFundingPeriodicity(exchange.nextFundingTime, exchange.fundingInterval) }}
+                              </div>
                             }
                           </div>
                         }
@@ -459,34 +498,278 @@
                                 </div>
                               }
                             }
+                            @if (exchange.fundingRate) {
+                              <div class="exchange-funding text-xs"
+                                   [class.positive]="parseFloat(exchange.fundingRate) > 0"
+                                   [class.negative]="parseFloat(exchange.fundingRate) < 0">
+                                {{ (parseFloat(exchange.fundingRate) * 100).toFixed(4) }}%
+                              </div>
+                            }
+                            @if (exchange.nextFundingTime) {
+                              <div class="exchange-periodicity text-xs">
+                                {{ calculateFundingPeriodicity(exchange.nextFundingTime, exchange.fundingInterval) }}
+                              </div>
+                            }
                           </div>
                         }
                       }
                     </td>
 
-                    <!-- Spread (Price Difference) -->
-                    <td class="text-center spread-cell">
-                      <div class="spread-value" [class.positive]="parseFloat(opportunity.spread.toString()) > 0">
-                        {{ (parseFloat(opportunity.spread.toString()) * 100).toFixed(4) }}%
+                    <!-- Funding Spread -->
+                    <td class="text-center funding-spread-cell">
+                      <div class="funding-spread-value"
+                           [class.high]="opportunity.fundingSpread && opportunity.fundingSpread >= 0.0005"
+                           [class.medium]="opportunity.fundingSpread && opportunity.fundingSpread >= 0.0002 && opportunity.fundingSpread < 0.0005"
+                           [class.low]="opportunity.fundingSpread && opportunity.fundingSpread < 0.0002">
+                        {{ opportunity.fundingSpreadPercent || '0.0000' }}%
                       </div>
-                      @if (opportunity.priceSpreadUsdt) {
-                        <div class="spread-usdt text-xs">
-                          ${{ parseFloat(opportunity.priceSpreadUsdt).toFixed(3) }}
-                        </div>
-                      }
                     </td>
 
                     <!-- Action Button -->
-                    <td class="text-center action-cell">
-                      <ui-button
-                        variant="primary"
-                        size="small"
-                        (clicked)="startHedgedArbitrage(opportunity)"
-                        className="action-btn start-hedged-btn">
-                        <span>{{ translate('fundingRates.actions.start') || 'Start' }}</span>
-                      </ui-button>
+                    <td class="text-left action-cell">
+                      <div class="action-buttons-group">
+                        <ui-button
+                          variant="primary"
+                          size="small"
+                          (clicked)="startHedgedArbitrage(opportunity)"
+                          className="action-btn start-hedged-btn">
+                          <span>{{ translate('fundingRates.actions.start') || 'Start' }}</span>
+                        </ui-button>
+                        <button
+                          class="chart-icon-btn"
+                          (click)="openArbitrageChart(opportunity)"
+                          [title]="translate('fundingRates.actions.viewChart') || 'View Chart'">
+                          📊
+                        </button>
+                      </div>
                     </td>
                   </tr>
+
+                  <!-- Expanded row for subscriptions/strategies -->
+                  @if (isRowExpanded(opportunity.symbol)) {
+                    <tr class="expanded-row">
+                      <td colspan="5" class="expanded-content">
+                        <div class="expanded-content-wrapper">
+                          @if (getSubscriptionsForSymbol(opportunity.symbol); as subscriptions) {
+                            <!-- Regular Funding Subscriptions -->
+                            @if (subscriptions.regular) {
+                              <div class="subscription-section">
+                                <h4 class="section-title">💰 {{ translate('fundingRates.sections.regularSubscription') || 'Regular Funding Subscription' }}</h4>
+                                <div class="subscription-card">
+                                  <div class="subscription-details">
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.status') }}:</span>
+                                      <span class="detail-value status-badge" [class]="'status-' + subscriptions.regular.status.toLowerCase()">
+                                        {{ subscriptions.regular.status }}
+                                      </span>
+                                    </div>
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.side') }}:</span>
+                                      <span class="detail-value">{{ subscriptions.regular.positionType }}</span>
+                                    </div>
+                                    @if (subscriptions.regular.primaryExchange) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.exchange') }}:</span>
+                                        <span class="detail-value">{{ subscriptions.regular.primaryExchange }}</span>
+                                      </div>
+                                    }
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.quantity') }}:</span>
+                                      <span class="detail-value">{{ subscriptions.regular.quantity }}</span>
+                                    </div>
+                                    @if (subscriptions.regular.leverage) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.leverage') }}:</span>
+                                        <span class="detail-value">{{ subscriptions.regular.leverage }}x</span>
+                                      </div>
+                                    }
+                                    @if (subscriptions.regular.margin) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.margin') }}:</span>
+                                        <span class="detail-value">{{ subscriptions.regular.margin }} USDT</span>
+                                      </div>
+                                    }
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.fundingRate') }}:</span>
+                                      <span class="detail-value" [ngClass]="getFundingRateClass(subscriptions.regular.fundingRate.toString())">
+                                        {{ formatFundingRate(subscriptions.regular.fundingRate.toString()) }}
+                                      </span>
+                                    </div>
+                                    @if (subscriptions.regular.nextFundingTime) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.nextFunding') }}:</span>
+                                        <span class="detail-value">{{ formatNextFundingTime(subscriptions.regular.nextFundingTime) }}</span>
+                                      </div>
+                                    }
+                                    @if (subscriptions.regular.countdown && subscriptions.regular.countdown > 0) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.countdown') }}:</span>
+                                        <span class="detail-value countdown">{{ formatCountdown(subscriptions.regular.countdown) }}</span>
+                                      </div>
+                                    }
+                                  </div>
+                                  <div class="subscription-actions">
+                                    <ui-button variant="ghost" size="small" (clicked)="editSubscription(subscriptions.regular)">
+                                      {{ translate('fundingRates.actions.edit') }}
+                                    </ui-button>
+                                    <ui-button variant="danger" size="small" (clicked)="unsubscribe(subscriptions.regular.subscriptionId)">
+                                      {{ translate('fundingRates.actions.cancel') }}
+                                    </ui-button>
+                                  </div>
+                                </div>
+                              </div>
+                            }
+
+                            <!-- Bybit Funding Strategies -->
+                            @if (subscriptions.bybitStrategies.length > 0) {
+                              <div class="subscription-section">
+                                <h4 class="section-title">📊 {{ translate('fundingRates.sections.bybitStrategies') || 'Bybit Funding Strategies' }}</h4>
+                                @for (strategy of subscriptions.bybitStrategies; track strategy.id) {
+                                  <div class="subscription-card bybit-strategy">
+                                    <div class="subscription-details">
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.status') }}:</span>
+                                        <span class="detail-value status-badge" [class]="'status-' + strategy.status.toLowerCase()">
+                                          {{ strategy.status }}
+                                        </span>
+                                      </div>
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.leverage') }}:</span>
+                                        <span class="detail-value">{{ strategy.leverage }}x</span>
+                                      </div>
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.margin') }}:</span>
+                                        <span class="detail-value">{{ strategy.margin }} USDT</span>
+                                      </div>
+                                      @if (strategy.takeProfitPrice) {
+                                        <div class="detail-item">
+                                          <span class="detail-label">{{ translate('fundingRates.labels.takeProfit') }}:</span>
+                                          <span class="detail-value positive">{{ strategy.takeProfitPrice }} USDT</span>
+                                        </div>
+                                      }
+                                      @if (strategy.stopLossPrice) {
+                                        <div class="detail-item">
+                                          <span class="detail-label">{{ translate('fundingRates.labels.stopLoss') }}:</span>
+                                          <span class="detail-value negative">{{ strategy.stopLossPrice }} USDT</span>
+                                        </div>
+                                      }
+                                      @if (strategy.realizedPnl !== null && strategy.realizedPnl !== undefined) {
+                                        <div class="detail-item">
+                                          <span class="detail-label">{{ translate('fundingRates.labels.pnl') }}:</span>
+                                          <span class="detail-value" [class.positive]="strategy.realizedPnl > 0" [class.negative]="strategy.realizedPnl < 0">
+                                            {{ strategy.realizedPnl > 0 ? '+' : '' }}{{ strategy.realizedPnl.toFixed(2) }} USDT
+                                          </span>
+                                        </div>
+                                      }
+                                    </div>
+                                    <div class="subscription-actions">
+                                      <ui-button variant="danger" size="small" (clicked)="stopBybitStrategy(strategy.id)">
+                                        {{ translate('fundingRates.actions.stop') }}
+                                      </ui-button>
+                                    </div>
+                                  </div>
+                                }
+                              </div>
+                            }
+
+                          <!-- Multi-Exchange Funding Rates Section -->
+                          @if (opportunity.exchanges && opportunity.exchanges.length > 0) {
+                            <div class="subscription-section">
+                              <h4 class="section-title">🌐 {{ translate('fundingRates.sections.allExchanges') || 'Funding Rates on All Exchanges' }}</h4>
+                              <div class="exchanges-table-wrapper">
+                                <table class="exchanges-table">
+                                  <thead>
+                                    <tr>
+                                      <th class="text-left">{{ translate('fundingRates.labels.exchange') }}</th>
+                                      <th class="text-right">{{ translate('fundingRates.labels.fundingRate') }}</th>
+                                      <th class="text-right">{{ translate('fundingRates.labels.price') }}</th>
+                                      <th class="text-center">{{ translate('fundingRates.labels.nextFunding') }}</th>
+                                      <th class="text-center">{{ translate('fundingRates.actions.actions') || 'Actions' }}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    @for (exchangeData of opportunity.exchanges; track exchangeData.exchange) {
+                                      <tr class="exchange-row">
+                                        <td class="text-left">
+                                          <div class="exchange-info">
+                                            <span class="exchange-name">{{ exchangeData.exchange }}</span>
+                                            <span class="exchange-env-badge">{{ exchangeData.environment }}</span>
+                                          </div>
+                                        </td>
+                                        <td class="text-right">
+                                          <span class="funding-rate-value" [ngClass]="getFundingRateClass(exchangeData.fundingRate)">
+                                            {{ formatFundingRate(exchangeData.fundingRate) }}
+                                          </span>
+                                        </td>
+                                        <td class="text-right">
+                                          <span class="price-value">${{ formatPrice(exchangeData.lastPrice) }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                          <span class="next-funding-value">{{ formatNextFundingTime(exchangeData.nextFundingTime) }}</span>
+                                        </td>
+                                        <td class="text-center exchange-actions-cell">
+                                          @if (getSubscriptionForExchange(opportunity.symbol, exchangeData.exchange); as sub) {
+                                            <!-- Has subscription - show edit/cancel/start buttons -->
+                                            <div class="action-buttons">
+                                              @if (sub.status === 'pending' || sub.status === 'active') {
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="startSubscriptionNow(sub.subscriptionId)"
+                                                  className="action-btn start-btn"
+                                                  [title]="translate('fundingRates.actions.startNow')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M5 3L19 12L5 21V3Z" fill="currentColor"/>
+                                                  </svg>
+                                                </ui-button>
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="editSubscription(sub)"
+                                                  className="action-btn edit-btn"
+                                                  [title]="translate('fundingRates.actions.edit')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    <path d="M18.5 2.50001C18.8978 2.10219 19.4374 1.87869 20 1.87869C20.5626 1.87869 21.1022 2.10219 21.5 2.50001C21.8978 2.89784 22.1213 3.4374 22.1213 4.00001C22.1213 4.56262 21.8978 5.10219 21.5 5.50001L12 15L8 16L9 12L18.5 2.50001Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                  </svg>
+                                                </ui-button>
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="unsubscribe(sub.subscriptionId)"
+                                                  className="action-btn cancel-btn"
+                                                  [title]="translate('fundingRates.actions.cancel')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                  </svg>
+                                                </ui-button>
+                                              }
+                                              @if (sub.status === 'executing') {
+                                                <span class="status-badge status-executing">{{ translate('fundingRates.subscriptions.executing') }}</span>
+                                              }
+                                            </div>
+                                          } @else {
+                                            <!-- No subscription - show subscribe button -->
+                                            <ui-button variant="primary" size="small" (clicked)="openSubscribeModalForExchange(opportunity.symbol, exchangeData)">
+                                              {{ translate('fundingRates.actions.subscribe') }}
+                                            </ui-button>
+                                          }
+                                        </td>
+                                      </tr>
+                                    }
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          }
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  }
                 }
               </tbody>
             </table>
@@ -562,15 +845,24 @@
                   <th class="text-center">{{ translate('arbitrage.table.exchanges') }}</th>
 
                   <!-- Action -->
-                  <th class="text-center">{{ translate('arbitrage.table.opportunity') }}</th>
+                  <th class="text-left">{{ translate('arbitrage.table.opportunity') }}</th>
                 </tr>
               </thead>
             <tbody>
               @for (opportunity of sortedArbitrageOpportunities(); track opportunity.symbol) {
-                <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscription(opportunity.symbol)">
+                <tr [class.opportunity-row]="opportunity.arbitrageOpportunity" [class.has-subscription]="hasActiveSubscriptionsOrStrategies(opportunity.symbol)">
                   <!-- Symbol -->
                   <td class="symbol-cell">
                     <div class="symbol-wrapper">
+                      <button
+                        class="expand-icon"
+                        (click)="toggleExpandRow(opportunity.symbol)"
+                        [class.expanded]="isRowExpanded(opportunity.symbol)"
+                        title="{{ isRowExpanded(opportunity.symbol) ? translate('fundingRates.actions.collapse') : translate('fundingRates.actions.expand') }}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </button>
                       <span class="symbol-text">{{ opportunity.symbol }}</span>
                       <!-- Display market cap if available -->
                       @if (opportunity.marketCap && opportunity.marketCap > 0) {
@@ -630,7 +922,7 @@
                             exchange.exchange === opportunity.bestShort.exchange &&
                             exchange.credentialId === opportunity.bestShort.credentialId)) {
                         <div class="next-funding-value">
-                          {{ formatNextFundingTime(exchange.nextFundingTime?.toString() || '0') }}
+                          {{ formatNextFundingTime(exchange.nextFundingTime.toString() || '0') }}
                         </div>
                       }
                     }
@@ -675,7 +967,7 @@
                   </td>
 
                   <!-- Action Buttons -->
-                  <td class="text-center action-cell">
+                  <td class="text-left action-cell">
                     @if (hasArbitrageSubscription(opportunity.symbol)) {
                       <!-- Show Start, Edit, Cancel for subscribed symbols -->
                       <div class="subscription-action-buttons">
@@ -736,17 +1028,255 @@
                       }
 
                       <!-- Trade History Report Button -->
-                      <button
-                        mat-icon-button
-                        class="trade-history-btn"
-                        (click)="openTradeHistoryDialog(opportunity.symbol, opportunity.bestLong.exchange)"
-                        [matTooltip]="translate('fundingRates.actions.viewTradeHistory')"
-                        matTooltipPosition="above">
-                        <mat-icon>assessment</mat-icon>
-                      </button>
+                      <ui-button
+                        variant="ghost"
+                        size="small"
+                        (clicked)="openTradeHistoryDialog(opportunity.symbol, opportunity.bestLong.exchange)"
+                        className="action-btn trade-history-btn"
+                        [ariaLabel]="translate('fundingRates.actions.viewTradeHistory')">
+                        <span>📊</span>
+                      </ui-button>
+
+                      <!-- Bybit Strategy Button -->
+                      @if (opportunity.bestLong.exchange === 'BYBIT' || opportunity.bestLong.exchange === 'BYBIT_MAINNET' || opportunity.bestShort.exchange === 'BYBIT' || opportunity.bestShort.exchange === 'BYBIT_MAINNET') {
+                        <ui-button
+                          variant="ghost"
+                          size="small"
+                          (clicked)="openBybitStrategyModal(opportunity)"
+                          className="action-btn bybit-strategy-btn"
+                          ariaLabel="Start Bybit Funding Strategy">
+                          <span>⚡</span>
+                        </ui-button>
+                      }
                     }
                   </td>
                 </tr>
+
+                <!-- Expanded row for subscriptions/strategies and ticker details -->
+                @if (isRowExpanded(opportunity.symbol)) {
+                  <tr class="expanded-row">
+                    <td colspan="6" class="expanded-content">
+                      <div class="expanded-content-wrapper">
+                        @if (getSubscriptionsForSymbol(opportunity.symbol); as subscriptions) {
+                          <!-- Regular Funding Subscriptions -->
+                          @if (subscriptions.regular) {
+                            <div class="subscription-section">
+                              <h4 class="section-title">💰 {{ translate('fundingRates.sections.regularSubscription') || 'Regular Funding Subscription' }}</h4>
+                              <div class="subscription-card">
+                                <div class="subscription-details">
+                                  <div class="detail-item">
+                                    <span class="detail-label">{{ translate('fundingRates.labels.status') }}:</span>
+                                    <span class="detail-value status-badge" [class]="'status-' + subscriptions.regular.status.toLowerCase()">
+                                      {{ subscriptions.regular.status }}
+                                    </span>
+                                  </div>
+                                  <div class="detail-item">
+                                    <span class="detail-label">{{ translate('fundingRates.labels.side') }}:</span>
+                                    <span class="detail-value">{{ subscriptions.regular.positionType }}</span>
+                                  </div>
+                                  @if (subscriptions.regular.primaryExchange) {
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.exchange') }}:</span>
+                                      <span class="detail-value">{{ subscriptions.regular.primaryExchange }}</span>
+                                    </div>
+                                  }
+                                  <div class="detail-item">
+                                    <span class="detail-label">{{ translate('fundingRates.labels.quantity') }}:</span>
+                                    <span class="detail-value">{{ subscriptions.regular.quantity }}</span>
+                                  </div>
+                                  @if (subscriptions.regular.leverage) {
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.leverage') }}:</span>
+                                      <span class="detail-value">{{ subscriptions.regular.leverage }}x</span>
+                                    </div>
+                                  }
+                                  @if (subscriptions.regular.margin) {
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.margin') }}:</span>
+                                      <span class="detail-value">{{ subscriptions.regular.margin }} USDT</span>
+                                    </div>
+                                  }
+                                  <div class="detail-item">
+                                    <span class="detail-label">{{ translate('fundingRates.labels.fundingRate') }}:</span>
+                                    <span class="detail-value" [ngClass]="getFundingRateClass(subscriptions.regular.fundingRate.toString())">
+                                      {{ formatFundingRate(subscriptions.regular.fundingRate.toString()) }}
+                                    </span>
+                                  </div>
+                                  @if (subscriptions.regular.nextFundingTime) {
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.nextFunding') }}:</span>
+                                      <span class="detail-value">{{ formatNextFundingTime(subscriptions.regular.nextFundingTime) }}</span>
+                                    </div>
+                                  }
+                                  @if (subscriptions.regular.countdown && subscriptions.regular.countdown > 0) {
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.countdown') }}:</span>
+                                      <span class="detail-value countdown">{{ formatCountdown(subscriptions.regular.countdown) }}</span>
+                                    </div>
+                                  }
+                                </div>
+                                <div class="subscription-actions">
+                                  <ui-button variant="ghost" size="small" (clicked)="editSubscription(subscriptions.regular)">
+                                    {{ translate('fundingRates.actions.edit') }}
+                                  </ui-button>
+                                  <ui-button variant="danger" size="small" (clicked)="unsubscribe(subscriptions.regular.subscriptionId)">
+                                    {{ translate('fundingRates.actions.cancel') }}
+                                  </ui-button>
+                                </div>
+                              </div>
+                            </div>
+                          }
+
+                          <!-- Bybit Funding Strategies -->
+                          @if (subscriptions.bybitStrategies.length > 0) {
+                            <div class="subscription-section">
+                              <h4 class="section-title">📊 {{ translate('fundingRates.sections.bybitStrategies') || 'Bybit Funding Strategies' }}</h4>
+                              @for (strategy of subscriptions.bybitStrategies; track strategy.id) {
+                                <div class="subscription-card bybit-strategy">
+                                  <div class="subscription-details">
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.status') }}:</span>
+                                      <span class="detail-value status-badge" [class]="'status-' + strategy.status.toLowerCase()">
+                                        {{ strategy.status }}
+                                      </span>
+                                    </div>
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.leverage') }}:</span>
+                                      <span class="detail-value">{{ strategy.leverage }}x</span>
+                                    </div>
+                                    <div class="detail-item">
+                                      <span class="detail-label">{{ translate('fundingRates.labels.margin') }}:</span>
+                                      <span class="detail-value">{{ strategy.margin }} USDT</span>
+                                    </div>
+                                    @if (strategy.takeProfitPrice) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.takeProfit') }}:</span>
+                                        <span class="detail-value positive">{{ strategy.takeProfitPrice }} USDT</span>
+                                      </div>
+                                    }
+                                    @if (strategy.stopLossPrice) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.stopLoss') }}:</span>
+                                        <span class="detail-value negative">{{ strategy.stopLossPrice }} USDT</span>
+                                      </div>
+                                    }
+                                    @if (strategy.realizedPnl !== null && strategy.realizedPnl !== undefined) {
+                                      <div class="detail-item">
+                                        <span class="detail-label">{{ translate('fundingRates.labels.pnl') }}:</span>
+                                        <span class="detail-value" [class.positive]="strategy.realizedPnl > 0" [class.negative]="strategy.realizedPnl < 0">
+                                          {{ strategy.realizedPnl > 0 ? '+' : '' }}{{ strategy.realizedPnl.toFixed(2) }} USDT
+                                        </span>
+                                      </div>
+                                    }
+                                  </div>
+                                  <div class="subscription-actions">
+                                    <ui-button variant="danger" size="small" (clicked)="stopBybitStrategy(strategy.id)">
+                                      {{ translate('fundingRates.actions.stop') }}
+                                    </ui-button>
+                                  </div>
+                                </div>
+                              }
+                            </div>
+                          }
+
+                          <!-- Multi-Exchange Funding Rates Section -->
+                          @if (opportunity.exchanges && opportunity.exchanges.length > 0) {
+                            <div class="subscription-section">
+                              <h4 class="section-title">🌐 {{ translate('fundingRates.sections.allExchanges') || 'Funding Rates on All Exchanges' }}</h4>
+                              <div class="exchanges-table-wrapper">
+                                <table class="exchanges-table">
+                                  <thead>
+                                    <tr>
+                                      <th class="text-left">{{ translate('fundingRates.labels.exchange') }}</th>
+                                      <th class="text-right">{{ translate('fundingRates.labels.fundingRate') }}</th>
+                                      <th class="text-right">{{ translate('fundingRates.labels.price') }}</th>
+                                      <th class="text-center">{{ translate('fundingRates.labels.nextFunding') }}</th>
+                                      <th class="text-center">{{ translate('fundingRates.actions.actions') || 'Actions' }}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    @for (exchangeData of opportunity.exchanges; track exchangeData.exchange) {
+                                      <tr class="exchange-row">
+                                        <td class="text-left">
+                                          <div class="exchange-info">
+                                            <span class="exchange-name">{{ exchangeData.exchange }}</span>
+                                            <span class="exchange-env-badge">{{ exchangeData.environment }}</span>
+                                          </div>
+                                        </td>
+                                        <td class="text-right">
+                                          <span class="funding-rate-value" [ngClass]="getFundingRateClass(exchangeData.fundingRate)">
+                                            {{ formatFundingRate(exchangeData.fundingRate) }}
+                                          </span>
+                                        </td>
+                                        <td class="text-right">
+                                          <span class="price-value">${{ formatPrice(exchangeData.lastPrice) }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                          <span class="next-funding-value">{{ formatNextFundingTime(exchangeData.nextFundingTime) }}</span>
+                                        </td>
+                                        <td class="text-center exchange-actions-cell">
+                                          @if (getSubscriptionForExchange(opportunity.symbol, exchangeData.exchange); as sub) {
+                                            <!-- Has subscription - show edit/cancel/start buttons -->
+                                            <div class="action-buttons">
+                                              @if (sub.status === 'pending' || sub.status === 'active') {
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="startSubscriptionNow(sub.subscriptionId)"
+                                                  className="action-btn start-btn"
+                                                  [title]="translate('fundingRates.actions.startNow')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M5 3L19 12L5 21V3Z" fill="currentColor"/>
+                                                  </svg>
+                                                </ui-button>
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="editSubscription(sub)"
+                                                  className="action-btn edit-btn"
+                                                  [title]="translate('fundingRates.actions.edit')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    <path d="M18.5 2.50001C18.8978 2.10219 19.4374 1.87869 20 1.87869C20.5626 1.87869 21.1022 2.10219 21.5 2.50001C21.8978 2.89784 22.1213 3.4374 22.1213 4.00001C22.1213 4.56262 21.8978 5.10219 21.5 5.50001L12 15L8 16L9 12L18.5 2.50001Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                  </svg>
+                                                </ui-button>
+                                                <ui-button
+                                                  variant="tertiary"
+                                                  size="small"
+                                                  [iconOnly]="true"
+                                                  (clicked)="unsubscribe(sub.subscriptionId)"
+                                                  className="action-btn cancel-btn"
+                                                  [title]="translate('fundingRates.actions.cancel')">
+                                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                  </svg>
+                                                </ui-button>
+                                              }
+                                              @if (sub.status === 'executing') {
+                                                <span class="status-badge status-executing">{{ translate('fundingRates.subscriptions.executing') }}</span>
+                                              }
+                                            </div>
+                                          } @else {
+                                            <!-- No subscription - show subscribe button -->
+                                            <ui-button variant="primary" size="small" (clicked)="openSubscribeModalForExchange(opportunity.symbol, exchangeData)">
+                                              {{ translate('fundingRates.actions.subscribe') }}
+                                            </ui-button>
+                                          }
+                                        </td>
+                                      </tr>
+                                    }
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          }
+                          }
+                      </div>
+                    </td>
+                  </tr>
+                }
               }
             </tbody>
           </table>
@@ -811,6 +1341,70 @@
                   size="small"
                   (clicked)="unsubscribe(sub.subscriptionId)">
                   {{ translate('fundingRates.actions.cancel') }}
+                </ui-button>
+              </div>
+            </div>
+          }
+        </div>
+      </ui-card-content>
+    </ui-card>
+  }
+
+  <!-- Active Bybit Funding Strategies Panel -->
+  @if (activeBybitStrategies().length > 0) {
+    <ui-card variant="elevated" class="bybit-strategies-card">
+      <ui-card-header>
+        <ui-card-title>{{ translate('fundingRates.bybitStrategies.title') }}</ui-card-title>
+      </ui-card-header>
+      <ui-card-content>
+        <div class="bybit-strategies-list">
+          @for (strategy of activeBybitStrategies(); track strategy.id) {
+            <div class="strategy-item">
+              <div class="strategy-info">
+                <div class="strategy-symbol">{{ strategy.symbol }}</div>
+                <div class="strategy-details">
+                  <span class="detail-label">{{ translate('fundingRates.bybitStrategies.status') }}:</span>
+                  <span class="detail-value status-badge" [attr.data-status]="strategy.status">
+                    {{ strategy.status }}
+                  </span>
+                  <span class="detail-separator">•</span>
+                  <span class="detail-label">{{ translate('fundingRates.bybitStrategies.side') }}:</span>
+                  <span class="detail-value" [class.positive]="strategy.side === 'Buy'" [class.negative]="strategy.side === 'Sell'">
+                    {{ strategy.side }}
+                  </span>
+                  <span class="detail-separator">•</span>
+                  <span class="detail-label">{{ translate('fundingRates.bybitStrategies.leverage') }}:</span>
+                  <span class="detail-value">{{ strategy.leverage }}x</span>
+                  @if (strategy.entryPrice) {
+                    <span class="detail-separator">•</span>
+                    <span class="detail-label">{{ translate('fundingRates.bybitStrategies.entryPrice') }}:</span>
+                    <span class="detail-value">${{ strategy.entryPrice.toFixed(2) }}</span>
+                  }
+                  @if (strategy.hasPosition) {
+                    <span class="detail-separator">•</span>
+                    <span class="detail-label">{{ translate('fundingRates.bybitStrategies.positionSize') }}:</span>
+                    <span class="detail-value">{{ strategy.positionSize }}</span>
+                  }
+                </div>
+                @if (strategy.secondsRemaining !== undefined && strategy.secondsRemaining > 0) {
+                  <div class="strategy-countdown">
+                    <span class="countdown-label">{{ translate('fundingRates.bybitStrategies.nextFunding') }}:</span>
+                    <span class="countdown-value">{{ formatCountdown(strategy.secondsRemaining) }}</span>
+                  </div>
+                }
+                @if (strategy.errorMessage) {
+                  <div class="strategy-error">
+                    <span class="error-icon">⚠️</span>
+                    <span class="error-text">{{ strategy.errorMessage }}</span>
+                  </div>
+                }
+              </div>
+              <div class="strategy-actions">
+                <ui-button
+                  variant="ghost"
+                  size="small"
+                  (clicked)="stopBybitStrategy(strategy.id)">
+                  {{ translate('fundingRates.bybitStrategies.actions.stop') }}
                 </ui-button>
               </div>
             </div>
@@ -1532,4 +2126,14 @@
     [initialExchange]="tradeHistoryExchange() || ''"
     (openChange)="showTradeHistoryDialog.set($event)">
   </app-trade-history>
+
+  <!-- Bybit Strategy Modal -->
+  @if (bybitStrategyModalData()) {
+    <app-start-bybit-strategy-modal
+      [isOpen]="showBybitStrategyModal()"
+      [data]="bybitStrategyModalData()!"
+      (close)="closeBybitStrategyModal()"
+      (strategyStarted)="onStrategyStarted()">
+    </app-start-bybit-strategy-modal>
+  }
 </div>

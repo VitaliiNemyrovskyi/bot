@@ -4,7 +4,6 @@ import { BybitKeysService } from './bybit-keys-service';
 export interface BybitConfig {
   apiKey?: string;
   apiSecret?: string;
-  testnet?: boolean;
   enableRateLimit?: boolean;
   userId?: string; // For fetching keys from database
 }
@@ -230,7 +229,6 @@ export class BybitService {
 
   constructor(config: BybitConfig = {}) {
     this.config = {
-      testnet: config.testnet ?? true,
       enableRateLimit: config.enableRateLimit ?? true,
       ...config
     };
@@ -240,7 +238,6 @@ export class BybitService {
       apiKeyLength: this.config.apiKey?.length,
       hasApiSecret: !!this.config.apiSecret,
       apiSecretLength: this.config.apiSecret?.length,
-      testnet: this.config.testnet,
       enableRateLimit: this.config.enableRateLimit,
       userId: this.config.userId
     });
@@ -248,7 +245,7 @@ export class BybitService {
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
-      testnet: this.config.testnet,
+      testnet: false, // Mainnet only
       enableRateLimit: this.config.enableRateLimit,
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
@@ -257,7 +254,7 @@ export class BybitService {
       this.wsClient = new WebsocketClient({
         key: this.config.apiKey,
         secret: this.config.apiSecret,
-        testnet: this.config.testnet,
+        testnet: false, // Mainnet only
       });
       console.log('[BybitService] WebSocket client initialized');
     } else {
@@ -281,12 +278,11 @@ export class BybitService {
         return null;
       }
 
-      console.log(`[BybitService] Keys loaded from database - testnet: ${keys.testnet}`);
+      console.log(`[BybitService] Keys loaded from database`);
 
       const service = new BybitService({
         apiKey: keys.apiKey,
         apiSecret: keys.apiSecret,
-        testnet: keys.testnet,
         enableRateLimit: true,
         userId,
       });
@@ -394,6 +390,14 @@ export class BybitService {
    */
   getSyncedTime(): number {
     return Date.now() + this.timeOffset;
+  }
+
+  /**
+   * Get current time offset
+   * Returns the calculated offset between local time and server time in milliseconds
+   */
+  getTimeOffset(): number {
+    return this.timeOffset;
   }
 
   /**
@@ -685,7 +689,7 @@ export class BybitService {
       const params: any = { accountType };
       if (coin) params.coin = coin;
 
-      console.log(`[Bybit] Fetching wallet balance - accountType: ${accountType}, coin: ${coin || 'all'}, testnet: ${this.config.testnet}`);
+      console.log(`[Bybit] Fetching wallet balance - accountType: ${accountType}, coin: ${coin || 'all'}`);
 
       const response = await this.restClient.getWalletBalance(params);
 
@@ -721,9 +725,8 @@ export class BybitService {
           console.log('[Bybit] Non-zero balances:', topCoins);
         } else {
           console.warn('[Bybit] ⚠️  Account has zero balance! This could mean:');
-          console.warn('  1. Testnet account needs funds from https://testnet.bybit.com/app/user/api-management');
-          console.warn('  2. Funds are in a different account type (try SPOT or CONTRACT)');
-          console.warn('  3. API key lacks "Read-Write" or "Wallet" permissions');
+          console.warn('  1. Funds are in a different account type (try SPOT or CONTRACT)');
+          console.warn('  2. API key lacks "Read-Write" or "Wallet" permissions');
         }
       }
 
@@ -733,7 +736,6 @@ export class BybitService {
         message: error.message,
         accountType,
         coin,
-        testnet: this.config.testnet,
         hasCredentials: this.hasCredentials()
       });
       throw error;
@@ -1289,26 +1291,19 @@ export class BybitService {
   }
 
   // Utility Methods
-  isTestnet(): boolean {
-    return this.config.testnet ?? true;
-  }
-
   hasCredentials(): boolean {
     return !!(this.config.apiKey && this.config.apiSecret);
   }
 
-  updateCredentials(apiKey: string, apiSecret: string, testnet?: boolean) {
+  updateCredentials(apiKey: string, apiSecret: string) {
     this.config.apiKey = apiKey;
     this.config.apiSecret = apiSecret;
-    if (testnet !== undefined) {
-      this.config.testnet = testnet;
-    }
 
-    // Reinitialize clients with new credentials
+    // Reinitialize clients with new credentials (mainnet only)
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
-      testnet: this.config.testnet,
+      testnet: false,
       enableRateLimit: this.config.enableRateLimit,
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
@@ -1316,14 +1311,13 @@ export class BybitService {
     this.wsClient = new WebsocketClient({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
-      testnet: this.config.testnet,
+      testnet: false,
     });
   }
 }
 
-// Export a default instance for easy use
+// Export a default instance for easy use (mainnet only)
 export const bybitService = new BybitService({
   apiKey: process.env.BYBIT_API_KEY,
   apiSecret: process.env.BYBIT_API_SECRET,
-  testnet: process.env.NODE_ENV !== 'production',
 });

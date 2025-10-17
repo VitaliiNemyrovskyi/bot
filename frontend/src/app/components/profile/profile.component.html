@@ -256,7 +256,6 @@
                 <thead>
                   <tr>
                     <th>{{ translate('profile.tradingPlatform') }}</th>
-                    <th>{{ translate('profile.environment') }}</th>
                     <th>{{ translate('profile.label') }}</th>
                     <th>{{ translate('profile.apiKey') }}</th>
                     <th>{{ translate('profile.apiSecret') }}</th>
@@ -279,13 +278,6 @@
                             {{ getExchangeName(credential.exchange) }}
                           </span>
                         </div>
-                      </td>
-
-                      <!-- Environment -->
-                      <td class="environment-cell">
-                        <span class="env-badge" [class.testnet]="credential.environment === EnvironmentType.TESTNET">
-                          {{ credential.environment === EnvironmentType.TESTNET ? translate('profile.testnet') : translate('profile.mainnet') }}
-                        </span>
                       </td>
 
                       <!-- Label -->
@@ -523,17 +515,6 @@
                       <span class="field-error">{{ translate('profile.exchangeRequired') }}</span>
                     }
                   </div>
-
-                  <!-- Environment Selection - Only visible for admins -->
-                  @if (isAdmin()) {
-                    <div class="form-field">
-                      <label>{{ translate('bot.environment') }} <span class="required">*</span></label>
-                      <select formControlName="environment">
-                        <option [value]="EnvironmentType.TESTNET">{{ translate('profile.testnetDemo') }}</option>
-                        <option [value]="EnvironmentType.MAINNET">{{ translate('profile.mainnetReal') }}</option>
-                      </select>
-                    </div>
-                  }
 
                   <!-- Label -->
                   <div class="form-field">

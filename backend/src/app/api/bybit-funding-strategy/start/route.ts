@@ -7,13 +7,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { bybitFundingStrategyService } from '@/services/bybit-funding-strategy.service';
-import { exchangeCredentialsService } from '@/lib/exchange-credentials-service';
+import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 
 export async function POST(request: NextRequest) {
   try {
     // Authenticate user
-    const user = await AuthService.authenticateRequest(request);
-    if (!user) {
+    const { success, user } = await AuthService.authenticateRequest(request);
+    if (!success || !user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -70,14 +70,23 @@ export async function POST(request: NextRequest) {
     // Get Bybit credentials
     let credentials;
     if (credentialId) {
-      // Use specific credential
-      credentials = await exchangeCredentialsService.getCredentialById(
-        credentialId,
-        user.userId
-      );
+      // Try to use specific credential
+      try {
+        credentials = await ExchangeCredentialsService.getCredentialById(
+          user.userId,
+          credentialId
+        );
+      } catch (error: any) {
+        // If credential doesn't belong to user or doesn't exist, fall back to active credential
+        console.warn(`[API] Credential ${credentialId} not accessible for user ${user.userId}, using active credential instead`);
+        credentials = await ExchangeCredentialsService.getActiveCredentials(
+          user.userId,
+          'BYBIT'
+        );
+      }
     } else {
       // Use active Bybit credential
-      credentials = await exchangeCredentialsService.getActiveCredential(
+      credentials = await ExchangeCredentialsService.getActiveCredentials(
         user.userId,
         'BYBIT'
       );
@@ -93,9 +102,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const testnet = credentials.environment === 'TESTNET';
-
-    // Start strategy
+    // Start strategy (mainnet only)
     const strategyId = await bybitFundingStrategyService.startStrategy(
       {
         userId: user.userId,
@@ -109,7 +116,6 @@ export async function POST(request: NextRequest) {
       },
       credentials.apiKey,
       credentials.apiSecret,
-      testnet,
       credentials.id // Pass credential ID for persistence
     );
 
@@ -126,7 +132,6 @@ export async function POST(request: NextRequest) {
         executionDelay,
         takeProfitPercent,
         stopLossPercent,
-        environment: testnet ? 'TESTNET' : 'MAINNET',
       },
       message: 'Funding strategy started successfully',
     });

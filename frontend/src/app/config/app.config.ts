@@ -44,9 +44,13 @@ export interface AppConfig {
         positions: string;
         startPosition: string;
         closePosition: string;
+        historicalPrices: string;
+        graduatedEntry: string;
+        graduatedEntryStop: string;
       };
       fundingArbitrage: {
         revenue: string;
+        subscribe: string;
       };
       google: {
         auth: string;
@@ -64,6 +68,9 @@ export interface AppConfig {
       };
       marketData: {
         marketCaps: string;
+      };
+      exchange: {
+        symbolInfo: string;
       };
     };
   };
@@ -131,10 +138,14 @@ export const appConfig: AppConfig = {
         opportunities: '/arbitrage/opportunities',
         positions: '/arbitrage/positions',
         startPosition: '/arbitrage/positions/start',
-        closePosition: '/arbitrage/positions/:id/close'
+        closePosition: '/arbitrage/positions/:id/close',
+        historicalPrices: '/arbitrage/historical-prices',
+        graduatedEntry: '/arbitrage/graduated-entry',
+        graduatedEntryStop: '/arbitrage/graduated-entry/stop'
       },
       fundingArbitrage: {
-        revenue: '/funding-arbitrage/revenue'
+        revenue: '/funding-arbitrage/revenue',
+        subscribe: '/funding-arbitrage/subscribe'
       },
       exchangeCredentials: {
         list: '/exchange-credentials',
@@ -147,6 +158,9 @@ export const appConfig: AppConfig = {
       },
       marketData: {
         marketCaps: '/market-data/market-caps'
+      },
+      exchange: {
+        symbolInfo: '/exchange/symbol-info'
       }
     }
   },

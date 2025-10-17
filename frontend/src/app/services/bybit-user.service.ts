@@ -1,9 +1,8 @@
-import { Injectable, effect } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import { getEndpointUrl, buildUrlWithQuery } from '../config/app.config';
-import { ExchangeEnvironmentService } from './exchange-environment.service';
 
 /**
  * Bybit Account Information Interface
@@ -303,15 +302,9 @@ export class BybitUserService {
   public readonly storedKeys$ = this.storedKeysSubject.asObservable();
 
   constructor(
-    private http: HttpClient,
-    private environmentService: ExchangeEnvironmentService
+    private http: HttpClient
   ) {
-    // React to environment changes - clear cached data when environment switches
-    effect(() => {
-      const env = this.environmentService.currentEnvironment();
-      console.log('[BybitUserService] Environment changed to:', env);
-      this.clearUserInfo();
-    }, { allowSignalWrites: true });
+    // Bybit User Service initialized
   }
 
   /**
@@ -324,11 +317,8 @@ export class BybitUserService {
     this.errorSubject.next(null);
 
     const url = getEndpointUrl('bybit', 'userInfo');
-    const env = this.environmentService.currentEnvironment();
 
-    return this.http.get<BybitUserInfo>(url, {
-      params: { environment: env }
-    }).pipe(
+    return this.http.get<BybitUserInfo>(url).pipe(
       tap(info => {
         this.userInfoSubject.next(info);
         this.loadingSubject.next(false);
@@ -558,10 +548,8 @@ export class BybitUserService {
    */
   getWalletBalance(accountType: 'UNIFIED' | 'CONTRACT' = 'UNIFIED', coin?: string): Observable<BybitWalletBalanceResponse> {
     const baseUrl = getEndpointUrl('bybit', 'walletBalance');
-    const env = this.environmentService.currentEnvironment();
     const params: Record<string, string> = {
-      accountType,
-      environment: env
+      accountType
     };
     if (coin) {
       params['coin'] = coin;
@@ -585,10 +573,7 @@ export class BybitUserService {
    */
   getAssetInfo(accountType?: string, coin?: string): Observable<BybitAssetInfoResponse> {
     const baseUrl = getEndpointUrl('bybit', 'assetInfo');
-    const env = this.environmentService.currentEnvironment();
-    const params: Record<string, string> = {
-      environment: env
-    };
+    const params: Record<string, string> = {};
     if (accountType) {
       params['accountType'] = accountType.toUpperCase();
     }
@@ -618,10 +603,7 @@ export class BybitUserService {
    */
   getAllCoinsBalance(accountType?: string, coin?: string): Observable<BybitAllCoinsBalanceResponse> {
     const baseUrl = getEndpointUrl('bybit', 'allCoinsBalance');
-    const env = this.environmentService.currentEnvironment();
-    const params: Record<string, string> = {
-      environment: env
-    };
+    const params: Record<string, string> = {};
     if (accountType) {
       params['accountType'] = accountType.toUpperCase();
     }

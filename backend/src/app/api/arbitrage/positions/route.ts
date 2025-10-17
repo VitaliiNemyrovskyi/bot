@@ -3,6 +3,7 @@ import { AuthService } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { PriceArbitragePositionDTO } from '@/types/price-arbitrage';
 import { PriceArbitrageStatus } from '@prisma/client';
+import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
 
 /**
  * GET /api/arbitrage/positions

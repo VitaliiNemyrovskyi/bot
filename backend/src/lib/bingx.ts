@@ -37,7 +37,6 @@ export class BingXService {
   // Cache support for persistent time sync across serverless invocations
   private userId?: string;
   private credentialId?: string;
-  private environment: 'TESTNET' | 'MAINNET';
 
   // Position mode cache (Hedge Mode vs One-Way Mode)
   private isHedgeMode: boolean | null = null;
@@ -50,7 +49,6 @@ export class BingXService {
     this.enableRateLimit = config.enableRateLimit ?? true;
     this.userId = config.userId;
     this.credentialId = config.credentialId;
-    this.environment = config.testnet ? 'TESTNET' : 'MAINNET';
 
     // Log API key/secret lengths for debugging (after trimming)
     console.log('[BingXService] Initialized with credentials:', {
@@ -58,11 +56,10 @@ export class BingXService {
       apiSecretLength: this.apiSecret.length,
       apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
       apiSecretPrefix: this.apiSecret.substring(0, 8) + '...',
-      environment: this.environment,
       cacheEnabled: !!(this.userId && this.credentialId)
     });
 
-    // BingX uses different URLs for testnet and mainnet
+    // BingX API base URL (mainnet only)
     this.baseUrl = 'https://open-api.bingx.com';
   }
 
@@ -108,32 +105,54 @@ export class BingXService {
    * - Checks PostgreSQL cache first (< 100ms)
    * - Only queries server if cache miss (saves 1-2s)
    * - Caches result with 15-minute TTL
+   *
+   * RELIABILITY:
+   * - Validates cached offset (must be < 2000ms)
+   * - Forces re-sync if cached offset is too large
+   *
+   * @param forceRefresh - If true, bypass cache and always sync with server
    */
-  async syncTime(): Promise<void> {
+  async syncTime(forceRefresh: boolean = false): Promise<void> {
     const syncStartTime = Date.now();
+    const MAX_ACCEPTABLE_OFFSET_MS = 2000; // BingX API typically tolerates up to 2-3 seconds
 
-    // Try loading from persistent cache first (if enabled)
-    if (this.userId && this.credentialId) {
+    // Try loading from persistent cache first (if enabled and not forcing refresh)
+    if (!forceRefresh && this.userId && this.credentialId) {
       console.log('[BingXService] Checking persistent cache for time sync...');
 
       const cached = await ConnectorStateCacheService.get(this.userId, this.credentialId);
 
       if (cached) {
-        // Cache HIT - use cached offset
-        this.timeOffset = cached.timeOffset;
-        this.lastSyncTime = cached.lastSyncTime.getTime();
-
         const cacheAge = Math.floor((Date.now() - cached.lastSyncTime.getTime()) / 1000);
-        console.log('[BingXService] ⚡ Time sync loaded from cache:', {
-          offset: this.timeOffset,
-          cacheAge: `${cacheAge}s`,
-          loadTime: `${Date.now() - syncStartTime}ms`
-        });
 
-        return; // Skip server sync
+        // Validate cached offset - if too large, force re-sync
+        if (Math.abs(cached.timeOffset) > MAX_ACCEPTABLE_OFFSET_MS) {
+          console.warn('[BingXService] ⚠️ Cached offset too large, forcing re-sync:', {
+            cachedOffset: cached.timeOffset,
+            maxAcceptable: MAX_ACCEPTABLE_OFFSET_MS,
+            cacheAge: `${cacheAge}s`
+          });
+          // Continue to server sync below
+        } else {
+          // Cache HIT with valid offset - use cached offset
+          this.timeOffset = cached.timeOffset;
+          this.lastSyncTime = cached.lastSyncTime.getTime();
+
+          console.log('[BingXService] ⚡ Time sync loaded from cache:', {
+            offset: this.timeOffset,
+            cacheAge: `${cacheAge}s`,
+            loadTime: `${Date.now() - syncStartTime}ms`
+          });
+
+          return; // Skip server sync
+        }
       }
 
       console.log('[BingXService] Cache miss - syncing with server...');
+    }
+
+    if (forceRefresh) {
+      console.log('[BingXService] Force refresh requested - syncing with server...');
     }
 
     // Cache MISS or cache disabled - sync with server
@@ -171,7 +190,6 @@ export class BingXService {
           this.userId,
           this.credentialId,
           'BINGX',
-          this.environment,
           {
             timeOffset: this.timeOffset,
             lastSyncTime: new Date(this.lastSyncTime)
@@ -710,6 +728,33 @@ export class BingXService {
     if (orderRequest.timeInForce) paramsArray.push(['timeInForce', orderRequest.timeInForce]);
     if (orderRequest.closePosition !== undefined) paramsArray.push(['closePosition', orderRequest.closePosition]);
 
+    // Add Take Profit and Stop Loss (numeric parameters) - attempting atomic order
+    if ((orderRequest as any).takeProfitPrice !== undefined) {
+      paramsArray.push(['takeProfitPrice', (orderRequest as any).takeProfitPrice]);
+      console.log('[BingXService] ✓ Adding takeProfitPrice (atomic):', (orderRequest as any).takeProfitPrice);
+    }
+    if ((orderRequest as any).takeProfitTriggerBy) {
+      paramsArray.push(['takeProfitTriggerBy', (orderRequest as any).takeProfitTriggerBy]);
+      console.log('[BingXService] ✓ Adding takeProfitTriggerBy (atomic):', (orderRequest as any).takeProfitTriggerBy);
+    }
+    if ((orderRequest as any).stopLossPrice !== undefined) {
+      paramsArray.push(['stopLossPrice', (orderRequest as any).stopLossPrice]);
+      console.log('[BingXService] ✓ Adding stopLossPrice (atomic):', (orderRequest as any).stopLossPrice);
+    }
+    if ((orderRequest as any).stopLossTriggerBy) {
+      paramsArray.push(['stopLossTriggerBy', (orderRequest as any).stopLossTriggerBy]);
+      console.log('[BingXService] ✓ Adding stopLossTriggerBy (atomic):', (orderRequest as any).stopLossTriggerBy);
+    }
+    if ((orderRequest as any).stopLoss) {
+      paramsArray.push(['stopLoss', (orderRequest as any).stopLoss]);
+      console.log('[BingXService] ✓ Adding stopLoss (atomic):', (orderRequest as any).stopLoss);
+    }
+    if ((orderRequest as any).takeProfit) {
+      paramsArray.push(['takeProfit', (orderRequest as any).takeProfit]);
+      console.log('[BingXService] ✓ Adding takeProfit (atomic):', (orderRequest as any).takeProfit);
+    }
+
+
     console.log('[BingXService] Order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
 
     const response = await this.makeRequestWithOrder<BingXOrder>(
@@ -997,14 +1042,37 @@ export class BingXService {
   async closePosition(symbol: string, positionSide: 'LONG' | 'SHORT'): Promise<any> {
     console.log('[BingXService] Closing position:', { symbol, positionSide });
 
+    // CRITICAL: BingX API requires quantity parameter even with closePosition=true
+    // First, fetch the position to get the current quantity
+    const positions = await this.getPositions(symbol);
+    const position = positions.find((p) => p.symbol === symbol && parseFloat(p.positionAmt || '0') !== 0);
+
+    if (!position) {
+      console.log('[BingXService] No open position found for', symbol);
+      return { success: true, message: 'No position to close' };
+    }
+
+    // Get the absolute quantity from the position
+    const quantity = Math.abs(parseFloat(position.positionAmt || '0'));
+    console.log(`[BingXService] Found position to close: ${position.positionSide} with quantity ${quantity}`);
+
+    // Check account position mode
+    const isHedgeMode = await this.getPositionMode();
+
     // To close a position, we need to place a market order in opposite direction
     const side = positionSide === 'LONG' ? 'SELL' : 'BUY';
+
+    // Determine correct positionSide based on mode
+    const finalPositionSide = isHedgeMode ? positionSide : 'BOTH';
+
+    console.log(`[BingXService] ${isHedgeMode ? 'Hedge' : 'One-Way'} Mode: Closing position with positionSide=${finalPositionSide}, quantity=${quantity}`);
 
     const orderRequest: BingXOrderRequest = {
       symbol,
       side,
-      positionSide,
+      positionSide: finalPositionSide as any,
       type: 'MARKET',
+      quantity,  // REQUIRED: BingX needs quantity even with closePosition=true
       closePosition: true
     };
 

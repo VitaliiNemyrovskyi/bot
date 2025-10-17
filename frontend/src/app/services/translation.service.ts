@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { fundingRatesTranslations } from './translations/funding-rates-translations';
+import { bybitStrategyTranslations } from './translations/bybit-strategy-translations';
 
 export type Language = 'en' | 'es' | 'fr' | 'ru' | 'uk';
 
@@ -2728,6 +2729,8 @@ export class TranslationService {
   constructor() {
     // Merge funding rates translations
     this.mergeTranslations(fundingRatesTranslations);
+    // Merge Bybit strategy translations
+    this.mergeTranslations(bybitStrategyTranslations);
   }
 
   private mergeTranslations(translations: Record<string, Record<string, string>>): void {

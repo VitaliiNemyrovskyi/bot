@@ -1,0 +1,266 @@
+<ui-dialog
+  [open]="isOpen"
+  [title]="translate('bybitStrategy.title')"
+  [size]="'large'"
+  [closable]="!isSubmitting()"
+  [closeOnBackdrop]="!isSubmitting()"
+  [showFooter]="true"
+  (close)="onCancel()">
+
+  <ui-dialog-content>
+    <!-- Symbol Info Section -->
+    <div class="symbol-section">
+      <h3 class="symbol-name">{{ dataSignal().symbol }}</h3>
+      <div class="funding-info">
+        <div class="funding-rate" [ngClass]="(dataSignal().fundingRate || 0) > 0 ? 'positive' : 'negative'">
+          <span class="funding-label">{{ translate('bybitStrategy.info.fundingRate') }}:</span>
+          <span class="funding-value">{{ (dataSignal().fundingRate || 0) * 100 | number: '1.4-4' }}%</span>
+        </div>
+        <div class="time-remaining">
+          <span class="icon">⏱</span>
+          <span>{{ timeRemainingFormatted() }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <form [formGroup]="form" (ngSubmit)="onSubmit()" class="config-form">
+      <!-- Strategy Type Selection -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="icon">⚙</span>
+          {{ translate('bybitStrategy.type.label') }}
+        </h4>
+
+        <ui-dropdown
+          [options]="strategyTypeOptions"
+          [placeholder]="translate('bybitStrategy.type.placeholder')"
+          formControlName="strategyType">
+        </ui-dropdown>
+        @if (isFieldInvalid('strategyType')) {
+          <div class="field-error">{{ getErrorMessage('strategyType') }}</div>
+        }
+        <div class="field-hint">
+          @if (isPreciseStrategy()) {
+            {{ translate('bybitStrategy.type.preciseHint') }}
+          } @else {
+            {{ translate('bybitStrategy.type.regularHint') }}
+          }
+        </div>
+      </div>
+
+      <!-- Position Configuration -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="icon">⚙</span>
+          {{ translate('bybitStrategy.position.title') }}
+        </h4>
+
+        <!-- Leverage -->
+        <div class="form-field">
+          <ui-input
+            type="number"
+            [value]="form.get('leverage')?.value?.toString() || ''"
+            (valueChange)="form.patchValue({leverage: +$event})"
+            [label]="translate('bybitStrategy.position.leverage')"
+            placeholder="10"
+            [min]="1"
+            [max]="125"
+            [error]="isFieldInvalid('leverage') ? getErrorMessage('leverage') : ''"
+            [fullWidth]="true">
+          </ui-input>
+          <div class="field-hint">{{ translate('bybitStrategy.position.leverageHint') }} ({{ form.get('leverage')?.value }}x)</div>
+        </div>
+
+        <!-- Margin -->
+        <ui-input
+          type="number"
+          [value]="form.get('margin')?.value?.toString() || ''"
+          (valueChange)="form.patchValue({margin: +$event})"
+          [label]="translate('bybitStrategy.position.margin')"
+          placeholder="100"
+          [min]="1"
+          [step]="10"
+          [error]="isFieldInvalid('margin') ? getErrorMessage('margin') : ''"
+          [fullWidth]="true">
+        </ui-input>
+        <div class="field-hint">{{ translate('bybitStrategy.position.marginHint') }} (USDT)</div>
+
+        <!-- Position Side -->
+        <label class="field-label">{{ translate('bybitStrategy.position.side') }}</label>
+        <ui-dropdown
+          [options]="positionSideOptions"
+          [placeholder]="translate('bybitStrategy.position.sidePlaceholder')"
+          formControlName="positionSide">
+        </ui-dropdown>
+        @if (isFieldInvalid('positionSide')) {
+          <div class="field-error">{{ getErrorMessage('positionSide') }}</div>
+        }
+        <div class="field-hint">{{ translate('bybitStrategy.position.sideHint') }}</div>
+      </div>
+
+      <!-- Risk Management (TP/SL) -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="icon">🛡</span>
+          {{ translate('bybitStrategy.risk.title') }}
+        </h4>
+
+        <div class="risk-fields">
+          <!-- Take Profit -->
+          <div class="risk-field">
+            <ui-input
+              type="number"
+              [value]="form.get('takeProfitPercent')?.value?.toString() || ''"
+              (valueChange)="form.patchValue({takeProfitPercent: +$event})"
+              [label]="translate('bybitStrategy.risk.takeProfit')"
+              placeholder="90"
+              [min]="1"
+              [max]="100"
+              [error]="isFieldInvalid('takeProfitPercent') ? getErrorMessage('takeProfitPercent') : ''"
+              [fullWidth]="true">
+            </ui-input>
+            <div class="field-hint">
+              {{ takeProfitAmount() | number: '1.2-2' }} USDT
+              ({{ form.get('takeProfitPercent')?.value }}% {{ translate('bybitStrategy.risk.takeProfitHint') }})
+            </div>
+          </div>
+
+          <!-- Stop Loss -->
+          <div class="risk-field">
+            <ui-input
+              type="number"
+              [value]="form.get('stopLossPercent')?.value?.toString() || ''"
+              (valueChange)="form.patchValue({stopLossPercent: +$event})"
+              [label]="translate('bybitStrategy.risk.stopLoss')"
+              placeholder="50"
+              [min]="1"
+              [max]="100"
+              [error]="isFieldInvalid('stopLossPercent') ? getErrorMessage('stopLossPercent') : ''"
+              [fullWidth]="true">
+            </ui-input>
+            <div class="field-hint">
+              {{ stopLossAmount() | number: '1.2-2' }} USDT
+              ({{ form.get('stopLossPercent')?.value }}% {{ translate('bybitStrategy.risk.stopLossHint') }})
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Settings (only for Precise Timing) -->
+      @if (isPreciseStrategy()) {
+        <div class="advanced-settings-section">
+          <button type="button" class="toggle-advanced" (click)="toggleAdvancedSettings()">
+            <span class="icon">⚙</span>
+            <span>{{ translate('bybitStrategy.advanced.title') }}</span>
+            <span class="toggle-icon">{{ showAdvancedSettings() ? '▼' : '▶' }}</span>
+          </button>
+          @if (showAdvancedSettings()) {
+            <div class="advanced-settings-content">
+            <!-- Timing Offset -->
+            <ui-input
+              type="number"
+              [value]="form.get('timingOffset')?.value?.toString() || ''"
+              (valueChange)="form.patchValue({timingOffset: +$event})"
+              [label]="translate('bybitStrategy.advanced.timingOffset')"
+              placeholder="20"
+              [min]="0"
+              [max]="1000"
+              [step]="10"
+              [error]="isFieldInvalid('timingOffset') ? getErrorMessage('timingOffset') : ''"
+              [fullWidth]="true">
+            </ui-input>
+            <div class="field-hint">{{ translate('bybitStrategy.advanced.timingOffsetHint') }} (ms)</div>
+
+            <!-- Auto Repeat -->
+            <div class="checkbox-field">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="form.get('autoRepeat')?.value"
+                  (change)="form.patchValue({autoRepeat: !form.get('autoRepeat')?.value})">
+                <span>{{ translate('bybitStrategy.advanced.autoRepeat') }}</span>
+              </label>
+              <div class="field-hint">
+                {{ translate('bybitStrategy.advanced.autoRepeatHint') }}
+              </div>
+            </div>
+
+            <!-- WebSocket Monitoring -->
+            <div class="checkbox-field">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="form.get('enableWebSocketMonitoring')?.value"
+                  (change)="form.patchValue({enableWebSocketMonitoring: !form.get('enableWebSocketMonitoring')?.value})">
+                <span>{{ translate('bybitStrategy.advanced.websocket') }}</span>
+              </label>
+              <div class="field-hint">
+                {{ translate('bybitStrategy.advanced.websocketHint') }}
+              </div>
+            </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Expected Results Summary -->
+      <div class="summary-section">
+        <h4 class="section-title">
+          <span class="icon">📊</span>
+          {{ translate('bybitStrategy.expected.title') }}
+        </h4>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="label">{{ translate('bybitStrategy.expected.positionValue') }}</span>
+            <span class="value">{{ positionValue() | number: '1.2-2' }} USDT</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">{{ translate('bybitStrategy.expected.expectedFunding') }}</span>
+            <span class="value positive">{{ expectedFunding() | number: '1.2-2' }} USDT</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">{{ translate('bybitStrategy.expected.takeProfitTarget') }}</span>
+            <span class="value">{{ takeProfitAmount() | number: '1.2-2' }} USDT</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">{{ translate('bybitStrategy.expected.stopLoss') }}</span>
+            <span class="value negative">{{ stopLossAmount() | number: '1.2-2' }} USDT</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success/Error Messages -->
+      @if (successMessage()) {
+        <div class="message success-message">
+          <span class="icon">✓</span>
+          <span>{{ successMessage() }}</span>
+        </div>
+      }
+
+      @if (errorMessage()) {
+        <div class="message error-message">
+          <span class="icon">✕</span>
+          <span>{{ errorMessage() }}</span>
+        </div>
+      }
+    </form>
+  </ui-dialog-content>
+
+  <!-- Modal Actions -->
+  <ui-dialog-footer>
+    <ui-button
+      variant="secondary"
+      (clicked)="onCancel()"
+      [disabled]="isSubmitting()">
+      {{ translate('bybitStrategy.actions.cancel') }}
+    </ui-button>
+    <ui-button
+      variant="primary"
+      (clicked)="onSubmit()"
+      [disabled]="form.invalid || isSubmitting()"
+      [loading]="isSubmitting()">
+      {{ translate('bybitStrategy.actions.start') }}
+    </ui-button>
+  </ui-dialog-footer>
+</ui-dialog>

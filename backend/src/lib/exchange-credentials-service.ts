@@ -1,7 +1,7 @@
 import prisma from './prisma';
 import { EncryptionService } from './encryption';
 import { ExchangeValidators } from './exchange-validators';
-import { Exchange, Environment } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import {
   ExchangeCredentialData,
   CredentialInfo,
@@ -15,7 +15,7 @@ import {
  *
  * Features:
  * - Multi-exchange support (Bybit, Binance, OKX, etc.)
- * - Separate testnet and mainnet environments
+ * - Mainnet only (testnet support removed)
  * - Automatic encryption/decryption of API keys
  * - In-memory caching with TTL for performance
  * - Credential validation before saving
@@ -39,13 +39,11 @@ export class ExchangeCredentialsService {
    */
   static async validateCredentials(
     exchange: Exchange,
-    environment: Environment,
     apiKey: string,
     apiSecret: string
   ): Promise<ValidationResult> {
     return ExchangeValidators.validateCredentials(
       exchange,
-      environment,
       apiKey,
       apiSecret
     );
@@ -70,7 +68,6 @@ export class ExchangeCredentialsService {
       // Validate API credentials first
       const validation = await this.validateCredentials(
         data.exchange,
-        data.environment,
         data.apiKey,
         data.apiSecret
       );
@@ -99,12 +96,11 @@ export class ExchangeCredentialsService {
         isActive = existingCredentials.length === 0;
       }
 
-      // Create new credential (allows multiple credentials per exchange/environment)
+      // Create new credential (allows multiple credentials per exchange)
       const credential = await prisma.exchangeCredentials.create({
         data: {
           userId,
           exchange: data.exchange,
-          environment: data.environment,
           apiKey: encryptedApiKey,
           apiSecret: encryptedApiSecret,
           authToken: encryptedAuthToken,
@@ -125,23 +121,20 @@ export class ExchangeCredentialsService {
   }
 
   /**
-   * Gets all credentials for a user, optionally filtered by exchange and environment
+   * Gets all credentials for a user, optionally filtered by exchange
    */
   static async getCredentials(
     userId: string,
-    exchange?: Exchange,
-    environment?: Environment
+    exchange?: Exchange
   ): Promise<CredentialInfo[]> {
     try {
       const where: any = { userId };
       if (exchange) where.exchange = exchange;
-      if (environment) where.environment = environment;
 
       const credentials = await prisma.exchangeCredentials.findMany({
         where,
         orderBy: [
           { exchange: 'asc' },
-          { environment: 'asc' },
           { createdAt: 'desc' },
         ],
       });
@@ -181,7 +174,6 @@ export class ExchangeCredentialsService {
         return {
           id: credential.id,
           exchange: credential.exchange,
-          environment: credential.environment,
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
           authToken: cached.authToken,
@@ -279,7 +271,6 @@ export class ExchangeCredentialsService {
         return {
           id: credential.id,
           exchange: credential.exchange,
-          environment: credential.environment,
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
           authToken: cached.authToken,
@@ -319,85 +310,6 @@ export class ExchangeCredentialsService {
     }
   }
 
-  /**
-   * Gets credentials for a specific exchange and environment with decrypted keys
-   * Useful for API operations that need actual credentials
-   */
-  static async getCredentialsByEnvironment(
-    userId: string,
-    exchange: Exchange,
-    environment: Environment
-  ): Promise<ActiveCredential | null> {
-    try {
-      // Try to get active credential first
-      const credential = await prisma.exchangeCredentials.findFirst({
-        where: {
-          userId,
-          exchange,
-          environment,
-          isActive: true,
-        },
-      });
-
-      // If no active credential, get any credential for this environment
-      const selectedCredential = credential || await prisma.exchangeCredentials.findFirst({
-        where: {
-          userId,
-          exchange,
-          environment,
-        },
-      });
-
-      if (!selectedCredential) {
-        return null;
-      }
-
-      // Check cache first
-      const cacheKey = selectedCredential.id;
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-        return {
-          id: selectedCredential.id,
-          exchange: selectedCredential.exchange,
-          environment: selectedCredential.environment,
-          apiKey: cached.apiKey,
-          apiSecret: cached.apiSecret,
-          authToken: cached.authToken,
-          label: selectedCredential.label || undefined,
-          createdAt: selectedCredential.createdAt,
-          updatedAt: selectedCredential.updatedAt,
-        };
-      }
-
-      // Decrypt credentials
-      const apiKey = EncryptionService.decrypt(selectedCredential.apiKey);
-      const apiSecret = EncryptionService.decrypt(selectedCredential.apiSecret);
-      const authToken = selectedCredential.authToken ? EncryptionService.decrypt(selectedCredential.authToken) : undefined;
-
-      // Cache decrypted credentials
-      this.cache.set(cacheKey, {
-        apiKey,
-        apiSecret,
-        authToken,
-        timestamp: Date.now(),
-      });
-
-      return {
-        id: selectedCredential.id,
-        exchange: selectedCredential.exchange,
-        environment: selectedCredential.environment,
-        apiKey,
-        apiSecret,
-        authToken,
-        label: selectedCredential.label || undefined,
-        createdAt: selectedCredential.createdAt,
-        updatedAt: selectedCredential.updatedAt,
-      };
-    } catch (error: any) {
-      console.error('Error getting credentials by environment:', error);
-      throw new Error('Failed to retrieve credentials');
-    }
-  }
 
   /**
    * Updates credential information (label, apiKey, apiSecret, isActive)
@@ -447,7 +359,6 @@ export class ExchangeCredentialsService {
         // Validate the credentials
         const validation = await this.validateCredentials(
           credential.exchange,
-          credential.environment,
           apiKey,
           apiSecret
         );
@@ -497,9 +408,8 @@ export class ExchangeCredentialsService {
   }
 
   /**
-   * Sets a specific credential as active for its exchange and environment
-   * Deactivates all other credentials for the same exchange and environment
-   * This allows separate active credentials for testnet and mainnet
+   * Sets a specific credential as active for its exchange
+   * Deactivates all other credentials for the same exchange
    */
   static async setActiveCredentials(
     userId: string,
@@ -521,12 +431,11 @@ export class ExchangeCredentialsService {
 
       // Use a transaction to ensure atomicity
       await prisma.$transaction(async (tx) => {
-        // Deactivate all other credentials for this exchange AND environment
+        // Deactivate all other credentials for this exchange
         await tx.exchangeCredentials.updateMany({
           where: {
             userId,
             exchange: credential.exchange,
-            environment: credential.environment,
             id: { not: credentialId },
           },
           data: {
@@ -647,7 +556,6 @@ export class ExchangeCredentialsService {
       id: credential.id,
       userId: credential.userId,
       exchange: credential.exchange,
-      environment: credential.environment,
       apiKeyPreview,
       label: credential.label || undefined,
       isActive: credential.isActive,

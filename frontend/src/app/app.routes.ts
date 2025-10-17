@@ -56,6 +56,11 @@ export const routes: Routes = [
     canActivate: [AuthGuard]
   },
   {
+    path: 'arbitrage/chart/:symbol/:primary/:hedge',
+    loadComponent: () => import('./components/trading/arbitrage-chart/arbitrage-chart.component').then(m => m.ArbitrageChartComponent),
+    canActivate: [AuthGuard]
+  },
+  {
     path: 'chart-demo',
     loadComponent: () => import('./components/chart-demo/chart-demo.component').then(m => m.ChartDemoComponent),
     canActivate: [AuthGuard]

@@ -11,8 +11,8 @@ import { bybitFundingStrategyService } from '@/services/bybit-funding-strategy.s
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user
-    const user = await AuthService.authenticateRequest(request);
-    if (!user) {
+    const { success, user } = await AuthService.authenticateRequest(request);
+    if (!success || !user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }

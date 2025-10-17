@@ -57,12 +57,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Create BingX service
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 4. Create BingX service (mainnet only)
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId,
       credentialId,
@@ -235,12 +233,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Create BingX service
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 4. Create BingX service (mainnet only)
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
     });
 

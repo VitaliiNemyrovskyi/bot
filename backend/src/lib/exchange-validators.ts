@@ -1,4 +1,4 @@
-import { Exchange, Environment } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import { BybitService } from './bybit';
 import { BingXService } from './bingx';
 import { MEXCService } from './mexc';
@@ -17,16 +17,12 @@ export class ExchangeValidators {
    */
   static async validateBybit(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
-      const testnet = environment === Environment.TESTNET;
-
       const bybitService = new BybitService({
         apiKey,
         apiSecret,
-        testnet,
         enableRateLimit: true,
       });
 
@@ -67,8 +63,7 @@ export class ExchangeValidators {
    */
   static async validateBinance(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
       // TODO: Implement Binance validation when Binance integration is added
@@ -117,8 +112,7 @@ export class ExchangeValidators {
    */
   static async validateOKX(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
       // TODO: Implement OKX validation when OKX integration is added
@@ -143,8 +137,7 @@ export class ExchangeValidators {
    */
   static async validateKraken(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
       // TODO: Implement Kraken validation when Kraken integration is added
@@ -169,8 +162,7 @@ export class ExchangeValidators {
    */
   static async validateCoinbase(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
       // TODO: Implement Coinbase validation when Coinbase integration is added
@@ -195,16 +187,12 @@ export class ExchangeValidators {
    */
   static async validateBingX(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
-      const testnet = environment === Environment.TESTNET;
-
       const bingxService = new BingXService({
         apiKey,
         apiSecret,
-        testnet,
         enableRateLimit: true,
       });
 
@@ -235,16 +223,12 @@ export class ExchangeValidators {
    */
   static async validateMEXC(
     apiKey: string,
-    apiSecret: string,
-    environment: Environment
+    apiSecret: string
   ): Promise<ValidationResult> {
     try {
-      const testnet = environment === Environment.TESTNET;
-
       const mexcService = new MEXCService({
         apiKey,
         apiSecret,
-        testnet,
         enableRateLimit: true,
       });
 
@@ -274,31 +258,30 @@ export class ExchangeValidators {
    */
   static async validateCredentials(
     exchange: Exchange,
-    environment: Environment,
     apiKey: string,
     apiSecret: string
   ): Promise<ValidationResult> {
     switch (exchange) {
       case Exchange.BYBIT:
-        return this.validateBybit(apiKey, apiSecret, environment);
+        return this.validateBybit(apiKey, apiSecret);
 
       case Exchange.BINANCE:
-        return this.validateBinance(apiKey, apiSecret, environment);
+        return this.validateBinance(apiKey, apiSecret);
 
       case Exchange.OKX:
-        return this.validateOKX(apiKey, apiSecret, environment);
+        return this.validateOKX(apiKey, apiSecret);
 
       case Exchange.KRAKEN:
-        return this.validateKraken(apiKey, apiSecret, environment);
+        return this.validateKraken(apiKey, apiSecret);
 
       case Exchange.COINBASE:
-        return this.validateCoinbase(apiKey, apiSecret, environment);
+        return this.validateCoinbase(apiKey, apiSecret);
 
       case Exchange.BINGX:
-        return this.validateBingX(apiKey, apiSecret, environment);
+        return this.validateBingX(apiKey, apiSecret);
 
       case Exchange.MEXC:
-        return this.validateMEXC(apiKey, apiSecret, environment);
+        return this.validateMEXC(apiKey, apiSecret);
 
       default:
         return {

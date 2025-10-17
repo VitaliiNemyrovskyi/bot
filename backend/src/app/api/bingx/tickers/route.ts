@@ -25,7 +25,6 @@ import { AuthService } from '@/lib/auth';
  *       ...
  *     }
  *   ],
- *   "testnet": boolean,
  *   "timestamp": "2025-10-06T13:00:00.000Z"
  * }
  */
@@ -96,18 +95,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[BingX Tickers] Credentials loaded - ID: ${credentials.id}, environment: ${credentials.environment}`);
+    console.log(`[BingX Tickers] Credentials loaded - ID: ${credentials.id}`);
 
-    // 4. Create BingXService
-    const isTestnet = credentials.environment === 'TESTNET';
+    // 4. Create BingXService (mainnet only)
     const bingxService = new BingXService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
     });
 
-    console.log(`[BingX Tickers] BingX service created - testnet: ${isTestnet}`);
+    console.log(`[BingX Tickers] BingX service created`);
 
     // Sync time with BingX server before making authenticated requests
     await bingxService.syncTime();
@@ -129,7 +126,6 @@ export async function GET(request: NextRequest) {
         success: true,
         data: filteredTickers,
         ...(symbol && { symbol }),
-        testnet: isTestnet,
         count: filteredTickers.length,
         timestamp: new Date().toISOString(),
       },

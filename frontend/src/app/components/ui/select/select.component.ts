@@ -1,4 +1,4 @@
-import { Component, Input, forwardRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, forwardRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -32,14 +32,23 @@ export class SelectComponent implements ControlValueAccessor {
   @Input() fullWidth: boolean = false;
   @Input() multiple: boolean = false;
 
-  value: any = null;
+  // Support for direct value binding
+  @Input() set value(val: any) {
+    this._value = val;
+  }
+  get value(): any {
+    return this._value;
+  }
+  @Output() valueChange = new EventEmitter<any>();
+
+  private _value: any = null;
   touched: boolean = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};
 
   writeValue(value: any): void {
-    this.value = value;
+    this._value = value;
   }
 
   registerOnChange(fn: any): void {
@@ -59,12 +68,13 @@ export class SelectComponent implements ControlValueAccessor {
 
     if (this.multiple) {
       const selectedOptions = Array.from(target.selectedOptions).map(option => option.value);
-      this.value = selectedOptions;
+      this._value = selectedOptions;
     } else {
-      this.value = target.value;
+      this._value = target.value;
     }
 
-    this.onChange(this.value);
+    this.onChange(this._value);
+    this.valueChange.emit(this._value);
   }
 
   onBlur(): void {
@@ -99,9 +109,9 @@ export class SelectComponent implements ControlValueAccessor {
   }
 
   isSelected(optionValue: any): boolean {
-    if (this.multiple && Array.isArray(this.value)) {
-      return this.value.includes(optionValue);
+    if (this.multiple && Array.isArray(this._value)) {
+      return this._value.includes(optionValue);
     }
-    return this.value === optionValue;
+    return this._value === optionValue;
   }
 }

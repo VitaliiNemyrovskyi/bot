@@ -14,11 +14,9 @@
           [chartHeight]="600"
           [showCredentialSelector]="true"
           [showSymbolSelector]="true"
-          [showEnvironmentBadge]="true"
           [credentialOptions]="credentialOptions()"
           [symbolOptions]="symbolOptions()"
           [isLoadingSymbols]="isLoadingSymbols()"
-          [environment]="selectedCredential()?.environment || 'TESTNET'"
           (credentialChange)="onCredentialChange($event)"
           (symbolChange)="onSymbolChange($event)">
         </app-lightweight-chart>
