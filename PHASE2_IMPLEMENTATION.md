@@ -470,7 +470,6 @@ Add in expandable row section (after existing subscription content):
 .phase2-stability-section {
   margin-top: 2rem;
   padding: 1.5rem;
-  background: var(--card-bg, white);
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
 

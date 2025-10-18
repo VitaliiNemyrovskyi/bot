@@ -84,6 +84,10 @@ export class PublicFundingRatesService {
             nextFundingTime: parseInt(t.nextFundingTime) || 0,
             lastPrice: t.lastPrice,
             fundingInterval: '8h', // Bybit uses 8h intervals
+            volume24h: t.turnover24h, // Bybit uses 'turnover24h' for volume in USDT
+            openInterest: t.openInterest,
+            high24h: t.highPrice24h,
+            low24h: t.lowPrice24h,
           } as ExchangeFundingRate));
       }),
       catchError(error => {
@@ -123,6 +127,10 @@ export class PublicFundingRatesService {
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
             lastPrice: p.markPrice,
             fundingInterval: '8h', // BingX uses 8h intervals
+            volume24h: p.volume24h,
+            openInterest: p.openInterest,
+            high24h: p.high24h,
+            low24h: p.low24h,
           } as ExchangeFundingRate));
       }),
       catchError(error => {
@@ -167,6 +175,10 @@ export class PublicFundingRatesService {
             nextFundingTime: 0, // MEXC doesn't provide nextFundingTime in tickers
             lastPrice: t.lastPrice > 0 ? t.lastPrice.toString() : t.fairPrice.toString(),
             fundingInterval: '8h', // MEXC uses 8h intervals
+            volume24h: t.volume24 ? t.volume24.toString() : undefined,
+            openInterest: t.holdVol ? t.holdVol.toString() : undefined,
+            high24h: t.high24Price ? t.high24Price.toString() : undefined,
+            low24h: t.low24Price ? t.low24Price.toString() : undefined,
           } as ExchangeFundingRate));
       }),
       catchError(error => {
@@ -576,20 +588,23 @@ export class PublicFundingRatesService {
    *
    * @param longRates - Funding rates from long position exchange
    * @param shortRates - Funding rates from short position exchange
-   * @returns Array of spread values
+   * @returns Array of spread data points with timestamps and values
    */
   private calculateSpreads(
     longRates: Array<{ timestamp: number; fundingRate: number }>,
     shortRates: Array<{ timestamp: number; fundingRate: number }>
-  ): number[] {
+  ): Array<{ timestamp: number; spread: number }> {
     // Match timestamps and calculate spreads
-    const spreads: number[] = [];
+    const spreads: Array<{ timestamp: number; spread: number }> = [];
 
     for (const longRate of longRates) {
       const shortRate = shortRates.find(s => s.timestamp === longRate.timestamp);
       if (shortRate) {
         const spread = Math.abs(shortRate.fundingRate - longRate.fundingRate);
-        spreads.push(spread);
+        spreads.push({
+          timestamp: longRate.timestamp,
+          spread: spread
+        });
       }
     }
 
@@ -599,18 +614,21 @@ export class PublicFundingRatesService {
   /**
    * Calculate stability metrics from spread data using statistical analysis
    *
-   * @param spreads - Array of spread values
+   * @param spreads - Array of spread data points with timestamps
    * @param periodDays - Period length (7 or 30 days)
    * @param expectedSamples - Expected number of samples for this period
    * @returns Complete spread stability metrics
    */
   private calculateStabilityMetrics(
-    spreads: number[],
+    spreads: Array<{ timestamp: number; spread: number }>,
     periodDays: 7 | 30,
     expectedSamples: number
   ): SpreadStabilityMetrics {
-    const avg = this.statisticalUtils.calculateAverage(spreads);
-    const stdDev = this.statisticalUtils.calculateStandardDeviation(spreads);
+    // Extract spread values for statistical calculations
+    const spreadValues = spreads.map(s => s.spread);
+
+    const avg = this.statisticalUtils.calculateAverage(spreadValues);
+    const stdDev = this.statisticalUtils.calculateStandardDeviation(spreadValues);
 
     if (avg === null || stdDev === null) {
       // No data available
@@ -623,7 +641,8 @@ export class PublicFundingRatesService {
         stabilityRating: 'poor',
         sampleSize: 0,
         dataQuality: 'low',
-        periodDays
+        periodDays,
+        historicalData: []
       };
     }
 
@@ -642,7 +661,8 @@ export class PublicFundingRatesService {
       dataQuality: quality,
       periodDays,
       startTimestamp: spreads.length > 0 ? Date.now() - (periodDays * 24 * 60 * 60 * 1000) : undefined,
-      endTimestamp: spreads.length > 0 ? Date.now() : undefined
+      endTimestamp: spreads.length > 0 ? Date.now() : undefined,
+      historicalData: spreads // Include historical data for charting
     };
   }
 }

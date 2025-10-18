@@ -1527,7 +1527,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Navigate back to funding rates page
    */
   goBack(): void {
-    this.router.navigate(['/trading/funding-rates']);
+    this.router.navigate(['/arbitrage/funding']);
   }
 
   /**

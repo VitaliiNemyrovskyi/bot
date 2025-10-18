@@ -1,0 +1,106 @@
+<div class="funding-spread-details">
+  <!-- Historical Spread Chart -->
+  <div class="chart-section">
+    <app-funding-rate-spread-chart
+      [symbol]="opportunity.symbol"
+      [bestLongExchange]="opportunity.bestLongExchange"
+      [bestShortExchange]="opportunity.bestShortExchange"
+      [authToken]="authToken"
+    ></app-funding-rate-spread-chart>
+  </div>
+
+  <!-- Stability Metrics Grid -->
+  <div class="stability-metrics-grid">
+    <!-- Spread Quality Card -->
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Spread Quality</span>
+        <span class="badge" [ngClass]="'badge-' + spreadQuality()">
+          {{ spreadQuality() }}
+        </span>
+      </div>
+      <div class="metric-value">
+        {{ opportunity.spreadPercentage.toFixed(3) }}%
+      </div>
+      <div class="metric-description">
+        Current funding rate spread between exchanges
+      </div>
+    </div>
+
+    <!-- Stability Score Card -->
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Stability Score</span>
+        <span class="badge" [ngClass]="'badge-' + stabilityRating()">
+          {{ stabilityRating() }}
+        </span>
+      </div>
+      <div class="metric-value">
+        <span class="stability-score" [ngClass]="'rating-' + stabilityRating()">
+          {{ stabilityScore() }}
+        </span>
+        <span class="metric-unit">/100</span>
+      </div>
+      <div class="metric-description">
+        Historical spread consistency and reliability
+      </div>
+    </div>
+
+    <!-- Volatility Card -->
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">Spread Volatility</span>
+        <span class="badge" [ngClass]="'badge-' + volatilityRating()">
+          {{ volatilityRating() }}
+        </span>
+      </div>
+      <div class="metric-value">
+        {{ (opportunity.metrics?.spreadVolatility ?? 0).toFixed(3) }}%
+      </div>
+      <div class="metric-description">
+        Standard deviation of spread fluctuations
+      </div>
+    </div>
+
+    <!-- Average 7d Card -->
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">7-Day Average</span>
+      </div>
+      <div class="metric-value">
+        {{ avg7d().toFixed(3) }}%
+      </div>
+      <div class="metric-description">
+        Average spread over the last 7 days
+      </div>
+    </div>
+
+    <!-- Average 30d Card -->
+    <div class="metric-card">
+      <div class="metric-header">
+        <span class="metric-label">30-Day Average</span>
+      </div>
+      <div class="metric-value">
+        {{ avg30d().toFixed(3) }}%
+      </div>
+      <div class="metric-description">
+        Average spread over the last 30 days
+      </div>
+    </div>
+
+    <!-- Trend Card -->
+    <div class="metric-card trend-card">
+      <div class="metric-header">
+        <span class="metric-label">Trend Direction</span>
+      </div>
+      <div class="metric-value">
+        <span class="trend-indicator" [ngClass]="'trend-' + trendDirection()">
+          {{ trendDirection() }}
+        </span>
+      </div>
+      <div class="metric-description">
+        Recent spread movement pattern
+      </div>
+    </div>
+  </div>
+</div>
