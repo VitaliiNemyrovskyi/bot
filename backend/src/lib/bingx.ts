@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import zlib from 'zlib';
+import WebSocket from 'ws';
 import {
   BingXConfig,
   BingXAccountInfo,
@@ -40,6 +42,11 @@ export class BingXService {
 
   // Position mode cache (Hedge Mode vs One-Way Mode)
   private isHedgeMode: boolean | null = null;
+
+  // WebSocket client for real-time market data
+  private wsClient: WebSocket | null = null;
+  private wsUrl = 'wss://open-api-swap.bingx.com/swap-market';
+  private subscriptions: Map<string, (data: any) => void> = new Map();
 
   constructor(config: BingXConfig & { userId?: string; credentialId?: string }) {
     // CRITICAL: Trim API keys to remove any whitespace, newlines, or hidden characters
@@ -1233,5 +1240,202 @@ export class BingXService {
       console.error('[BingXService] Error fetching ticker price:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Get commission rate (trading fees) for the account
+   * Endpoint: GET /openApi/swap/v2/user/commissionRate
+   *
+   * Returns the user's current maker and taker fee rates based on VIP level and trading volume.
+   *
+   * @returns Commission rate data including maker/taker fees and user level
+   */
+  async getCommissionRate(): Promise<any> {
+    console.log('[BingXService] Fetching commission rate...');
+
+    const response = await this.makeRequest(
+      'GET',
+      '/openApi/swap/v2/user/commissionRate',
+      {}
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Commission rate fetch failed:', {
+        code: response.code,
+        msg: response.msg,
+      });
+      throw new Error(`Failed to get commission rate: ${response.msg} (code: ${response.code})`);
+    }
+
+    console.log('[BingXService] Commission rate response:', response.data);
+
+    return response;
+  }
+
+  /**
+   * Initialize WebSocket connection for real-time market data
+   * BingX WebSocket URL: wss://open-api-swap.bingx.com/swap-market
+   *
+   * IMPORTANT: Messages are gzip-compressed and must be decompressed using zlib
+   * Ping/Pong heartbeat: Server sends "Ping", client must respond with "Pong"
+   */
+  private initializeWebSocket(): void {
+    if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+      console.log('[BingXService] WebSocket already connected');
+      return;
+    }
+
+    console.log('[BingXService] Initializing WebSocket connection...');
+
+    this.wsClient = new WebSocket(this.wsUrl);
+
+    this.wsClient.on('open', () => {
+      console.log('[BingXService] ✓ WebSocket connected');
+    });
+
+    this.wsClient.on('message', (data: Buffer) => {
+      this.handleWebSocketMessage(data);
+    });
+
+    this.wsClient.on('error', (error: Error) => {
+      console.error('[BingXService] WebSocket error:', error.message);
+    });
+
+    this.wsClient.on('close', (code: number, reason: string) => {
+      console.log('[BingXService] WebSocket closed:', { code, reason: reason.toString() });
+      this.wsClient = null;
+    });
+  }
+
+  /**
+   * Handle incoming WebSocket messages
+   * BingX sends gzip-compressed messages that need to be decompressed
+   *
+   * @param data Raw message buffer from WebSocket
+   */
+  private handleWebSocketMessage(data: Buffer): void {
+    try {
+      // Decompress gzip message
+      const decodedMsg = zlib.gunzipSync(data).toString('utf-8');
+
+      // Handle ping/pong heartbeat
+      if (decodedMsg === 'Ping') {
+        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+          this.wsClient.send('Pong');
+          console.log('[BingXService] Sent Pong');
+        }
+        return;
+      }
+
+      // Parse JSON message
+      const message = JSON.parse(decodedMsg);
+
+      // Route message to appropriate callback based on dataType
+      if (message.dataType) {
+        const callback = this.subscriptions.get(message.dataType);
+        if (callback) {
+          callback(message);
+        }
+      }
+    } catch (error: any) {
+      console.error('[BingXService] Error handling WebSocket message:', error.message);
+    }
+  }
+
+  /**
+   * Subscribe to mark price updates for a symbol
+   * Mark price is used for liquidation calculations and is more stable than last trade price
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @param callback Function to call when mark price updates
+   * @returns Unsubscribe function
+   */
+  subscribeToMarkPrice(symbol: string, callback: (price: number) => void): () => void {
+    // Initialize WebSocket if not connected
+    if (!this.wsClient || this.wsClient.readyState !== WebSocket.OPEN) {
+      this.initializeWebSocket();
+    }
+
+    // Generate unique subscription ID
+    const subscriptionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const dataType = `${symbol}@markPrice`;
+
+    console.log(`[BingXService] Subscribing to mark price for ${symbol}...`);
+
+    // Create subscription message
+    const subscriptionMessage = {
+      id: subscriptionId,
+      reqType: 'sub',
+      dataType: dataType,
+    };
+
+    // Wait for WebSocket to be ready before subscribing
+    const subscribeWhenReady = () => {
+      if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+        this.wsClient.send(JSON.stringify(subscriptionMessage));
+        console.log(`[BingXService] ✓ Subscribed to ${dataType}`);
+      } else {
+        // Wait 100ms and try again
+        setTimeout(subscribeWhenReady, 100);
+      }
+    };
+
+    subscribeWhenReady();
+
+    // Register callback for this subscription
+    const wrappedCallback = (data: any) => {
+      try {
+        // Extract mark price from message
+        // BingX mark price format: { dataType: "BTC-USDT@markPrice", data: { e: "markPrice", E: timestamp, s: "BTC-USDT", p: "50000.5" } }
+        if (data.data && data.data.p) {
+          const price = parseFloat(data.data.p);
+          if (!isNaN(price) && price > 0) {
+            callback(price);
+          }
+        }
+      } catch (error: any) {
+        console.error(`[BingXService] Error processing mark price update for ${symbol}:`, error.message);
+      }
+    };
+
+    this.subscriptions.set(dataType, wrappedCallback);
+
+    // Return unsubscribe function
+    return () => {
+      console.log(`[BingXService] Unsubscribing from ${dataType}`);
+
+      // Remove callback
+      this.subscriptions.delete(dataType);
+
+      // Send unsubscribe message if WebSocket is still connected
+      if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+        const unsubscribeMessage = {
+          id: subscriptionId,
+          reqType: 'unsub',
+          dataType: dataType,
+        };
+        this.wsClient.send(JSON.stringify(unsubscribeMessage));
+      }
+    };
+  }
+
+  /**
+   * Unsubscribe from all WebSocket subscriptions and close connection
+   */
+  unsubscribeAll(): void {
+    console.log('[BingXService] Unsubscribing from all WebSocket subscriptions...');
+
+    // Clear all subscriptions
+    this.subscriptions.clear();
+
+    // Close WebSocket connection
+    if (this.wsClient) {
+      if (this.wsClient.readyState === WebSocket.OPEN || this.wsClient.readyState === WebSocket.CONNECTING) {
+        this.wsClient.close();
+      }
+      this.wsClient = null;
+    }
+
+    console.log('[BingXService] ✓ All WebSocket subscriptions closed');
   }
 }

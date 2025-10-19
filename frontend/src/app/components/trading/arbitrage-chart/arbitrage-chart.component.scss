@@ -1162,6 +1162,50 @@
                   }
                 }
               }
+
+              // Liquidation proximity color coding
+              .proximity-value {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: 600;
+
+                &.proximity-safe {
+                  color: #28a745;
+                }
+
+                &.proximity-warning {
+                  color: #ffc107;
+                }
+
+                &.proximity-danger {
+                  color: #dc3545;
+                }
+
+                .danger-badge {
+                  display: inline-block;
+                  padding: 2px 8px;
+                  background-color: #dc3545;
+                  color: white;
+                  border-radius: var(--border-radius-sm);
+                  font-size: 10px;
+                  font-weight: 700;
+                  text-transform: uppercase;
+                  letter-spacing: 0.5px;
+                  animation: pulse-danger 1.5s ease-in-out infinite;
+                }
+              }
+
+              @keyframes pulse-danger {
+                0%, 100% {
+                  opacity: 1;
+                  transform: scale(1);
+                }
+                50% {
+                  opacity: 0.8;
+                  transform: scale(1.05);
+                }
+              }
             }
           }
         }

@@ -46,7 +46,11 @@ export const arbitragePositionsTranslations = {
     'arbitrage.positions.time.minutes': 'min',
     'arbitrage.positions.time.hours': 'h',
     'arbitrage.positions.time.days': 'd',
-    'arbitrage.positions.na': 'N/A'
+    'arbitrage.positions.na': 'N/A',
+    'arbitrage.positions.entryPrice': 'Entry Price',
+    'arbitrage.positions.liquidationPrice': 'Liquidation Price',
+    'arbitrage.positions.liquidationProximity': 'Liquidation Proximity',
+    'arbitrage.positions.danger': 'DANGER'
   },
   es: {
     'arbitrage.positions.title': 'Posiciones de Arbitraje Activas',
@@ -95,7 +99,11 @@ export const arbitragePositionsTranslations = {
     'arbitrage.positions.time.minutes': 'min',
     'arbitrage.positions.time.hours': 'h',
     'arbitrage.positions.time.days': 'd',
-    'arbitrage.positions.na': 'N/A'
+    'arbitrage.positions.na': 'N/A',
+    'arbitrage.positions.entryPrice': 'Precio de Entrada',
+    'arbitrage.positions.liquidationPrice': 'Precio de Liquidación',
+    'arbitrage.positions.liquidationProximity': 'Proximidad a Liquidación',
+    'arbitrage.positions.danger': 'PELIGRO'
   },
   fr: {
     'arbitrage.positions.title': 'Positions d\'Arbitrage Actives',
@@ -144,7 +152,11 @@ export const arbitragePositionsTranslations = {
     'arbitrage.positions.time.minutes': 'min',
     'arbitrage.positions.time.hours': 'h',
     'arbitrage.positions.time.days': 'j',
-    'arbitrage.positions.na': 'N/A'
+    'arbitrage.positions.na': 'N/A',
+    'arbitrage.positions.entryPrice': 'Prix d\'Entrée',
+    'arbitrage.positions.liquidationPrice': 'Prix de Liquidation',
+    'arbitrage.positions.liquidationProximity': 'Proximité de Liquidation',
+    'arbitrage.positions.danger': 'DANGER'
   },
   ru: {
     'arbitrage.positions.title': 'Активные Арбитражные Позиции',
@@ -193,7 +205,11 @@ export const arbitragePositionsTranslations = {
     'arbitrage.positions.time.minutes': 'мин',
     'arbitrage.positions.time.hours': 'ч',
     'arbitrage.positions.time.days': 'д',
-    'arbitrage.positions.na': 'Н/Д'
+    'arbitrage.positions.na': 'Н/Д',
+    'arbitrage.positions.entryPrice': 'Цена Входа',
+    'arbitrage.positions.liquidationPrice': 'Цена Ликвидации',
+    'arbitrage.positions.liquidationProximity': 'Близость к Ликвидации',
+    'arbitrage.positions.danger': 'ОПАСНОСТЬ'
   },
   uk: {
     'arbitrage.positions.title': 'Активні Арбітражні Позиції',
@@ -242,6 +258,10 @@ export const arbitragePositionsTranslations = {
     'arbitrage.positions.time.minutes': 'хв',
     'arbitrage.positions.time.hours': 'г',
     'arbitrage.positions.time.days': 'д',
-    'arbitrage.positions.na': 'Н/Д'
+    'arbitrage.positions.na': 'Н/Д',
+    'arbitrage.positions.entryPrice': 'Ціна Входу',
+    'arbitrage.positions.liquidationPrice': 'Ціна Ліквідації',
+    'arbitrage.positions.liquidationProximity': 'Близькість до Ліквідації',
+    'arbitrage.positions.danger': 'НЕБЕЗПЕКА'
   }
 };

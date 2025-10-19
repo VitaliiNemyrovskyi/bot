@@ -746,6 +746,30 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.setLeverage(bingxSymbol, leverage, side);
       console.log('[BingXConnector] Leverage set successfully:', result);
+
+      // Verify leverage was actually applied by querying position
+      try {
+        const positions = await this.bingxService.getPositions(bingxSymbol);
+        if (positions && positions.length > 0) {
+          const position = positions[0];
+          const actualLeverage = position.leverage || result.leverage;
+
+          console.log(`[BingXConnector] Leverage verification for ${bingxSymbol}:`, {
+            requested: leverage,
+            actual: actualLeverage,
+            verified: actualLeverage === leverage || actualLeverage === leverage.toString()
+          });
+
+          if (actualLeverage && (actualLeverage === leverage || actualLeverage === leverage.toString())) {
+            console.log(`[BingXConnector] ✓ Leverage verified: ${actualLeverage}x`);
+          } else {
+            console.warn(`[BingXConnector] ⚠️  Leverage mismatch: requested ${leverage}x, but actual is ${actualLeverage}x`);
+          }
+        }
+      } catch (verifyError: any) {
+        console.warn(`[BingXConnector] Could not verify leverage (non-fatal):`, verifyError.message);
+      }
+
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error setting leverage:', error.message);
@@ -1009,6 +1033,44 @@ export class BingXConnector extends BaseExchangeConnector {
       return unsubscribe;
     } catch (error: any) {
       console.error(`[BingXConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Subscribe to real-time mark price updates via WebSocket
+   * Mark price is used for liquidation calculations and is more stable than last trade price
+   *
+   * This method uses BingXService's native WebSocket support for mark price subscriptions
+   *
+   * @param symbol - Trading pair symbol (e.g., "BTC-USDT")
+   * @param callback - Callback function called on each mark price update
+   * @returns Unsubscribe function to stop receiving updates
+   */
+  async subscribeToMarkPriceStream(
+    symbol: string,
+    callback: (price: number) => void
+  ): Promise<() => void> {
+    console.log(`[BingXConnector] Subscribing to mark price stream for ${symbol}`);
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Convert symbol to BingX format
+      const bingxSymbol = this.normalizeSymbolForBingX(symbol);
+      console.log(`[BingXConnector] Symbol normalized for WebSocket: ${symbol} -> ${bingxSymbol}`);
+
+      // Use BingXService's native WebSocket support for mark price
+      const unsubscribe = this.bingxService.subscribeToMarkPrice(bingxSymbol, (price: number) => {
+        callback(price);
+      });
+
+      console.log(`[BingXConnector] Successfully subscribed to mark price stream for ${bingxSymbol}`);
+      return unsubscribe;
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error subscribing to mark price stream for ${symbol}:`, error.message);
       throw error;
     }
   }

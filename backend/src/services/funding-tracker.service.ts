@@ -153,22 +153,46 @@ export class FundingTrackerService {
       const totalFees = (primaryData?.fees || 0) + (hedgeData?.fees || 0);
       const netProfit = grossProfit - totalFees;
 
+      // IMPORTANT: Trust real fees from exchange API over calculated fees
+      // Graduated entry calculates fees based on fee rates (which may be default 0.055% if not synced)
+      // Exchange API provides ACTUAL fees paid, which is the source of truth
+      // We use exchange fees if available, otherwise keep existing calculated fees
+      const primaryFeesUpdate = primaryData?.fees !== undefined
+        ? primaryData.fees  // Use real fees from exchange API
+        : (position.primaryTradingFees || 0);  // Keep existing fees if API data unavailable
+
+      const hedgeFeesUpdate = hedgeData?.fees !== undefined
+        ? hedgeData.fees  // Use real fees from exchange API
+        : (position.hedgeTradingFees || 0);  // Keep existing fees if API data unavailable
+
+      const totalFeesUpdate = primaryFeesUpdate + hedgeFeesUpdate;
+      const netProfitUpdate = grossProfit - totalFeesUpdate;
+
+      console.log(`[FundingTracker] Fees update for ${positionId}:`, {
+        existingPrimary: position.primaryTradingFees,
+        fetchedPrimary: primaryData?.fees,
+        updatedPrimary: primaryFeesUpdate,
+        existingHedge: position.hedgeTradingFees,
+        fetchedHedge: hedgeData?.fees,
+        updatedHedge: hedgeFeesUpdate,
+      });
+
       // Update database
       await this.prisma.graduatedEntryPosition.update({
         where: { positionId },
         data: {
           primaryLastFundingPaid: primaryData?.lastFunding || 0,
           primaryTotalFundingEarned: primaryData?.totalFunding || 0,
-          primaryTradingFees: primaryData?.fees || 0,
+          primaryTradingFees: primaryFeesUpdate,
           primaryCurrentPrice: primaryData?.currentPrice || position.primaryCurrentPrice,
 
           hedgeLastFundingPaid: hedgeData?.lastFunding || 0,
           hedgeTotalFundingEarned: hedgeData?.totalFunding || 0,
-          hedgeTradingFees: hedgeData?.fees || 0,
+          hedgeTradingFees: hedgeFeesUpdate,
           hedgeCurrentPrice: hedgeData?.currentPrice || position.hedgeCurrentPrice,
 
           grossProfit,
-          netProfit,
+          netProfit: netProfitUpdate,
 
           lastFundingUpdate: new Date(),
           fundingUpdateCount: position.fundingUpdateCount + 1,
@@ -178,8 +202,8 @@ export class FundingTrackerService {
       console.log(`[FundingTracker] Updated position ${positionId}:`, {
         primaryFunding: primaryData?.totalFunding || 0,
         hedgeFunding: hedgeData?.totalFunding || 0,
-        totalFees,
-        netProfit,
+        totalFees: totalFeesUpdate,
+        netProfit: netProfitUpdate,
       });
 
       return {
@@ -187,17 +211,17 @@ export class FundingTrackerService {
         primaryFunding: {
           lastPaid: primaryData?.lastFunding || 0,
           totalEarned: primaryData?.totalFunding || 0,
-          fees: primaryData?.fees || 0,
+          fees: primaryFeesUpdate,
           currentPrice: primaryData?.currentPrice || 0,
         },
         hedgeFunding: {
           lastPaid: hedgeData?.lastFunding || 0,
           totalEarned: hedgeData?.totalFunding || 0,
-          fees: hedgeData?.fees || 0,
+          fees: hedgeFeesUpdate,
           currentPrice: hedgeData?.currentPrice || 0,
         },
         grossProfit,
-        netProfit,
+        netProfit: netProfitUpdate,
       };
     } catch (error: any) {
       console.error(`[FundingTracker] Error updating position ${positionId}:`, error.message);
@@ -333,7 +357,8 @@ export class FundingTrackerService {
       });
 
       let totalFees = 0;
-      const FUNDING_FEE_THRESHOLD = 0.1; // Fees larger than this are likely funding payments
+      // Lower threshold for small positions - funding can be as low as $0.01
+      const FUNDING_FEE_THRESHOLD = 0.01; // Fees larger than this are likely funding payments
 
       if (executions?.list && executions.list.length > 0) {
         for (const exec of executions.list) {
@@ -348,6 +373,20 @@ export class FundingTrackerService {
           // 2. Executed at funding time (00:00, 08:00, 16:00 UTC)
           const isFundingTime = (execHour === 0 || execHour === 8 || execHour === 16) && execMinute === 0;
           const isLargeFee = feeAbs > FUNDING_FEE_THRESHOLD;
+
+          // Log ALL executions to debug funding detection
+          console.log(`[FundingTracker] Bybit execution for ${symbol}:`, {
+            execFee: exec.execFee,
+            feeAbs,
+            execTime: execTime.toISOString(),
+            execHour,
+            execMinute,
+            isFundingTime,
+            isLargeFee,
+            willCountAsFunding: isLargeFee && isFundingTime,
+            side: exec.side,
+            execQty: exec.execQty,
+          });
 
           if (isLargeFee && isFundingTime) {
             // This is a funding payment
@@ -511,6 +550,12 @@ export class FundingTrackerService {
 
       if (incomeHistory.data && incomeHistory.data.length > 0) {
         for (const income of incomeHistory.data) {
+          // Only count funding payments AFTER position start time
+          const fundingTime = new Date(income.time);
+          if (fundingTime < startTime) {
+            continue; // Skip funding before position start
+          }
+
           const funding = parseFloat(income.income || '0');
           totalFunding += funding;
           fundingCount++;
@@ -518,7 +563,7 @@ export class FundingTrackerService {
           console.log(`[FundingTracker] BingX funding payment:`, {
             symbol: income.symbol,
             income: income.income,
-            time: new Date(income.time).toISOString(),
+            time: fundingTime.toISOString(),
             incomeType: income.incomeType,
           });
 
@@ -554,6 +599,18 @@ export class FundingTrackerService {
 
       if (feesHistory?.data && feesHistory.data.length > 0) {
         for (const fee of feesHistory.data) {
+          // Only count fees AFTER position start time
+          const feeTime = new Date(fee.time);
+          if (feeTime < startTime) {
+            console.log(`[FundingTracker] BingX trading fee SKIPPED (before position start):`, {
+              symbol: fee.symbol,
+              income: fee.income,
+              time: feeTime.toISOString(),
+              positionStart: startTime.toISOString(),
+            });
+            continue; // Skip fees before position start
+          }
+
           // Trading fee is negative, so take absolute value
           const feeAmount = Math.abs(parseFloat(fee.income || '0'));
           totalFees += feeAmount;
@@ -561,7 +618,7 @@ export class FundingTrackerService {
           console.log(`[FundingTracker] BingX trading fee:`, {
             symbol: fee.symbol,
             income: fee.income,
-            time: new Date(fee.time).toISOString(),
+            time: feeTime.toISOString(),
           });
         }
       }

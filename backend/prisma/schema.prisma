@@ -114,6 +114,14 @@ model ExchangeCredentials {
   // Active status - only one credential per exchange can be active
   isActive Boolean @default(false)
 
+  // Trading fee rates (fetched from exchange API)
+  makerFeeRate Float? // Maker fee rate (e.g., 0.0002 = 0.02%)
+  takerFeeRate Float? // Taker fee rate (e.g., 0.0005 = 0.05%)
+
+  // Fee rates metadata
+  feeRateLastSync DateTime? // When fee rates were last synced from exchange
+  feeRateTier     String? // VIP tier or fee level on exchange (e.g., "VIP1", "Regular")
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -612,18 +620,18 @@ enum FundingArbitrageStatus {
 }
 
 enum ArbitrageMode {
-  HEDGED      // Long-term strategy with 2 positions (hedged), ~8 hours duration
-  NON_HEDGED  // Short-term strategy with 1 position (no hedge), 2-8 seconds duration
+  HEDGED // Long-term strategy with 2 positions (hedged), ~8 hours duration
+  NON_HEDGED // Short-term strategy with 1 position (no hedge), 2-8 seconds duration
 }
 
 enum PriceArbitrageStatus {
-  OPENING      // Positions being opened
-  ACTIVE       // Both positions open, monitoring spread
-  CLOSING      // Closing positions
-  COMPLETED    // Successfully closed with profit/loss
-  PARTIAL      // One position failed to open/close
-  ERROR        // Error occurred
-  CANCELLED    // User cancelled manually
+  OPENING // Positions being opened
+  ACTIVE // Both positions open, monitoring spread
+  CLOSING // Closing positions
+  COMPLETED // Successfully closed with profit/loss
+  PARTIAL // One position failed to open/close
+  ERROR // Error occurred
+  CANCELLED // User cancelled manually
 }
 
 model FundingArbitrageSubscription {
@@ -637,18 +645,18 @@ model FundingArbitrageSubscription {
   positionType    String // "long" or "short"
   side            String? // "Buy" or "Sell" - for Bybit Funding Strategy
   quantity        Float // Position size
-  leverage        Float  @default(3) // Leverage multiplier (1-125, recommended 1-20)
+  leverage        Float    @default(3) // Leverage multiplier (1-125, recommended 1-20)
   margin          Float? // Margin/collateral used for this position (in USDT)
 
   // Arbitrage mode configuration
   mode ArbitrageMode @default(HEDGED) // HEDGED: 2 positions (hedged), NON_HEDGED: 1 position (fast close)
 
   // Bybit Funding Strategy configuration
-  executionDelay     Int?   @default(5) // Seconds before funding to open position (for NON_HEDGED mode)
-  takeProfitPercent  Float? // Take-profit as % of expected funding (e.g., 90 = 90%)
-  stopLossPercent    Float? // Stop-loss as % of expected funding (e.g., 20 = 20%)
-  positionReopenCount Int?  @default(0) // Number of times position was reopened in current cycle
-  strategyId         String? // In-memory strategy ID (for tracking active strategies)
+  executionDelay      Int?    @default(5) // Seconds before funding to open position (for NON_HEDGED mode)
+  takeProfitPercent   Float? // Take-profit as % of expected funding (e.g., 90 = 90%)
+  stopLossPercent     Float? // Stop-loss as % of expected funding (e.g., 20 = 20%)
+  positionReopenCount Int?    @default(0) // Number of times position was reopened in current cycle
+  strategyId          String? // In-memory strategy ID (for tracking active strategies)
 
   // Legacy TP/SL configuration (kept for compatibility)
   takeProfit Float? // Take-profit percentage (e.g., 0.5 = 0.5% profit target)
@@ -723,16 +731,16 @@ model PriceArbitragePosition {
   entrySpreadPercent Float // Spread % at entry (e.g., 0.15 for 0.15%)
 
   // Position details
-  primaryQuantity Float  // Quantity of PRIMARY position
-  hedgeQuantity   Float  // Quantity of HEDGE position
+  primaryQuantity Float // Quantity of PRIMARY position
+  hedgeQuantity   Float // Quantity of HEDGE position
   primaryOrderId  String? // Exchange order ID for primary
   hedgeOrderId    String? // Exchange order ID for hedge
 
   // Exit data (filled when closed)
-  exitPrimaryPrice   Float? // Price when PRIMARY position closed
-  exitHedgePrice     Float? // Price when HEDGE position closed
-  exitSpread         Float? // Spread at exit
-  exitSpreadPercent  Float? // Spread % at exit
+  exitPrimaryPrice  Float? // Price when PRIMARY position closed
+  exitHedgePrice    Float? // Price when HEDGE position closed
+  exitSpread        Float? // Spread at exit
+  exitSpreadPercent Float? // Spread % at exit
 
   // Financial results
   primaryPnl  Float? // P&L from PRIMARY position
@@ -809,12 +817,12 @@ model ConnectorStateCache {
 
 enum GraduatedEntryStatus {
   INITIALIZING // Setting up connectors and leverage
-  EXECUTING    // Executing graduated entry orders
-  ACTIVE       // Positions opened, monitoring both exchanges
-  COMPLETED    // Positions closed successfully
-  LIQUIDATED   // One or both positions were liquidated
-  ERROR        // Error occurred during execution
-  CANCELLED    // User cancelled/stopped position
+  EXECUTING // Executing graduated entry orders
+  ACTIVE // Positions opened, monitoring both exchanges
+  COMPLETED // Positions closed successfully
+  LIQUIDATED // One or both positions were liquidated
+  ERROR // Error occurred during execution
+  CANCELLED // User cancelled/stopped position
 }
 
 model GraduatedEntryPosition {
@@ -831,18 +839,18 @@ model GraduatedEntryPosition {
   primaryExchange     String // Exchange name (e.g., "BYBIT")
   primaryCredentialId String // Reference to ExchangeCredentials
   primarySide         String // "long" or "short"
-  primaryLeverage     Float  // Leverage (1-125)
-  primaryQuantity     Float  // Total quantity to trade
-  primaryFilledQty    Float  @default(0) // Quantity filled so far
+  primaryLeverage     Float // Leverage (1-125)
+  primaryQuantity     Float // Total quantity to trade
+  primaryFilledQty    Float    @default(0) // Quantity filled so far
   primaryOrderIds     String[] // Array of order IDs from primary exchange
 
   // Hedge exchange configuration
   hedgeExchange     String // Exchange name (e.g., "BINGX")
   hedgeCredentialId String // Reference to ExchangeCredentials
   hedgeSide         String // "long" or "short"
-  hedgeLeverage     Float  // Leverage (1-125)
-  hedgeQuantity     Float  // Total quantity to trade
-  hedgeFilledQty    Float  @default(0) // Quantity filled so far
+  hedgeLeverage     Float // Leverage (1-125)
+  hedgeQuantity     Float // Total quantity to trade
+  hedgeFilledQty    Float    @default(0) // Quantity filled so far
   hedgeOrderIds     String[] // Array of order IDs from hedge exchange
 
   // Graduated entry settings
@@ -859,23 +867,33 @@ model GraduatedEntryPosition {
   hedgeErrorMessage   String?
 
   // Funding and profit tracking (added for accurate P&L calculation)
-  primaryLastFundingPaid    Float    @default(0) // Last funding payment on primary exchange (in USDT)
-  primaryTotalFundingEarned Float    @default(0) // Cumulative funding earned on primary (in USDT)
-  primaryTradingFees        Float    @default(0) // Total trading fees on primary (in USDT)
-  primaryEntryPrice         Float?   // Average entry price for primary position
-  primaryCurrentPrice       Float?   // Current mark price for primary position
+  primaryLastFundingPaid    Float  @default(0) // Last funding payment on primary exchange (in USDT)
+  primaryTotalFundingEarned Float  @default(0) // Cumulative funding earned on primary (in USDT)
+  primaryTradingFees        Float  @default(0) // Total trading fees on primary (in USDT)
+  primaryEntryPrice         Float? // Average entry price for primary position
+  primaryCurrentPrice       Float? // Current mark price for primary position
 
-  hedgeLastFundingPaid      Float    @default(0) // Last funding payment on hedge exchange (in USDT)
-  hedgeTotalFundingEarned   Float    @default(0) // Cumulative funding earned on hedge (in USDT)
-  hedgeTradingFees          Float    @default(0) // Total trading fees on hedge (in USDT)
-  hedgeEntryPrice           Float?   // Average entry price for hedge position
-  hedgeCurrentPrice         Float?   // Current mark price for hedge position
+  hedgeLastFundingPaid    Float  @default(0) // Last funding payment on hedge exchange (in USDT)
+  hedgeTotalFundingEarned Float  @default(0) // Cumulative funding earned on hedge (in USDT)
+  hedgeTradingFees        Float  @default(0) // Total trading fees on hedge (in USDT)
+  hedgeEntryPrice         Float? // Average entry price for hedge position
+  hedgeCurrentPrice       Float? // Current mark price for hedge position
 
-  grossProfit               Float    @default(0) // Total funding earned (primary + hedge, in USDT)
-  netProfit                 Float    @default(0) // Gross profit - total fees (in USDT)
+  grossProfit Float @default(0) // Total funding earned (primary + hedge, in USDT)
+  netProfit   Float @default(0) // Gross profit - total fees (in USDT)
 
-  lastFundingUpdate         DateTime? // When funding was last updated from exchange APIs
-  fundingUpdateCount        Int      @default(0) // Number of times funding has been updated
+  lastFundingUpdate  DateTime? // When funding was last updated from exchange APIs
+  fundingUpdateCount Int       @default(0) // Number of times funding has been updated
+
+  // CRITICAL: Liquidation price tracking and monitoring
+  primaryLiquidationPrice Float? // Calculated liquidation price for primary position
+  hedgeLiquidationPrice   Float? // Calculated liquidation price for hedge position
+  primaryProximityRatio   Float? // Proximity to liquidation (0.0-1.0+, 0.9+ = DANGER)
+  hedgeProximityRatio     Float? // Proximity to liquidation (0.0-1.0+, 0.9+ = DANGER)
+  primaryInDanger         Boolean   @default(false) // True if primary within 10% of liquidation
+  hedgeInDanger           Boolean   @default(false) // True if hedge within 10% of liquidation
+  lastLiquidationCheck    DateTime? // When liquidation proximity was last checked
+  liquidationAlertSent    Boolean   @default(false) // Whether alert was sent for this position
 
   // Timestamps
   createdAt   DateTime  @default(now())

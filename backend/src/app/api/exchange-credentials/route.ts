@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
+import { ExchangeFeeSyncService } from '@/services/exchange-fee-sync.service';
 import { Exchange } from '@prisma/client';
 import { z } from 'zod';
 import {
@@ -213,6 +214,12 @@ export async function POST(request: NextRequest) {
         authToken: body.authToken, // Browser session token for MEXC
         label: body.label,
         isActive: body.isActive ?? true, // Default to true for new credentials
+      });
+
+      // Automatically sync fee rates after successful credential save (async, non-blocking)
+      ExchangeFeeSyncService.syncFeeRates(result.id).catch(error => {
+        console.error(`[API] Failed to sync fee rates for credential ${result.id}:`, error.message);
+        // Don't fail the request if fee sync fails - user can manually sync later
       });
 
       return NextResponse.json(

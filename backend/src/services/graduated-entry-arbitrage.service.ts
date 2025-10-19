@@ -77,6 +77,11 @@ export interface ActiveArbitragePosition {
   startedAt: Date;
   completedAt?: Date;
   currentPart: number;  // Current part being executed (1-based)
+
+  // WebSocket monitoring (real-time price updates instead of polling)
+  primaryPriceUnsubscribe?: () => void;    // Unsubscribe function for primary exchange WebSocket
+  hedgePriceUnsubscribe?: () => void;       // Unsubscribe function for hedge exchange WebSocket
+  lastMonitoringCheck?: number;             // Timestamp of last monitoring check (for throttling)
 }
 
 /**
@@ -946,7 +951,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   /**
    * Stop a position and close all open positions on both exchanges
    *
-   * CRITICAL FIX: Enhanced logging and error handling
+   * CRITICAL FIX: Enhanced logging, error handling, and WebSocket cleanup
    */
   async stopPosition(positionId: string): Promise<void> {
     console.log(`[GraduatedEntry] ========================================`);
@@ -968,6 +973,25 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     });
 
     try {
+      // CRITICAL: Cleanup WebSocket subscriptions FIRST to stop monitoring
+      console.log(`[GraduatedEntry] Cleaning up WebSocket subscriptions...`);
+      if (position.primaryPriceUnsubscribe) {
+        try {
+          position.primaryPriceUnsubscribe();
+          console.log(`[GraduatedEntry] ✓ Primary WebSocket unsubscribed`);
+        } catch (error: any) {
+          console.warn(`[GraduatedEntry] Warning: Failed to unsubscribe primary WebSocket:`, error.message);
+        }
+      }
+      if (position.hedgePriceUnsubscribe) {
+        try {
+          position.hedgePriceUnsubscribe();
+          console.log(`[GraduatedEntry] ✓ Hedge WebSocket unsubscribed`);
+        } catch (error: any) {
+          console.warn(`[GraduatedEntry] Warning: Failed to unsubscribe hedge WebSocket:`, error.message);
+        }
+      }
+
       // Close positions on both exchanges with detailed logging
       console.log(`[GraduatedEntry] Closing positions on both exchanges...`);
 
@@ -1062,15 +1086,227 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   }
 
   /**
-   * Start continuous monitoring of positions on both exchanges
-   * Checks every 5 seconds for liquidations or other issues
+   * Start continuous monitoring of positions on both exchanges using WebSocket
+   * Uses real-time mark price updates instead of HTTP polling
    * CRITICAL: If one side is liquidated, immediately close the other side
    */
   private async startPositionMonitoring(position: ActiveArbitragePosition): Promise<void> {
     const { id, config } = position;
+    const MONITORING_THROTTLE_MS = 1000; // Throttle checks to max once per second
+
+    console.log(`[GraduatedEntry] Starting WebSocket-based position monitoring for ${id}`);
+
+    // Helper function to check positions on both exchanges
+    const checkPositions = async () => {
+      // Throttle checks to avoid spamming
+      const now = Date.now();
+      if (position.lastMonitoringCheck && (now - position.lastMonitoringCheck) < MONITORING_THROTTLE_MS) {
+        return; // Skip check if too soon
+      }
+      position.lastMonitoringCheck = now;
+
+      try {
+        // Check if position still exists in memory
+        if (!this.positions.has(id)) {
+          console.log(`[GraduatedEntry] Position ${id} removed, stopping monitoring`);
+          // Cleanup WebSocket subscriptions
+          if (position.primaryPriceUnsubscribe) {
+            position.primaryPriceUnsubscribe();
+          }
+          if (position.hedgePriceUnsubscribe) {
+            position.hedgePriceUnsubscribe();
+          }
+          return;
+        }
+
+        // Get current positions from both exchanges
+        const [primaryPosition, hedgePosition] = await Promise.all([
+          this.getExchangePosition(position.primaryConnector, config.symbol, config.primaryExchange),
+          this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
+        ]);
+
+        console.log(`[GraduatedEntry] WebSocket monitoring ${id}:`, {
+          primary: primaryPosition ? `${primaryPosition.size} @ ${primaryPosition.side}` : 'NO POSITION',
+          hedge: hedgePosition ? `${hedgePosition.size} @ ${hedgePosition.side}` : 'NO POSITION',
+        });
+
+        // CRITICAL: Check if one side was liquidated
+        const primaryLiquidated = !primaryPosition || primaryPosition.size === 0;
+        const hedgeLiquidated = !hedgePosition || hedgePosition.size === 0;
+
+        if (primaryLiquidated && !hedgeLiquidated) {
+          // Primary liquidated - immediately close hedge
+          console.error(`[GraduatedEntry] 🚨 PRIMARY POSITION LIQUIDATED ON ${config.primaryExchange}! Closing hedge position immediately!`);
+
+          // Cleanup WebSocket subscriptions first
+          if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+          if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+
+          try {
+            await this.closePositionOnExchange(
+              position.hedgeConnector,
+              config.symbol,
+              config.hedgeExchange
+            );
+
+            // Update status to LIQUIDATED
+            position.status = 'cancelled';
+            if (position.dbId) {
+              await prisma.graduatedEntryPosition.update({
+                where: { id: position.dbId },
+                data: {
+                  status: 'LIQUIDATED',
+                  errorMessage: `Primary position liquidated on ${config.primaryExchange}. Hedge position closed automatically.`,
+                  completedAt: new Date(),
+                },
+              }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+            }
+
+            console.log(`[GraduatedEntry] Hedge position closed. Position ${id} marked as LIQUIDATED.`);
+          } catch (error: any) {
+            console.error(`[GraduatedEntry] Failed to close hedge position after primary liquidation:`, error.message);
+          }
+        } else if (hedgeLiquidated && !primaryLiquidated) {
+          // Hedge liquidated - immediately close primary
+          console.error(`[GraduatedEntry] 🚨 HEDGE POSITION LIQUIDATED ON ${config.hedgeExchange}! Closing primary position immediately!`);
+
+          // Cleanup WebSocket subscriptions first
+          if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+          if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+
+          try {
+            await this.closePositionOnExchange(
+              position.primaryConnector,
+              config.symbol,
+              config.primaryExchange
+            );
+
+            // Update status to LIQUIDATED
+            position.status = 'cancelled';
+            if (position.dbId) {
+              await prisma.graduatedEntryPosition.update({
+                where: { id: position.dbId },
+                data: {
+                  status: 'LIQUIDATED',
+                  errorMessage: `Hedge position liquidated on ${config.hedgeExchange}. Primary position closed automatically.`,
+                  completedAt: new Date(),
+                },
+              }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+            }
+
+            console.log(`[GraduatedEntry] Primary position closed. Position ${id} marked as LIQUIDATED.`);
+          } catch (error: any) {
+            console.error(`[GraduatedEntry] Failed to close primary position after hedge liquidation:`, error.message);
+          }
+        } else if (primaryLiquidated && hedgeLiquidated) {
+          // Both liquidated
+          console.error(`[GraduatedEntry] 🚨 BOTH POSITIONS LIQUIDATED!`);
+
+          // Cleanup WebSocket subscriptions
+          if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+          if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+
+          position.status = 'cancelled';
+          if (position.dbId) {
+            await prisma.graduatedEntryPosition.update({
+              where: { id: position.dbId },
+              data: {
+                status: 'LIQUIDATED',
+                errorMessage: 'Both positions were liquidated.',
+                completedAt: new Date(),
+              },
+            }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+          }
+        }
+      } catch (error: any) {
+        console.error(`[GraduatedEntry] Error in monitoring check for ${id}:`, error.message);
+        // Continue monitoring even if one check fails
+      }
+    };
+
+    try {
+      // Subscribe to price updates via WebSocket for both exchanges
+      // For BingX, use mark price subscription (more stable, used for liquidations)
+      // For Bybit, use ticker subscription (similar behavior)
+
+      const primaryExchange = config.primaryExchange.toUpperCase();
+      const hedgeExchange = config.hedgeExchange.toUpperCase();
+
+      // Subscribe to primary exchange WebSocket
+      if (primaryExchange.includes('BINGX')) {
+        // BingX: Use mark price WebSocket stream
+        if (typeof (position.primaryConnector as any).subscribeToMarkPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to BingX mark price WebSocket for ${config.symbol}...`);
+          position.primaryPriceUnsubscribe = await (position.primaryConnector as any).subscribeToMarkPriceStream(
+            config.symbol,
+            (price: number) => {
+              console.log(`[GraduatedEntry] ${id} - BingX mark price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      } else if (primaryExchange.includes('BYBIT')) {
+        // Bybit: Use price stream (ticker)
+        if (typeof (position.primaryConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Bybit price WebSocket for ${config.symbol}...`);
+          position.primaryPriceUnsubscribe = await (position.primaryConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Bybit price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      }
+
+      // Subscribe to hedge exchange WebSocket
+      if (hedgeExchange.includes('BINGX')) {
+        // BingX: Use mark price WebSocket stream
+        if (typeof (position.hedgeConnector as any).subscribeToMarkPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to BingX mark price WebSocket for ${config.symbol}...`);
+          position.hedgePriceUnsubscribe = await (position.hedgeConnector as any).subscribeToMarkPriceStream(
+            config.symbol,
+            (price: number) => {
+              console.log(`[GraduatedEntry] ${id} - BingX mark price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      } else if (hedgeExchange.includes('BYBIT')) {
+        // Bybit: Use price stream (ticker)
+        if (typeof (position.hedgeConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Bybit price WebSocket for ${config.symbol}...`);
+          position.hedgePriceUnsubscribe = await (position.hedgeConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Bybit price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      }
+
+      console.log(`[GraduatedEntry] ✓ WebSocket monitoring started for ${id}`);
+
+      // Perform initial check
+      await checkPositions();
+
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] Error starting WebSocket monitoring for ${id}:`, error.message);
+      // Fall back to HTTP polling if WebSocket fails
+      console.log(`[GraduatedEntry] Falling back to HTTP polling for ${id}`);
+      this.startPollingMonitoring(position);
+    }
+  }
+
+  /**
+   * Fallback: HTTP polling-based monitoring (if WebSocket fails)
+   */
+  private async startPollingMonitoring(position: ActiveArbitragePosition): Promise<void> {
+    const { id, config } = position;
     const monitoringIntervalMs = 5000; // Check every 5 seconds
 
-    console.log(`[GraduatedEntry] Starting position monitoring for ${id}`);
+    console.log(`[GraduatedEntry] Starting HTTP polling monitoring for ${id}`);
 
     // Monitor positions in a loop
     const monitorLoop = async () => {
@@ -1090,7 +1326,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
           ]);
 
-          console.log(`[GraduatedEntry] Monitoring ${id}:`, {
+          console.log(`[GraduatedEntry] Polling monitoring ${id}:`, {
             primary: primaryPosition ? `${primaryPosition.size} @ ${primaryPosition.side}` : 'NO POSITION',
             hedge: hedgePosition ? `${hedgePosition.size} @ ${hedgePosition.side}` : 'NO POSITION',
           });
@@ -1176,7 +1412,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             return; // Stop monitoring
           }
         } catch (error: any) {
-          console.error(`[GraduatedEntry] Error in monitoring loop for ${id}:`, error.message);
+          console.error(`[GraduatedEntry] Error in polling monitoring loop for ${id}:`, error.message);
           // Continue monitoring even if one check fails
         }
       }
@@ -1184,7 +1420,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
     // Start monitoring loop (don't await - let it run in background)
     monitorLoop().catch(error => {
-      console.error(`[GraduatedEntry] Monitoring loop crashed for ${id}:`, error.message);
+      console.error(`[GraduatedEntry] Polling monitoring loop crashed for ${id}:`, error.message);
     });
   }
 

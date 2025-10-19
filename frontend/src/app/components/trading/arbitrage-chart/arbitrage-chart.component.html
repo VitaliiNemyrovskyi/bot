@@ -64,10 +64,10 @@
         <div class="active-positions-section">
           <div class="section-header">
             <h2>Active Arbitrage Positions</h2>
-            <span class="positions-count">{{ activePositions().length }} position(s)</span>
+            <span class="positions-count">{{ filteredActivePositions().length }} position(s)</span>
           </div>
 
-          @if (activePositions().length === 0) {
+          @if (filteredActivePositions().length === 0) {
             <div class="no-positions">
               <span class="icon">📊</span>
               <p>No active arbitrage positions</p>
@@ -88,7 +88,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (position of activePositions(); track position.positionId) {
+                  @for (position of filteredActivePositions(); track position.positionId) {
                     <!-- Main Row (clickable) -->
                     <tr class="position-row" [class.expanded]="isRowExpanded(position.positionId)" (click)="toggleRowExpansion(position.positionId)">
                       <td class="position-id">
@@ -140,6 +140,53 @@
                               </thead>
                               <tbody>
                                 <tr>
+                                  <td class="metric-label">Entry Price</td>
+                                  <td class="metric-value">{{ position.primary.entryPrice ? (position.primary.entryPrice | number:'1.2-6') : 'N/A' }}</td>
+                                  <td class="metric-value">{{ position.hedge.entryPrice ? (position.hedge.entryPrice | number:'1.2-6') : 'N/A' }}</td>
+                                </tr>
+                                @if (position.primary.liquidationPrice || position.hedge.liquidationPrice) {
+                                  <tr>
+                                    <td class="metric-label">Liquidation Price</td>
+                                    <td class="metric-value">{{ position.primary.liquidationPrice ? (position.primary.liquidationPrice | number:'1.2-6') : 'N/A' }}</td>
+                                    <td class="metric-value">{{ position.hedge.liquidationPrice ? (position.hedge.liquidationPrice | number:'1.2-6') : 'N/A' }}</td>
+                                  </tr>
+                                }
+                                @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null || position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
+                                  <tr>
+                                    <td class="metric-label">Liquidation Proximity</td>
+                                    <td class="metric-value">
+                                      @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null) {
+                                        <span class="proximity-value"
+                                              [class.proximity-safe]="position.primary.proximityRatio < 0.7"
+                                              [class.proximity-warning]="position.primary.proximityRatio >= 0.7 && position.primary.proximityRatio < 0.9"
+                                              [class.proximity-danger]="position.primary.proximityRatio >= 0.9">
+                                          {{ (position.primary.proximityRatio * 100) | number:'1.1-1' }}%
+                                          @if (position.primary.inDanger) {
+                                            <span class="danger-badge">DANGER</span>
+                                          }
+                                        </span>
+                                      } @else {
+                                        N/A
+                                      }
+                                    </td>
+                                    <td class="metric-value">
+                                      @if (position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
+                                        <span class="proximity-value"
+                                              [class.proximity-safe]="position.hedge.proximityRatio < 0.7"
+                                              [class.proximity-warning]="position.hedge.proximityRatio >= 0.7 && position.hedge.proximityRatio < 0.9"
+                                              [class.proximity-danger]="position.hedge.proximityRatio >= 0.9">
+                                          {{ (position.hedge.proximityRatio * 100) | number:'1.1-1' }}%
+                                          @if (position.hedge.inDanger) {
+                                            <span class="danger-badge">DANGER</span>
+                                          }
+                                        </span>
+                                      } @else {
+                                        N/A
+                                      }
+                                    </td>
+                                  </tr>
+                                }
+                                <tr>
                                   <td class="metric-label">Last Funding Paid</td>
                                   <td class="metric-value">{{ formatCurrency(position.primary.lastFundingPaid) }} USDT</td>
                                   <td class="metric-value">{{ formatCurrency(position.hedge.lastFundingPaid) }} USDT</td>
@@ -150,7 +197,7 @@
                                   <td class="metric-value positive">{{ formatCurrency(position.hedge.totalFundingEarned) }} USDT</td>
                                 </tr>
                                 <tr>
-                                  <td class="metric-label">Trading Fees</td>
+                                  <td class="metric-label">Entry Fees (Paid)</td>
                                   <td class="metric-value negative">{{ formatCurrency(position.primary.tradingFees) }} USDT</td>
                                   <td class="metric-value negative">{{ formatCurrency(position.hedge.tradingFees) }} USDT</td>
                                 </tr>
@@ -198,7 +245,7 @@
                 <span class="info-value text-sm"
                       [class.positive]="parseFloat(primaryData().fundingRate) > 0"
                       [class.negative]="parseFloat(primaryData().fundingRate) < 0">
-                  {{ formatFundingInfo(primaryData().fundingRate, primaryData().nextFundingTime, primaryData().fundingInterval) }}
+                  {{ formatFundingInfo(primaryData().fundingRate, primaryData().nextFundingTime) }}
                 </span>
               </div>
 
@@ -354,7 +401,7 @@
                 <span class="info-value text-sm"
                       [class.positive]="parseFloat(hedgeData().fundingRate) > 0"
                       [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
-                  {{ formatFundingInfo(hedgeData().fundingRate, hedgeData().nextFundingTime, hedgeData().fundingInterval) }}
+                  {{ formatFundingInfo(hedgeData().fundingRate, hedgeData().nextFundingTime) }}
                 </span>
               </div>
 

@@ -92,6 +92,10 @@ export async function GET(request: NextRequest) {
           tradingFees: position.primaryTradingFees || 0,
           entryPrice: position.primaryEntryPrice,
           currentPrice: position.primaryCurrentPrice,
+          // Liquidation data
+          liquidationPrice: position.primaryLiquidationPrice,
+          proximityRatio: position.primaryProximityRatio,
+          inDanger: position.primaryInDanger,
         },
         hedge: {
           exchange: position.hedgeExchange,
@@ -108,6 +112,10 @@ export async function GET(request: NextRequest) {
           tradingFees: position.hedgeTradingFees || 0,
           entryPrice: position.hedgeEntryPrice,
           currentPrice: position.hedgeCurrentPrice,
+          // Liquidation data
+          liquidationPrice: position.hedgeLiquidationPrice,
+          proximityRatio: position.hedgeProximityRatio,
+          inDanger: position.hedgeInDanger,
         },
         graduatedEntry: {
           parts: position.graduatedParts,

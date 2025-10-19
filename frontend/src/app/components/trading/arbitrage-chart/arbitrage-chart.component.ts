@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, ElementRef, ViewChild, AfterViewInit, inject, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ElementRef, ViewChild, AfterViewInit, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormControl, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -37,6 +37,12 @@ interface ArbitragePosition {
     lastFundingPaid?: number;      // Last paid funding in USDT
     totalFundingEarned?: number;   // Total sum of all fundings in USDT
     tradingFees?: number;           // Trading fees on this exchange
+    // Liquidation data
+    liquidationPrice?: number;      // Liquidation price for this position
+    proximityRatio?: number;        // Proximity to liquidation (0.0-1.0+)
+    inDanger?: boolean;             // True if within 10% of liquidation
+    entryPrice?: number;            // Entry price for this position
+    currentPrice?: number;          // Current market price
   };
   hedge: {
     exchange: string;
@@ -48,6 +54,12 @@ interface ArbitragePosition {
     lastFundingPaid?: number;      // Last paid funding in USDT
     totalFundingEarned?: number;   // Total sum of all fundings in USDT
     tradingFees?: number;           // Trading fees on this exchange
+    // Liquidation data
+    liquidationPrice?: number;      // Liquidation price for this position
+    proximityRatio?: number;        // Proximity to liquidation (0.0-1.0+)
+    inDanger?: boolean;             // True if within 10% of liquidation
+    entryPrice?: number;            // Entry price for this position
+    currentPrice?: number;          // Current market price
   };
   graduatedEntry: {
     parts: number;
@@ -139,6 +151,23 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   // Active positions
   activePositions = signal<ArbitragePosition[]>([]);
+
+  // Filtered positions - only show positions for current symbol
+  filteredActivePositions = computed(() => {
+    const currentSymbol = this.symbol();
+    const allPositions = this.activePositions();
+
+    // If no symbol selected, show all positions
+    if (!currentSymbol) {
+      return allPositions;
+    }
+
+    // Filter positions that match the current symbol
+    const filtered = allPositions.filter(pos => pos.symbol === currentSymbol);
+    console.log(`[ArbitrageChart] Filtering positions: ${allPositions.length} total, ${filtered.length} for ${currentSymbol}`);
+    return filtered;
+  });
+
   // Expanded rows state (set of position IDs)
   expandedRows = signal<Set<string>>(new Set());
 
@@ -1569,7 +1598,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Format funding information in compact format: rate / time / interval
    * Example: -0.6869% / 02:30 / 8h
    */
-  formatFundingInfo(rate: string, nextFundingTime: number, fundingInterval?: number): string {
+  formatFundingInfo(rate: string, nextFundingTime: number): string {
     if (!rate && (!nextFundingTime || nextFundingTime === 0)) return 'N/A';
 
     // Format funding rate
@@ -1583,9 +1612,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Format time remaining as HH:MM
     let timeFormatted = 'N/A';
+    let remaining = 0;
     if (nextFundingTime && nextFundingTime > 0) {
       const now = Date.now();
-      const remaining = nextFundingTime - now;
+      remaining = nextFundingTime - now;
 
       if (remaining <= 0) {
         timeFormatted = '00:00';
@@ -1596,25 +1626,16 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Calculate funding interval
+    // Calculate funding interval dynamically based on time until next funding
+    // This logic is taken from arbitrage-funding.component.ts to ensure consistency
     let intervalFormatted = '8h'; // Default
-
-    if (fundingInterval) {
-      const intervalHours = fundingInterval / (60 * 60 * 1000);
-
-      if (intervalHours === 1) {
+    if (remaining > 0) {
+      if (remaining <= 1 * 60 * 60 * 1000) {
         intervalFormatted = '1h';
-      } else if (intervalHours === 4) {
+      } else if (remaining <= 4 * 60 * 60 * 1000) {
         intervalFormatted = '4h';
-      } else if (intervalHours === 8) {
-        intervalFormatted = '8h';
-      } else if (intervalHours >= 1) {
-        intervalFormatted = `${Math.round(intervalHours)}h`;
-      } else {
-        // Less than 1 hour - show in minutes
-        const intervalMinutes = Math.round(fundingInterval / (60 * 1000));
-        intervalFormatted = `${intervalMinutes}m`;
       }
+      // else keep default '8h'
     }
 
     return `${rateFormatted} / ${timeFormatted} / ${intervalFormatted}`;

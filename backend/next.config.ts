@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true, // Temporarily skip linting during build
   },
-  serverExternalPackages: ['ccxt'], // Exclude CCXT from bundling
+  serverExternalPackages: ['ccxt', 'ws'], // Exclude CCXT and WebSocket from bundling
 };
 
 export default nextConfig;
