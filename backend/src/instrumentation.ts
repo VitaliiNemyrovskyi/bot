@@ -26,6 +26,11 @@ export async function register() {
       const { graduatedEntryArbitrageService } = await import('@/services/graduated-entry-arbitrage.service');
       await graduatedEntryArbitrageService.initialize();
       console.log('[Instrumentation] Graduated entry arbitrage service initialized');
+
+      // Initialize funding tracker service to track real funding payments
+      const { fundingTrackerService } = await import('@/services/funding-tracker.service');
+      fundingTrackerService.startTracking();
+      console.log('[Instrumentation] Funding tracker service started');
     } catch (error: any) {
       console.error('[Instrumentation] Error initializing services:', error.message);
     }

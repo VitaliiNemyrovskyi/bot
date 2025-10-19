@@ -1144,4 +1144,94 @@ export class BingXService {
       balance: balance
     };
   }
+
+  /**
+   * Get income history (funding fees, commissions, realized P&L)
+   * Endpoint: GET /openApi/swap/v2/user/income
+   *
+   * This endpoint returns income/expense records including:
+   * - FUNDING_FEE: Funding payments (positive = received, negative = paid)
+   * - COMMISSION: Trading fees
+   * - REALIZED_PNL: Realized profit and loss
+   * - INSURANCE_CLEAR: Insurance fund clearance
+   * - TRANSFER: Transfers
+   *
+   * @param params.symbol Trading pair symbol (e.g., "BTC-USDT") - optional
+   * @param params.incomeType Type of income: "FUNDING_FEE", "COMMISSION", "REALIZED_PNL", etc. - optional
+   * @param params.startTime Start timestamp in milliseconds - optional
+   * @param params.endTime End timestamp in milliseconds - optional
+   * @param params.limit Number of records to return (default 100, max 1000)
+   * @returns Income history records
+   */
+  async getIncomeHistory(params: {
+    symbol?: string;
+    incomeType?: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+  }): Promise<any> {
+    console.log('[BingXService] Fetching income history with params:', params);
+
+    const requestParams: Record<string, any> = {
+      limit: params.limit || 100,
+    };
+
+    if (params.symbol) requestParams.symbol = params.symbol;
+    if (params.incomeType) requestParams.incomeType = params.incomeType;
+    if (params.startTime) requestParams.startTime = params.startTime;
+    if (params.endTime) requestParams.endTime = params.endTime;
+
+    const response = await this.makeRequest(
+      'GET',
+      '/openApi/swap/v2/user/income',
+      requestParams
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Income history fetch failed:', {
+        code: response.code,
+        msg: response.msg,
+        params,
+      });
+      throw new Error(`Failed to get income history: ${response.msg} (code: ${response.code})`);
+    }
+
+    console.log('[BingXService] Income history response:', {
+      recordCount: response.data?.length || 0,
+    });
+
+    return response;
+  }
+
+  /**
+   * Get current ticker price for a specific symbol
+   * This is a convenience method that extracts price from getTickers()
+   *
+   * @param symbol Trading pair symbol (e.g., "BTC-USDT")
+   * @returns Ticker with price information
+   */
+  async getTickerPrice(symbol: string): Promise<{ symbol: string; price: string } | null> {
+    console.log('[BingXService] Fetching ticker price for:', symbol);
+
+    try {
+      const tickers = await this.getTickers();
+      const ticker = tickers.find(t => t.symbol === symbol);
+
+      if (!ticker) {
+        console.warn(`[BingXService] Ticker not found for symbol: ${symbol}`);
+        return null;
+      }
+
+      // Return last price or mark price
+      const price = ticker.lastPrice || ticker.markPrice || '0';
+
+      return {
+        symbol: ticker.symbol,
+        price,
+      };
+    } catch (error: any) {
+      console.error('[BingXService] Error fetching ticker price:', error.message);
+      throw error;
+    }
+  }
 }

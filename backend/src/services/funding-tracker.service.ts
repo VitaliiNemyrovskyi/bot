@@ -243,6 +243,12 @@ export class FundingTrackerService {
 
   /**
    * Fetch funding data from Bybit
+   *
+   * IMPORTANT: For ACTIVE/OPEN positions, we use:
+   * 1. Transaction log (type='SETTLEMENT') for funding fee payments
+   * 2. Execution list for trading fees
+   *
+   * The closed-pnl endpoint only works for CLOSED positions.
    */
   private async fetchBybitFunding(
     credentials: any,
@@ -257,56 +263,141 @@ export class FundingTrackerService {
         testnet: credentials.environment === 'TESTNET',
       });
 
-      // Get closed P&L data (includes funding payments)
-      // Bybit API: /v5/position/closed-pnl
-      const closedPnl = await bybit.getClosedPnL({
+      console.log(`[FundingTracker] Fetching Bybit data for ${symbol}, side=${side}, since ${startTime.toISOString()}`);
+
+      // STEP 1: Get funding fee settlements using transaction log
+      // This works for ACTIVE/OPEN positions (unlike closed-pnl)
+      const transactionLog = await bybit.getTransactionLog({
+        accountType: 'UNIFIED',
+        category: 'linear',
+        currency: 'USDT',
+        type: 'SETTLEMENT', // Funding fee settlements
+        startTime: startTime.getTime(),
+        limit: 50,
+      });
+
+      console.log(`[FundingTracker] Bybit transaction log (SETTLEMENT) response:`, {
+        recordCount: transactionLog?.length || 0,
+        symbol,
+      });
+
+      // Calculate funding totals from SETTLEMENT transactions
+      let totalFunding = 0;
+      let lastFunding = 0;
+      let fundingCount = 0;
+
+      if (transactionLog && transactionLog.length > 0) {
+        // Filter by symbol and sum funding payments
+        for (const tx of transactionLog) {
+          // Check if transaction is for our symbol
+          if (tx.symbol === symbol) {
+            // Funding fee is in the 'cashFlow' field
+            // Positive = received, negative = paid
+            const funding = parseFloat(tx.cashFlow || '0');
+            totalFunding += funding;
+            fundingCount++;
+
+            console.log(`[FundingTracker] Bybit funding settlement:`, {
+              symbol: tx.symbol,
+              cashFlow: tx.cashFlow,
+              transactionTime: new Date(parseInt(tx.transactionTime)).toISOString(),
+              type: tx.type,
+            });
+
+            // Track last funding payment (by absolute value)
+            if (Math.abs(funding) > Math.abs(lastFunding)) {
+              lastFunding = funding;
+            }
+          }
+        }
+      }
+
+      console.log(`[FundingTracker] Bybit ${symbol} funding summary:`, {
+        fundingCount,
+        totalFunding,
+        lastFunding,
+      });
+
+      // STEP 2: Get trading fees from execution history
+      // NOTE: Large execution fees at funding times (00:00, 08:00, 16:00) are actually funding payments
+      const executions = await bybit.getExecutionList({
         category: 'linear',
         symbol,
         startTime: startTime.getTime(),
-        limit: 100,
+        limit: 50,
       });
 
-      if (!closedPnl || !closedPnl.list || closedPnl.list.length === 0) {
-        console.log(`[FundingTracker] No Bybit P&L data for ${symbol}`);
-        return { lastFunding: 0, totalFunding: 0, fees: 0, currentPrice: 0 };
-      }
-
-      // Calculate funding totals
-      let totalFunding = 0;
-      let lastFunding = 0;
-      let totalFees = 0;
-
-      for (const pnl of closedPnl.list) {
-        // closedPnl is funding payment (positive = received, negative = paid)
-        const funding = parseFloat(pnl.closedPnl || '0');
-        totalFunding += funding;
-
-        // Track last funding payment
-        if (Math.abs(funding) > Math.abs(lastFunding)) {
-          lastFunding = funding;
-        }
-
-        // Sum up fees
-        const fee = Math.abs(parseFloat(pnl.cumExecFee || '0'));
-        totalFees += fee;
-      }
-
-      // Get current mark price
-      const ticker = await bybit.getTickers({
-        category: 'linear',
+      console.log(`[FundingTracker] Bybit execution list response:`, {
+        recordCount: executions?.list?.length || 0,
         symbol,
       });
 
-      const currentPrice = ticker?.list?.[0]?.markPrice
-        ? parseFloat(ticker.list[0].markPrice)
+      let totalFees = 0;
+      const FUNDING_FEE_THRESHOLD = 0.1; // Fees larger than this are likely funding payments
+
+      if (executions?.list && executions.list.length > 0) {
+        for (const exec of executions.list) {
+          const feeValue = parseFloat(exec.execFee || '0');
+          const feeAbs = Math.abs(feeValue);
+          const execTime = new Date(parseInt(exec.execTime));
+          const execHour = execTime.getUTCHours();
+          const execMinute = execTime.getUTCMinutes();
+
+          // Check if this is a funding payment:
+          // 1. Large fee (> threshold)
+          // 2. Executed at funding time (00:00, 08:00, 16:00 UTC)
+          const isFundingTime = (execHour === 0 || execHour === 8 || execHour === 16) && execMinute === 0;
+          const isLargeFee = feeAbs > FUNDING_FEE_THRESHOLD;
+
+          if (isLargeFee && isFundingTime) {
+            // This is a funding payment
+            // IMPORTANT: Negative execFee = Positive funding income (received)
+            //            Positive execFee = Negative funding payment (paid)
+            // So we need to INVERT the sign
+            const fundingAmount = -feeValue;
+
+            console.log(`[FundingTracker] Bybit FUNDING PAYMENT detected:`, {
+              symbol: exec.symbol,
+              execFee: exec.execFee,
+              execTime: execTime.toISOString(),
+              side: exec.side,
+              fundingAmount: fundingAmount,
+              note: feeValue < 0 ? 'RECEIVED (negative fee)' : 'PAID (positive fee)',
+            });
+
+            totalFunding += fundingAmount;
+            fundingCount++;
+
+            if (Math.abs(fundingAmount) > Math.abs(lastFunding)) {
+              lastFunding = fundingAmount;
+            }
+          } else {
+            // Regular trading fee
+            totalFees += feeAbs;
+
+            console.log(`[FundingTracker] Bybit execution fee:`, {
+              symbol: exec.symbol,
+              execFee: exec.execFee,
+              execTime: execTime.toISOString(),
+              side: exec.side,
+              execQty: exec.execQty,
+            });
+          }
+        }
+      }
+
+      // STEP 3: Get current mark price
+      const tickers = await bybit.getTicker('linear', symbol);
+      const currentPrice = tickers?.[0]?.markPrice
+        ? parseFloat(tickers[0].markPrice)
         : 0;
 
-      console.log(`[FundingTracker] Bybit ${symbol}:`, {
-        lastFunding,
+      console.log(`[FundingTracker] Bybit ${symbol} final summary:`, {
+        fundingPayments: fundingCount,
         totalFunding,
+        lastFunding,
         totalFees,
         currentPrice,
-        recordCount: closedPnl.list.length,
       });
 
       return {
@@ -316,13 +407,23 @@ export class FundingTrackerService {
         currentPrice,
       };
     } catch (error: any) {
-      console.error('[FundingTracker] Bybit funding fetch error:', error.message);
+      console.error('[FundingTracker] Bybit funding fetch error:', {
+        symbol,
+        error: error.message,
+        stack: error.stack,
+      });
       return null;
     }
   }
 
   /**
    * Fetch funding data from BingX
+   *
+   * BingX API endpoints:
+   * - /openApi/swap/v2/user/income - Get income history (funding fees, commissions)
+   *
+   * Symbol format: BingX uses different formats like "BTC-USDT" or "FUSDT"
+   * Need to handle both formats.
    */
   private async fetchBingXFunding(
     credentials: any,
@@ -335,62 +436,146 @@ export class FundingTrackerService {
         apiKey: credentials.apiKey,
         apiSecret: credentials.apiSecret,
         enableRateLimit: true,
+        userId: credentials.userId,
+        credentialId: credentials.id,
       });
 
-      // BingX uses income history endpoint for funding
-      // GET /openApi/swap/v2/user/income
-      const incomeHistory = await bingx.getIncomeHistory({
-        symbol,
-        incomeType: 'FUNDING_FEE',
-        startTime: startTime.getTime(),
-        limit: 100,
-      });
+      // Sync time first
+      await bingx.syncTime();
 
-      if (!incomeHistory || !incomeHistory.data || incomeHistory.data.length === 0) {
-        console.log(`[FundingTracker] No BingX income data for ${symbol}`);
+      console.log(`[FundingTracker] Fetching BingX data for ${symbol}, side=${side}, since ${startTime.toISOString()}`);
+
+      // BingX symbol format handling:
+      // The database might store "FUSDT" but BingX API might need "F-USDT" or vice versa
+      // Try both formats if needed
+      const symbolVariants = [
+        symbol, // Original format (e.g., "FUSDT")
+        symbol.replace('-', ''), // Remove hyphen (e.g., "F-USDT" -> "FUSDT")
+        symbol.includes('-') ? symbol : `${symbol.slice(0, -4)}-${symbol.slice(-4)}`, // Add hyphen before last 4 chars (e.g., "FUSDT" -> "F-USDT")
+      ];
+
+      // Remove duplicates
+      const uniqueSymbols = [...new Set(symbolVariants)];
+
+      console.log(`[FundingTracker] BingX symbol variants to try:`, uniqueSymbols);
+
+      // Try fetching with each symbol variant
+      let incomeHistory: any = null;
+      let usedSymbol = symbol;
+
+      // BingX API has issues with startTime parameter - it returns 0 records even when data exists
+      // Fetch without startTime and filter results manually
+      for (const symbolVariant of uniqueSymbols) {
+        try {
+          console.log(`[FundingTracker] Trying BingX symbol: ${symbolVariant}`);
+
+          // STEP 1: Get funding fee history WITHOUT startTime filter
+          // BingX API returns empty results when startTime is used
+          incomeHistory = await bingx.getIncomeHistory({
+            symbol: symbolVariant,
+            incomeType: 'FUNDING_FEE',
+            // DO NOT use startTime - BingX API has issues with it
+            limit: 100,
+          });
+
+          console.log(`[FundingTracker] BingX income history (FUNDING_FEE) response for ${symbolVariant}:`, {
+            code: incomeHistory.code,
+            msg: incomeHistory.msg,
+            recordCount: incomeHistory.data?.length || 0,
+          });
+
+          // If successful AND has data, use this symbol
+          if (incomeHistory.code === 0 && incomeHistory.data && incomeHistory.data.length > 0) {
+            usedSymbol = symbolVariant;
+            console.log(`[FundingTracker] Successfully fetched data with symbol: ${symbolVariant} (${incomeHistory.data.length} records)`);
+            break;
+          } else if (incomeHistory.code === 0 && (!incomeHistory.data || incomeHistory.data.length === 0)) {
+            console.log(`[FundingTracker] Symbol ${symbolVariant} returned success but 0 records, trying next variant...`);
+            // Continue to next variant
+          }
+        } catch (error: any) {
+          console.log(`[FundingTracker] Symbol ${symbolVariant} failed:`, error.message);
+          // Continue to next variant
+        }
+      }
+
+      if (!incomeHistory || incomeHistory.code !== 0) {
+        console.warn(`[FundingTracker] No BingX income data for any symbol variant of ${symbol}`);
         return { lastFunding: 0, totalFunding: 0, fees: 0, currentPrice: 0 };
       }
 
       // Calculate funding totals
       let totalFunding = 0;
       let lastFunding = 0;
+      let fundingCount = 0;
 
-      for (const income of incomeHistory.data) {
-        const funding = parseFloat(income.income || '0');
-        totalFunding += funding;
+      if (incomeHistory.data && incomeHistory.data.length > 0) {
+        for (const income of incomeHistory.data) {
+          const funding = parseFloat(income.income || '0');
+          totalFunding += funding;
+          fundingCount++;
 
-        // Track last funding payment
-        if (Math.abs(funding) > Math.abs(lastFunding)) {
-          lastFunding = funding;
+          console.log(`[FundingTracker] BingX funding payment:`, {
+            symbol: income.symbol,
+            income: income.income,
+            time: new Date(income.time).toISOString(),
+            incomeType: income.incomeType,
+          });
+
+          // Track last funding payment (by absolute value)
+          if (Math.abs(funding) > Math.abs(lastFunding)) {
+            lastFunding = funding;
+          }
         }
       }
 
-      // Get trading fees separately
+      console.log(`[FundingTracker] BingX ${usedSymbol} funding summary:`, {
+        fundingCount,
+        totalFunding,
+        lastFunding,
+      });
+
+      // STEP 2: Get trading fees
+      // Same as funding fees - BingX API doesn't work with startTime parameter
       const feesHistory = await bingx.getIncomeHistory({
-        symbol,
-        incomeType: 'COMMISSION',
-        startTime: startTime.getTime(),
+        symbol: usedSymbol,
+        incomeType: 'TRADING_FEE',
+        // DO NOT use startTime - BingX API has issues with it
         limit: 100,
       });
 
+      console.log(`[FundingTracker] BingX trading fee history response:`, {
+        code: feesHistory.code,
+        msg: feesHistory.msg,
+        recordCount: feesHistory.data?.length || 0,
+      });
+
       let totalFees = 0;
-      if (feesHistory?.data) {
+
+      if (feesHistory?.data && feesHistory.data.length > 0) {
         for (const fee of feesHistory.data) {
-          totalFees += Math.abs(parseFloat(fee.income || '0'));
+          // Trading fee is negative, so take absolute value
+          const feeAmount = Math.abs(parseFloat(fee.income || '0'));
+          totalFees += feeAmount;
+
+          console.log(`[FundingTracker] BingX trading fee:`, {
+            symbol: fee.symbol,
+            income: fee.income,
+            time: new Date(fee.time).toISOString(),
+          });
         }
       }
 
-      // Get current mark price
-      const ticker = await bingx.getTickerPrice(symbol);
+      // STEP 3: Get current mark price
+      const ticker = await bingx.getTickerPrice(usedSymbol);
       const currentPrice = ticker?.price ? parseFloat(ticker.price) : 0;
 
-      console.log(`[FundingTracker] BingX ${symbol}:`, {
-        lastFunding,
+      console.log(`[FundingTracker] BingX ${usedSymbol} final summary:`, {
+        fundingPayments: fundingCount,
         totalFunding,
+        lastFunding,
         totalFees,
         currentPrice,
-        fundingRecords: incomeHistory.data.length,
-        feeRecords: feesHistory?.data?.length || 0,
       });
 
       return {
@@ -400,7 +585,11 @@ export class FundingTrackerService {
         currentPrice,
       };
     } catch (error: any) {
-      console.error('[FundingTracker] BingX funding fetch error:', error.message);
+      console.error('[FundingTracker] BingX funding fetch error:', {
+        symbol,
+        error: error.message,
+        stack: error.stack,
+      });
       return null;
     }
   }

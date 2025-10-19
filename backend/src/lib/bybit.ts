@@ -1102,13 +1102,26 @@ export class BybitService {
 
   /**
    * Get transaction logs (including funding fee settlements)
+   *
+   * IMPORTANT: For ACTIVE/OPEN positions, use this endpoint with type='SETTLEMENT'
+   * to fetch funding fee payments. The closed-pnl endpoint only works for CLOSED positions.
+   *
+   * @param params.accountType - Account type (UNIFIED or CONTRACT)
+   * @param params.category - Product category (linear, spot, option)
+   * @param params.currency - Currency filter (e.g., 'USDT')
+   * @param params.baseCoin - Base coin filter (e.g., 'BTC')
+   * @param params.type - Transaction type: 'SETTLEMENT' for funding fees, 'TRADE' for trades
+   * @param params.startTime - Start timestamp in milliseconds
+   * @param params.endTime - End timestamp in milliseconds
+   * @param params.limit - Number of records (default 50, max 50)
+   * @returns Transaction log entries including funding fees
    */
   async getTransactionLog(params: {
     accountType?: 'UNIFIED' | 'CONTRACT';
     category?: 'linear' | 'spot' | 'option';
     currency?: string;
     baseCoin?: string;
-    type?: string; // SETTLEMENT for funding fees
+    type?: string; // SETTLEMENT for funding fees, TRADE for trades
     startTime?: number;
     endTime?: number;
     limit?: number;
@@ -1138,9 +1151,137 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
+      console.log('[BybitService] Transaction log response:', {
+        recordCount: response.result?.list?.length || 0,
+        nextPageCursor: response.result?.nextPageCursor,
+      });
+
       return response.result.list as TransactionLog[];
-    } catch (error) {
-      console.error('Error fetching transaction log:', error);
+    } catch (error: any) {
+      console.error('[BybitService] Error fetching transaction log:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get closed P&L data (includes funding payments)
+   * Endpoint: GET /v5/position/closed-pnl
+   *
+   * IMPORTANT: This endpoint ONLY returns data for CLOSED positions.
+   * For ACTIVE/OPEN positions, use getTransactionLog() with type='SETTLEMENT' instead.
+   *
+   * This endpoint returns closed P&L records including:
+   * - Funding payments (positive = received, negative = paid)
+   * - Realized P&L from closed positions
+   * - Trading fees
+   *
+   * @param params.category Product type: "linear", "inverse", "option"
+   * @param params.symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param params.startTime Start timestamp in milliseconds
+   * @param params.endTime End timestamp in milliseconds (optional)
+   * @param params.limit Number of records to return (default 50, max 100)
+   * @returns Closed P&L records with funding payments and fees
+   */
+  async getClosedPnL(params: {
+    category: 'linear' | 'inverse' | 'option';
+    symbol?: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+    cursor?: string;
+  }): Promise<any> {
+    try {
+      if (!this.config.apiKey || !this.config.apiSecret) {
+        throw new Error('API credentials required for closed P&L data');
+      }
+
+      const requestParams: any = {
+        category: params.category,
+        limit: params.limit || 50,
+      };
+
+      if (params.symbol) requestParams.symbol = params.symbol;
+      if (params.startTime) requestParams.startTime = params.startTime;
+      if (params.endTime) requestParams.endTime = params.endTime;
+      if (params.cursor) requestParams.cursor = params.cursor;
+
+      console.log('[BybitService] Fetching closed P&L with params:', requestParams);
+
+      const response = await this.restClient.getClosedPnL(requestParams);
+
+      if (response.retCode !== 0) {
+        throw new Error(`Bybit API Error: ${response.retMsg}`);
+      }
+
+      console.log('[BybitService] Closed P&L response:', {
+        recordCount: response.result?.list?.length || 0,
+        nextPageCursor: response.result?.nextPageCursor,
+      });
+
+      return response.result;
+    } catch (error: any) {
+      console.error('[BybitService] Error fetching closed P&L:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get execution/trade history (for trading fees)
+   * Endpoint: GET /v5/execution/list
+   *
+   * This endpoint returns execution records including trading fees.
+   * Use this to fetch actual trading fees from position entry/exit trades.
+   *
+   * @param params.category Product type: "linear", "inverse", "option", "spot"
+   * @param params.symbol Trading pair symbol (e.g., "BTCUSDT")
+   * @param params.startTime Start timestamp in milliseconds
+   * @param params.endTime End timestamp in milliseconds (optional)
+   * @param params.limit Number of records (default 50, max 100)
+   * @returns Execution records with fees
+   */
+  async getExecutionList(params: {
+    category: 'linear' | 'inverse' | 'option' | 'spot';
+    symbol?: string;
+    orderId?: string;
+    startTime?: number;
+    endTime?: number;
+    execType?: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<any> {
+    try {
+      if (!this.config.apiKey || !this.config.apiSecret) {
+        throw new Error('API credentials required for execution list');
+      }
+
+      const requestParams: any = {
+        category: params.category,
+        limit: params.limit || 50,
+      };
+
+      if (params.symbol) requestParams.symbol = params.symbol;
+      if (params.orderId) requestParams.orderId = params.orderId;
+      if (params.startTime) requestParams.startTime = params.startTime;
+      if (params.endTime) requestParams.endTime = params.endTime;
+      if (params.execType) requestParams.execType = params.execType;
+      if (params.cursor) requestParams.cursor = params.cursor;
+
+      console.log('[BybitService] Fetching execution list with params:', requestParams);
+
+      const response = await this.restClient.getExecutionList(requestParams);
+
+      if (response.retCode !== 0) {
+        throw new Error(`Bybit API Error: ${response.retMsg}`);
+      }
+
+      console.log('[BybitService] Execution list response:', {
+        recordCount: response.result?.list?.length || 0,
+        nextPageCursor: response.result?.nextPageCursor,
+      });
+
+      return response.result;
+    } catch (error: any) {
+      console.error('[BybitService] Error fetching execution list:', error.message);
       throw error;
     }
   }

@@ -148,7 +148,7 @@ export class ExchangeCredentialsService {
 
   /**
    * Gets a single credential by ID with decrypted API keys
-   * Used for displaying/editing credentials
+   * Used for displaying/editing credentials (requires userId for authorization)
    */
   static async getCredentialById(
     userId: string,
@@ -208,6 +208,67 @@ export class ExchangeCredentialsService {
       };
     } catch (error: any) {
       console.error('Error getting credential by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets a single credential by ID with decrypted API keys (internal use only)
+   * Used by internal services like funding tracker - no userId check
+   */
+  static async getCredentialsById(
+    credentialId: string
+  ): Promise<ActiveCredential | null> {
+    try {
+      const credential = await prisma.exchangeCredentials.findUnique({
+        where: { id: credentialId },
+      });
+
+      if (!credential) {
+        return null;
+      }
+
+      // Check cache first
+      const cacheKey = credential.id;
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+        return {
+          id: credential.id,
+          exchange: credential.exchange,
+          apiKey: cached.apiKey,
+          apiSecret: cached.apiSecret,
+          authToken: cached.authToken,
+          label: credential.label || undefined,
+          createdAt: credential.createdAt,
+          updatedAt: credential.updatedAt,
+        };
+      }
+
+      // Decrypt credentials
+      const apiKey = EncryptionService.decrypt(credential.apiKey);
+      const apiSecret = EncryptionService.decrypt(credential.apiSecret);
+      const authToken = credential.authToken ? EncryptionService.decrypt(credential.authToken) : undefined;
+
+      // Cache the decrypted credentials
+      this.cache.set(cacheKey, {
+        apiKey,
+        apiSecret,
+        authToken,
+        timestamp: Date.now(),
+      });
+
+      return {
+        id: credential.id,
+        exchange: credential.exchange,
+        apiKey,
+        apiSecret,
+        authToken,
+        label: credential.label || undefined,
+        createdAt: credential.createdAt,
+        updatedAt: credential.updatedAt,
+      };
+    } catch (error: any) {
+      console.error('Error getting credentials by ID:', error);
       throw error;
     }
   }

@@ -1,0 +1,262 @@
+<div class="active-arbitrage-positions">
+  <!-- Header Section -->
+  <div class="page-header">
+    <h1 class="page-title">{{ translate('arbitrage.positions.title') }}</h1>
+    <p class="page-subtitle">{{ translate('arbitrage.positions.subtitle') }}</p>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="stats-grid">
+    <ui-card class="stat-card">
+      <ui-card-content>
+        <div class="stat">
+          <div class="stat-value">{{ activeCount() }}</div>
+          <div class="stat-label">{{ translate('arbitrage.positions.stats.active') }}</div>
+        </div>
+      </ui-card-content>
+    </ui-card>
+
+    <ui-card class="stat-card">
+      <ui-card-content>
+        <div class="stat">
+          <div class="stat-value">{{ completedCount() }}</div>
+          <div class="stat-label">{{ translate('arbitrage.positions.stats.completed') }}</div>
+        </div>
+      </ui-card-content>
+    </ui-card>
+
+    <ui-card class="stat-card">
+      <ui-card-content>
+        <div class="stat">
+          <div class="stat-value">{{ errorCount() }}</div>
+          <div class="stat-label">{{ translate('arbitrage.positions.stats.errors') }}</div>
+        </div>
+      </ui-card-content>
+    </ui-card>
+  </div>
+
+  <!-- Main Content Card -->
+  <ui-card class="main-card">
+    <ui-card-header>
+      <ui-card-title>{{ translate('arbitrage.positions.title') }}</ui-card-title>
+      <div class="header-controls">
+        <!-- Status Filter -->
+        <div class="filter-group">
+          <button 
+            type="button"
+            class="filter-btn"
+            [class.active]="selectedStatus() === 'ALL'"
+            (click)="changeStatusFilter('ALL')">
+            {{ translate('arbitrage.positions.filter.all') }}
+          </button>
+          <button 
+            type="button"
+            class="filter-btn"
+            [class.active]="selectedStatus() === 'ACTIVE'"
+            (click)="changeStatusFilter(getFilterEnumValue('ACTIVE'))">
+            {{ translate('arbitrage.positions.filter.active') }}
+          </button>
+          <button 
+            type="button"
+            class="filter-btn"
+            [class.active]="selectedStatus() === 'COMPLETED'"
+            (click)="changeStatusFilter(getFilterEnumValue('COMPLETED'))">
+            {{ translate('arbitrage.positions.filter.completed') }}
+          </button>
+          <button 
+            type="button"
+            class="filter-btn"
+            [class.active]="selectedStatus() === 'PENDING'"
+            (click)="changeStatusFilter(getFilterEnumValue('PENDING'))">
+            {{ translate('arbitrage.positions.filter.pending') }}
+          </button>
+          <button 
+            type="button"
+            class="filter-btn"
+            [class.active]="selectedStatus() === 'ERROR'"
+            (click)="changeStatusFilter(getFilterEnumValue('ERROR'))">
+            {{ translate('arbitrage.positions.filter.error') }}
+          </button>
+        </div>
+
+        <!-- Refresh Button -->
+        <ui-button 
+          variant="secondary"
+          [disabled]="isLoading()"
+          (click)="loadPositions()">
+          {{ translate('arbitrage.positions.refresh') }}
+        </ui-button>
+      </div>
+    </ui-card-header>
+
+    <ui-card-content>
+      <!-- Loading State -->
+      <div *ngIf="isLoading()" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>{{ translate('arbitrage.positions.loading') }}</p>
+      </div>
+
+      <!-- Error State -->
+      <div *ngIf="error() && !isLoading()" class="error-state">
+        <div class="error-icon">⚠️</div>
+        <p class="error-message">{{ error() }}</p>
+        <ui-button variant="secondary" (click)="loadPositions()">
+          {{ translate('arbitrage.positions.refresh') }}
+        </ui-button>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="!isLoading() && !error() && filteredPositions().length === 0" class="empty-state">
+        <div class="empty-icon">📊</div>
+        <h3>{{ translate('arbitrage.positions.empty.title') }}</h3>
+        <p>{{ translate('arbitrage.positions.empty.description') }}</p>
+      </div>
+
+      <!-- Positions Table -->
+      <div *ngIf="!isLoading() && !error() && filteredPositions().length > 0" class="positions-table-container">
+        <table class="positions-table">
+          <thead>
+            <tr>
+              <th>{{ translate('arbitrage.positions.table.symbol') }}</th>
+              <th>{{ translate('arbitrage.positions.table.exchanges') }}</th>
+              <th>{{ translate('arbitrage.positions.table.margin') }}</th>
+              <th>{{ translate('arbitrage.positions.table.entrySpread') }}</th>
+              <th>{{ translate('arbitrage.positions.table.currentSpread') }}</th>
+              <th>{{ translate('arbitrage.positions.table.unrealizedPnl') }}</th>
+              <th>{{ translate('arbitrage.positions.table.holdingTime') }}</th>
+              <th>{{ translate('arbitrage.positions.table.status') }}</th>
+              <th>{{ translate('arbitrage.positions.table.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let position of filteredPositions()" class="position-row">
+              <td class="symbol-cell">
+                <div class="symbol-info">
+                  <div class="symbol">{{ position.symbol }}</div>
+                  <div class="exchanges">
+                    <span class="exchange primary">{{ position.primaryExchange }}</span>
+                    <span class="separator">→</span>
+                    <span class="exchange hedge">{{ position.hedgeExchange }}</span>
+                  </div>
+                </div>
+              </td>
+              
+              <td class="exchanges-cell">
+                <div class="exchanges-info">
+                  <div class="exchange-detail">
+                    <span class="exchange-label">{{ translate('arbitrage.positions.exchanges.primary') }}:</span>
+                    <span class="exchange-name">{{ position.primaryExchange }}</span>
+                  </div>
+                  <div class="exchange-detail">
+                    <span class="exchange-label">{{ translate('arbitrage.positions.exchanges.hedge') }}:</span>
+                    <span class="exchange-name">{{ position.hedgeExchange }}</span>
+                  </div>
+                </div>
+              </td>
+              
+              <td class="margin-cell">
+                <div class="margin-info">
+                  <div class="margin-detail">
+                    <span class="margin-label">{{ translate('arbitrage.positions.exchanges.primary') }}:</span>
+                    <span class="margin-value">${{ position.primaryMargin.toFixed(2) }}</span>
+                  </div>
+                  <div class="margin-detail">
+                    <span class="margin-label">{{ translate('arbitrage.positions.exchanges.hedge') }}:</span>
+                    <span class="margin-value">${{ position.hedgeMargin.toFixed(2) }}</span>
+                  </div>
+                </div>
+              </td>
+              
+              <td class="spread-cell">
+                <span class="spread-value">{{ getEntrySpreadDisplay(position) }}</span>
+              </td>
+              
+              <td class="spread-cell">
+                <span class="spread-value">{{ getCurrentSpreadDisplay(position) }}</span>
+              </td>
+              
+              <td class="pnl-cell">
+                <span class="pnl-value" [class]="getPnlDisplay(position).textClass">
+                  {{ formatPnl(getUnrealizedPnl(position)) }}
+                </span>
+              </td>
+              
+              <td class="time-cell">
+                <span class="holding-time">{{ getHoldingTimeDisplay(position) }}</span>
+              </td>
+              
+              <td class="status-cell">
+                <span class="status-badge" [class]="getStatusClass(position.status)">
+                  {{ translate('arbitrage.positions.status.' + position.status.toLowerCase()) }}
+                </span>
+              </td>
+              
+              <td class="actions-cell">
+                <ui-button 
+                  *ngIf="position.status === 'ACTIVE'"
+                  variant="secondary"
+                  size="small"
+                  class="danger"
+                  (click)="openCloseDialog(position)">
+                  {{ translate('arbitrage.positions.close.button') }}
+                </ui-button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </ui-card-content>
+  </ui-card>
+</div>
+
+<!-- Close Position Dialog -->
+<ui-dialog [open]="showCloseDialog()" (openChange)="showCloseDialog.set($event)">
+  <ui-dialog-header>
+    <ui-dialog-title>{{ translate('arbitrage.positions.close.title') }}</ui-dialog-title>
+  </ui-dialog-header>
+  
+  <ui-dialog-content>
+    <div class="close-dialog-content">
+      <p>{{ translate('arbitrage.positions.close.message') }}</p>
+      
+      <div *ngIf="positionToClose()" class="position-summary">
+        <div class="summary-row">
+          <span class="label">{{ translate('arbitrage.positions.table.symbol') }}:</span>
+          <span class="value">{{ positionToClose()!.symbol }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">{{ translate('arbitrage.positions.exchanges.primary') }}:</span>
+          <span class="value">{{ positionToClose()!.primaryExchange }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">{{ translate('arbitrage.positions.exchanges.hedge') }}:</span>
+          <span class="value">{{ positionToClose()!.hedgeExchange }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">{{ translate('arbitrage.positions.table.margin') }}:</span>
+          <span class="value">${{ positionToClose()!.primaryMargin.toFixed(2) }} / ${{ positionToClose()!.hedgeMargin.toFixed(2) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">{{ translate('arbitrage.positions.table.unrealizedPnl') }}:</span>
+          <span class="value" [class]="getPnlDisplay(positionToClose()!).textClass">
+            {{ formatPnl(getUnrealizedPnl(positionToClose()!)) }}
+          </span>
+        </div>
+      </div>
+      
+      <p class="warning-text">{{ translate('arbitrage.positions.close.warning') }}</p>
+    </div>
+  </ui-dialog-content>
+  
+  <ui-dialog-footer>
+    <ui-button variant="secondary" (click)="cancelClose()" [disabled]="isClosing()">
+      {{ translate('arbitrage.positions.close.cancel') }}
+    </ui-button>
+    <ui-button 
+      variant="danger" 
+      (click)="confirmClose()" 
+      [disabled]="isClosing()">
+      {{ isClosing() ? translate('arbitrage.positions.close.closing') : translate('arbitrage.positions.close.confirm') }}
+    </ui-button>
+  </ui-dialog-footer>
+</ui-dialog>

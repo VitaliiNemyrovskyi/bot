@@ -1847,18 +1847,17 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (response?.success) {
         console.log('[ArbitrageChart] Graduated entry started:', response.data);
 
-        // Add position to active positions list with mock funding data
-        const primaryLastFunding = Math.random() * 0.5 + 0.1; // Random between 0.1-0.6 USDT
-        const primaryTotalFunding = Math.random() * 5 + 2; // Random between 2-7 USDT
-        const primaryFees = Math.random() * 0.3 + 0.05; // Random between 0.05-0.35 USDT
+        // Add position to active positions list with real funding data from backend
+        const primaryLastFunding = response.data.primary.lastFundingPaid || 0;
+        const primaryTotalFunding = response.data.primary.totalFundingEarned || 0;
+        const primaryFees = response.data.primary.tradingFees || 0;
 
-        const hedgeLastFunding = Math.random() * 0.4 + 0.08; // Random between 0.08-0.48 USDT
-        const hedgeTotalFunding = Math.random() * 4 + 1.5; // Random between 1.5-5.5 USDT
-        const hedgeFees = Math.random() * 0.25 + 0.04; // Random between 0.04-0.29 USDT
+        const hedgeLastFunding = response.data.hedge.lastFundingPaid || 0;
+        const hedgeTotalFunding = response.data.hedge.totalFundingEarned || 0;
+        const hedgeFees = response.data.hedge.tradingFees || 0;
 
-        const grossProfit = primaryTotalFunding + hedgeTotalFunding;
-        const totalFees = primaryFees + hedgeFees;
-        const netProfit = grossProfit - totalFees;
+        const grossProfit = response.data.grossProfit || 0;
+        const netProfit = response.data.netProfit || 0;
 
         const newPosition: ArbitragePosition = {
           positionId: response.data.positionId,
