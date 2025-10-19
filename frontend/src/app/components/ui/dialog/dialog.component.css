@@ -83,6 +83,11 @@
   max-width: 900px;
 }
 
+.dialog-xlarge {
+  width: 100%;
+  max-width: 1200px;
+}
+
 .dialog-fullscreen {
   width: 95vw;
   height: 95vh;
@@ -269,7 +274,8 @@
 
   .dialog-small,
   .dialog-medium,
-  .dialog-large {
+  .dialog-large,
+  .dialog-xlarge {
     width: 100%;
     max-width: none;
   }

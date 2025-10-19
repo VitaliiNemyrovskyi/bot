@@ -1,0 +1,42 @@
+<div class="funding-rate-spread-chart">
+  <!-- Period Toggle Buttons -->
+  <div class="chart-controls">
+    <button
+      class="period-btn"
+      [class.active]="selectedPeriod() === 7"
+      (click)="switchPeriod(7)"
+      [disabled]="isLoading()"
+    >
+      7 Days
+    </button>
+    <button
+      class="period-btn"
+      [class.active]="selectedPeriod() === 30"
+      (click)="switchPeriod(30)"
+      [disabled]="isLoading()"
+    >
+      30 Days
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  @if (isLoading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <span>Loading chart data...</span>
+    </div>
+  }
+
+  <!-- Error State -->
+  @if (error() && !isLoading()) {
+    <div class="error-state">
+      <span class="error-icon">⚠️</span>
+      <span class="error-message">{{ error() }}</span>
+    </div>
+  }
+
+  <!-- Chart Container -->
+  <div class="chart-wrapper" [class.hidden]="isLoading() || error()">
+    <div #chartContainer class="chart-container"></div>
+  </div>
+</div>

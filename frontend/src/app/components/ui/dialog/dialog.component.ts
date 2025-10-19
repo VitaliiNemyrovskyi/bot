@@ -58,7 +58,7 @@ import { TranslationService } from '../../../services/translation.service';
 export class DialogComponent implements OnInit, OnDestroy, OnChanges, AfterViewInit {
   @Input() open: boolean = false;
   @Input() title: string = '';
-  @Input() size: 'small' | 'medium' | 'large' | 'fullscreen' = 'medium';
+  @Input() size: 'small' | 'medium' | 'large' | 'xlarge' | 'fullscreen' = 'medium';
   @Input() closable: boolean = true;
   @Input() closeOnBackdrop: boolean = true;
   @Input() showHeader: boolean = true;

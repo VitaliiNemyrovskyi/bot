@@ -125,6 +125,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   hasHedgeCredentials = signal<boolean>(false);
   credentialsWarning = signal<string>('');
 
+  // Exchange balances
+  primaryBalance = signal<{totalBalance: string; availableBalance: string; loading: boolean}>({
+    totalBalance: '0',
+    availableBalance: '0',
+    loading: false
+  });
+  hedgeBalance = signal<{totalBalance: string; availableBalance: string; loading: boolean}>({
+    totalBalance: '0',
+    availableBalance: '0',
+    loading: false
+  });
+
   // Active positions
   activePositions = signal<ArbitragePosition[]>([]);
   // Expanded rows state (set of position IDs)
@@ -146,6 +158,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     { value: '4h', label: '4h' },
     { value: '1d', label: '1D' }
   ];
+
+  // Quantity unit selection (coin vs USDT)
+  primaryQuantityUnit = signal<'coin' | 'usdt'>('usdt');
+  hedgeQuantityUnit = signal<'coin' | 'usdt'>('usdt');
+  primaryDropdownOpen = signal<boolean>(false);
+  hedgeDropdownOpen = signal<boolean>(false);
 
   // Chart
   private chart: IChartApi | null = null;
@@ -178,6 +196,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   // Destroyed flag to prevent updates after component destruction
   private isDestroyed = false;
 
+  // Flag to prevent circular quantity synchronization
+  private isSyncingQuantity = false;
+
+  // Flag to prevent circular side synchronization
+  private isSyncingSide = false;
+
+  // Flag to track if user has manually selected sides
+  private hasManualSideSelection = false;
+
   // Services
   private http = inject(HttpClient);
   private authService = inject(AuthService);
@@ -205,6 +232,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const defaultLeverage = this.tradingSettings.getLeverage();
     const defaultGraduatedParts = this.tradingSettings.getGraduatedParts();
     const defaultGraduatedDelayMs = this.tradingSettings.getGraduatedDelayMs();
+    // Convert milliseconds to seconds for UI display
+    const defaultGraduatedDelaySec = defaultGraduatedDelayMs / 1000;
 
     // Initialize order forms with graduated entry fields
     this.primaryOrderForm = new FormGroup({
@@ -212,7 +241,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       leverage: new FormControl(defaultLeverage, [Validators.required, Validators.min(1), Validators.max(125)]),
       quantity: new FormControl(0, [Validators.required, Validators.min(0.001)]),
       graduatedParts: new FormControl(defaultGraduatedParts, [Validators.required, Validators.min(1), Validators.max(20)]),
-      graduatedDelayMs: new FormControl(defaultGraduatedDelayMs, [Validators.required, Validators.min(100), Validators.max(60000)])
+      graduatedDelayMs: new FormControl(defaultGraduatedDelaySec, [Validators.required, Validators.min(0.1), Validators.max(60)])
     });
 
     this.hedgeOrderForm = new FormGroup({
@@ -220,7 +249,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       leverage: new FormControl(defaultLeverage, [Validators.required, Validators.min(1), Validators.max(125)]),
       quantity: new FormControl(0, [Validators.required, Validators.min(0.001)]),
       graduatedParts: new FormControl(defaultGraduatedParts, [Validators.required, Validators.min(1), Validators.max(20)]),
-      graduatedDelayMs: new FormControl(defaultGraduatedDelayMs, [Validators.required, Validators.min(100), Validators.max(60000)])
+      graduatedDelayMs: new FormControl(defaultGraduatedDelaySec, [Validators.required, Validators.min(0.1), Validators.max(60)])
     });
 
     // Get route parameters
@@ -263,6 +292,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.loading.set(false);
       }, 500);
     });
+
+    // Add click listener to close dropdowns when clicking outside
+    document.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.quantity-unit-dropdown')) {
+        this.primaryDropdownOpen.set(false);
+        this.hedgeDropdownOpen.set(false);
+      }
+    });
   }
 
   ngAfterViewInit(): void {
@@ -295,6 +333,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (this.fundingRateRefreshInterval) {
       clearInterval(this.fundingRateRefreshInterval);
       this.fundingRateRefreshInterval = null;
+    }
+
+    // Clear Gate.io API refresh interval
+    if (this.gateioRefreshInterval) {
+      clearInterval(this.gateioRefreshInterval);
+      this.gateioRefreshInterval = undefined;
     }
 
     // Remove resize observer
@@ -646,6 +690,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         };
         break;
 
+      case 'GATEIO':
+        // Gate.io doesn't have public WebSocket for funding rates
+        // Use REST API data from our backend instead
+        this.connectGateIOViaAPI(symbol, onUpdate);
+        return;
+
       default:
         console.warn(`[ArbitrageChart] Unsupported exchange: ${exchange}`);
         // Simulate data for unsupported exchanges
@@ -917,6 +967,64 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       onUpdate(price, fundingRate, nextFundingTime);
     } else {
       console.warn(`[ArbitrageChart] ${exchange} price invalid or zero:`, price);
+    }
+  }
+
+  /**
+   * Connect to Gate.io via our backend API (no direct WebSocket support)
+   */
+  private async connectGateIOViaAPI(
+    symbol: string,
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number) => void
+  ): Promise<void> {
+    const fetchGateIOData = async () => {
+      try {
+        const url = '/api/gateio/public-funding-rates';
+        const response = await this.http.get<any>(url).toPromise();
+
+        if (response && Array.isArray(response)) {
+          // Find our symbol in the response
+          const normalizedSymbol = symbol.replace('USDT', '_USDT').replace('USDC', '_USDC');
+          const symbolData = response.find((item: any) => 
+            item.name === normalizedSymbol || item.symbol === normalizedSymbol
+          );
+
+          if (symbolData) {
+            const price = parseFloat(symbolData.last_price || symbolData.lastPrice || '0');
+            const fundingRate = symbolData.funding_rate || symbolData.fundingRate;
+            const nextFundingTime = (symbolData.funding_next_apply || symbolData.nextFundingTime) * 1000; // Convert to ms
+
+            if (price > 0) {
+              console.log(`[ArbitrageChart] Gate.io data updated:`, {
+                symbol: normalizedSymbol,
+                price,
+                fundingRate,
+                nextFundingTime
+              });
+              onUpdate(price, fundingRate, nextFundingTime);
+            }
+          } else {
+            console.warn(`[ArbitrageChart] Gate.io symbol not found: ${normalizedSymbol}`);
+          }
+        }
+      } catch (error) {
+        console.error('[ArbitrageChart] Gate.io API error:', error);
+      }
+    };
+
+    // Initial fetch
+    await fetchGateIOData();
+
+    // Refresh every 30 seconds (not real-time like WebSocket, but proper data)
+    const interval = setInterval(() => {
+      if (!this.isDestroyed) {
+        fetchGateIOData();
+      }
+    }, 30000);
+
+    // Store interval for cleanup
+    if (!this.gateioRefreshInterval) {
+      this.gateioRefreshInterval = interval;
     }
   }
 
@@ -1276,16 +1384,65 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Calculate funding rate spread (difference between funding rates)
+   * Also automatically set optimal sides based on funding rates
    */
   private calculateFundingSpread(): void {
-    const primaryRate = parseFloat(this.primaryData().fundingRate);
-    const hedgeRate = parseFloat(this.hedgeData().fundingRate);
+    const primaryRateStr = this.primaryData().fundingRate;
+    const hedgeRateStr = this.hedgeData().fundingRate;
+
+    // Handle null/undefined values properly
+    const primaryRate = (primaryRateStr && primaryRateStr !== 'null') ? parseFloat(primaryRateStr) : NaN;
+    const hedgeRate = (hedgeRateStr && hedgeRateStr !== 'null') ? parseFloat(hedgeRateStr) : NaN;
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
-      // Funding spread = primaryFundingRate - hedgeFundingRate (in percentage)
-      const spreadValue = (primaryRate - hedgeRate) * 100;
+      // Funding spread = primaryFundingRate - hedgeFundingRate
+      // Note: Funding rates are already in decimal format (e.g., -0.009629 = -0.9629%)
+      // So we don't multiply by 100 here - that's done in display formatting
+      const spreadValue = primaryRate - hedgeRate;
       this.fundingSpread.set(spreadValue);
+
+      // Automatically set optimal sides based on funding rates
+      this.setOptimalSides(primaryRate, hedgeRate);
+    } else {
+      // If either rate is unavailable, set spread to 0 or NaN
+      this.fundingSpread.set(NaN);
     }
+  }
+
+  /**
+   * Automatically set optimal position sides based on funding rates
+   * Higher funding rate -> Short (receive more or pay less)
+   * Lower funding rate -> Long (receive more or pay less)
+   * Only applies automatic selection if user hasn't manually chosen sides
+   */
+  private setOptimalSides(primaryRate: number, hedgeRate: number): void {
+    // Don't override manual user selection
+    if (this.hasManualSideSelection) {
+      console.log('[ArbitrageChart] Skipping automatic side selection - user has manually selected sides');
+      return;
+    }
+
+    // Prevent side synchronization during automatic setting
+    this.isSyncingSide = true;
+
+    if (primaryRate > hedgeRate) {
+      // Primary has higher funding rate -> Primary = Short, Hedge = Long
+      this.primaryOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
+      this.hedgeOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
+    } else {
+      // Hedge has higher funding rate (or equal) -> Primary = Long, Hedge = Short
+      this.primaryOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
+      this.hedgeOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
+    }
+
+    this.isSyncingSide = false;
+
+    console.log('[ArbitrageChart] Optimal sides set based on funding rates:', {
+      primaryRate,
+      hedgeRate,
+      primarySide: this.primaryOrderForm.get('side')?.value,
+      hedgeSide: this.hedgeOrderForm.get('side')?.value
+    });
   }
 
   /**
@@ -1319,10 +1476,23 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Format funding rate for display
+   * Using the exact same logic as working arbitrage-funding page
    */
   formatFundingRate(rate: string): string {
-    const numRate = parseFloat(rate);
-    return (numRate * 100).toFixed(4) + '%';
+    const rateNum = parseFloat(rate);
+    return (rateNum * 100).toFixed(4) + '%';
+  }
+
+  /**
+   * Get color class for funding rate
+   * Negative (paying) = red, Positive (receiving) = green
+   * Using the exact same logic as working arbitrage-funding page
+   */
+  getFundingRateColorClass(rate: string): string {
+    const rateNum = parseFloat(rate);
+    if (rateNum < 0) return 'text-red-600 dark:text-red-400';
+    if (rateNum > 0) return 'text-green-600 dark:text-green-400';
+    return 'text-gray-600 dark:text-gray-400';
   }
 
   /**
@@ -1330,8 +1500,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    */
   formatFundingSpread(): string {
     const spread = this.fundingSpread();
+    if (isNaN(spread)) {
+      return 'N/A';
+    }
     const sign = spread > 0 ? '+' : '';
-    return `${sign}${spread.toFixed(4)}%`;
+    // Convert decimal to percentage for display (e.g., 0.001 -> 0.1000%)
+    const percentageValue = spread * 100;
+    return `${sign}${percentageValue.toFixed(4)}%`;
   }
 
   /**
@@ -1346,19 +1521,23 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Calculate time remaining until next funding
+   * Using the exact same logic as working arbitrage-funding page
    */
   getTimeRemaining(timestamp: number): string {
     if (!timestamp || timestamp === 0) return 'N/A';
 
     const now = Date.now();
-    const remaining = timestamp - now;
+    const diff = timestamp - now;
 
-    if (remaining <= 0) return 'Funding now';
+    if (diff <= 0) return '0m';
 
-    const hours = Math.floor(remaining / (1000 * 60 * 60));
-    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-    return `${hours}h ${minutes}m`;
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
   }
 
   /**
@@ -1394,8 +1573,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (!rate && (!nextFundingTime || nextFundingTime === 0)) return 'N/A';
 
     // Format funding rate
-    const numRate = parseFloat(rate || '0');
-    const rateFormatted = (numRate * 100).toFixed(4) + '%';
+    let rateFormatted = 'N/A';
+    if (rate && rate !== 'null' && rate !== 'undefined') {
+      const numRate = parseFloat(rate);
+      if (!isNaN(numRate)) {
+        rateFormatted = (numRate * 100).toFixed(4) + '%';
+      }
+    }
 
     // Format time remaining as HH:MM
     let timeFormatted = 'N/A';
@@ -1527,7 +1711,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Navigate back to funding rates page
    */
   goBack(): void {
-    this.router.navigate(['/trading/funding-rates']);
+    this.router.navigate(['/arbitrage/funding']);
   }
 
   /**
@@ -1597,18 +1781,63 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       const url = getEndpointUrl('arbitrage', 'graduatedEntry');
 
+      // Convert quantities to coin units if they're in USDT (backend expects coin quantities)
+      let primaryQuantityInCoins = primaryOrder.quantity;
+      const primaryUnit = this.primaryQuantityUnit();
+      const primaryPrice = this.primaryData().price;
+      const primarySymbolInfo = this.primarySymbolInfo();
+      
+      if (primaryUnit === 'usdt' && primaryPrice > 0 && primarySymbolInfo) {
+        let convertedQuantity = primaryOrder.quantity / primaryPrice;
+        
+        // Apply step rounding (same logic as validation)
+        let qtyPerPart = convertedQuantity / (primaryOrder.graduatedParts || 5);
+        
+        if (primarySymbolInfo.qtyStep >= 1) {
+          qtyPerPart = Math.round(qtyPerPart);
+        } else {
+          const stepDecimals = Math.max(0, -Math.log10(primarySymbolInfo.qtyStep));
+          qtyPerPart = Math.round(qtyPerPart * Math.pow(10, stepDecimals)) / Math.pow(10, stepDecimals);
+        }
+        
+        primaryQuantityInCoins = qtyPerPart * (primaryOrder.graduatedParts || 5);
+        console.log(`[ArbitrageChart] Primary: Converting ${primaryOrder.quantity} USDT to ${primaryQuantityInCoins} coins`);
+      }
+
+      let hedgeQuantityInCoins = hedgeOrder.quantity;
+      const hedgeUnit = this.hedgeQuantityUnit();
+      const hedgePrice = this.hedgeData().price;
+      const hedgeSymbolInfo = this.hedgeSymbolInfo();
+      
+      if (hedgeUnit === 'usdt' && hedgePrice > 0 && hedgeSymbolInfo) {
+        let convertedQuantity = hedgeOrder.quantity / hedgePrice;
+        
+        // Apply step rounding (same logic as validation)
+        let qtyPerPart = convertedQuantity / (hedgeOrder.graduatedParts || 5);
+        
+        if (hedgeSymbolInfo.qtyStep >= 1) {
+          qtyPerPart = Math.round(qtyPerPart);
+        } else {
+          const stepDecimals = Math.max(0, -Math.log10(hedgeSymbolInfo.qtyStep));
+          qtyPerPart = Math.round(qtyPerPart * Math.pow(10, stepDecimals)) / Math.pow(10, stepDecimals);
+        }
+        
+        hedgeQuantityInCoins = qtyPerPart * (hedgeOrder.graduatedParts || 5);
+        console.log(`[ArbitrageChart] Hedge: Converting ${hedgeOrder.quantity} USDT to ${hedgeQuantityInCoins} coins`);
+      }
+
       const requestBody = {
         symbol: this.symbol(),
         primaryExchange: this.primaryExchange(),
         primarySide: primaryOrder.side,
         primaryLeverage: primaryOrder.leverage,
-        primaryQuantity: primaryOrder.quantity,
+        primaryQuantity: primaryQuantityInCoins,
         hedgeExchange: this.hedgeExchange(),
         hedgeSide: hedgeOrder.side,
         hedgeLeverage: hedgeOrder.leverage,
-        hedgeQuantity: hedgeOrder.quantity,
+        hedgeQuantity: hedgeQuantityInCoins,
         graduatedEntryParts: primaryOrder.graduatedParts || 5,  // Use form value or default to 5
-        graduatedEntryDelayMs: primaryOrder.graduatedDelayMs || 2000  // Use form value or default to 2 seconds
+        graduatedEntryDelayMs: (primaryOrder.graduatedDelayMs || 2) * 1000  // Convert seconds to milliseconds (default 2s = 2000ms)
       };
 
       console.log('[ArbitrageChart] Sending request to graduated entry API:', requestBody);
@@ -1658,17 +1887,22 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
         alert(`Arbitrage position started successfully!\nPosition ID: ${response.data.positionId}`);
 
+        // Reset manual side selection flag to allow automatic selection for next position
+        this.hasManualSideSelection = false;
+
         // Reset forms after successful submission using global settings
         const defaultLeverage = this.tradingSettings.getLeverage();
         const defaultGraduatedParts = this.tradingSettings.getGraduatedParts();
         const defaultGraduatedDelayMs = this.tradingSettings.getGraduatedDelayMs();
+        // Convert milliseconds to seconds for UI display
+        const defaultGraduatedDelaySec = defaultGraduatedDelayMs / 1000;
 
         this.primaryOrderForm.reset({
           side: 'long',
           leverage: defaultLeverage,
           quantity: 0,
           graduatedParts: defaultGraduatedParts,
-          graduatedDelayMs: defaultGraduatedDelayMs
+          graduatedDelayMs: defaultGraduatedDelaySec
         });
 
         this.hedgeOrderForm.reset({
@@ -1676,7 +1910,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           leverage: defaultLeverage,
           quantity: 0,
           graduatedParts: defaultGraduatedParts,
-          graduatedDelayMs: defaultGraduatedDelayMs
+          graduatedDelayMs: defaultGraduatedDelaySec
         });
       } else {
         throw new Error(response?.error || 'Unknown error from server');
@@ -1741,6 +1975,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.credentialsWarning.set(warnings.join('. ') + '. Please configure in Profile -> Trading Platforms.');
     } else {
       this.credentialsWarning.set('');
+
+      // Load balances if credentials are valid
+      if (this.hasPrimaryCredentials()) {
+        this.loadExchangeBalance(this.primaryExchange(), 'primary');
+      }
+      if (this.hasHedgeCredentials()) {
+        this.loadExchangeBalance(this.hedgeExchange(), 'hedge');
+      }
     }
 
     console.log('[ArbitrageChart] Credentials validation:', {
@@ -1753,6 +1995,49 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         hasCredentials: this.hasHedgeCredentials()
       },
       warning: this.credentialsWarning()
+    });
+  }
+
+  /**
+   * Load balance for a specific exchange
+   */
+  private loadExchangeBalance(exchange: string, type: 'primary' | 'hedge'): void {
+    const balanceSignal = type === 'primary' ? this.primaryBalance : this.hedgeBalance;
+
+    // Set loading state
+    balanceSignal.update(bal => ({ ...bal, loading: true }));
+
+    const token = this.authService.authState().token;
+    if (!token) {
+      console.warn(`[ArbitrageChart] No auth token, cannot load ${exchange} balance`);
+      balanceSignal.update(bal => ({ ...bal, loading: false }));
+      return;
+    }
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+
+    const url = buildUrlWithQuery(getEndpointUrl('exchange', 'balance'), { exchange });
+
+    this.http.get<any>(url, { headers }).subscribe({
+      next: (response) => {
+        if (response?.success && response?.data) {
+          console.log(`[ArbitrageChart] ${exchange} balance loaded:`, response.data);
+          balanceSignal.set({
+            totalBalance: response.data.totalBalance || '0',
+            availableBalance: response.data.availableBalance || '0',
+            loading: false
+          });
+        } else {
+          console.warn(`[ArbitrageChart] Invalid balance response for ${exchange}:`, response);
+          balanceSignal.update(bal => ({ ...bal, loading: false }));
+        }
+      },
+      error: (error) => {
+        console.error(`[ArbitrageChart] Error loading ${exchange} balance:`, error);
+        balanceSignal.update(bal => ({ ...bal, loading: false }));
+      }
     });
   }
 
@@ -1782,18 +2067,17 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
         // Transform backend positions to match our interface
         const positions: ArbitragePosition[] = response.data.map((pos: any) => {
-          // Generate mock funding data (temporary until real data is tracked)
-          const primaryLastFunding = Math.random() * 0.5 + 0.1;
-          const primaryTotalFunding = Math.random() * 5 + 2;
-          const primaryFees = Math.random() * 0.3 + 0.05;
+          // Use actual data from backend (currently zeros until tracking is implemented)
+          const primaryLastFunding = pos.primary.lastFundingPaid || 0;
+          const primaryTotalFunding = pos.primary.totalFundingEarned || 0;
+          const primaryFees = pos.primary.tradingFees || 0;
 
-          const hedgeLastFunding = Math.random() * 0.4 + 0.08;
-          const hedgeTotalFunding = Math.random() * 4 + 1.5;
-          const hedgeFees = Math.random() * 0.25 + 0.04;
+          const hedgeLastFunding = pos.hedge.lastFundingPaid || 0;
+          const hedgeTotalFunding = pos.hedge.totalFundingEarned || 0;
+          const hedgeFees = pos.hedge.tradingFees || 0;
 
-          const grossProfit = primaryTotalFunding + hedgeTotalFunding;
-          const totalFees = primaryFees + hedgeFees;
-          const netProfit = grossProfit - totalFees;
+          const grossProfit = pos.grossProfit || 0;
+          const netProfit = pos.netProfit || 0;
 
           return {
             positionId: pos.positionId,
@@ -1872,6 +2156,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       case 'MEXC':
         const mexcSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
         return `https://www.mexc.com/exchange/${mexcSymbol}`;
+      case 'GATEIO':
+        const gateioSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
+        return `https://www.gate.com/uk/futures/USDT/${gateioSymbol}`;
+      case 'BITGET':
+        return `https://www.bitget.com/futures/usdt/${symbol}`;
       case 'OKX':
         return `https://www.okx.com/trade-swap/${symbol.toLowerCase()}`;
       default:
@@ -1902,6 +2191,154 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     this.expandedRows.set(currentExpanded);
+  }
+
+  /**
+   * Toggle primary quantity dropdown
+   */
+  togglePrimaryQuantityDropdown(): void {
+    this.primaryDropdownOpen.set(!this.primaryDropdownOpen());
+    if (this.primaryDropdownOpen()) {
+      this.hedgeDropdownOpen.set(false);
+    }
+  }
+
+  /**
+   * Toggle hedge quantity dropdown
+   */
+  toggleHedgeQuantityDropdown(): void {
+    this.hedgeDropdownOpen.set(!this.hedgeDropdownOpen());
+    if (this.hedgeDropdownOpen()) {
+      this.primaryDropdownOpen.set(false);
+    }
+  }
+
+  /**
+   * Set primary quantity unit and convert existing value
+   * Also synchronizes unit and quantity to hedge form
+   */
+  setPrimaryQuantityUnit(unit: 'coin' | 'usdt'): void {
+    const currentUnit = this.primaryQuantityUnit();
+    if (currentUnit === unit) return;
+
+    const currentQuantity = this.primaryOrderForm.get('quantity')?.value || 0;
+
+    // Convert primary quantity to new unit
+    let convertedPrimaryQuantity = currentQuantity;
+    if (currentQuantity > 0) {
+      convertedPrimaryQuantity = this.convertQuantity(currentQuantity, currentUnit, unit, 'primary');
+      this.primaryOrderForm.patchValue({ quantity: convertedPrimaryQuantity }, { emitEvent: false });
+    }
+
+    // Update primary unit
+    this.primaryQuantityUnit.set(unit);
+    this.primaryDropdownOpen.set(false);
+
+    // Synchronize unit to hedge
+    this.hedgeQuantityUnit.set(unit);
+
+    // Convert hedge quantity to new unit
+    const hedgeQuantity = this.hedgeOrderForm.get('quantity')?.value || 0;
+    if (hedgeQuantity > 0) {
+      const convertedHedgeQuantity = this.convertQuantity(hedgeQuantity, currentUnit, unit, 'hedge');
+      this.hedgeOrderForm.patchValue({ quantity: convertedHedgeQuantity }, { emitEvent: false });
+    }
+
+    // Validate both forms after unit change
+    this.validatePrimaryOrder();
+    this.validateHedgeOrder();
+  }
+
+  /**
+   * Set hedge quantity unit and convert existing value
+   * Also synchronizes unit and quantity to primary form
+   */
+  setHedgeQuantityUnit(unit: 'coin' | 'usdt'): void {
+    const currentUnit = this.hedgeQuantityUnit();
+    if (currentUnit === unit) return;
+
+    const currentQuantity = this.hedgeOrderForm.get('quantity')?.value || 0;
+
+    // Convert hedge quantity to new unit
+    let convertedHedgeQuantity = currentQuantity;
+    if (currentQuantity > 0) {
+      convertedHedgeQuantity = this.convertQuantity(currentQuantity, currentUnit, unit, 'hedge');
+      this.hedgeOrderForm.patchValue({ quantity: convertedHedgeQuantity }, { emitEvent: false });
+    }
+
+    // Update hedge unit
+    this.hedgeQuantityUnit.set(unit);
+    this.hedgeDropdownOpen.set(false);
+
+    // Synchronize unit to primary
+    this.primaryQuantityUnit.set(unit);
+
+    // Convert primary quantity to new unit
+    const primaryQuantity = this.primaryOrderForm.get('quantity')?.value || 0;
+    if (primaryQuantity > 0) {
+      const convertedPrimaryQuantity = this.convertQuantity(primaryQuantity, currentUnit, unit, 'primary');
+      this.primaryOrderForm.patchValue({ quantity: convertedPrimaryQuantity }, { emitEvent: false });
+    }
+
+    // Validate both forms after unit change
+    this.validatePrimaryOrder();
+    this.validateHedgeOrder();
+  }
+
+  /**
+   * Convert quantity between coin and USDT
+   */
+  private convertQuantity(
+    quantity: number, 
+    fromUnit: 'coin' | 'usdt', 
+    toUnit: 'coin' | 'usdt', 
+    exchange: 'primary' | 'hedge'
+  ): number {
+    if (fromUnit === toUnit) return quantity;
+
+    const price = exchange === 'primary' 
+      ? parseFloat(String(this.primaryData().price || '0'))
+      : parseFloat(String(this.hedgeData().price || '0'));
+
+    if (price <= 0) return quantity;
+
+    let result: number;
+    if (fromUnit === 'coin' && toUnit === 'usdt') {
+      // Convert from coin to USDT
+      result = quantity * price;
+    } else {
+      // Convert from USDT to coin
+      result = quantity / price;
+      
+      // Round to match exchange step requirements when converting to coin
+      const symbolInfo = exchange === 'primary' ? this.primarySymbolInfo() : this.hedgeSymbolInfo();
+      if (symbolInfo) {
+        if (symbolInfo.qtyStep >= 1) {
+          // For exchanges requiring whole numbers (like FUSDT), round to nearest integer
+          result = Math.round(result);
+        } else {
+          // For exchanges with decimal steps, round to step precision
+          const stepDecimals = Math.max(0, -Math.log10(symbolInfo.qtyStep));
+          result = Math.round(result * Math.pow(10, stepDecimals)) / Math.pow(10, stepDecimals);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get coin symbol from full symbol (e.g., NVDAXUSDT -> NVDAX)
+   */
+  getCoinSymbol(): string {
+    const symbol = this.symbol();
+    if (symbol.endsWith('USDT')) {
+      return symbol.slice(0, -4);
+    }
+    if (symbol.endsWith('USDC')) {
+      return symbol.slice(0, -4);
+    }
+    return symbol;
   }
 
   /**
@@ -2008,28 +2445,100 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Set up form value watchers for real-time validation
+   * Set up form value watchers for real-time validation, quantity and side synchronization
    */
   private setupFormValidation(): void {
-    // Watch primary form quantity and graduatedParts changes
-    this.primaryOrderForm.get('quantity')?.valueChanges.subscribe(() => {
+    // Watch primary form quantity changes - sync to hedge and validate both
+    this.primaryOrderForm.get('quantity')?.valueChanges.subscribe((value) => {
+      // Validate primary order
       this.validatePrimaryOrder();
+
+      // Sync to hedge quantity if not already syncing (prevent circular updates)
+      if (!this.isSyncingQuantity) {
+        this.isSyncingQuantity = true;
+
+        // Get current units for both forms
+        const primaryUnit = this.primaryQuantityUnit();
+        const hedgeUnit = this.hedgeQuantityUnit();
+
+        let hedgeValue = value;
+
+        // If units are different, convert using primary exchange price
+        if (primaryUnit !== hedgeUnit) {
+          hedgeValue = this.convertQuantity(value, primaryUnit, hedgeUnit, 'primary');
+        }
+
+        this.hedgeOrderForm.patchValue({ quantity: hedgeValue }, { emitEvent: false });
+        this.validateHedgeOrder(); // Validate hedge after sync
+        this.isSyncingQuantity = false;
+      }
     });
 
     this.primaryOrderForm.get('graduatedParts')?.valueChanges.subscribe(() => {
       this.validatePrimaryOrder();
     });
 
-    // Watch hedge form quantity and graduatedParts changes
-    this.hedgeOrderForm.get('quantity')?.valueChanges.subscribe(() => {
+    // Watch primary form side changes - sync opposite side to hedge
+    this.primaryOrderForm.get('side')?.valueChanges.subscribe((value: 'long' | 'short') => {
+      if (!this.isSyncingSide) {
+        // User manually changed side - mark manual selection
+        this.hasManualSideSelection = true;
+
+        this.isSyncingSide = true;
+        const oppositeSide = value === 'long' ? 'short' : 'long';
+        this.hedgeOrderForm.patchValue({ side: oppositeSide }, { emitEvent: false });
+        this.isSyncingSide = false;
+
+        console.log('[ArbitrageChart] Manual side selection detected (primary)');
+      }
+    });
+
+    // Watch hedge form quantity changes - sync to primary and validate both
+    this.hedgeOrderForm.get('quantity')?.valueChanges.subscribe((value) => {
+      // Validate hedge order
       this.validateHedgeOrder();
+
+      // Sync to primary quantity if not already syncing (prevent circular updates)
+      if (!this.isSyncingQuantity) {
+        this.isSyncingQuantity = true;
+
+        // Get current units for both forms
+        const primaryUnit = this.primaryQuantityUnit();
+        const hedgeUnit = this.hedgeQuantityUnit();
+
+        let primaryValue = value;
+
+        // If units are different, convert using hedge exchange price
+        if (primaryUnit !== hedgeUnit) {
+          primaryValue = this.convertQuantity(value, hedgeUnit, primaryUnit, 'hedge');
+        }
+
+        this.primaryOrderForm.patchValue({ quantity: primaryValue }, { emitEvent: false });
+        this.validatePrimaryOrder(); // Validate primary after sync
+        this.isSyncingQuantity = false;
+      }
     });
 
     this.hedgeOrderForm.get('graduatedParts')?.valueChanges.subscribe(() => {
       this.validateHedgeOrder();
     });
 
-    console.log('[ArbitrageChart] Form validation watchers set up');
+    // Watch hedge form side changes - sync opposite side to primary
+    this.hedgeOrderForm.get('side')?.valueChanges.subscribe((value: 'long' | 'short') => {
+      if (!this.isSyncingSide) {
+        // User manually changed side - mark manual selection
+        this.hasManualSideSelection = true;
+
+        this.isSyncingSide = true;
+        const oppositeSide = value === 'long' ? 'short' : 'long';
+        this.primaryOrderForm.patchValue({ side: oppositeSide }, { emitEvent: false });
+        this.isSyncingSide = false;
+
+        console.log('[ArbitrageChart] Manual side selection detected (hedge)');
+      }
+    });
+
+    console.log('[ArbitrageChart] Form validation, quantity and side sync watchers set up');
   }
 
   /**
@@ -2044,10 +2553,37 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     const quantity = this.primaryOrderForm.get('quantity')?.value || 0;
     const graduatedParts = this.primaryOrderForm.get('graduatedParts')?.value || 1;
+    const unit = this.primaryQuantityUnit();
+    const price = this.primaryData().price;
+
+    // Convert quantity to coin if it's in USDT
+    let actualQuantity = quantity;
+    if (unit === 'usdt' && price > 0) {
+      actualQuantity = quantity / price;
+      
+      // Calculate quantity per part and round each part to match exchange step requirements
+      let qtyPerPart = actualQuantity / graduatedParts;
+      
+      if (symbolInfo.qtyStep >= 1) {
+        // For exchanges requiring whole numbers (like FUSDT), round to nearest integer
+        qtyPerPart = Math.round(qtyPerPart);
+      } else {
+        // For exchanges with decimal steps, round to step precision
+        const stepDecimals = Math.max(0, -Math.log10(symbolInfo.qtyStep));
+        qtyPerPart = Math.round(qtyPerPart * Math.pow(10, stepDecimals)) / Math.pow(10, stepDecimals);
+      }
+      
+      // Recalculate total quantity based on rounded parts
+      actualQuantity = qtyPerPart * graduatedParts;
+      
+      console.log(`[Debug] Converting primary: ${quantity} USDT ÷ ${price} = ${quantity / price} FUSDT, rounded per part: ${qtyPerPart} × ${graduatedParts} = ${actualQuantity} FUSDT`);
+    }
+
+    console.log(`[Debug] Primary validation: quantity=${actualQuantity}, parts=${graduatedParts}, unit=${unit}, price=${price}`);
 
     const validationResult = this.symbolInfoService.validateOrderQuantity(
       symbolInfo,
-      quantity,
+      actualQuantity,
       graduatedParts
     );
 
@@ -2070,10 +2606,37 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     const quantity = this.hedgeOrderForm.get('quantity')?.value || 0;
     const graduatedParts = this.hedgeOrderForm.get('graduatedParts')?.value || 1;
+    const unit = this.hedgeQuantityUnit();
+    const price = this.hedgeData().price;
+
+    // Convert quantity to coin if it's in USDT
+    let actualQuantity = quantity;
+    if (unit === 'usdt' && price > 0) {
+      actualQuantity = quantity / price;
+      
+      // Calculate quantity per part and round each part to match exchange step requirements
+      let qtyPerPart = actualQuantity / graduatedParts;
+      
+      if (symbolInfo.qtyStep >= 1) {
+        // For exchanges requiring whole numbers (like FUSDT), round to nearest integer
+        qtyPerPart = Math.round(qtyPerPart);
+      } else {
+        // For exchanges with decimal steps, round to step precision
+        const stepDecimals = Math.max(0, -Math.log10(symbolInfo.qtyStep));
+        qtyPerPart = Math.round(qtyPerPart * Math.pow(10, stepDecimals)) / Math.pow(10, stepDecimals);
+      }
+      
+      // Recalculate total quantity based on rounded parts
+      actualQuantity = qtyPerPart * graduatedParts;
+      
+      console.log(`[Debug] Converting hedge: ${quantity} USDT ÷ ${price} = ${quantity / price} FUSDT, rounded per part: ${qtyPerPart} × ${graduatedParts} = ${actualQuantity} FUSDT`);
+    }
+
+    console.log(`[Debug] Hedge validation: quantity=${actualQuantity}, parts=${graduatedParts}, unit=${unit}, price=${price}`);
 
     const validationResult = this.symbolInfoService.validateOrderQuantity(
       symbolInfo,
-      quantity,
+      actualQuantity,
       graduatedParts
     );
 
@@ -2083,4 +2646,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       console.warn(`[ArbitrageChart] Hedge order validation failed:`, validationResult);
     }
   }
+
+
+  // Gate.io API refresh interval
+  private gateioRefreshInterval?: any;
 }

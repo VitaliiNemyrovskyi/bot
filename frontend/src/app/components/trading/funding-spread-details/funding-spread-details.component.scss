@@ -1,0 +1,321 @@
+.funding-spread-details {
+  width: 100%;
+
+  // Chart Section
+  .chart-section {
+    margin-bottom: 2rem;
+  }
+
+  // Stability Metrics Grid - Fixed 3 columns
+  .stability-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.5rem;
+    padding: 0 2rem 2rem;
+
+    @media (max-width: 1024px) {
+      grid-template-columns: 1fr 1fr;
+
+      .trend-card {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+      padding: 0 1rem 1rem;
+      gap: 1rem;
+    }
+  }
+
+  // Enhanced Metric Cards
+  .metric-card {
+    padding: 1.5rem;
+    border: 2px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--card-bg, white) 0%, var(--background-secondary, #f9fafb) 100%);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+
+    // Animated border effect
+    &::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(45deg,
+        var(--primary-color, #3b82f6),
+        var(--secondary-color, #8b5cf6),
+        var(--primary-color, #3b82f6)
+      );
+      border-radius: 12px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: -1;
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      border-color: transparent;
+
+      &::before {
+        opacity: 1;
+      }
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-color, #e5e7eb);
+
+      .metric-label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-secondary, #666);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+    }
+
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-primary, #1a1a1a);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+
+      .metric-unit {
+        font-size: 1rem;
+        font-weight: 500;
+        color: var(--text-secondary, #666);
+      }
+    }
+
+    .metric-description {
+      font-size: 0.85rem;
+      color: var(--text-secondary, #666);
+      line-height: 1.4;
+    }
+  }
+
+  // Enhanced Badges with Gradients
+  .badge {
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+
+    &:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    // Excellent - Green gradient
+    &.badge-excellent {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+
+      &::before {
+        content: '✓';
+        font-weight: 700;
+        font-size: 0.9rem;
+      }
+    }
+
+    // Good - Blue gradient
+    &.badge-good {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+
+      &::before {
+        content: '!';
+        font-weight: 700;
+      }
+    }
+
+    // Moderate - Yellow gradient
+    &.badge-moderate {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white;
+
+      &::before {
+        content: '⚠';
+        font-size: 0.8rem;
+      }
+    }
+
+    // Low/High - Red gradient
+    &.badge-low,
+    &.badge-high {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+
+      &::before {
+        content: '⚠';
+        font-size: 0.8rem;
+      }
+    }
+  }
+
+  // Stability Score with Emoji Indicators
+  .stability-score {
+    font-weight: 700;
+    font-size: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    &.rating-excellent {
+      color: #10b981;
+      text-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+
+      &::before {
+        content: '🟢';
+        font-size: 1rem;
+      }
+    }
+
+    &.rating-good {
+      color: #3b82f6;
+      text-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+
+      &::before {
+        content: '🔵';
+        font-size: 1rem;
+      }
+    }
+
+    &.rating-moderate {
+      color: #f59e0b;
+      text-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+
+      &::before {
+        content: '🟡';
+        font-size: 1rem;
+      }
+    }
+
+    &.rating-low {
+      color: #ef4444;
+      text-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+
+      &::before {
+        content: '🔴';
+        font-size: 1rem;
+      }
+    }
+  }
+
+  // Trend Indicators
+  .trend-indicator {
+    font-weight: 600;
+    text-transform: capitalize;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    display: inline-block;
+
+    &.trend-stable {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+
+      &::before {
+        content: '→';
+        margin-right: 0.5rem;
+        font-weight: 700;
+      }
+    }
+
+    &.trend-increasing {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+
+      &::before {
+        content: '↗';
+        margin-right: 0.5rem;
+        font-weight: 700;
+      }
+    }
+
+    &.trend-decreasing {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+
+      &::before {
+        content: '↘';
+        margin-right: 0.5rem;
+        font-weight: 700;
+      }
+    }
+  }
+
+  // Trend Card - Spans full width on mobile
+  .trend-card {
+    @media (max-width: 1024px) {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+// Dark mode support
+@media (prefers-color-scheme: dark) {
+  .funding-spread-details {
+    .metric-card {
+      background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+      border-color: #404040;
+
+      &:hover {
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      }
+
+      .metric-header {
+        border-bottom-color: #404040;
+
+        .metric-label {
+          color: #a0a0a0;
+        }
+      }
+
+      .metric-value {
+        color: #f9fafb;
+
+        .metric-unit {
+          color: #a0a0a0;
+        }
+      }
+
+      .metric-description {
+        color: #a0a0a0;
+      }
+    }
+  }
+}
+
+// Shimmer animation for high-quality badges
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.badge-excellent {
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
