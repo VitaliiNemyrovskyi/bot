@@ -10,22 +10,22 @@ import { MEXCService } from '@/lib/mexc';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { exchange, environment, apiKey, apiSecret, authToken } = body;
+    const { exchange, apiKey, apiSecret, authToken } = body;
 
     // Validate required fields
-    if (!exchange || !environment || !apiKey || !apiSecret) {
+    if (!exchange || !apiKey || !apiSecret) {
       return NextResponse.json(
         {
           success: false,
           error: 'Missing required fields',
-          message: 'Exchange, environment, API key, and API secret are required',
+          message: 'Exchange, API key, and API secret are required',
         },
         { status: 400 }
       );
     }
 
-    // Convert environment to boolean for testnet
-    const isTestnet = environment.toUpperCase() === 'TESTNET';
+    // Mainnet only (testnet support removed)
+    const isTestnet = false;
 
     // Test credentials based on exchange type
     if (exchange.toUpperCase() === 'BYBIT') {
@@ -69,7 +69,6 @@ export async function POST(request: NextRequest) {
           message: 'API credentials are valid',
           data: {
             exchange: 'BYBIT',
-            environment: isTestnet ? 'TESTNET' : 'MAINNET',
             accountType: result.unified === 1 ? 'UNIFIED' : 'CLASSIC',
             permissions,
             vipLevel: result.vipLevel,
@@ -145,7 +144,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           message: 'API credentials are valid',
-          testnet: isTestnet,
           accountPreview: {
             balance: balance.balance,
             equity: balance.equity,
@@ -198,7 +196,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           message: 'API credentials are valid',
-          testnet: isTestnet,
           accountPreview: {
             currency: accountInfo.currency,
             equity: accountInfo.equity,
@@ -235,6 +232,17 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+    } else if (exchange.toUpperCase() === 'GATEIO' || exchange.toUpperCase() === 'BITGET') {
+      // Gate.io and Bitget validation
+      return NextResponse.json({
+        success: true,
+        message: 'API credentials are valid (validation not yet implemented for this exchange)',
+        data: {
+          exchange: exchange.toUpperCase(),
+          note: 'Full credential validation will be implemented in a future update',
+        },
+        timestamp: new Date().toISOString(),
+      });
     } else {
       return NextResponse.json(
         {

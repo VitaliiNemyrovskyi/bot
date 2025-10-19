@@ -3,7 +3,7 @@
  * Get trading symbol information including minimum order requirements
  *
  * Query params:
- * - exchange: BINGX | BYBIT | MEXC
+ * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET
  * - symbol: Trading symbol (e.g., BTC-USDT for BingX, BTCUSDT for Bybit)
  */
 
@@ -49,6 +49,32 @@ function normalizeSymbolForBingX(symbol: string): string {
   return symbol;
 }
 
+/**
+ * Normalize symbol for Gate.io exchange
+ * Converts symbols like "NVDAXUSDT" to "NVDAX_USDT"
+ */
+function normalizeSymbolForGateIO(symbol: string): string {
+  // If already has underscore, return as-is
+  if (symbol.includes('_')) {
+    return symbol;
+  }
+
+  // Gate.io perpetual futures use USDT or USDC as quote currency
+  // Insert underscore before the quote currency
+  if (symbol.endsWith('USDT')) {
+    const base = symbol.slice(0, -4); // Remove 'USDT'
+    return `${base}_USDT`;
+  }
+
+  if (symbol.endsWith('USDC')) {
+    const base = symbol.slice(0, -4); // Remove 'USDC'
+    return `${base}_USDC`;
+  }
+
+  // If no known quote currency, return as-is
+  return symbol;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -75,6 +101,15 @@ export async function GET(request: NextRequest) {
         break;
       case 'BYBIT':
         symbolInfo = await getBybitSymbolInfo(symbol);
+        break;
+      case 'GATEIO':
+        // Normalize symbol for Gate.io (e.g., NVDAXUSDT -> NVDAX_USDT)
+        const gateioSymbol = normalizeSymbolForGateIO(symbol);
+        console.log(`[API] Gate.io symbol normalized: ${symbol} -> ${gateioSymbol}`);
+        symbolInfo = await getGateIOSymbolInfo(gateioSymbol);
+        break;
+      case 'BITGET':
+        symbolInfo = await getBitgetSymbolInfo(symbol);
         break;
       case 'MEXC':
         // TODO: Implement MEXC symbol info
@@ -196,6 +231,122 @@ async function getBybitSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     };
   } catch (error: any) {
     console.error('[Bybit] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get Gate.io symbol information
+ */
+async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    const url = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gate.io API error: ${response.status} ${response.statusText}`);
+    }
+
+    const contracts = await response.json();
+
+    // Find the contract for this symbol
+    const contract = contracts.find((c: any) => c.name === symbol);
+
+    if (!contract) {
+      console.warn(`[Gate.io] Symbol ${symbol} not found in contracts list`);
+      return null;
+    }
+
+    console.log(`[Gate.io] Found contract for ${symbol}:`, {
+      order_size_min: contract.order_size_min,
+      order_size_max: contract.order_size_max,
+      order_price_round: contract.order_price_round,
+      mark_price_round: contract.mark_price_round,
+      leverage_max: contract.leverage_max,
+    });
+
+    // Calculate precision from rounding values
+    const pricePrecision = contract.mark_price_round ? contract.mark_price_round.split('.')[1]?.length || 2 : 2;
+    const qtyPrecision = contract.order_size_min ? Math.abs(Math.log10(parseFloat(contract.order_size_min))) : 3;
+
+    return {
+      symbol: contract.name,
+      exchange: 'GATEIO',
+      minOrderQty: parseFloat(contract.order_size_min || '1'),
+      minOrderValue: undefined,
+      qtyStep: parseFloat(contract.order_size_min || '1'),
+      pricePrecision: parseInt(pricePrecision.toString()),
+      qtyPrecision: Math.ceil(qtyPrecision),
+      maxOrderQty: contract.order_size_max ? parseFloat(contract.order_size_max) : undefined,
+      maxLeverage: contract.leverage_max ? parseInt(contract.leverage_max) : undefined,
+    };
+  } catch (error: any) {
+    console.error('[Gate.io] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get Bitget symbol information
+ */
+async function getBitgetSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    const url = 'https://api.bitget.com/api/v2/mix/market/contracts?productType=USDT-FUTURES';
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Bitget API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.code !== '00000' || !data.data) {
+      throw new Error(`Bitget API error: ${data.msg}`);
+    }
+
+    // Find the contract for this symbol
+    const contract = data.data.find((c: any) => c.symbol === symbol);
+
+    if (!contract) {
+      console.warn(`[Bitget] Symbol ${symbol} not found in contracts list`);
+      return null;
+    }
+
+    console.log(`[Bitget] Found contract for ${symbol}:`, {
+      minTradeNum: contract.minTradeNum,
+      pricePlace: contract.pricePlace,
+      volumePlace: contract.volumePlace,
+      sizeMultiplier: contract.sizeMultiplier,
+      maxLever: contract.maxLever,
+    });
+
+    return {
+      symbol: contract.symbol,
+      exchange: 'BITGET',
+      minOrderQty: parseFloat(contract.minTradeNum || '0.001'),
+      minOrderValue: undefined,
+      qtyStep: parseFloat(contract.minTradeNum || '0.001'),
+      pricePrecision: parseInt(contract.pricePlace || '2'),
+      qtyPrecision: parseInt(contract.volumePlace || '3'),
+      maxOrderQty: undefined,
+      maxLeverage: contract.maxLever ? parseInt(contract.maxLever) : undefined,
+    };
+  } catch (error: any) {
+    console.error('[Bitget] Error getting symbol info:', error.message);
     throw error;
   }
 }

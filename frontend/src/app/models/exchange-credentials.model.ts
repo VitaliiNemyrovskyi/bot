@@ -18,7 +18,9 @@ export enum ExchangeType {
   COINBASE = 'COINBASE',
   KRAKEN = 'KRAKEN',
   BINGX = 'BINGX',
-  MEXC = 'MEXC'
+  MEXC = 'MEXC',
+  GATEIO = 'GATEIO',
+  BITGET = 'BITGET'
 }
 
 
@@ -340,6 +342,20 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/mexc.svg',
     color: '#00D4AA',
     website: 'https://www.mexc.com',
+    supportsTestnet: false
+  },
+  [ExchangeType.GATEIO]: {
+    name: 'Gate.io',
+    logo: '/assets/images/exchanges/gateio.svg',
+    color: '#17E0A4',
+    website: 'https://www.gate.io',
+    supportsTestnet: false
+  },
+  [ExchangeType.BITGET]: {
+    name: 'Bitget',
+    logo: '/assets/images/exchanges/bitget.svg',
+    color: '#00F0FF',
+    website: 'https://www.bitget.com',
     supportsTestnet: false
   }
 };

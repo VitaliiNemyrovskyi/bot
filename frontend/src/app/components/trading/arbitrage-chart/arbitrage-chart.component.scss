@@ -392,6 +392,54 @@
                 }
               }
             }
+
+            // Balance item styles
+            .balance-item {
+              .loading-balance {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--text-secondary);
+                font-size: 12px;
+
+                .balance-spinner {
+                  width: 14px;
+                  height: 14px;
+                  border: 2px solid var(--border-color);
+                  border-top-color: var(--primary-color);
+                  border-radius: 50%;
+                  animation: spin 0.8s linear infinite;
+                }
+              }
+
+              .balance-values {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+
+                .balance-row {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  font-size: 12px;
+
+                  .balance-label {
+                    color: var(--text-secondary);
+                    font-weight: 500;
+                  }
+
+                  .balance-value {
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+
+                    &.available {
+                      color: var(--success-color);
+                    }
+                  }
+                }
+              }
+            }
           }
 
           // Order Form Styles
@@ -509,6 +557,164 @@
                 &::placeholder {
                   color: var(--text-secondary);
                   opacity: 0.5;
+                }
+              }
+
+              // Quantity input with dropdown
+              .quantity-input-wrapper {
+                position: relative;
+                display: flex;
+                align-items: stretch;
+                border-radius: var(--border-radius-sm);
+                border: 1px solid var(--border-color);
+                background: var(--background-secondary);
+                transition: var(--transition-fast);
+
+                // Synchronize hover effects between input and dropdown
+                &:hover {
+                  border: 1px solid var(--primary-color);
+                  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+                  transition: var(--transition-fast);
+                }
+
+                &:has(.quantity-input:focus) {
+                  border-color: var(--primary-color);
+                  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+                }
+
+                &.error {
+                  border-color: var(--error-color);
+                  background: rgba(239, 68, 68, 0.05);
+
+                  .quantity-input, .quantity-unit-trigger {
+                    background: transparent;
+                  }
+                }
+
+                input, button {
+                  border: 0 !important;
+                  outline: none !important;
+                  outline: 0 !important;
+                  box-shadow: none !important;
+                  background: none !important;
+                }
+
+                .quantity-input {
+                  flex: 1;
+                  border-radius: var(--border-radius-sm) 0 0 var(--border-radius-sm);
+                  border-right: none;
+                  margin: 0;
+                }
+
+                .quantity-unit-dropdown {
+                  position: relative;
+                  display: flex;
+                  align-items: stretch;
+
+                  .quantity-unit-trigger {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 12px;
+                    border: 0;
+                    border-left: none;
+                    border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+                    color: var(--text-primary);
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: var(--transition-fast);
+                    min-width: 75px;
+                    justify-content: space-between;
+                    height: auto;
+                    white-space: nowrap;
+
+                    .unit-text {
+                      flex: 1;
+                      text-align: center;
+                      font-size: 14px;
+                      font-weight: 500;
+                      color: var(--text-primary);
+                    }
+
+                    .dropdown-arrow {
+                      font-size: 10px;
+                      opacity: 0.8;
+                      transition: var(--transition-fast);
+                      transform: rotate(0deg);
+                      flex-shrink: 0;
+                    }
+
+                    &:focus {
+                      outline: none;
+                      border-color: transparent;
+                    }
+                  }
+                }
+
+                .quantity-unit-dropdown {
+                  .quantity-unit-options {
+                    position: absolute;
+                    top: calc(100% + 4px);
+                    right: 0;
+                    background: var(--background-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius-sm);
+                    box-shadow:
+                      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                      0 2px 4px -1px rgba(0, 0, 0, 0.06),
+                      0 0 0 1px rgba(59, 130, 246, 0.1);
+                    z-index: 2;
+                    overflow: hidden;
+                    animation: dropdownFadeIn 0.15s ease-out;
+
+                    .quantity-unit-option {
+                      display: block;
+                      width: 100%;
+                      padding: 12px 16px;
+                      background: transparent;
+                      border: none;
+                      color: var(--text-primary);
+                      font-size: 14px;
+                      font-weight: 500;
+                      cursor: pointer;
+                      transition: var(--transition-fast);
+                      text-align: left;
+                      border-bottom: 1px solid var(--border-color);
+
+                      &:last-child {
+                        border-bottom: none;
+                      }
+
+                      &:hover {
+                        background: var(--background-tertiary);
+                        color: var(--text-primary);
+                      }
+
+                      &.active {
+                        background: var(--primary-color);
+                        color: white;
+                        font-weight: 600;
+
+                        &:hover {
+                          background: var(--primary-color);
+                          opacity: 0.9;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Dropdown animation
+              @keyframes dropdownFadeIn {
+                from {
+                  opacity: 0;
+                  transform: translateY(-4px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
                 }
               }
 
@@ -636,60 +842,6 @@
         }
       }
 
-      .spread-analysis-card {
-        background: var(--background-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: var(--border-radius-md);
-        padding: 16px;
-
-        .card-header {
-          margin-bottom: 12px;
-
-          h3 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin: 0;
-          }
-        }
-
-        .spread-stats {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-
-          .stat-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: var(--background-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--border-radius-sm);
-
-            .stat-label {
-              font-size: 13px;
-              font-weight: 500;
-              color: var(--text-secondary);
-            }
-
-            .stat-value {
-              font-size: 15px;
-              font-weight: 700;
-              color: var(--text-primary);
-              font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-
-              &.positive {
-                color: var(--success-color);
-              }
-
-              &.negative {
-                color: var(--error-color);
-              }
-            }
-          }
-        }
-      }
     }
   }
 

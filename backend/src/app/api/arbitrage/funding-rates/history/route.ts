@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
  * GET /api/arbitrage/funding-rates/history
  *
  * Fetches historical funding rates for spread stability analysis (Phase 2)
- * Currently supports Bybit with planned BingX/MEXC support
+ * Currently supports Bybit with planned BingX/MEXC/Gate.io/Bitget support
  *
  * Query Parameters:
  * - symbol: Trading symbol (e.g., BTCUSDT)
- * - exchange: Exchange name (BYBIT, BINGX, MEXC)
+ * - exchange: Exchange name (BYBIT, BINGX, MEXC, GATEIO, BITGET)
  * - days: Number of days (7 or 30)
  *
  * Response:
@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
 
       case 'BINGX':
       case 'MEXC':
+      case 'GATEIO':
+      case 'BITGET':
         // TODO: Implement when historical APIs are available
         // For now, use mock data for demonstration
         console.warn(`[Funding History] ${exchange} using mock data (API not yet supported)`);

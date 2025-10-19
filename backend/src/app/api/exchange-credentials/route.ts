@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
-import { Exchange, Environment } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import { z } from 'zod';
 import {
   SaveCredentialsRequest,
@@ -17,7 +17,6 @@ import {
  *
  * Query Parameters:
  * - exchange?: string (optional) - Filter by specific exchange
- * - environment?: string (optional) - Filter by environment (TESTNET/MAINNET)
  * - grouped?: boolean (optional) - Return credentials grouped by exchange
  *
  * Response (Success - 200):
@@ -63,7 +62,6 @@ export async function GET(request: NextRequest) {
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const exchangeParam = searchParams.get('exchange');
-    const environmentParam = searchParams.get('environment');
     const grouped = searchParams.get('grouped') === 'true';
 
     // Validate exchange if provided
@@ -83,23 +81,6 @@ export async function GET(request: NextRequest) {
       exchange = exchangeParam as Exchange;
     }
 
-    // Validate environment if provided
-    let environment: Environment | undefined;
-    if (environmentParam) {
-      if (!Object.values(Environment).includes(environmentParam as Environment)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Invalid environment parameter',
-            code: CredentialErrorCode.INVALID_ENVIRONMENT,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 400 }
-        );
-      }
-      environment = environmentParam as Environment;
-    }
-
     // Get credentials
     let credentials;
     if (grouped) {
@@ -107,8 +88,7 @@ export async function GET(request: NextRequest) {
     } else {
       credentials = await ExchangeCredentialsService.getCredentials(
         userId,
-        exchange,
-        environment
+        exchange
       );
     }
 
@@ -147,10 +127,10 @@ export async function GET(request: NextRequest) {
  *
  * Request body:
  * {
- *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE",
- *   "environment": "TESTNET" | "MAINNET",
+ *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE" | "BINGX" | "MEXC" | "GATEIO" | "BITGET",
  *   "apiKey": "string",
  *   "apiSecret": "string",
+ *   "authToken": "string" (optional, for MEXC browser sessions),
  *   "label": "string" (optional),
  *   "isActive": boolean (optional, defaults to true)
  * }
@@ -200,9 +180,6 @@ export async function POST(request: NextRequest) {
       exchange: z.nativeEnum(Exchange, {
         errorMap: () => ({ message: 'Invalid exchange value' }),
       }),
-      environment: z.nativeEnum(Environment, {
-        errorMap: () => ({ message: 'Invalid environment value' }),
-      }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
       authToken: z.string().optional(), // Browser session token for MEXC
@@ -231,7 +208,6 @@ export async function POST(request: NextRequest) {
     try {
       const result = await ExchangeCredentialsService.saveCredentials(userId, {
         exchange: body.exchange,
-        environment: body.environment,
         apiKey: body.apiKey,
         apiSecret: body.apiSecret,
         authToken: body.authToken, // Browser session token for MEXC

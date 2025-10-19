@@ -71,6 +71,7 @@ export interface AppConfig {
       };
       exchange: {
         symbolInfo: string;
+        balance: string;
       };
     };
   };
@@ -160,7 +161,8 @@ export const appConfig: AppConfig = {
         marketCaps: '/market-data/market-caps'
       },
       exchange: {
-        symbolInfo: '/exchange/symbol-info'
+        symbolInfo: '/exchange/symbol-info',
+        balance: '/exchange/balance'
       }
     }
   },
