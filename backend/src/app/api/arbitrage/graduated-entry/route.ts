@@ -86,10 +86,12 @@ export async function GET(request: NextRequest) {
           orderIds: position.primaryOrderIds,
           status: position.primaryStatus,
           errorMessage: position.primaryErrorMessage,
-          // Funding and profit tracking (initialized to 0 for new positions)
-          lastFundingPaid: 0,
-          totalFundingEarned: 0,
-          tradingFees: 0,
+          // Real funding and profit data from database
+          lastFundingPaid: position.primaryLastFundingPaid || 0,
+          totalFundingEarned: position.primaryTotalFundingEarned || 0,
+          tradingFees: position.primaryTradingFees || 0,
+          entryPrice: position.primaryEntryPrice,
+          currentPrice: position.primaryCurrentPrice,
         },
         hedge: {
           exchange: position.hedgeExchange,
@@ -100,10 +102,12 @@ export async function GET(request: NextRequest) {
           orderIds: position.hedgeOrderIds,
           status: position.hedgeStatus,
           errorMessage: position.hedgeErrorMessage,
-          // Funding and profit tracking (initialized to 0 for new positions)
-          lastFundingPaid: 0,
-          totalFundingEarned: 0,
-          tradingFees: 0,
+          // Real funding and profit data from database
+          lastFundingPaid: position.hedgeLastFundingPaid || 0,
+          totalFundingEarned: position.hedgeTotalFundingEarned || 0,
+          tradingFees: position.hedgeTradingFees || 0,
+          entryPrice: position.hedgeEntryPrice,
+          currentPrice: position.hedgeCurrentPrice,
         },
         graduatedEntry: {
           parts: position.graduatedParts,
@@ -113,9 +117,11 @@ export async function GET(request: NextRequest) {
         status: position.status.toLowerCase(),
         startedAt: position.startedAt,
         completedAt: position.completedAt,
-        // Overall profit metrics (initialized to 0 for new positions)
-        grossProfit: 0,
-        netProfit: 0,
+        // Real profit metrics from database
+        grossProfit: position.grossProfit || 0,
+        netProfit: position.netProfit || 0,
+        lastFundingUpdate: position.lastFundingUpdate,
+        fundingUpdateCount: position.fundingUpdateCount || 0,
       }));
 
       return NextResponse.json({
@@ -433,6 +439,32 @@ function normalizeSymbolForBingX(symbol: string): string {
 }
 
 /**
+ * Normalize symbol for Gate.io exchange
+ * Converts symbols like "NVDAXUSDT" to "NVDAX_USDT"
+ */
+function normalizeSymbolForGateIO(symbol: string): string {
+  // If already has underscore, return as-is
+  if (symbol.includes('_')) {
+    return symbol;
+  }
+
+  // Gate.io perpetual futures use USDT or USDC as quote currency
+  // Insert underscore before the quote currency
+  if (symbol.endsWith('USDT')) {
+    const base = symbol.slice(0, -4); // Remove 'USDT'
+    return `${base}_USDT`;
+  }
+
+  if (symbol.endsWith('USDC')) {
+    const base = symbol.slice(0, -4); // Remove 'USDC'
+    return `${base}_USDC`;
+  }
+
+  // If no known quote currency, return as-is
+  return symbol;
+}
+
+/**
  * Get symbol information for an exchange
  */
 async function getSymbolInfo(exchange: string, symbol: string): Promise<SymbolInfo | null> {
@@ -445,6 +477,11 @@ async function getSymbolInfo(exchange: string, symbol: string): Promise<SymbolIn
         return await getBingXSymbolInfo(bingxSymbol);
       case 'BYBIT':
         return await getBybitSymbolInfo(symbol);
+      case 'GATEIO':
+        // Normalize symbol for Gate.io (e.g., NVDAXUSDT -> NVDAX_USDT)
+        const gateioSymbol = normalizeSymbolForGateIO(symbol);
+        console.log(`[SymbolInfo] Gate.io symbol normalized: ${symbol} -> ${gateioSymbol}`);
+        return await getGateIOSymbolInfo(gateioSymbol);
       default:
         console.warn(`[SymbolInfo] Unsupported exchange: ${exchange}`);
         return null;
@@ -522,6 +559,64 @@ async function getBybitSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     };
   } catch (error: any) {
     console.error('[Bybit] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get Gate.io symbol information
+ */
+async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    const url = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gate.io API error: ${response.status} ${response.statusText}`);
+    }
+
+    const contracts = await response.json();
+
+    // Find the contract for this symbol
+    const contract = contracts.find((c: any) => c.name === symbol);
+
+    if (!contract) {
+      console.warn(`[Gate.io] Symbol ${symbol} not found in contracts list`);
+      return null;
+    }
+
+    console.log(`[Gate.io] Found contract for ${symbol}:`, {
+      order_size_min: contract.order_size_min,
+      order_size_max: contract.order_size_max,
+      order_price_round: contract.order_price_round,
+      mark_price_round: contract.mark_price_round,
+      leverage_max: contract.leverage_max,
+    });
+
+    // Calculate precision from rounding values
+    const pricePrecision = contract.mark_price_round ? contract.mark_price_round.split('.')[1]?.length || 2 : 2;
+    const qtyPrecision = contract.order_size_min ? Math.abs(Math.log10(parseFloat(contract.order_size_min))) : 3;
+
+    return {
+      symbol: contract.name,
+      exchange: 'GATEIO',
+      minOrderQty: parseFloat(contract.order_size_min || '1'),
+      minOrderValue: undefined,
+      qtyStep: parseFloat(contract.order_size_min || '1'),
+      pricePrecision: parseInt(pricePrecision.toString()),
+      qtyPrecision: Math.ceil(qtyPrecision),
+      maxOrderQty: contract.order_size_max ? parseFloat(contract.order_size_max) : undefined,
+      maxLeverage: contract.leverage_max ? parseInt(contract.leverage_max) : undefined,
+    };
+  } catch (error: any) {
+    console.error('[Gate.io] Error getting symbol info:', error.message);
     throw error;
   }
 }
