@@ -17,9 +17,11 @@ export class PublicFundingRatesService {
   // Exchange trading fees (taker fees per trade)
   // Arbitrage requires 4 trades: open long, open short, close long, close short
   private readonly EXCHANGE_FEES = {
-    BYBIT: 0.055,  // 0.055% per trade × 4 = 0.22% total
-    BINGX: 0.05,   // 0.05% per trade × 4 = 0.20% total
-    MEXC: 0.03,    // 0.03% per trade × 4 = 0.12% total
+    BYBIT: 0.055,   // 0.055% per trade × 4 = 0.22% total
+    BINGX: 0.05,    // 0.05% per trade × 4 = 0.20% total
+    MEXC: 0.03,     // 0.03% per trade × 4 = 0.12% total
+    GATEIO: 0.05,   // 0.05% per trade × 4 = 0.20% total
+    BITGET: 0.06,   // 0.06% per trade × 4 = 0.24% total
   };
 
   constructor(
@@ -37,6 +39,8 @@ export class PublicFundingRatesService {
       bybit: this.fetchBybitFundingRates(),
       bingx: this.fetchBingXFundingRates(),
       mexc: this.fetchMEXCFundingRates(),
+      gateio: this.fetchGateIOFundingRates(),
+      bitget: this.fetchBitgetFundingRates(),
     }).pipe(
       map(results => {
         // Combine all exchange data
@@ -44,6 +48,8 @@ export class PublicFundingRatesService {
           ...results.bybit,
           ...results.bingx,
           ...results.mexc,
+          ...results.gateio,
+          ...results.bitget,
         ];
 
         // Calculate opportunities
@@ -183,6 +189,100 @@ export class PublicFundingRatesService {
       }),
       catchError(error => {
         console.error('[MEXC] Failed to fetch funding rates via proxy:', error.message);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Fetch funding rates from Gate.io via backend proxy
+   * Backend proxies requests to bypass CORS restrictions
+   * Endpoint: GET /api/gateio/public-funding-rates
+   * Documentation: https://www.gate.io/docs/developers/apiv4/#list-all-futures-contracts
+   */
+  private fetchGateIOFundingRates(): Observable<ExchangeFundingRate[]> {
+    // Use backend proxy to bypass CORS
+    const url = '/api/gateio/public-funding-rates';
+
+    return this.http.get<any>(url).pipe(
+      map(response => {
+        if (!Array.isArray(response)) {
+          console.error('[Gate.io] API error: Expected array response');
+          return [];
+        }
+
+        const contracts = response;
+        console.log(`[Gate.io] Fetched ${contracts.length} contracts via proxy`);
+
+        return contracts
+          .filter((c: any) =>
+            c.name &&
+            c.funding_rate &&
+            c.last_price &&
+            !c.in_delisting
+          )
+          .map((c: any) => ({
+            exchange: 'GATEIO',
+            symbol: c.name.replace(/[\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
+            originalSymbol: c.name, // BTC_USDT
+            fundingRate: c.funding_rate,
+            nextFundingTime: parseInt(c.funding_next_apply) * 1000 || 0, // Convert to ms
+            lastPrice: c.last_price,
+            fundingInterval: '8h', // Gate.io uses 8h intervals
+            volume24h: c.trade_size,
+            openInterest: c.position_size,
+            high24h: undefined,
+            low24h: undefined,
+          } as ExchangeFundingRate));
+      }),
+      catchError(error => {
+        console.error('[Gate.io] Failed to fetch funding rates via proxy:', error.message);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Fetch funding rates from Bitget via backend proxy
+   * Backend proxies requests to bypass CORS restrictions
+   * Endpoint: GET /api/bitget/public-funding-rates
+   * Documentation: https://www.bitget.com/api-doc/contract/market/Get-Current-Funding-Rate
+   */
+  private fetchBitgetFundingRates(): Observable<ExchangeFundingRate[]> {
+    // Use backend proxy to bypass CORS
+    const url = '/api/bitget/public-funding-rates';
+
+    return this.http.get<any>(url).pipe(
+      map(response => {
+        if (response.code !== '00000' || !response.data) {
+          console.error('[Bitget] API error:', response.msg);
+          return [];
+        }
+
+        const fundingRates = response.data;
+        console.log(`[Bitget] Fetched ${fundingRates.length} funding rates via proxy`);
+
+        return fundingRates
+          .filter((fr: any) =>
+            fr.symbol &&
+            fr.fundingRate !== undefined
+          )
+          .map((fr: any) => ({
+            exchange: 'BITGET',
+            symbol: fr.symbol.replace(/[\/\-_:]/g, ''), // BTCUSDT
+            originalSymbol: fr.symbol, // BTCUSDT
+            fundingRate: fr.fundingRate,
+            nextFundingTime: parseInt(fr.nextUpdate) || 0,
+            lastPrice: '0', // Bitget funding rate endpoint doesn't include price, will be 0
+            fundingInterval: '8h', // Bitget uses 8h intervals
+            volume24h: undefined,
+            openInterest: undefined,
+            high24h: undefined,
+            low24h: undefined,
+          } as ExchangeFundingRate));
+      }),
+      catchError(error => {
+        console.error('[Bitget] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
     );

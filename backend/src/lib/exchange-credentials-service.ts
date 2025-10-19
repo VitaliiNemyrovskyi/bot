@@ -199,7 +199,6 @@ export class ExchangeCredentialsService {
       return {
         id: credential.id,
         exchange: credential.exchange,
-        environment: credential.environment,
         apiKey,
         apiSecret,
         authToken,
@@ -296,7 +295,6 @@ export class ExchangeCredentialsService {
       return {
         id: credential.id,
         exchange: credential.exchange,
-        environment: credential.environment,
         apiKey,
         apiSecret,
         authToken,

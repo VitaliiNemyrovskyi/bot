@@ -57,7 +57,7 @@ export class ActivePositionsComponent implements OnInit, OnDestroy {
   positions = signal<PriceArbitragePositionDTO[]>([]);
   isLoading = signal<boolean>(false);
   error = signal<string | null>(null);
-  selectedStatus = signal<'ALL' | PriceArbitrageStatus>('ACTIVE');
+  selectedStatus = signal<'ALL' | PriceArbitrageStatus>(PriceArbitrageStatus.ACTIVE);
 
   // Close confirmation dialog
   showCloseDialog = signal<boolean>(false);

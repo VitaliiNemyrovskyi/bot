@@ -33,9 +33,49 @@
         />
       </div>
 
+      <!-- Exchange filter -->
+      <div class="filter-group exchange-filter-group">
+        <label>Filter by Exchanges</label>
+        <div class="exchanges-container">
+          <div class="exchanges-chips">
+            @for (exchange of availableExchanges(); track exchange) {
+              <button
+                type="button"
+                class="exchange-chip"
+                [class.active]="isExchangeSelected(exchange)"
+                (click)="toggleExchange(exchange)"
+                [title]="isExchangeSelected(exchange) ? 'Click to hide ' + exchange : 'Click to show ' + exchange"
+              >
+                {{ exchange }}
+              </button>
+            }
+          </div>
+          @if (availableExchanges().length > 0) {
+            <div class="exchange-actions">
+              <button
+                type="button"
+                class="btn-exchange-action"
+                (click)="selectAllExchanges()"
+                title="Select all exchanges"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                class="btn-exchange-action"
+                (click)="deselectAllExchanges()"
+                title="Deselect all exchanges"
+              >
+                None
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+
       <!-- Clear filters button -->
       <button
-        *ngIf="searchQuery() || minFundingSpread()"
+        *ngIf="searchQuery() || minFundingSpread() || selectedExchanges().size !== availableExchanges().length"
         (click)="clearFilters()"
         class="btn-clear"
       >

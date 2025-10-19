@@ -102,28 +102,32 @@ export class SymbolInfoService {
       const minTotalQty = symbolInfo.minOrderQty * graduatedParts;
       const maxParts = Math.floor(totalQuantity / symbolInfo.minOrderQty);
 
+      // Extract coin symbol for clearer suggestions
+      const coinSymbol = this.extractCoinSymbol(symbolInfo.symbol);
+      
       // Different suggestions based on whether we can reduce parts
       let suggestion: string;
       if (graduatedParts === 1 || maxParts === 0) {
         // Can't reduce parts further, only option is to increase quantity
-        suggestion = `Increase total quantity to at least ${minTotalQty.toFixed(symbolInfo.qtyPrecision)}`;
+        suggestion = `Increase total quantity to at least ${minTotalQty.toFixed(symbolInfo.qtyPrecision)} ${coinSymbol}`;
       } else {
         // Can reduce parts or increase quantity
-        suggestion = `Increase total quantity to at least ${minTotalQty.toFixed(symbolInfo.qtyPrecision)} or reduce graduated parts to ${maxParts}`;
+        suggestion = `Increase total quantity to at least ${minTotalQty.toFixed(symbolInfo.qtyPrecision)} ${coinSymbol} or reduce graduated parts to ${maxParts}`;
       }
-
+      
       return {
         valid: false,
-        error: `Each order part (${qtyPerPart.toFixed(symbolInfo.qtyPrecision)}) is below minimum (${symbolInfo.minOrderQty})`,
+        error: `Each order part (${qtyPerPart.toFixed(symbolInfo.qtyPrecision)} ${coinSymbol}) is below minimum (${symbolInfo.minOrderQty} ${coinSymbol})`,
         suggestion
       };
     }
 
     // Check maximum quantity if defined
     if (symbolInfo.maxOrderQty && qtyPerPart > symbolInfo.maxOrderQty) {
+      const coinSymbol = this.extractCoinSymbol(symbolInfo.symbol);
       return {
         valid: false,
-        error: `Each order part (${qtyPerPart.toFixed(symbolInfo.qtyPrecision)}) exceeds maximum (${symbolInfo.maxOrderQty})`,
+        error: `Each order part (${qtyPerPart.toFixed(symbolInfo.qtyPrecision)} ${coinSymbol}) exceeds maximum (${symbolInfo.maxOrderQty} ${coinSymbol})`,
         suggestion: `Decrease quantity or increase graduated parts`
       };
     }
@@ -135,13 +139,49 @@ export class SymbolInfoService {
 
     // If difference is significant (more than 0.1% of step size), quantity is not valid
     if (difference > symbolInfo.qtyStep * 0.001) {
+      const coinSymbol = this.extractCoinSymbol(symbolInfo.symbol);
       return {
         valid: false,
-        error: `Quantity per part must be a multiple of ${symbolInfo.qtyStep}`,
-        suggestion: `Adjust total quantity to ${(roundedQtyPerPart * graduatedParts).toFixed(symbolInfo.qtyPrecision)}`
+        error: `Quantity per part must be a multiple of ${symbolInfo.qtyStep} ${coinSymbol}`,
+        suggestion: `Adjust total quantity to ${(roundedQtyPerPart * graduatedParts).toFixed(symbolInfo.qtyPrecision)} ${coinSymbol}`
       };
     }
 
     return { valid: true };
+  }
+
+  /**
+   * Extract coin symbol from trading pair for clearer error messages
+   * Examples: 
+   * - FUSDT -> FUSDT
+   * - F-USDT -> F
+   * - BTC_USDT -> BTC
+   * - BTCUSDT -> BTC
+   */
+  private extractCoinSymbol(symbol: string): string {
+    // Handle hyphenated symbols (BingX format)
+    if (symbol.includes('-')) {
+      return symbol.split('-')[0];
+    }
+    
+    // Handle underscore symbols (Gate.io format)  
+    if (symbol.includes('_')) {
+      return symbol.split('_')[0];
+    }
+    
+    // Handle concatenated symbols (Bybit/MEXC format)
+    // Remove common quote currencies
+    const quoteCurrencies = ['USDT', 'USDC', 'USD', 'BTC', 'ETH'];
+    for (const quote of quoteCurrencies) {
+      if (symbol.endsWith(quote)) {
+        const base = symbol.slice(0, -quote.length);
+        if (base.length > 0) {
+          return base;
+        }
+      }
+    }
+    
+    // If no pattern matches, return the original symbol
+    return symbol;
   }
 }

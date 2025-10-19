@@ -72,6 +72,18 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   searchQuery = signal<string>('');
   minFundingSpread = signal<number | null>(null);
 
+  // Computed list of unique exchanges from all opportunities
+  availableExchanges = computed(() => {
+    const exchanges = new Set<string>();
+    this.opportunities().forEach(opp => {
+      opp.exchanges.forEach(ex => exchanges.add(ex.exchange));
+    });
+    return Array.from(exchanges).sort();
+  });
+
+  // Selected exchanges filter
+  selectedExchanges = signal<Set<string>>(new Set());
+
   // Sorting
   sortColumn = signal<'fundingSpread' | 'priceSpread' | 'symbol' | 'estimatedAPR' | 'netAPR'>('fundingSpread');
   sortDirection = signal<'asc' | 'desc'>('asc');
@@ -123,6 +135,15 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       filtered = filtered.filter(o => Math.abs(o.maxFundingSpread * 100) >= minSpread);
     }
 
+    // Filter by selected exchanges
+    // Show only opportunities where BOTH bestLong and bestShort exchanges are selected
+    const selected = this.selectedExchanges();
+    if (selected.size > 0) {
+      filtered = filtered.filter(opp =>
+        selected.has(opp.bestLong.exchange) && selected.has(opp.bestShort.exchange)
+      );
+    }
+
     // Sort
     const column = this.sortColumn();
     const direction = this.sortDirection();
@@ -161,6 +182,14 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     private tradingSettingsService: TradingSettingsService
   ) {
     // Constructor simplified - chart rendering now handled by child component
+
+    // Auto-select all exchanges when they become available
+    effect(() => {
+      const exchanges = this.availableExchanges();
+      if (exchanges.length > 0 && this.selectedExchanges().size === 0) {
+        this.selectAllExchanges();
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -270,6 +299,41 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   clearFilters(): void {
     this.searchQuery.set('');
     this.minFundingSpread.set(null);
+    this.selectAllExchanges();
+  }
+
+  /**
+   * Toggle exchange selection
+   */
+  toggleExchange(exchange: string): void {
+    const selected = new Set(this.selectedExchanges());
+    if (selected.has(exchange)) {
+      selected.delete(exchange);
+    } else {
+      selected.add(exchange);
+    }
+    this.selectedExchanges.set(selected);
+  }
+
+  /**
+   * Select all exchanges
+   */
+  selectAllExchanges(): void {
+    this.selectedExchanges.set(new Set(this.availableExchanges()));
+  }
+
+  /**
+   * Deselect all exchanges
+   */
+  deselectAllExchanges(): void {
+    this.selectedExchanges.set(new Set());
+  }
+
+  /**
+   * Check if exchange is selected
+   */
+  isExchangeSelected(exchange: string): boolean {
+    return this.selectedExchanges().has(exchange);
   }
 
   /**
@@ -582,6 +646,11 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       case 'MEXC':
         const mexcSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
         return `https://www.mexc.com/exchange/${mexcSymbol}`;
+      case 'GATEIO':
+        const gateioSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
+        return `https://www.gate.io/trade/${gateioSymbol}`;
+      case 'BITGET':
+        return `https://www.bitget.com/futures/usdt/${symbol}`;
       case 'OKX':
         return `https://www.okx.com/trade-swap/${symbol.toLowerCase()}`;
       default:

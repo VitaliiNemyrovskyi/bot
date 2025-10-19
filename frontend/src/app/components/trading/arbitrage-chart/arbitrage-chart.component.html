@@ -201,6 +201,28 @@
                   {{ formatFundingInfo(primaryData().fundingRate, primaryData().nextFundingTime, primaryData().fundingInterval) }}
                 </span>
               </div>
+
+              <!-- Account Balance -->
+              <div class="info-item balance-item">
+                <span class="info-label">Account Balance</span>
+                @if (primaryBalance().loading) {
+                  <span class="info-value loading-balance">
+                    <span class="balance-spinner"></span>
+                    Loading...
+                  </span>
+                } @else {
+                  <div class="balance-values">
+                    <div class="balance-row">
+                      <span class="balance-label">Total:</span>
+                      <span class="balance-value">{{ primaryBalance().totalBalance }} USDT</span>
+                    </div>
+                    <div class="balance-row">
+                      <span class="balance-label">Available:</span>
+                      <span class="balance-value available">{{ primaryBalance().availableBalance }} USDT</span>
+                    </div>
+                  </div>
+                }
+              </div>
             </div>
 
             <!-- Order Form for Primary Exchange -->
@@ -237,30 +259,53 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Quantity ({{ symbol() }})</label>
-                <input
-                  type="number"
-                  formControlName="quantity"
-                  class="form-input"
-                  [class.error]="!primaryValidation().valid"
-                  placeholder="0.001"
-                  min="0.001"
-                  step="0.001">
+                <label class="form-label">Quantity ({{ primaryQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }})</label>
+                <div class="quantity-input-wrapper" [class.error]="!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched">
+                  <input
+                    type="number"
+                    formControlName="quantity"
+                    class="form-input quantity-input"
+                    placeholder="0.001"
+                    min="0.001"
+                    step="0.001">
+                  <div class="quantity-unit-dropdown">
+                    <button 
+                      type="button"
+                      class="quantity-unit-trigger"
+                      (click)="togglePrimaryQuantityDropdown(); $event.stopPropagation()">
+                      <span class="unit-text">{{ primaryQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }}</span>
+                      <span class="dropdown-arrow">▼</span>
+                    </button>
+                    @if (primaryDropdownOpen()) {
+                      <div class="quantity-unit-options">
+                        <button 
+                          type="button"
+                          class="quantity-unit-option"
+                          [class.active]="primaryQuantityUnit() === 'coin'"
+                          (click)="setPrimaryQuantityUnit('coin')">
+                          {{ getCoinSymbol() }}
+                        </button>
+                        <button 
+                          type="button"
+                          class="quantity-unit-option"
+                          [class.active]="primaryQuantityUnit() === 'usdt'"
+                          (click)="setPrimaryQuantityUnit('usdt')">
+                          USDT
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
                 @if (primarySymbolInfo()) {
-                  <span class="form-hint">Min: {{ primarySymbolInfo()!.minOrderQty }} per order</span>
+                  <span class="form-hint">Min: {{ primarySymbolInfo()!.minOrderQty }} {{ getCoinSymbol() }} per order</span>
                 } @else {
-                  <span class="form-hint">Min: 0.001</span>
+                  <span class="form-hint">Min: 0.001 {{ getCoinSymbol() }}</span>
                 }
-                @if (!primaryValidation().valid) {
+                @if (!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
                     <span class="error-text">{{ primaryValidation().error }}</span>
                   </div>
-                  @if (primaryValidation().suggestion) {
-                    <div class="validation-suggestion">
-                      💡 {{ primaryValidation().suggestion }}
-                    </div>
-                  }
                 }
               </div>
 
@@ -278,16 +323,16 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Delay Between Parts (ms)</label>
+                <label class="form-label">Delay Between Parts (sec)</label>
                 <input
                   type="number"
                   formControlName="graduatedDelayMs"
                   class="form-input"
-                  placeholder="2000"
-                  min="100"
-                  max="60000"
-                  step="100">
-                <span class="form-hint">100ms - 60000ms (1 minute)</span>
+                  placeholder="2"
+                  min="0.1"
+                  max="60"
+                  step="0.1">
+                <span class="form-hint">0.1s - 60s (1 minute)</span>
               </div>
             </form>
           </div>
@@ -311,6 +356,28 @@
                       [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
                   {{ formatFundingInfo(hedgeData().fundingRate, hedgeData().nextFundingTime, hedgeData().fundingInterval) }}
                 </span>
+              </div>
+
+              <!-- Account Balance -->
+              <div class="info-item balance-item">
+                <span class="info-label">Account Balance</span>
+                @if (hedgeBalance().loading) {
+                  <span class="info-value loading-balance">
+                    <span class="balance-spinner"></span>
+                    Loading...
+                  </span>
+                } @else {
+                  <div class="balance-values">
+                    <div class="balance-row">
+                      <span class="balance-label">Total:</span>
+                      <span class="balance-value">{{ hedgeBalance().totalBalance }} USDT</span>
+                    </div>
+                    <div class="balance-row">
+                      <span class="balance-label">Available:</span>
+                      <span class="balance-value available">{{ hedgeBalance().availableBalance }} USDT</span>
+                    </div>
+                  </div>
+                }
               </div>
             </div>
 
@@ -348,30 +415,53 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Quantity ({{ symbol() }})</label>
-                <input
-                  type="number"
-                  formControlName="quantity"
-                  class="form-input"
-                  [class.error]="!hedgeValidation().valid"
-                  placeholder="0.001"
-                  min="0.001"
-                  step="0.001">
+                <label class="form-label">Quantity ({{ hedgeQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }})</label>
+                <div class="quantity-input-wrapper" [class.error]="!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched">
+                  <input
+                    type="number"
+                    formControlName="quantity"
+                    class="form-input quantity-input"
+                    placeholder="0.001"
+                    min="0.001"
+                    step="0.001">
+                  <div class="quantity-unit-dropdown">
+                    <button 
+                      type="button"
+                      class="quantity-unit-trigger"
+                      (click)="toggleHedgeQuantityDropdown(); $event.stopPropagation()">
+                      <span class="unit-text">{{ hedgeQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }}</span>
+                      <span class="dropdown-arrow">▼</span>
+                    </button>
+                    @if (hedgeDropdownOpen()) {
+                      <div class="quantity-unit-options">
+                        <button 
+                          type="button"
+                          class="quantity-unit-option"
+                          [class.active]="hedgeQuantityUnit() === 'coin'"
+                          (click)="setHedgeQuantityUnit('coin')">
+                          {{ getCoinSymbol() }}
+                        </button>
+                        <button 
+                          type="button"
+                          class="quantity-unit-option"
+                          [class.active]="hedgeQuantityUnit() === 'usdt'"
+                          (click)="setHedgeQuantityUnit('usdt')">
+                          USDT
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
                 @if (hedgeSymbolInfo()) {
-                  <span class="form-hint">Min: {{ hedgeSymbolInfo()!.minOrderQty }} per order</span>
+                  <span class="form-hint">Min: {{ hedgeSymbolInfo()!.minOrderQty }} {{ getCoinSymbol() }} per order</span>
                 } @else {
-                  <span class="form-hint">Min: 0.001</span>
+                  <span class="form-hint">Min: 0.001 {{ getCoinSymbol() }}</span>
                 }
-                @if (!hedgeValidation().valid) {
+                @if (!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
                     <span class="error-text">{{ hedgeValidation().error }}</span>
                   </div>
-                  @if (hedgeValidation().suggestion) {
-                    <div class="validation-suggestion">
-                      💡 {{ hedgeValidation().suggestion }}
-                    </div>
-                  }
                 }
               </div>
 
@@ -389,16 +479,16 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Delay Between Parts (ms)</label>
+                <label class="form-label">Delay Between Parts (sec)</label>
                 <input
                   type="number"
                   formControlName="graduatedDelayMs"
                   class="form-input"
-                  placeholder="2000"
-                  min="100"
-                  max="60000"
-                  step="100">
-                <span class="form-hint">100ms - 60000ms (1 minute)</span>
+                  placeholder="2"
+                  min="0.1"
+                  max="60"
+                  step="0.1">
+                <span class="form-hint">0.1s - 60s (1 minute)</span>
               </div>
             </form>
           </div>
@@ -425,27 +515,6 @@
               START ARBITRAGE
             }
           </button>
-        </div>
-
-        <!-- Spread Analysis Card -->
-        <div class="spread-analysis-card">
-          <div class="card-header">
-            <h3>Spread Analysis</h3>
-          </div>
-          <div class="spread-stats">
-            <div class="stat-item">
-              <span class="stat-label">Price Difference</span>
-              <span class="stat-value">${{ spread().toFixed(4) }}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Funding Spread</span>
-              <span class="stat-value"
-                    [class.positive]="fundingSpread() > 0"
-                    [class.negative]="fundingSpread() < 0">
-                {{ formatFundingSpread() }}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

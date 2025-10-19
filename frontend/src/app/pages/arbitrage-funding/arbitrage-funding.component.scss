@@ -72,6 +72,80 @@
         }
       }
 
+      // Exchange filter
+      .exchange-filter-group {
+        .exchanges-container {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+        }
+
+        .exchanges-chips {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .exchange-chip {
+          padding: 0.5rem 1rem;
+          background: var(--background-secondary, #f9fafb);
+          border: 2px solid var(--border-color, #e0e0e0);
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          color: var(--text-secondary, #666);
+          cursor: pointer;
+          transition: all 0.2s;
+          user-select: none;
+
+          &:hover {
+            background: var(--card-bg, white);
+            border-color: var(--primary-color, #3b82f6);
+            color: var(--primary-color, #3b82f6);
+          }
+
+          &.active {
+            background: var(--primary-color, #3b82f6);
+            border-color: var(--primary-color, #3b82f6);
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+
+            &:hover {
+              background: var(--primary-hover, #2563eb);
+              border-color: var(--primary-hover, #2563eb);
+            }
+          }
+        }
+
+        .exchange-actions {
+          display: flex;
+          gap: 0.25rem;
+          padding-left: 0.5rem;
+          border-left: 1px solid var(--border-color, #e0e0e0);
+        }
+
+        .btn-exchange-action {
+          padding: 0.4rem 0.75rem;
+          background: transparent;
+          border: 1px solid var(--border-color, #e0e0e0);
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: var(--text-secondary, #666);
+          cursor: pointer;
+          transition: all 0.2s;
+
+          &:hover {
+            background: var(--background-secondary, #f9fafb);
+            border-color: var(--primary-color, #3b82f6);
+            color: var(--primary-color, #3b82f6);
+          }
+        }
+      }
+
       .btn-clear {
         padding: 0.6rem 1rem;
         background: var(--error-bg, #fee);
@@ -879,6 +953,39 @@
 
             &:focus {
               border-color: var(--primary-color, #3b82f6);
+            }
+          }
+        }
+
+        .exchange-filter-group {
+          .exchange-chip {
+            background: var(--background-secondary-dark, #2a2a2a);
+            border-color: var(--border-color-dark, #404040);
+            color: var(--text-secondary-dark, #a0a0a0);
+
+            &:hover {
+              background: var(--card-bg-dark, #1e1e1e);
+              border-color: var(--primary-color, #3b82f6);
+              color: var(--primary-color, #3b82f6);
+            }
+
+            &.active {
+              background: var(--primary-color, #3b82f6);
+              border-color: var(--primary-color, #3b82f6);
+              color: white;
+            }
+          }
+
+          .exchange-actions {
+            border-left-color: var(--border-color-dark, #404040);
+          }
+
+          .btn-exchange-action {
+            border-color: var(--border-color-dark, #404040);
+            color: var(--text-secondary-dark, #a0a0a0);
+
+            &:hover {
+              background: var(--background-secondary-dark, #2a2a2a);
             }
           }
         }

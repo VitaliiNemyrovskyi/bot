@@ -25,6 +25,8 @@ enum Exchange {
   COINBASE
   BINGX
   MEXC
+  GATEIO
+  BITGET
 }
 
 model User {
@@ -164,6 +166,8 @@ enum TradingPlatformType {
   BITFINEX
   BINGX
   MEXC
+  GATEIO
+  BITGET
 }
 
 model TradingPlatform {
@@ -854,6 +858,25 @@ model GraduatedEntryPosition {
   primaryErrorMessage String?
   hedgeErrorMessage   String?
 
+  // Funding and profit tracking (added for accurate P&L calculation)
+  primaryLastFundingPaid    Float    @default(0) // Last funding payment on primary exchange (in USDT)
+  primaryTotalFundingEarned Float    @default(0) // Cumulative funding earned on primary (in USDT)
+  primaryTradingFees        Float    @default(0) // Total trading fees on primary (in USDT)
+  primaryEntryPrice         Float?   // Average entry price for primary position
+  primaryCurrentPrice       Float?   // Current mark price for primary position
+
+  hedgeLastFundingPaid      Float    @default(0) // Last funding payment on hedge exchange (in USDT)
+  hedgeTotalFundingEarned   Float    @default(0) // Cumulative funding earned on hedge (in USDT)
+  hedgeTradingFees          Float    @default(0) // Total trading fees on hedge (in USDT)
+  hedgeEntryPrice           Float?   // Average entry price for hedge position
+  hedgeCurrentPrice         Float?   // Current mark price for hedge position
+
+  grossProfit               Float    @default(0) // Total funding earned (primary + hedge, in USDT)
+  netProfit                 Float    @default(0) // Gross profit - total fees (in USDT)
+
+  lastFundingUpdate         DateTime? // When funding was last updated from exchange APIs
+  fundingUpdateCount        Int      @default(0) // Number of times funding has been updated
+
   // Timestamps
   createdAt   DateTime  @default(now())
   startedAt   DateTime  @default(now())
@@ -869,5 +892,6 @@ model GraduatedEntryPosition {
   @@index([status])
   @@index([positionId])
   @@index([symbol])
+  @@index([lastFundingUpdate]) // For funding tracker to find positions needing updates
   @@map("graduated_entry_positions")
 }

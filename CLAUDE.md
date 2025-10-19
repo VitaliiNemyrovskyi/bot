@@ -1,6 +1,9 @@
+- Use TDD principles in development
+- Follow SOLID principles
+- Adhere to DRY (Don't Repeat Yourself) principles
+- Ensure code is modular and reusable
 - Always invoke agents
 - Always check frontend compilation on errors!
 - translate all new strings to all languages
 - Ensure code follows best practices and is well-documented
-- Write unit tests for new functionality
 - Do changes attentively to avoid breaking existing functionality

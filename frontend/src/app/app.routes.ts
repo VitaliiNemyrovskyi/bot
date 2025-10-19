@@ -74,5 +74,10 @@ export const routes: Routes = [
     path: 'testing/api-tester',
     loadComponent: () => import('./components/testing/api-tester/api-tester.component').then(m => m.ApiTesterComponent),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'arbitrage/positions',
+    loadComponent: () => import('./pages/active-arbitrage-positions/active-arbitrage-positions.component').then(m => m.ActiveArbitragePositionsComponent),
+    canActivate: [AuthGuard]
   }
 ];

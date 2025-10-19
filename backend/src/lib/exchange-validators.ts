@@ -253,6 +253,64 @@ export class ExchangeValidators {
   }
 
   /**
+   * Validates Gate.io API credentials
+   */
+  static async validateGateio(
+    apiKey: string,
+    apiSecret: string
+  ): Promise<ValidationResult> {
+    try {
+      // TODO: Implement Gate.io validation when Gate.io integration is added
+      // For now, accept credentials but warn user that validation is not implemented
+
+      console.warn('Gate.io validation not yet implemented - accepting credentials without verification');
+
+      return {
+        valid: true,
+        details: {
+          warning: 'Gate.io API validation not yet implemented. Credentials saved but not verified.',
+          validated: false,
+        },
+      };
+    } catch (error: any) {
+      console.error('Gate.io API key validation failed:', error.message);
+      return {
+        valid: false,
+        error: error.message || 'Failed to validate Gate.io API keys',
+      };
+    }
+  }
+
+  /**
+   * Validates Bitget API credentials
+   */
+  static async validateBitget(
+    apiKey: string,
+    apiSecret: string
+  ): Promise<ValidationResult> {
+    try {
+      // TODO: Implement Bitget validation when Bitget integration is added
+      // For now, accept credentials but warn user that validation is not implemented
+
+      console.warn('Bitget validation not yet implemented - accepting credentials without verification');
+
+      return {
+        valid: true,
+        details: {
+          warning: 'Bitget API validation not yet implemented. Credentials saved but not verified.',
+          validated: false,
+        },
+      };
+    } catch (error: any) {
+      console.error('Bitget API key validation failed:', error.message);
+      return {
+        valid: false,
+        error: error.message || 'Failed to validate Bitget API keys',
+      };
+    }
+  }
+
+  /**
    * Main validation dispatcher
    * Routes to the appropriate validator based on exchange
    */
@@ -282,6 +340,12 @@ export class ExchangeValidators {
 
       case Exchange.MEXC:
         return this.validateMEXC(apiKey, apiSecret);
+
+      case Exchange.GATEIO:
+        return this.validateGateio(apiKey, apiSecret);
+
+      case Exchange.BITGET:
+        return this.validateBitget(apiKey, apiSecret);
 
       default:
         return {

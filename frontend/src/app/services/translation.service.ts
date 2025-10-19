@@ -1,6 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { fundingRatesTranslations } from './translations/funding-rates-translations';
 import { bybitStrategyTranslations } from './translations/bybit-strategy-translations';
+import { arbitragePositionsTranslations } from './translations/arbitrage-positions-translations';
 
 export type Language = 'en' | 'es' | 'fr' | 'ru' | 'uk';
 
@@ -39,7 +40,7 @@ export class TranslationService {
       'theme.light': 'light',
       'theme.dark': 'dark',
       'language.select': 'Select Language',
-      'auth.app': 'Optimus',
+      'auth.app': 'REX',
       'nav.home': 'Home',
       'nav.login': 'Login',
       'nav.dashboard': 'Dashboard',
@@ -637,7 +638,7 @@ export class TranslationService {
       'theme.light': 'claro',
       'theme.dark': 'oscuro',
       'language.select': 'Seleccionar Idioma',
-      'auth.app': 'Optimus',
+      'auth.app': 'REX',
       'nav.home': 'Inicio',
       'nav.login': 'Iniciar Sesión',
       'nav.dashboard': 'Panel',
@@ -1120,7 +1121,7 @@ export class TranslationService {
       'theme.light': 'clair',
       'theme.dark': 'sombre',
       'language.select': 'Sélectionner la Langue',
-      'auth.app': 'Optimus',
+      'auth.app': 'REX',
       'nav.home': 'Accueil',
       'nav.login': 'Connexion',
       'nav.dashboard': 'Tableau de Bord',
@@ -1603,7 +1604,7 @@ export class TranslationService {
       'theme.light': 'светлый',
       'theme.dark': 'тёмный',
       'language.select': 'Выбрать язык',
-      'auth.app': 'Optimus',
+      'auth.app': 'REX',
       'nav.home': 'Главная',
       'nav.login': 'Войти',
       'nav.dashboard': 'Панель',
@@ -2134,7 +2135,7 @@ export class TranslationService {
       'theme.light': 'світлий',
       'theme.dark': 'темний',
       'language.select': 'Обрати мову',
-      'auth.app': 'Optimus',
+      'auth.app': 'REX',
       'nav.home': 'Головна',
       'nav.login': 'Увійти',
       'nav.dashboard': 'Панель',
@@ -2731,6 +2732,8 @@ export class TranslationService {
     this.mergeTranslations(fundingRatesTranslations);
     // Merge Bybit strategy translations
     this.mergeTranslations(bybitStrategyTranslations);
+    // Merge arbitrage positions translations
+    this.mergeTranslations(arbitragePositionsTranslations);
   }
 
   private mergeTranslations(translations: Record<string, Record<string, string>>): void {
