@@ -90,6 +90,19 @@ export abstract class BaseExchangeConnector {
   }>;
 
   /**
+   * Get symbol trading limits (min/max order size, price precision, etc.)
+   * @param symbol - Trading pair symbol (e.g., 'BTC/USDT')
+   * @returns Trading limits for the symbol
+   */
+  abstract getSymbolLimits(symbol: string): Promise<{
+    minOrderSize?: number;      // Minimum order size in base currency
+    minNotional?: number;        // Minimum order value in quote currency
+    maxOrderSize?: number;       // Maximum order size in base currency
+    amountPrecision?: number;    // Decimal places for amount
+    pricePrecision?: number;     // Decimal places for price
+  } | null>;
+
+  /**
    * Check if connector is initialized
    */
   isConnected(): boolean {

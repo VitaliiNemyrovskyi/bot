@@ -20,6 +20,7 @@ export class PublicFundingRatesService {
     BYBIT: 0.055,   // 0.055% per trade × 4 = 0.22% total
     BINGX: 0.05,    // 0.05% per trade × 4 = 0.20% total
     MEXC: 0.03,     // 0.03% per trade × 4 = 0.12% total
+    BINANCE: 0.04,  // 0.04% per trade × 4 = 0.16% total
     GATEIO: 0.05,   // 0.05% per trade × 4 = 0.20% total
     BITGET: 0.06,   // 0.06% per trade × 4 = 0.24% total
   };
@@ -39,6 +40,7 @@ export class PublicFundingRatesService {
       bybit: this.fetchBybitFundingRates(),
       bingx: this.fetchBingXFundingRates(),
       mexc: this.fetchMEXCFundingRates(),
+      binance: this.fetchBinanceFundingRates(),
       gateio: this.fetchGateIOFundingRates(),
       bitget: this.fetchBitgetFundingRates(),
     }).pipe(
@@ -48,6 +50,7 @@ export class PublicFundingRatesService {
           ...results.bybit,
           ...results.bingx,
           ...results.mexc,
+          ...results.binance,
           ...results.gateio,
           ...results.bitget,
         ];
@@ -98,6 +101,48 @@ export class PublicFundingRatesService {
       }),
       catchError(error => {
         console.error('[Bybit] Failed to fetch funding rates:', error.message);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Fetch funding rates from Binance via backend proxy
+   * Backend proxies requests to bypass CORS restrictions
+   * Endpoint: GET /api/binance/public-funding-rates
+   * Documentation: https://binance-docs.github.io/apidocs/futures/en/#mark-price
+   */
+  private fetchBinanceFundingRates(): Observable<ExchangeFundingRate[]> {
+    // Use backend proxy to bypass CORS
+    const url = '/api/binance/public-funding-rates';
+
+    return this.http.get<any>(url).pipe(
+      map(response => {
+        if (!Array.isArray(response)) {
+          console.error('[Binance] Invalid response format');
+          return [];
+        }
+
+        console.log(`[Binance] Fetched ${response.length} premium index entries via proxy`);
+
+        return response
+          .filter((p: any) => p.symbol && p.lastFundingRate && p.markPrice)
+          .map((p: any) => ({
+            exchange: 'BINANCE',
+            symbol: p.symbol, // Already in format BTCUSDT
+            originalSymbol: p.symbol,
+            fundingRate: p.lastFundingRate,
+            nextFundingTime: parseInt(p.nextFundingTime) || 0,
+            lastPrice: p.markPrice,
+            fundingInterval: '8h', // Binance uses 8h intervals
+            volume24h: '0', // Not provided in premium index endpoint
+            openInterest: '0', // Not provided in premium index endpoint
+            high24h: '0',
+            low24h: '0',
+          } as ExchangeFundingRate));
+      }),
+      catchError(error => {
+        console.error('[Binance] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
     );

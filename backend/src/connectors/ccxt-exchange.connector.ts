@@ -29,6 +29,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
    * @param testnet - Whether to use testnet/sandbox mode (default: true)
    * @param userId - Optional user ID for logging/tracking
    * @param credentialId - Optional credential ID for logging/tracking
+   * @param marketType - Market type: 'spot', 'swap' (perpetual futures), 'future', 'margin' (default: 'spot')
    */
   constructor(
     exchangeId: string,
@@ -36,7 +37,8 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
     apiSecret: string,
     testnet: boolean = true,
     private userId?: string,
-    private credentialId?: string
+    private credentialId?: string,
+    private marketType: 'spot' | 'swap' | 'future' | 'margin' = 'spot'
   ) {
     super();
 
@@ -54,15 +56,33 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
         throw new Error(`Exchange "${exchangeId}" not supported by ccxt`);
       }
 
+      // CRITICAL: Trim API keys to remove any whitespace, newlines, or hidden characters
+      // This is a common source of signature verification failures
+      const trimmedApiKey = apiKey.trim();
+      const trimmedApiSecret = apiSecret.trim();
+
+      console.log(`[CCXTConnector] API Key Debug:`, {
+        originalLength: apiKey.length,
+        trimmedLength: trimmedApiKey.length,
+        apiKeyPrefix: trimmedApiKey.substring(0, 10) + '...',
+        apiKeySuffix: '...' + trimmedApiKey.substring(trimmedApiKey.length - 10),
+        secretLength: trimmedApiSecret.length,
+        marketType: this.marketType
+      });
+
       // Create exchange instance with configuration
       this.exchange = new ExchangeClass({
-        apiKey,
-        secret: apiSecret,
+        apiKey: trimmedApiKey,
+        secret: trimmedApiSecret,
         enableRateLimit: true, // Built-in rate limiting
+        timeout: 30000, // 30 seconds timeout (default is 10s) - helps with slow APIs like Gate.io
         options: {
-          defaultType: 'swap', // Use perpetual futures by default
+          defaultType: this.marketType, // Use specified market type (spot, swap, future, margin)
           // Some exchanges have testnet support
           ...(testnet && { sandbox: true }),
+          // Gate.io requires special handling for market buy orders
+          // Set this to false so we can pass the cost directly
+          ...(this.exchangeId === 'gate' && { createMarketBuyOrderRequiresPrice: false }),
         },
       }) as ccxt.Exchange;
 
@@ -83,29 +103,48 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
   async initialize(): Promise<void> {
     console.log(`[CCXTConnector] Initializing ${this.exchangeName}...`);
 
-    try {
-      // Load markets (trading pairs)
-      await this.exchange.loadMarkets();
-      console.log(`[CCXTConnector] Loaded ${Object.keys(this.exchange.markets).length} markets`);
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-      // Test authentication if credentials are provided
-      if (this.exchange.apiKey && this.exchange.secret) {
-        console.log(`[CCXTConnector] Testing authentication...`);
-        try {
-          const balance = await this.exchange.fetchBalance();
-          console.log(`[CCXTConnector] Authentication successful - Balance fetched`);
-        } catch (authError: any) {
-          console.warn(`[CCXTConnector] Authentication test failed:`, authError.message);
-          // Don't throw - some exchanges might not support balance fetch
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[CCXTConnector] Attempt ${attempt}/${maxRetries}...`);
+
+        // Load markets (trading pairs) - can be slow on some exchanges like Gate.io
+        console.log(`[CCXTConnector] Loading markets...`);
+        await this.exchange.loadMarkets();
+        console.log(`[CCXTConnector] Loaded ${Object.keys(this.exchange.markets).length} markets`);
+
+        // Test authentication if credentials are provided
+        if (this.exchange.apiKey && this.exchange.secret) {
+          console.log(`[CCXTConnector] Testing authentication...`);
+          try {
+            const balance = await this.exchange.fetchBalance();
+            console.log(`[CCXTConnector] Authentication successful - Balance fetched`);
+          } catch (authError: any) {
+            console.warn(`[CCXTConnector] Authentication test failed:`, authError.message);
+            // Don't throw - some exchanges might not support balance fetch
+          }
+        }
+
+        this.isInitialized = true;
+        console.log(`[CCXTConnector] ${this.exchangeName} initialized successfully`);
+        return; // Success!
+
+      } catch (error: any) {
+        lastError = error;
+        console.error(`[CCXTConnector] Attempt ${attempt}/${maxRetries} failed:`, error.message);
+
+        if (attempt < maxRetries) {
+          const delay = attempt * 2000; // 2s, 4s
+          console.log(`[CCXTConnector] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-
-      this.isInitialized = true;
-      console.log(`[CCXTConnector] ${this.exchangeName} initialized successfully`);
-    } catch (error: any) {
-      console.error(`[CCXTConnector] Failed to initialize ${this.exchangeName}:`, error.message);
-      throw new Error(`Failed to initialize ${this.exchangeName}: ${error.message}`);
     }
+
+    // All retries failed
+    throw new Error(`Failed to initialize ${this.exchangeName} after ${maxRetries} attempts: ${lastError?.message}`);
   }
 
   /**
@@ -134,8 +173,32 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
       // Convert side format
       const ccxtSide = side === 'Buy' ? 'buy' : 'sell';
 
+      // Gate.io special handling for market buy orders
+      // When createMarketBuyOrderRequiresPrice is false, we need to pass the cost (quote amount)
+      // instead of the quantity (base amount) for buy orders
+      let orderQuantity = quantity;
+      if (this.exchangeId === 'gate' && ccxtSide === 'buy') {
+        // Fetch current price to calculate cost
+        const ticker = await this.exchange.fetchTicker(normalizedSymbol);
+        const currentPrice = ticker.last || ticker.bid || ticker.ask;
+
+        if (!currentPrice) {
+          throw new Error(`Cannot get current price for ${normalizedSymbol} on Gate.io`);
+        }
+
+        // Calculate cost: how much quote currency we need to spend to buy the desired amount
+        // Add 0.1% buffer to ensure we have enough to cover the order
+        orderQuantity = quantity * currentPrice * 1.001;
+
+        console.log(`[CCXTConnector] Gate.io market buy: converting quantity to cost`, {
+          desiredAmount: quantity,
+          currentPrice,
+          cost: orderQuantity,
+        });
+      }
+
       // Place market order
-      const order = await this.exchange.createMarketOrder(normalizedSymbol, ccxtSide, quantity);
+      const order = await this.exchange.createMarketOrder(normalizedSymbol, ccxtSide, orderQuantity);
 
       console.log(`[CCXTConnector] Market order placed:`, order.id);
       return order;
@@ -387,6 +450,48 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get symbol trading limits
+   *
+   * @param symbol - Trading pair (e.g., 'BTC/USDT' or 'BTCUSDT')
+   * @returns Trading limits for the symbol
+   */
+  async getSymbolLimits(symbol: string): Promise<{
+    minOrderSize?: number;
+    minNotional?: number;
+    maxOrderSize?: number;
+    amountPrecision?: number;
+    pricePrecision?: number;
+  } | null> {
+    if (!this.isInitialized) {
+      throw new Error(`${this.exchangeName} connector not initialized`);
+    }
+
+    try {
+      const normalizedSymbol = this.normalizeSymbol(symbol);
+      const market = this.exchange.market(normalizedSymbol);
+
+      if (!market) {
+        console.warn(`[CCXTConnector] Market not found for ${normalizedSymbol}`);
+        return null;
+      }
+
+      const limits = market.limits;
+      const precision = market.precision;
+
+      return {
+        minOrderSize: limits?.amount?.min,
+        minNotional: limits?.cost?.min,
+        maxOrderSize: limits?.amount?.max,
+        amountPrecision: precision?.amount,
+        pricePrecision: precision?.price,
+      };
+    } catch (error: any) {
+      console.error(`[CCXTConnector] Error fetching symbol limits:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Subscribe to real-time price updates via WebSocket
    *
    * @param symbol - Trading pair
@@ -529,19 +634,106 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
     // Remove hyphens or underscores
     symbol = symbol.replace(/[-_]/g, '');
 
-    // Common quote currencies
-    const quoteCurrencies = ['USDT', 'USDC', 'USD', 'BTC', 'ETH'];
+    // Common quote currencies (order matters - check longer ones first)
+    const quoteCurrencies = [
+      'USDT', 'USDC', 'BUSD', 'TUSD', 'USDP', 'DAI', 'FDUSD', // Stablecoins
+      'USD1', 'USD0', 'USD2', 'USD3', // Numbered stablecoins
+      'USD', // Generic USD (check last among USD variants)
+      'BTC', 'ETH', 'BNB', 'SOL', 'MATIC', 'AVAX' // Other common quote assets
+    ];
 
     for (const quote of quoteCurrencies) {
       if (symbol.endsWith(quote)) {
         const base = symbol.slice(0, -quote.length);
-        return `${base}/${quote}`;
+        // Ensure base is not empty
+        if (base.length > 0) {
+          return `${base}/${quote}`;
+        }
       }
     }
 
     // If no match, assume USDT
     console.warn(`[CCXTConnector] Could not normalize symbol ${symbol}, assuming USDT quote`);
     return `${symbol}/USDT`;
+  }
+
+  /**
+   * Get all tradable symbols for the current market type
+   *
+   * @returns Array of symbol strings (e.g., ['BTC/USDT', 'ETH/USDT', 'ETH/BTC'])
+   */
+  async getTradableSymbols(): Promise<string[]> {
+    if (!this.isInitialized) {
+      throw new Error(`${this.exchangeName} connector not initialized`);
+    }
+
+    try {
+      console.log(`[CCXTConnector] Fetching tradable symbols for ${this.exchangeName} (${this.marketType})...`);
+
+      // Get all markets
+      const markets = this.exchange.markets;
+
+      // Filter by market type and active status
+      const symbols = Object.values(markets)
+        .filter((market: any) => {
+          // Must be active
+          if (!market.active) return false;
+
+          // Must match the selected market type
+          if (this.marketType === 'spot' && market.spot) return true;
+          if (this.marketType === 'swap' && market.swap) return true;
+          if (this.marketType === 'future' && market.future) return true;
+          if (this.marketType === 'margin' && market.margin) return true;
+
+          return false;
+        })
+        .map((market: any) => market.symbol);
+
+      console.log(`[CCXTConnector] Found ${symbols.length} tradable ${this.marketType} symbols`);
+
+      // Log sample symbols
+      const sample = symbols.slice(0, 10);
+      console.log(`[CCXTConnector] Sample symbols:`, sample);
+
+      return symbols;
+    } catch (error: any) {
+      console.error(`[CCXTConnector] Error fetching tradable symbols:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get ticker data for multiple symbols
+   * Useful for triangular arbitrage to get prices for all legs simultaneously
+   *
+   * @param symbols - Array of symbols to fetch (optional, fetches all if not provided)
+   * @returns Map of symbol to ticker data
+   */
+  async getTickers(symbols?: string[]): Promise<Map<string, any>> {
+    if (!this.isInitialized) {
+      throw new Error(`${this.exchangeName} connector not initialized`);
+    }
+
+    try {
+      console.log(`[CCXTConnector] Fetching tickers for ${symbols?.length || 'all'} symbols...`);
+
+      // Fetch tickers
+      const tickers = symbols
+        ? await this.exchange.fetchTickers(symbols)
+        : await this.exchange.fetchTickers();
+
+      const tickerMap = new Map<string, any>();
+
+      for (const [symbol, ticker] of Object.entries(tickers)) {
+        tickerMap.set(symbol, ticker);
+      }
+
+      console.log(`[CCXTConnector] Fetched ${tickerMap.size} tickers`);
+      return tickerMap;
+    } catch (error: any) {
+      console.error(`[CCXTConnector] Error fetching tickers:`, error.message);
+      throw error;
+    }
   }
 
   /**

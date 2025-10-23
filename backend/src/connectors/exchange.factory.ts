@@ -3,6 +3,7 @@ import { CCXTExchangeConnector } from './ccxt-exchange.connector';
 import { BingXConnector } from './bingx.connector';
 import { BybitConnector } from './bybit.connector';
 import { MEXCConnector } from './mexc.connector';
+import { GateIOSpotConnector } from './gateio-spot.connector';
 
 /**
  * Exchange Connector Factory
@@ -24,6 +25,7 @@ export class ExchangeConnectorFactory {
     'BYBIT',    // Custom: Time sync, advanced TP/SL, precise timing
     'BINGX',    // Custom: Time sync, position mode handling
     'MEXC',     // Custom: Symbol format handling, auth token support
+    'GATEIO',   // Custom: SPOT connector for triangular arbitrage
   ]);
 
   /**
@@ -45,6 +47,18 @@ export class ExchangeConnectorFactory {
     'POLONIEX',
     'GEMINI',
     // ... add more as needed
+  ]);
+
+  /**
+   * Exchanges that should use SPOT market by default
+   * (for triangular arbitrage and other spot trading strategies)
+   */
+  private static readonly SPOT_EXCHANGES = new Set([
+    'BINANCE',
+    'GATE',
+    'GATEIO',
+    'KUCOIN',
+    'OKX',
   ]);
 
   /**
@@ -120,6 +134,10 @@ export class ExchangeConnectorFactory {
         }
         return new MEXCConnector(apiKey, apiSecret, authToken);
 
+      case 'GATEIO':
+        // Gate.io SPOT connector for triangular arbitrage
+        return new GateIOSpotConnector(apiKey, apiSecret);
+
       default:
         throw new Error(`Custom connector not implemented for ${exchange}`);
     }
@@ -135,15 +153,30 @@ export class ExchangeConnectorFactory {
     userId?: string,
     credentialId?: string
   ): BaseExchangeConnector {
+    const exchangeUpper = exchangeName.toUpperCase();
+
     // Convert to ccxt format (lowercase)
-    const ccxtId = exchangeName.toLowerCase();
+    // Special case: GATEIO -> 'gate' in CCXT
+    let ccxtId = exchangeName.toLowerCase();
+    if (exchangeUpper === 'GATEIO' || exchangeUpper === 'GATE') {
+      ccxtId = 'gate';
+    }
+
+    // Determine market type based on exchange
+    // Spot exchanges for triangular arbitrage, swap for others
+    const marketType: 'spot' | 'swap' | 'future' | 'margin' =
+      this.SPOT_EXCHANGES.has(exchangeUpper) ? 'spot' : 'swap';
+
+    console.log(`[ExchangeFactory] Creating CCXT connector: ${ccxtId}, market: ${marketType}`);
 
     return new CCXTExchangeConnector(
       ccxtId,
       apiKey,
       apiSecret,
+      false, // testnet - default to false for now
       userId,
-      credentialId
+      credentialId,
+      marketType
     );
   }
 

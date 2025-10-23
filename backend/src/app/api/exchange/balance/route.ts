@@ -230,6 +230,16 @@ async function getGateIOBalance(apiKey: string, apiSecret: string): Promise<Exch
     };
   } catch (error: any) {
     console.error('[Gate.io] Error getting balance:', error.message);
+
+    // Handle specific Gate.io errors
+    const errorMsg = error.message || '';
+
+    // USER_NOT_FOUND means the futures account hasn't been activated yet
+    if (errorMsg.includes('USER_NOT_FOUND') || errorMsg.includes('please transfer funds first')) {
+      throw new Error('Gate.io futures account not activated. Please transfer funds to your Gate.io futures account first to activate it. You can do this by: 1) Logging into Gate.io, 2) Going to Futures Trading, 3) Transferring USDT from your spot wallet to futures wallet.');
+    }
+
+    // Throw original error if it's not a known case
     throw error;
   }
 }

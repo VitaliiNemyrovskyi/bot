@@ -713,6 +713,25 @@ export class BybitConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get instruments info (trading pairs, lot sizes, etc.)
+   *
+   * @param params - Parameters including category ('linear', 'spot', 'option') and optional symbol
+   * @returns Instruments information
+   */
+  async getInstrumentsInfo(params: { category: 'linear' | 'spot' | 'option'; symbol?: string }): Promise<any> {
+    console.log(`[BybitConnector] Fetching instruments info for category: ${params.category}`);
+
+    try {
+      const result = await this.bybitService.getInstrumentsInfo(params.category, params.symbol);
+      console.log(`[BybitConnector] Found ${result?.list?.length || 0} instruments`);
+      return result;
+    } catch (error: any) {
+      console.error(`[BybitConnector] Error fetching instruments info:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Subscribe to real-time price updates via WebSocket
    * Uses Bybit's existing WebSocket infrastructure to stream ticker updates
    *
@@ -731,20 +750,37 @@ export class BybitConnector extends BaseExchangeConnector {
     }
 
     try {
+      let lastWarnTime = 0;
+      const WARN_THROTTLE_MS = 5000; // Only warn once every 5 seconds
+
       // Create wrapper callback to extract price and timestamp
       const wrappedCallback = (data: any) => {
         try {
           // Bybit WebSocket ticker update format:
           // { topic: 'tickers.BTCUSDT', type: 'snapshot', data: { symbol, lastPrice, ... }, ts: 1234567890 }
-          if (data.topic && data.topic.includes('tickers') && data.data) {
-            const tickerData = data.data;
-            const price = parseFloat(tickerData.lastPrice);
-            const timestamp = data.ts || Date.now();
 
-            if (!isNaN(price) && price > 0) {
-              callback(price, timestamp);
-            } else {
+          // Filter: Only process ticker messages for our specific symbol
+          if (!data.topic || !data.topic.includes(`tickers.${symbol}`)) {
+            return; // Skip non-ticker messages (heartbeats, subscriptions, other symbols, etc.)
+          }
+
+          // Must have data field with ticker information
+          if (!data.data) {
+            return; // Skip messages without data
+          }
+
+          const tickerData = data.data;
+          const price = parseFloat(tickerData.lastPrice);
+          const timestamp = data.ts || Date.now();
+
+          if (!isNaN(price) && price > 0) {
+            callback(price, timestamp);
+          } else {
+            // Throttle warnings to prevent log spam
+            const now = Date.now();
+            if (now - lastWarnTime > WARN_THROTTLE_MS) {
               console.warn(`[BybitConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.lastPrice);
+              lastWarnTime = now;
             }
           }
         } catch (error: any) {

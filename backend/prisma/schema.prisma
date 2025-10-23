@@ -69,6 +69,7 @@ model User {
   fundingArbitrageSubscriptions FundingArbitrageSubscription[]
   priceArbitragePositions       PriceArbitragePosition[]
   graduatedEntryPositions       GraduatedEntryPosition[]
+  triangularArbitragePositions  TriangularArbitragePosition[]
 
   @@map("users")
 }
@@ -912,4 +913,170 @@ model GraduatedEntryPosition {
   @@index([symbol])
   @@index([lastFundingUpdate]) // For funding tracker to find positions needing updates
   @@map("graduated_entry_positions")
+}
+
+enum TriangularArbStatus {
+  SCANNING // Scanning for opportunities
+  OPPORTUNITY // Opportunity detected
+  EXECUTING_LEG1 // Executing first leg
+  EXECUTING_LEG2 // Executing second leg
+  EXECUTING_LEG3 // Executing third leg
+  COMPLETED // All legs executed successfully
+  PARTIAL // Partially executed (error recovery needed)
+  ERROR // Execution failed
+  CANCELLED // User cancelled
+}
+
+enum TriangularArbLeg {
+  LEG1 // First trade in the triangle
+  LEG2 // Second trade
+  LEG3 // Third trade
+}
+
+model TriangularArbitragePosition {
+  id     String @id @default(cuid())
+  userId String
+
+  // Position identifier
+  positionId String @unique // e.g., "tri_arb_1_1234567890"
+
+  // Exchange configuration
+  exchange     String // "BYBIT", "BINANCE", etc.
+  credentialId String // Reference to ExchangeCredentials
+
+  // Triangle configuration (3 trading pairs)
+  symbol1 String // e.g., "BTCUSDT" (Base → Quote)
+  symbol2 String // e.g., "ETHBTC"  (Quote → Bridge)
+  symbol3 String // e.g., "ETHUSDT" (Bridge → Base)
+
+  // Asset flow (defines the triangle direction)
+  baseAsset   String // e.g., "USDT" (starting asset)
+  quoteAsset  String // e.g., "BTC"  (intermediate asset)
+  bridgeAsset String // e.g., "ETH"  (final conversion asset)
+
+  // Entry opportunity data
+  entryQuantity          Float // Starting quantity (e.g., 100 USDT)
+  expectedReturnQuantity Float // Expected final quantity after 3 trades
+  expectedProfitPercent  Float // Expected profit % (e.g., 0.15 = 0.15%)
+  expectedProfitAmount   Float // Expected profit in base asset
+
+  // Execution configuration
+  maxSlippagePercent        Float @default(0.1) // Max slippage per leg (0.1%)
+  minProfitAfterFeesPercent Float @default(0.05) // Min profit threshold (0.05%)
+  executionTimeoutMs        Int   @default(5000) // Max execution time (5 seconds)
+
+  // Leg 1 execution data
+  leg1Symbol     String? // Actual symbol traded
+  leg1Side       String? // "Buy" or "Sell"
+  leg1Quantity   Float? // Quantity traded
+  leg1Price      Float? // Executed price
+  leg1OrderId    String? // Exchange order ID
+  leg1FilledQty  Float   @default(0)
+  leg1AvgPrice   Float? // Average fill price
+  leg1Fees       Float   @default(0)
+  leg1Slippage   Float? // Actual slippage %
+  leg1ExecutedAt DateTime?
+
+  // Leg 2 execution data
+  leg2Symbol     String?
+  leg2Side       String?
+  leg2Quantity   Float?
+  leg2Price      Float?
+  leg2OrderId    String?
+  leg2FilledQty  Float   @default(0)
+  leg2AvgPrice   Float?
+  leg2Fees       Float   @default(0)
+  leg2Slippage   Float?
+  leg2ExecutedAt DateTime?
+
+  // Leg 3 execution data
+  leg3Symbol     String?
+  leg3Side       String?
+  leg3Quantity   Float?
+  leg3Price      Float?
+  leg3OrderId    String?
+  leg3FilledQty  Float   @default(0)
+  leg3AvgPrice   Float?
+  leg3Fees       Float   @default(0)
+  leg3Slippage   Float?
+  leg3ExecutedAt DateTime?
+
+  // Final results
+  finalQuantity        Float? // Actual final quantity received
+  actualProfitAmount   Float? // Actual profit (final - initial)
+  actualProfitPercent  Float? // Actual profit %
+  totalFees            Float  @default(0)
+  totalSlippage        Float? // Combined slippage across legs
+
+  // Status tracking
+  status       TriangularArbStatus @default(SCANNING)
+  currentLeg   TriangularArbLeg?
+  errorMessage String?
+
+  // Performance metrics
+  opportunityDetectedAt  DateTime? // When opportunity was detected
+  executionStartedAt     DateTime? // When first leg started
+  executionCompletedAt   DateTime? // When all legs completed
+  totalExecutionTimeMs   Int? // Total execution time
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status])
+  @@index([exchange])
+  @@index([opportunityDetectedAt])
+  @@index([createdAt])
+  @@map("triangular_arbitrage_positions")
+}
+
+// Store historical opportunities for analysis
+model TriangularArbitrageOpportunity {
+  id String @id @default(cuid())
+
+  // Opportunity details
+  exchange    String
+  symbol1     String
+  symbol2     String
+  symbol3     String
+  baseAsset   String
+  quoteAsset  String
+  bridgeAsset String
+
+  // Pricing data
+  price1            Float // Price of symbol1 at detection
+  price2            Float // Price of symbol2 at detection
+  price3            Float // Price of symbol3 at detection
+  theoreticalProfit Float // Theoretical profit %
+  profitAfterFees   Float // Profit after exchange fees
+
+  // Execution decision
+  wasExecuted        Boolean @default(false)
+  executedPositionId String? // Link to TriangularArbitragePosition if executed
+  rejectedReason     String? // Why opportunity was rejected
+
+  // Market conditions
+  volume1 Float? // 24h volume symbol1
+  volume2 Float? // 24h volume symbol2
+  volume3 Float? // 24h volume symbol3
+  spread1 Float? // Bid-ask spread symbol1
+  spread2 Float? // Bid-ask spread symbol2
+  spread3 Float? // Bid-ask spread symbol3
+
+  // Timestamps
+  detectedAt DateTime @default(now())
+  expiresAt  DateTime // When opportunity is no longer valid
+
+  // Indexes
+  @@index([exchange])
+  @@index([wasExecuted])
+  @@index([detectedAt])
+  @@index([theoreticalProfit])
+  @@map("triangular_arbitrage_opportunities")
 }

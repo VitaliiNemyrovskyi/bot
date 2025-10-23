@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ExchangeFeeSyncService } from '@/services/exchange-fee-sync.service';
-import { getUserFromRequest } from '@/lib/auth';
+import { AuthService } from '@/lib/auth';
 
 /**
  * Sync fee rates for user's credentials
@@ -28,13 +28,15 @@ import { getUserFromRequest } from '@/lib/auth';
 export async function POST(request: NextRequest) {
   try {
     // Get authenticated user
-    const user = await getUserFromRequest(request);
-    if (!user) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: authResult.error || 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    const user = authResult.user;
 
     const body = await request.json().catch(() => ({}));
     const { credentialId } = body;
@@ -89,13 +91,15 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Get authenticated user
-    const user = await getUserFromRequest(request);
-    if (!user) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: authResult.error || 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    const user = authResult.user;
 
     const { searchParams } = new URL(request.url);
     const credentialId = searchParams.get('credentialId');

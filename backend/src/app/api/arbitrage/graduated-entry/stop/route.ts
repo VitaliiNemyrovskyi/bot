@@ -74,16 +74,41 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if position is already stopped/completed
-        if (dbPosition.status === 'COMPLETED' || dbPosition.status === 'CANCELLED' || dbPosition.status === 'ERROR') {
-          console.log(`[API] Position ${positionId} already closed with status: ${dbPosition.status}`);
+        if (dbPosition.status === 'COMPLETED') {
+          console.log(`[API] Position ${positionId} already COMPLETED`);
           return NextResponse.json({
             success: true,
             data: {
               positionId,
-              status: dbPosition.status.toLowerCase(),
-              message: `Position is already ${dbPosition.status.toLowerCase()}`,
+              status: 'completed',
+              message: `Position is already completed`,
             },
-            message: `Position was already ${dbPosition.status.toLowerCase()}`,
+            message: `Position was already completed`,
+          });
+        }
+
+        // If position has CANCELLED, ERROR, or LIQUIDATED status, mark it as COMPLETED
+        if (dbPosition.status === 'CANCELLED' || dbPosition.status === 'ERROR' || dbPosition.status === 'LIQUIDATED') {
+          console.log(`[API] Position ${positionId} has status ${dbPosition.status}, marking as COMPLETED...`);
+
+          await prisma.graduatedEntryPosition.update({
+            where: { positionId },
+            data: {
+              status: 'COMPLETED',
+              completedAt: dbPosition.completedAt || new Date(),
+            },
+          });
+
+          console.log(`[API] ✓ Position ${positionId} marked as COMPLETED`);
+
+          return NextResponse.json({
+            success: true,
+            data: {
+              positionId,
+              status: 'completed',
+              previousStatus: dbPosition.status.toLowerCase(),
+            },
+            message: `Position marked as completed (was ${dbPosition.status.toLowerCase()})`,
           });
         }
 

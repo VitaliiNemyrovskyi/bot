@@ -79,5 +79,10 @@ export const routes: Routes = [
     path: 'arbitrage/positions',
     loadComponent: () => import('./pages/active-arbitrage-positions/active-arbitrage-positions.component').then(m => m.ActiveArbitragePositionsComponent),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'arbitrage/triangular',
+    loadComponent: () => import('./pages/triangular-arbitrage/triangular-arbitrage.component').then(m => m.TriangularArbitrageComponent),
+    canActivate: [AuthGuard]
   }
 ];

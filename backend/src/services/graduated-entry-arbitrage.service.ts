@@ -19,6 +19,8 @@
 import { EventEmitter } from 'events';
 import { BybitConnector } from '@/connectors/bybit.connector';
 import { BingXConnector } from '@/connectors/bingx.connector';
+import { MEXCConnector } from '@/connectors/mexc.connector';
+import { GateIOConnector } from '@/connectors/gateio.connector';
 import { BybitService } from '@/lib/bybit';
 import prisma from '@/lib/prisma';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
@@ -49,6 +51,7 @@ export interface ExchangeCredentials {
   apiSecret: string;
   testnet: boolean;
   credentialId: string;
+  authToken?: string; // MEXC requires authToken
 }
 
 export interface ActiveArbitragePosition {
@@ -57,7 +60,7 @@ export interface ActiveArbitragePosition {
   config: GraduatedEntryConfig;
 
   // Primary exchange
-  primaryConnector: BybitConnector | BingXConnector;
+  primaryConnector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector;
   primaryCredentials: ExchangeCredentials;
   primaryFilledQuantity: number;
   primaryOrderIds: string[];
@@ -65,7 +68,7 @@ export interface ActiveArbitragePosition {
   primaryErrorMessage?: string;
 
   // Hedge exchange
-  hedgeConnector: BybitConnector | BingXConnector;
+  hedgeConnector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector;
   hedgeCredentials: ExchangeCredentials;
   hedgeFilledQuantity: number;
   hedgeOrderIds: string[];
@@ -456,7 +459,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   private async createConnector(
     exchangeName: string,
     credentials: ExchangeCredentials
-  ): Promise<BybitConnector | BingXConnector> {
+  ): Promise<BybitConnector | BingXConnector | MEXCConnector | GateIOConnector> {
     const exchange = exchangeName.toUpperCase();
 
     if (exchange.includes('BYBIT')) {
@@ -475,6 +478,21 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       );
       await connector.initialize();
       return connector;
+    } else if (exchange.includes('MEXC')) {
+      const connector = new MEXCConnector(
+        credentials.apiKey,
+        credentials.apiSecret,
+        credentials.authToken
+      );
+      await connector.initialize();
+      return connector;
+    } else if (exchange.includes('GATEIO') || exchange.includes('GATE.IO') || exchange.includes('GATE')) {
+      const connector = new GateIOConnector(
+        credentials.apiKey,
+        credentials.apiSecret
+      );
+      await connector.initialize();
+      return connector;
     } else {
       throw new Error(`Unsupported exchange: ${exchangeName}`);
     }
@@ -484,7 +502,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
    * Set leverage on exchange
    */
   private async setLeverageOnExchange(
-    connector: BybitConnector | BingXConnector,
+    connector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     symbol: string,
     leverage: number,
     exchangeName: string
@@ -511,11 +529,11 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
    * @throws Error if validation fails with detailed message for user
    */
   private async validateOrderSizes(
-    primaryConnector: BybitConnector | BingXConnector,
+    primaryConnector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     symbol: string,
     primaryQuantity: number,
     primaryExchange: string,
-    hedgeConnector: BybitConnector | BingXConnector,
+    hedgeConnector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     hedgeQuantity: number,
     hedgeExchange: string
   ): Promise<void> {
@@ -863,7 +881,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
    * Execute market order on exchange
    */
   private async executeMarketOrder(
-    connector: BybitConnector | BingXConnector,
+    connector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     symbol: string,
     side: 'long' | 'short',
     quantity: number,
@@ -1058,7 +1076,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
    * CRITICAL FIX: Enhanced logging and better error handling
    */
   private async closePositionOnExchange(
-    connector: BybitConnector | BingXConnector,
+    connector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     symbol: string,
     exchangeName: string
   ): Promise<void> {
@@ -1257,6 +1275,39 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             }
           );
         }
+      } else if (primaryExchange.includes('MEXC')) {
+        // MEXC: Use price stream (ticker)
+        if (typeof (position.primaryConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to MEXC price WebSocket for ${config.symbol}...`);
+          position.primaryPriceUnsubscribe = await (position.primaryConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - MEXC price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      } else if (primaryExchange.includes('GATEIO') || primaryExchange.includes('GATE')) {
+        // Gate.io: Use price stream (ticker) or mark price stream
+        if (typeof (position.primaryConnector as any).subscribeToMarkPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Gate.io mark price WebSocket for ${config.symbol}...`);
+          position.primaryPriceUnsubscribe = await (position.primaryConnector as any).subscribeToMarkPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Gate.io mark price update: ${price}`);
+              checkPositions();
+            }
+          );
+        } else if (typeof (position.primaryConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Gate.io price WebSocket for ${config.symbol}...`);
+          position.primaryPriceUnsubscribe = await (position.primaryConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Gate.io price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
       }
 
       // Subscribe to hedge exchange WebSocket
@@ -1280,6 +1331,39 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             config.symbol,
             (price: number, timestamp: number) => {
               console.log(`[GraduatedEntry] ${id} - Bybit price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      } else if (hedgeExchange.includes('MEXC')) {
+        // MEXC: Use price stream (ticker)
+        if (typeof (position.hedgeConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to MEXC price WebSocket for ${config.symbol}...`);
+          position.hedgePriceUnsubscribe = await (position.hedgeConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - MEXC price update: ${price}`);
+              checkPositions();
+            }
+          );
+        }
+      } else if (hedgeExchange.includes('GATEIO') || hedgeExchange.includes('GATE')) {
+        // Gate.io: Use price stream (ticker) or mark price stream
+        if (typeof (position.hedgeConnector as any).subscribeToMarkPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Gate.io mark price WebSocket for ${config.symbol}...`);
+          position.hedgePriceUnsubscribe = await (position.hedgeConnector as any).subscribeToMarkPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Gate.io mark price update: ${price}`);
+              checkPositions();
+            }
+          );
+        } else if (typeof (position.hedgeConnector as any).subscribeToPriceStream === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to Gate.io price WebSocket for ${config.symbol}...`);
+          position.hedgePriceUnsubscribe = await (position.hedgeConnector as any).subscribeToPriceStream(
+            config.symbol,
+            (price: number, timestamp: number) => {
+              console.log(`[GraduatedEntry] ${id} - Gate.io price update: ${price}`);
               checkPositions();
             }
           );
@@ -1431,9 +1515,11 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
    * CRITICAL FIX: Handles different position property names across exchanges
    * - BingX uses: positionAmt, avgPrice, positionSide
    * - Bybit/CCXT uses: size, entryPrice, side
+   * - MEXC uses: holdVol, holdAvgPrice, positionType
+   * - Gate.io uses: size, entry_price, contract
    */
   private async getExchangePosition(
-    connector: BybitConnector | BingXConnector,
+    connector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
     symbol: string,
     exchangeName: string
   ): Promise<{ size: number; side: string; entryPrice: number } | null> {
@@ -1458,8 +1544,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           ?.toUpperCase();
 
         // Get position size - handle different property names
-        // BingX uses 'positionAmt', Bybit uses 'size', CCXT uses 'contracts'
-        const posSize = Math.abs(parseFloat(p.positionAmt || p.size || p.contracts || '0'));
+        // BingX uses 'positionAmt', Bybit uses 'size', MEXC uses 'holdVol', Gate.io uses 'size', CCXT uses 'contracts'
+        const posSize = Math.abs(parseFloat(p.positionAmt || p.size || p.holdVol || p.contracts || '0'));
 
         const matches = posSymbol === targetSymbol && posSize > 0;
 
@@ -1476,13 +1562,16 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       }
 
       // Extract size - handle different property names
-      const size = Math.abs(parseFloat(position.positionAmt || position.size || position.contracts || '0'));
+      // BingX: positionAmt, Bybit: size, MEXC: holdVol, Gate.io: size
+      const size = Math.abs(parseFloat(position.positionAmt || position.size || position.holdVol || position.contracts || '0'));
 
       // Extract side - BingX uses 'positionSide', others use 'side'
+      // Gate.io: positive size = long, negative size = short (already handled by size extraction)
       const side = position.positionSide || position.side || 'unknown';
 
-      // Extract entry price - BingX uses 'avgPrice', others use 'entryPrice'
-      const entryPrice = parseFloat(position.avgPrice || position.entryPrice || '0');
+      // Extract entry price - handle different property names
+      // BingX: avgPrice, Bybit: entryPrice, MEXC: holdAvgPrice, Gate.io: entry_price
+      const entryPrice = parseFloat(position.avgPrice || position.entryPrice || position.holdAvgPrice || position.entry_price || '0');
 
       return {
         size,

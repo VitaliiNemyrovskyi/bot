@@ -55,11 +55,11 @@ export async function GET(request: NextRequest) {
         userId: user.userId,
       };
 
-      // If not showing all, only show active positions (INITIALIZING, EXECUTING, ACTIVE)
-      // ACTIVE = positions opened and being monitored
+      // If not showing all, exclude only COMPLETED positions
+      // Show: INITIALIZING, EXECUTING, ACTIVE, ERROR, LIQUIDATED, CANCELLED
       if (!showAll) {
         whereClause.status = {
-          in: ['INITIALIZING', 'EXECUTING', 'ACTIVE'],
+          not: 'COMPLETED',
         };
       }
 
@@ -314,6 +314,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use adjusted quantity if provided (automatically rounded to meet exchange requirements)
+    const adjustedPrimaryQuantity = primaryValidation.adjustedQuantity !== undefined
+      ? primaryValidation.adjustedQuantity
+      : primaryQuantity;
+
+    if (primaryValidation.adjustedQuantity !== undefined) {
+      console.log(`[API] Primary quantity adjusted: ${primaryQuantity} → ${adjustedPrimaryQuantity}`);
+    }
+
     // Validate hedge exchange order quantity
     console.log(`[API] Validating hedge exchange (${hedgeExchange}) order quantity...`);
     const hedgeSymbolInfo = await getSymbolInfo(hedgeExchange, symbol);
@@ -346,7 +355,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use adjusted quantity if provided (automatically rounded to meet exchange requirements)
+    const adjustedHedgeQuantity = hedgeValidation.adjustedQuantity !== undefined
+      ? hedgeValidation.adjustedQuantity
+      : hedgeQuantity;
+
+    if (hedgeValidation.adjustedQuantity !== undefined) {
+      console.log(`[API] Hedge quantity adjusted: ${hedgeQuantity} → ${adjustedHedgeQuantity}`);
+    }
+
     console.log(`[API] Order quantity validation passed for both exchanges`);
+    console.log(`[API] Final quantities: Primary=${adjustedPrimaryQuantity}, Hedge=${adjustedHedgeQuantity}`);
 
     // Start graduated entry arbitrage position
     const testnet = primaryCredentials.environment === 'TESTNET';
@@ -358,11 +377,11 @@ export async function POST(request: NextRequest) {
         primaryExchange,
         primarySide: primarySide.toLowerCase() as 'long' | 'short',
         primaryLeverage,
-        primaryQuantity,
+        primaryQuantity: adjustedPrimaryQuantity,
         hedgeExchange,
         hedgeSide: hedgeSide.toLowerCase() as 'long' | 'short',
         hedgeLeverage,
-        hedgeQuantity,
+        hedgeQuantity: adjustedHedgeQuantity,
         graduatedEntryParts,
         graduatedEntryDelayMs,
       },
@@ -391,14 +410,14 @@ export async function POST(request: NextRequest) {
           exchange: primaryExchange,
           side: primarySide,
           leverage: primaryLeverage,
-          quantity: primaryQuantity,
+          quantity: adjustedPrimaryQuantity,
           environment: primaryCredentials.environment,
         },
         hedge: {
           exchange: hedgeExchange,
           side: hedgeSide,
           leverage: hedgeLeverage,
-          quantity: hedgeQuantity,
+          quantity: adjustedHedgeQuantity,
           environment: hedgeCredentials.environment,
         },
         graduatedEntry: {
@@ -630,14 +649,28 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
 }
 
 /**
- * Validate order quantity against exchange requirements
+ * Validate and adjust order quantity against exchange requirements
+ * Automatically rounds quantities to meet exchange step requirements
  */
 function validateOrderQuantity(
   symbolInfo: SymbolInfo,
   totalQuantity: number,
   graduatedParts: number
-): { valid: boolean; error?: string; suggestion?: string } {
-  const qtyPerPart = totalQuantity / graduatedParts;
+): { valid: boolean; error?: string; suggestion?: string; adjustedQuantity?: number } {
+  let qtyPerPart = totalQuantity / graduatedParts;
+
+  // Automatically round quantity per part to meet step requirements
+  // This prevents floating point precision issues and ensures valid orders
+  if (symbolInfo.qtyStep >= 1) {
+    // For whole number steps (like 1), round to nearest integer
+    qtyPerPart = Math.round(qtyPerPart);
+  } else {
+    // For decimal steps, round to step precision
+    qtyPerPart = Math.round(qtyPerPart / symbolInfo.qtyStep) * symbolInfo.qtyStep;
+  }
+
+  // Recalculate total quantity based on rounded parts
+  const adjustedQuantity = qtyPerPart * graduatedParts;
 
   // Check if quantity per part meets minimum requirement
   if (qtyPerPart < symbolInfo.minOrderQty) {
@@ -667,17 +700,8 @@ function validateOrderQuantity(
     };
   }
 
-  // Check quantity step
-  const roundedQtyPerPart = Math.round(qtyPerPart / symbolInfo.qtyStep) * symbolInfo.qtyStep;
-  const difference = Math.abs(qtyPerPart - roundedQtyPerPart);
-
-  if (difference > symbolInfo.qtyStep * 0.001) {
-    return {
-      valid: false,
-      error: `Quantity per part must be a multiple of ${symbolInfo.qtyStep}`,
-      suggestion: `Adjust total quantity to ${(roundedQtyPerPart * graduatedParts).toFixed(symbolInfo.qtyPrecision)}`
-    };
-  }
-
-  return { valid: true };
+  return {
+    valid: true,
+    adjustedQuantity: adjustedQuantity
+  };
 }

@@ -14,3 +14,4 @@
   - NEVER use `startTime` with `/openApi/swap/v2/user/income` endpoint
   - Always test with symbol variants ("FUSDT" vs "F-USDT")
   - Full backend restart required after changes to `funding-tracker.service.ts`
+- always check data structure between backed, frontend or third party API

@@ -707,6 +707,15 @@ export class FundingArbitrageService extends EventEmitter {
         credential.environment === 'TESTNET',
         credential.authToken  // Browser session token for MEXC futures trading
       );
+    } else if (credential.exchange === 'BINANCE') {
+      const { BinanceFuturesConnector } = await import('@/connectors/binance-futures.connector');
+      connector = new BinanceFuturesConnector(
+        credential.apiKey,
+        credential.apiSecret,
+        credential.environment === 'TESTNET',
+        userId,
+        credentialId
+      );
     } else {
       throw new Error(`Exchange ${credential.exchange} not supported`);
     }
@@ -1000,6 +1009,10 @@ export class FundingArbitrageService extends EventEmitter {
         // MEXC: setLeverage(symbol, leverage, openType)
         // Use 2 for cross margin mode (default)
         await connectorWithLeverage.setLeverage(symbol, leverage, 2);
+      } else if (exchangeName.includes('BINANCE')) {
+        // Binance (via CCXT): setLeverage(symbol, leverage)
+        // CCXT standardizes the interface
+        await connectorWithLeverage.setLeverage(symbol, leverage);
       } else {
         // Generic fallback (most exchanges use: symbol, leverage)
         await connectorWithLeverage.setLeverage(symbol, leverage);

@@ -310,6 +310,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       // Load active positions
       this.loadActivePositions();
 
+      // Load account balances
+      this.loadBalances();
+
       // Fetch symbol info for both exchanges
       this.fetchSymbolInfo();
 
@@ -2019,49 +2022,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Load balance for a specific exchange
-   */
-  private loadExchangeBalance(exchange: string, type: 'primary' | 'hedge'): void {
-    const balanceSignal = type === 'primary' ? this.primaryBalance : this.hedgeBalance;
-
-    // Set loading state
-    balanceSignal.update(bal => ({ ...bal, loading: true }));
-
-    const token = this.authService.authState().token;
-    if (!token) {
-      console.warn(`[ArbitrageChart] No auth token, cannot load ${exchange} balance`);
-      balanceSignal.update(bal => ({ ...bal, loading: false }));
-      return;
-    }
-
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
-
-    const url = buildUrlWithQuery(getEndpointUrl('exchange', 'balance'), { exchange });
-
-    this.http.get<any>(url, { headers }).subscribe({
-      next: (response) => {
-        if (response?.success && response?.data) {
-          console.log(`[ArbitrageChart] ${exchange} balance loaded:`, response.data);
-          balanceSignal.set({
-            totalBalance: response.data.totalBalance || '0',
-            availableBalance: response.data.availableBalance || '0',
-            loading: false
-          });
-        } else {
-          console.warn(`[ArbitrageChart] Invalid balance response for ${exchange}:`, response);
-          balanceSignal.update(bal => ({ ...bal, loading: false }));
-        }
-      },
-      error: (error) => {
-        console.error(`[ArbitrageChart] Error loading ${exchange} balance:`, error);
-        balanceSignal.update(bal => ({ ...bal, loading: false }));
-      }
-    });
-  }
-
-  /**
    * Load active arbitrage positions from backend
    */
   private async loadActivePositions(): Promise<void> {
@@ -2078,12 +2038,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Authorization': `Bearer ${token}`
       });
 
-      // Get only active positions (INITIALIZING, EXECUTING, ACTIVE)
+      // Get all non-completed positions (INITIALIZING, EXECUTING, ACTIVE, ERROR, LIQUIDATED, CANCELLED)
       const url = getEndpointUrl('arbitrage', 'graduatedEntry');
       const response = await this.http.get<any>(url, { headers }).toPromise();
 
       if (response?.success && response?.data) {
-        console.log(`[ArbitrageChart] Loaded ${response.data.length} active positions`);
+        console.log(`[ArbitrageChart] Loaded ${response.data.length} positions (excluding completed)`);
 
         // Transform backend positions to match our interface
         const positions: ArbitragePosition[] = response.data.map((pos: any) => {
@@ -2139,6 +2099,72 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     } catch (error: any) {
       console.error('[ArbitrageChart] Failed to load active positions:', error);
       // Don't show error to user - positions just won't be displayed
+    }
+  }
+
+  /**
+   * Load account balances for both exchanges
+   */
+  private async loadBalances(): Promise<void> {
+    // Load primary exchange balance
+    if (this.primaryExchange() && this.hasPrimaryCredentials()) {
+      await this.loadExchangeBalance(this.primaryExchange(), 'primary');
+    }
+
+    // Load hedge exchange balance
+    if (this.hedgeExchange() && this.hasHedgeCredentials()) {
+      await this.loadExchangeBalance(this.hedgeExchange(), 'hedge');
+    }
+  }
+
+  /**
+   * Load balance for a specific exchange
+   */
+  private async loadExchangeBalance(exchange: string, type: 'primary' | 'hedge'): Promise<void> {
+    const balanceSignal = type === 'primary' ? this.primaryBalance : this.hedgeBalance;
+
+    try {
+      // Set loading state
+      balanceSignal.set({
+        ...balanceSignal(),
+        loading: true
+      });
+
+      const token = this.authService.authState().token;
+      if (!token) {
+        console.warn(`[ArbitrageChart] No auth token available for ${type} balance`);
+        balanceSignal.set({
+          totalBalance: '0',
+          availableBalance: '0',
+          loading: false
+        });
+        return;
+      }
+
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`
+      });
+
+      const url = `/api/exchange/balance?exchange=${exchange}`;
+      const response = await this.http.get<any>(url, { headers }).toPromise();
+
+      if (response?.success && response?.data) {
+        balanceSignal.set({
+          totalBalance: response.data.totalBalance,
+          availableBalance: response.data.availableBalance,
+          loading: false
+        });
+        console.log(`[ArbitrageChart] ${type} balance loaded:`, response.data);
+      } else {
+        throw new Error(response?.error || 'Failed to load balance');
+      }
+    } catch (error: any) {
+      console.error(`[ArbitrageChart] Failed to load ${type} balance:`, error);
+      balanceSignal.set({
+        totalBalance: '0',
+        availableBalance: '0',
+        loading: false
+      });
     }
   }
 

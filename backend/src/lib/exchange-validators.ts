@@ -67,13 +67,16 @@ export class ExchangeValidators {
   ): Promise<ValidationResult> {
     try {
       // TODO: Implement Binance validation when Binance integration is added
-      // For now, return a placeholder response
+      // For now, accept credentials but warn user that validation is not implemented
 
-      console.warn('Binance validation not yet implemented');
+      console.warn('Binance validation not yet implemented - accepting credentials without verification');
 
       return {
-        valid: false,
-        error: 'Binance API validation not yet implemented',
+        valid: true,
+        details: {
+          warning: 'Binance API validation not yet implemented. Credentials saved but not verified.',
+          validated: false,
+        },
       };
 
       // Example implementation (uncomment when binance library is added):
