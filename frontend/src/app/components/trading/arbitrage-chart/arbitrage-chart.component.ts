@@ -194,6 +194,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   primaryDropdownOpen = signal<boolean>(false);
   hedgeDropdownOpen = signal<boolean>(false);
 
+  // Order parameters synchronization lock
+  orderParamsLocked = signal<boolean>(true); // Default: locked (synchronized)
+
   // Chart
   private chart: IChartApi | null = null;
   private primarySeries: ISeriesApi<'Line'> | null = null;
@@ -225,11 +228,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   // Destroyed flag to prevent updates after component destruction
   private isDestroyed = false;
 
-  // Flag to prevent circular quantity synchronization
+  // Flags to prevent circular synchronization
   private isSyncingQuantity = false;
-
-  // Flag to prevent circular side synchronization
   private isSyncingSide = false;
+  private isSyncingLeverage = false;
+  private isSyncingGraduatedParts = false;
+  private isSyncingGraduatedDelay = false;
 
   // Flag to track if user has manually selected sides
   private hasManualSideSelection = false;
@@ -2260,6 +2264,73 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
+   * Toggle order parameters synchronization lock
+   */
+  toggleOrderParamsLock(): void {
+    const newState = !this.orderParamsLocked();
+    this.orderParamsLocked.set(newState);
+    console.log('[ArbitrageChart] Order params lock toggled:', newState ? 'locked' : 'unlocked');
+
+    // If locking, synchronize all values from primary to hedge
+    if (newState) {
+      this.synchronizeAllFieldsToHedge();
+    }
+  }
+
+  /**
+   * Synchronize all order parameter fields from primary to hedge
+   */
+  private synchronizeAllFieldsToHedge(): void {
+    console.log('[ArbitrageChart] Synchronizing all fields from primary to hedge');
+
+    // Prevent circular updates
+    this.isSyncingSide = true;
+    this.isSyncingLeverage = true;
+    this.isSyncingQuantity = true;
+    this.isSyncingGraduatedParts = true;
+    this.isSyncingGraduatedDelay = true;
+
+    try {
+      // Sync side (opposite)
+      const primarySide = this.primaryOrderForm.get('side')?.value;
+      const oppositeSide = primarySide === 'long' ? 'short' : 'long';
+      this.hedgeOrderForm.patchValue({ side: oppositeSide }, { emitEvent: false });
+
+      // Sync leverage
+      const leverage = this.primaryOrderForm.get('leverage')?.value;
+      this.hedgeOrderForm.patchValue({ leverage }, { emitEvent: false });
+
+      // Sync quantity (with unit conversion if needed)
+      const primaryUnit = this.primaryQuantityUnit();
+      const hedgeUnit = this.hedgeQuantityUnit();
+      const quantity = this.primaryOrderForm.get('quantity')?.value;
+
+      let hedgeQuantity = quantity;
+      if (primaryUnit !== hedgeUnit) {
+        hedgeQuantity = this.convertQuantity(quantity, primaryUnit, hedgeUnit, 'primary');
+      }
+      this.hedgeOrderForm.patchValue({ quantity: hedgeQuantity }, { emitEvent: false });
+
+      // Sync graduated parts
+      const graduatedParts = this.primaryOrderForm.get('graduatedParts')?.value;
+      this.hedgeOrderForm.patchValue({ graduatedParts }, { emitEvent: false });
+
+      // Sync graduated delay
+      const graduatedDelayMs = this.primaryOrderForm.get('graduatedDelayMs')?.value;
+      this.hedgeOrderForm.patchValue({ graduatedDelayMs }, { emitEvent: false });
+
+      console.log('[ArbitrageChart] All fields synchronized successfully');
+    } finally {
+      // Re-enable syncing flags
+      this.isSyncingSide = false;
+      this.isSyncingLeverage = false;
+      this.isSyncingQuantity = false;
+      this.isSyncingGraduatedParts = false;
+      this.isSyncingGraduatedDelay = false;
+    }
+  }
+
+  /**
    * Set primary quantity unit and convert existing value
    * Also synchronizes unit and quantity to hedge form
    */
@@ -2491,100 +2562,146 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Set up form value watchers for real-time validation, quantity and side synchronization
+   * Set up form value watchers for real-time validation and field synchronization
    */
   private setupFormValidation(): void {
-    // Watch primary form quantity changes - sync to hedge and validate both
+    // PRIMARY FORM WATCHERS
+
+    // Watch primary quantity changes
     this.primaryOrderForm.get('quantity')?.valueChanges.subscribe((value) => {
-      // Validate primary order
       this.validatePrimaryOrder();
 
-      // Sync to hedge quantity if not already syncing (prevent circular updates)
-      if (!this.isSyncingQuantity) {
+      // Sync to hedge if locked and not already syncing
+      if (this.orderParamsLocked() && !this.isSyncingQuantity) {
         this.isSyncingQuantity = true;
-
-        // Get current units for both forms
         const primaryUnit = this.primaryQuantityUnit();
         const hedgeUnit = this.hedgeQuantityUnit();
-
         let hedgeValue = value;
 
-        // If units are different, convert using primary exchange price
         if (primaryUnit !== hedgeUnit) {
           hedgeValue = this.convertQuantity(value, primaryUnit, hedgeUnit, 'primary');
         }
 
         this.hedgeOrderForm.patchValue({ quantity: hedgeValue }, { emitEvent: false });
-        this.validateHedgeOrder(); // Validate hedge after sync
+        this.validateHedgeOrder();
         this.isSyncingQuantity = false;
       }
     });
 
-    this.primaryOrderForm.get('graduatedParts')?.valueChanges.subscribe(() => {
-      this.validatePrimaryOrder();
-    });
-
-    // Watch primary form side changes - sync opposite side to hedge
+    // Watch primary side changes
     this.primaryOrderForm.get('side')?.valueChanges.subscribe((value: 'long' | 'short') => {
-      if (!this.isSyncingSide) {
-        // User manually changed side - mark manual selection
+      if (this.orderParamsLocked() && !this.isSyncingSide) {
         this.hasManualSideSelection = true;
-
         this.isSyncingSide = true;
         const oppositeSide = value === 'long' ? 'short' : 'long';
         this.hedgeOrderForm.patchValue({ side: oppositeSide }, { emitEvent: false });
         this.isSyncingSide = false;
-
-        console.log('[ArbitrageChart] Manual side selection detected (primary)');
+        console.log('[ArbitrageChart] Side synced from primary to hedge');
       }
     });
 
-    // Watch hedge form quantity changes - sync to primary and validate both
+    // Watch primary leverage changes
+    this.primaryOrderForm.get('leverage')?.valueChanges.subscribe((value) => {
+      if (this.orderParamsLocked() && !this.isSyncingLeverage) {
+        this.isSyncingLeverage = true;
+        this.hedgeOrderForm.patchValue({ leverage: value }, { emitEvent: false });
+        this.isSyncingLeverage = false;
+        console.log('[ArbitrageChart] Leverage synced from primary to hedge');
+      }
+    });
+
+    // Watch primary graduatedParts changes
+    this.primaryOrderForm.get('graduatedParts')?.valueChanges.subscribe((value) => {
+      this.validatePrimaryOrder();
+
+      if (this.orderParamsLocked() && !this.isSyncingGraduatedParts) {
+        this.isSyncingGraduatedParts = true;
+        this.hedgeOrderForm.patchValue({ graduatedParts: value }, { emitEvent: false });
+        this.validateHedgeOrder();
+        this.isSyncingGraduatedParts = false;
+        console.log('[ArbitrageChart] Graduated parts synced from primary to hedge');
+      }
+    });
+
+    // Watch primary graduatedDelayMs changes
+    this.primaryOrderForm.get('graduatedDelayMs')?.valueChanges.subscribe((value) => {
+      if (this.orderParamsLocked() && !this.isSyncingGraduatedDelay) {
+        this.isSyncingGraduatedDelay = true;
+        this.hedgeOrderForm.patchValue({ graduatedDelayMs: value }, { emitEvent: false });
+        this.isSyncingGraduatedDelay = false;
+        console.log('[ArbitrageChart] Graduated delay synced from primary to hedge');
+      }
+    });
+
+    // HEDGE FORM WATCHERS
+
+    // Watch hedge quantity changes
     this.hedgeOrderForm.get('quantity')?.valueChanges.subscribe((value) => {
-      // Validate hedge order
       this.validateHedgeOrder();
 
-      // Sync to primary quantity if not already syncing (prevent circular updates)
-      if (!this.isSyncingQuantity) {
+      // Sync to primary if locked and not already syncing
+      if (this.orderParamsLocked() && !this.isSyncingQuantity) {
         this.isSyncingQuantity = true;
-
-        // Get current units for both forms
         const primaryUnit = this.primaryQuantityUnit();
         const hedgeUnit = this.hedgeQuantityUnit();
-
         let primaryValue = value;
 
-        // If units are different, convert using hedge exchange price
         if (primaryUnit !== hedgeUnit) {
           primaryValue = this.convertQuantity(value, hedgeUnit, primaryUnit, 'hedge');
         }
 
         this.primaryOrderForm.patchValue({ quantity: primaryValue }, { emitEvent: false });
-        this.validatePrimaryOrder(); // Validate primary after sync
+        this.validatePrimaryOrder();
         this.isSyncingQuantity = false;
       }
     });
 
-    this.hedgeOrderForm.get('graduatedParts')?.valueChanges.subscribe(() => {
-      this.validateHedgeOrder();
-    });
-
-    // Watch hedge form side changes - sync opposite side to primary
+    // Watch hedge side changes
     this.hedgeOrderForm.get('side')?.valueChanges.subscribe((value: 'long' | 'short') => {
-      if (!this.isSyncingSide) {
-        // User manually changed side - mark manual selection
+      if (this.orderParamsLocked() && !this.isSyncingSide) {
         this.hasManualSideSelection = true;
-
         this.isSyncingSide = true;
         const oppositeSide = value === 'long' ? 'short' : 'long';
         this.primaryOrderForm.patchValue({ side: oppositeSide }, { emitEvent: false });
         this.isSyncingSide = false;
-
-        console.log('[ArbitrageChart] Manual side selection detected (hedge)');
+        console.log('[ArbitrageChart] Side synced from hedge to primary');
       }
     });
 
-    console.log('[ArbitrageChart] Form validation, quantity and side sync watchers set up');
+    // Watch hedge leverage changes
+    this.hedgeOrderForm.get('leverage')?.valueChanges.subscribe((value) => {
+      if (this.orderParamsLocked() && !this.isSyncingLeverage) {
+        this.isSyncingLeverage = true;
+        this.primaryOrderForm.patchValue({ leverage: value }, { emitEvent: false });
+        this.isSyncingLeverage = false;
+        console.log('[ArbitrageChart] Leverage synced from hedge to primary');
+      }
+    });
+
+    // Watch hedge graduatedParts changes
+    this.hedgeOrderForm.get('graduatedParts')?.valueChanges.subscribe((value) => {
+      this.validateHedgeOrder();
+
+      if (this.orderParamsLocked() && !this.isSyncingGraduatedParts) {
+        this.isSyncingGraduatedParts = true;
+        this.primaryOrderForm.patchValue({ graduatedParts: value }, { emitEvent: false });
+        this.validatePrimaryOrder();
+        this.isSyncingGraduatedParts = false;
+        console.log('[ArbitrageChart] Graduated parts synced from hedge to primary');
+      }
+    });
+
+    // Watch hedge graduatedDelayMs changes
+    this.hedgeOrderForm.get('graduatedDelayMs')?.valueChanges.subscribe((value) => {
+      if (this.orderParamsLocked() && !this.isSyncingGraduatedDelay) {
+        this.isSyncingGraduatedDelay = true;
+        this.primaryOrderForm.patchValue({ graduatedDelayMs: value }, { emitEvent: false });
+        this.isSyncingGraduatedDelay = false;
+        console.log('[ArbitrageChart] Graduated delay synced from hedge to primary');
+      }
+    });
+
+    console.log('[ArbitrageChart] Form validation and synchronization watchers set up');
   }
 
   /**
