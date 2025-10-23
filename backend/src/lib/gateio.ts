@@ -432,32 +432,37 @@ export class GateIOService {
       throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 100.`);
     }
 
-    // WORKAROUND: Gate.io's setLeverage API endpoint is failing with "MISSING_REQUIRED_PARAM"
-    // even when leverage is provided correctly. This might be due to:
-    // 1. API endpoint change
-    // 2. Requirement to have an existing position first
-    // 3. Different leverage setting method required
-    //
-    // Solution: Cache leverage value and skip API call. Leverage will be applied when placing orders.
-    // Gate.io uses margin mode and leverage is set at the account level or can be specified per order.
+    // According to official Gate.io SDK documentation (gateapi-nodejs):
+    // Request body should contain leverage as a NUMBER, not string
+    // Example: { leverage: 10 } NOT { leverage: "10" }
+    const body: any = {
+      leverage: leverage, // Send as number per official SDK
+    };
 
-    console.log(`[GateIOService] Caching leverage ${leverage}x for ${contract} (API call skipped due to endpoint issues)`);
-    console.warn(`[GateIOService] Note: Leverage will be set manually in Gate.io UI or applied when placing orders`);
+    if (crossLeverageLimit) {
+      body.cross_leverage_limit = crossLeverageLimit;
+    }
 
-    // Return a mock position object since the API call is skipped
-    return {
+    console.log('[GateIOService] Setting leverage for contract:', {
       contract,
-      leverage: leverage.toString(),
-      mode: 'single',
-      size: 0,
-      margin: '0',
-      entry_price: '0',
-      liq_price: '0',
-      mark_price: '0',
-      unrealised_pnl: '0',
-      realised_pnl: '0',
-      risk_limit: '0'
-    } as GateIOPosition;
+      leverage,
+      bodyType: typeof leverage,
+      body
+    });
+
+    const data = await this.makeRequest<GateIOPosition>(
+      'POST',
+      `/positions/${contract}/leverage`,
+      {}, // No query params needed
+      body
+    );
+
+    console.log('[GateIOService] ✓ Leverage set successfully:', {
+      contract: data.contract,
+      leverage: data.leverage,
+    });
+
+    return data;
   }
 
   /**
