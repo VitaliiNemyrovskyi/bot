@@ -2074,7 +2074,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
               environment: pos.primary.environment || 'MAINNET',
               lastFundingPaid: primaryLastFunding,
               totalFundingEarned: primaryTotalFunding,
-              tradingFees: primaryFees
+              tradingFees: primaryFees,
+              // Price and liquidation data
+              entryPrice: pos.primary.entryPrice,
+              currentPrice: pos.primary.currentPrice,
+              liquidationPrice: pos.primary.liquidationPrice,
+              proximityRatio: pos.primary.proximityRatio,
+              inDanger: pos.primary.inDanger
             },
             hedge: {
               exchange: pos.hedge.exchange,
@@ -2084,7 +2090,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
               environment: pos.hedge.environment || 'MAINNET',
               lastFundingPaid: hedgeLastFunding,
               totalFundingEarned: hedgeTotalFunding,
-              tradingFees: hedgeFees
+              tradingFees: hedgeFees,
+              // Price and liquidation data
+              entryPrice: pos.hedge.entryPrice,
+              currentPrice: pos.hedge.currentPrice,
+              liquidationPrice: pos.hedge.liquidationPrice,
+              proximityRatio: pos.hedge.proximityRatio,
+              inDanger: pos.hedge.inDanger
             },
             graduatedEntry: {
               parts: pos.graduatedEntry.parts,
@@ -2513,6 +2525,51 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       console.error('[ArbitrageChart] Failed to stop position:', error);
       const errorMessage = error.error?.error || error.message || 'Unknown error';
       alert(`Failed to stop position: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Synchronize TP/SL for an active position
+   * Sets synchronized Take-Profit and Stop-Loss where Primary SL = Hedge TP and vice versa
+   */
+  async syncTpSl(positionId: string): Promise<void> {
+    const confirmed = confirm(
+      `Set synchronized TP/SL for position ${positionId}?\n\n` +
+      `This will:\n` +
+      `• Set Primary Stop-Loss = Hedge Take-Profit\n` +
+      `• Set Hedge Stop-Loss = Primary Take-Profit\n` +
+      `• Both positions will close simultaneously when either price is hit`
+    );
+    if (!confirmed) return;
+
+    try {
+      console.log('[ArbitrageChart] Synchronizing TP/SL for position:', positionId);
+
+      // Call backend API to sync TP/SL
+      const token = this.authService.authState().token;
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      });
+
+      const url = getEndpointUrl('arbitrage', 'graduatedEntrySetTpSl');
+
+      const response = await this.http.post<any>(url, { positionId }, { headers }).toPromise();
+
+      if (response?.success) {
+        console.log('[ArbitrageChart] TP/SL synchronized successfully:', response.data);
+        alert(`Synchronized TP/SL set successfully for position ${positionId}\n\nCheck your exchange UI to verify the orders.`);
+      } else {
+        throw new Error(response?.error || 'Unknown error from server');
+      }
+    } catch (error: any) {
+      console.error('[ArbitrageChart] Failed to sync TP/SL:', error);
+      const errorMessage = error.error?.error || error.message || 'Unknown error';
+      alert(`Failed to sync TP/SL: ${errorMessage}`);
     }
   }
 

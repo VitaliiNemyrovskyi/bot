@@ -1,5 +1,6 @@
 import { BaseExchangeConnector, OrderSide, OrderType } from './base-exchange.connector';
 import { MEXCService } from '@/lib/mexc';
+import { ContractSpecification } from '@/lib/contract-calculator';
 
 /**
  * MEXC Exchange Connector
@@ -12,6 +13,7 @@ export class MEXCConnector extends BaseExchangeConnector {
   private apiSecret: string;
   private authToken?: string;
   private leverageCache: Map<string, number> = new Map(); // Cache leverage per symbol
+  private contractSizeCache: Map<string, number> = new Map(); // Cache contract size per symbol
 
   constructor(apiKey: string, apiSecret: string, authToken?: string) {
     super();
@@ -26,6 +28,62 @@ export class MEXCConnector extends BaseExchangeConnector {
       authToken,
       enableRateLimit: true,
     });
+  }
+
+  /**
+   * Normalize symbol format for MEXC
+   * MEXC uses underscore format: BTC_USDT, NMR_USDT
+   */
+  private normalizeSymbol(symbol: string): string {
+    // If symbol already has underscore, return as-is
+    if (symbol.includes('_')) {
+      return symbol;
+    }
+
+    // Convert BTCUSDT -> BTC_USDT, NMRUSDT -> NMR_USDT
+    if (symbol.endsWith('USDT')) {
+      const base = symbol.slice(0, -4);
+      return `${base}_USDT`;
+    }
+
+    if (symbol.endsWith('USDC')) {
+      const base = symbol.slice(0, -4);
+      return `${base}_USDC`;
+    }
+
+    return symbol;
+  }
+
+  /**
+   * Get contract size for a symbol (with caching)
+   * MEXC contracts have a contractSize that needs to be used for quantity conversion
+   * For example, P_USDT has contractSize: 10, meaning 1 contract = 10 P_USDT
+   */
+  private async getContractSize(symbol: string): Promise<number> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    // Check cache first
+    if (this.contractSizeCache.has(normalizedSymbol)) {
+      return this.contractSizeCache.get(normalizedSymbol)!;
+    }
+
+    try {
+      // Fetch contract details from MEXC API
+      const contractDetails = await this.mexcService.getContractDetails(normalizedSymbol);
+      const contractSize = contractDetails.contractSize || 1;
+
+      console.log(`[MEXCConnector] Contract size for ${normalizedSymbol}: ${contractSize}`);
+
+      // Cache for future use
+      this.contractSizeCache.set(normalizedSymbol, contractSize);
+      this.contractSizeCache.set(symbol, contractSize);
+
+      return contractSize;
+    } catch (error: any) {
+      console.error(`[MEXCConnector] Failed to get contract size for ${normalizedSymbol}:`, error.message);
+      // Default to 1 if we can't fetch contract details
+      return 1;
+    }
   }
 
   /**
@@ -53,14 +111,27 @@ export class MEXCConnector extends BaseExchangeConnector {
     side: OrderSide,
     quantity: number
   ): Promise<any> {
+    // Normalize symbol to MEXC format (BTCUSDT -> BTC_USDT)
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    // Get contract size for this symbol (e.g., P_USDT has contractSize: 10)
+    const contractSize = await this.getContractSize(symbol);
+
+    // Convert quantity to number of contracts
+    // For example: 110 P_USDT / 10 = 11 contracts
+    const contracts = quantity / contractSize;
+
     // Get cached leverage for this symbol, default to 1 if not set
-    const leverage = this.leverageCache.get(symbol) || 1;
+    const leverage = this.leverageCache.get(normalizedSymbol) || this.leverageCache.get(symbol) || 1;
 
     console.log(`[MEXCConnector] Placing market ${side} order:`, {
       symbol,
+      normalizedSymbol,
       quantity,
+      contractSize,
+      contracts,
       leverage,
-      leverageSource: this.leverageCache.has(symbol) ? 'cached' : 'default',
+      leverageSource: this.leverageCache.has(normalizedSymbol) ? 'cached' : 'default',
     });
 
     if (!this.isInitialized) {
@@ -73,8 +144,8 @@ export class MEXCConnector extends BaseExchangeConnector {
       const mexcSide = side === 'Buy' ? 1 : 3; // Buy = open long, Sell = open short
 
       const result = await this.mexcService.placeOrder({
-        symbol,
-        vol: quantity,
+        symbol: normalizedSymbol,
+        vol: contracts, // Use number of contracts (quantity / contractSize)
         leverage, // Use cached leverage from setLeverage() call
         side: mexcSide as 1 | 2 | 3 | 4,
         type: 5, // Market order
@@ -98,15 +169,28 @@ export class MEXCConnector extends BaseExchangeConnector {
     quantity: number,
     price: number
   ): Promise<any> {
+    // Normalize symbol to MEXC format
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    // Get contract size for this symbol (e.g., P_USDT has contractSize: 10)
+    const contractSize = await this.getContractSize(symbol);
+
+    // Convert quantity to number of contracts
+    // For example: 110 P_USDT / 10 = 11 contracts
+    const contracts = quantity / contractSize;
+
     // Get cached leverage for this symbol, default to 1 if not set
-    const leverage = this.leverageCache.get(symbol) || 1;
+    const leverage = this.leverageCache.get(normalizedSymbol) || this.leverageCache.get(symbol) || 1;
 
     console.log(`[MEXCConnector] Placing limit ${side} order:`, {
       symbol,
+      normalizedSymbol,
       quantity,
+      contractSize,
+      contracts,
       price,
       leverage,
-      leverageSource: this.leverageCache.has(symbol) ? 'cached' : 'default',
+      leverageSource: this.leverageCache.has(normalizedSymbol) ? 'cached' : 'default',
     });
 
     if (!this.isInitialized) {
@@ -118,9 +202,9 @@ export class MEXCConnector extends BaseExchangeConnector {
       const mexcSide = side === 'Buy' ? 1 : 3; // Buy = open long, Sell = open short
 
       const result = await this.mexcService.placeOrder({
-        symbol,
+        symbol: normalizedSymbol,
         price,
-        vol: quantity,
+        vol: contracts, // Use number of contracts (quantity / contractSize)
         leverage, // Use cached leverage from setLeverage() call
         side: mexcSide as 1 | 2 | 3 | 4,
         type: 1, // Limit order
@@ -139,14 +223,15 @@ export class MEXCConnector extends BaseExchangeConnector {
    * Cancel an order
    */
   async cancelOrder(orderId: string, symbol: string): Promise<any> {
-    console.log(`[MEXCConnector] Canceling order:`, { orderId, symbol });
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    console.log(`[MEXCConnector] Canceling order:`, { orderId, symbol, normalizedSymbol });
 
     if (!this.isInitialized) {
       throw new Error('MEXC connector not initialized');
     }
 
     try {
-      const result = await this.mexcService.cancelOrder(symbol, orderId);
+      const result = await this.mexcService.cancelOrder(normalizedSymbol, orderId);
       console.log('[MEXCConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
@@ -177,17 +262,19 @@ export class MEXCConnector extends BaseExchangeConnector {
    * Get position for a symbol
    */
   async getPosition(symbol: string): Promise<any> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
     if (!this.isInitialized) {
       throw new Error('MEXC connector not initialized');
     }
 
     try {
-      const positions = await this.mexcService.getPositions(symbol);
-      const position = positions.find((p) => p.symbol === symbol);
+      const positions = await this.mexcService.getPositions(normalizedSymbol);
+      const position = positions.find((p) => p.symbol === normalizedSymbol);
 
       if (!position || parseFloat(position.holdVol) === 0) {
         return {
-          symbol,
+          symbol: normalizedSymbol,
           positionType: 'None',
           holdVol: '0',
           holdAvgPrice: '0',
@@ -199,6 +286,27 @@ export class MEXCConnector extends BaseExchangeConnector {
       return position;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting position:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all positions or positions for a specific symbol
+   * Returns an array of positions (compatible with graduated-entry-arbitrage service)
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    const normalizedSymbol = symbol ? this.normalizeSymbol(symbol) : undefined;
+
+    if (!this.isInitialized) {
+      throw new Error('MEXC connector not initialized');
+    }
+
+    try {
+      const positions = await this.mexcService.getPositions(normalizedSymbol);
+      console.log('[MEXCConnector] Positions retrieved:', positions.length);
+      return positions;
+    } catch (error: any) {
+      console.error('[MEXCConnector] Error getting positions:', error.message);
       throw error;
     }
   }
@@ -224,22 +332,23 @@ export class MEXCConnector extends BaseExchangeConnector {
    * Close position
    */
   async closePosition(symbol: string): Promise<any> {
-    console.log(`[MEXCConnector] Closing position for ${symbol}`);
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    console.log(`[MEXCConnector] Closing position for ${symbol} (${normalizedSymbol})`);
 
     if (!this.isInitialized) {
       throw new Error('MEXC connector not initialized');
     }
 
     try {
-      // First check if there's an open position
+      // First check if there's an open position (getPosition already normalizes)
       const position = await this.getPosition(symbol);
 
       if (!position || position.positionType === 'None') {
-        throw new Error(`No open position for ${symbol}`);
+        throw new Error(`No open position for ${normalizedSymbol}`);
       }
 
       const result = await this.mexcService.closePosition(
-        symbol,
+        normalizedSymbol,
         position.positionId,
         position.positionType
       );
@@ -260,9 +369,21 @@ export class MEXCConnector extends BaseExchangeConnector {
     side: OrderSide,
     quantity: number
   ): Promise<any> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    // Get contract size for this symbol (e.g., P_USDT has contractSize: 10)
+    const contractSize = await this.getContractSize(symbol);
+
+    // Convert quantity to number of contracts
+    // For example: 110 P_USDT / 10 = 11 contracts
+    const contracts = quantity / contractSize;
+
     console.log(`[MEXCConnector] Placing reduce-only market ${side} order:`, {
       symbol,
+      normalizedSymbol,
       quantity,
+      contractSize,
+      contracts,
     });
 
     if (!this.isInitialized) {
@@ -275,16 +396,16 @@ export class MEXCConnector extends BaseExchangeConnector {
       const mexcSide = side === 'Buy' ? 2 : 4;
 
       // Get position to get positionId
-      const positions = await this.mexcService.getPositions(symbol);
-      const position = positions.find((p) => p.symbol === symbol);
+      const positions = await this.mexcService.getPositions(normalizedSymbol);
+      const position = positions.find((p) => p.symbol === normalizedSymbol);
 
       if (!position) {
-        throw new Error(`No position found for ${symbol}`);
+        throw new Error(`No position found for ${normalizedSymbol}`);
       }
 
       const result = await this.mexcService.placeOrder({
-        symbol,
-        vol: quantity,
+        symbol: normalizedSymbol,
+        vol: contracts, // Use number of contracts (quantity / contractSize)
         side: mexcSide as 1 | 2 | 3 | 4,
         type: 5, // Market order
         openType: position.openType,
@@ -312,7 +433,11 @@ export class MEXCConnector extends BaseExchangeConnector {
     leverage: number,
     openType: 1 | 2 = 2
   ): Promise<any> {
+    // Normalize symbol to MEXC format
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
     console.log(`[MEXCConnector] Setting leverage for ${symbol}:`, {
+      normalizedSymbol,
       leverage,
       openType,
     });
@@ -327,12 +452,13 @@ export class MEXCConnector extends BaseExchangeConnector {
     }
 
     // ALWAYS cache the leverage value first, so it's available for subsequent orders
-    // even if the API call fails
+    // Cache for both normalized and original symbol formats
+    this.leverageCache.set(normalizedSymbol, leverage);
     this.leverageCache.set(symbol, leverage);
-    console.log(`[MEXCConnector] ✓ Cached leverage ${leverage}x for ${symbol} (will be used in subsequent orders)`);
+    console.log(`[MEXCConnector] ✓ Cached leverage ${leverage}x for ${normalizedSymbol} (will be used in subsequent orders)`);
 
     try {
-      const result = await this.mexcService.setLeverage(symbol, leverage, openType);
+      const result = await this.mexcService.setLeverage(normalizedSymbol, leverage, openType);
       console.log('[MEXCConnector] ✓ Leverage set successfully via API:', result);
       return result;
     } catch (error: any) {
@@ -369,7 +495,8 @@ export class MEXCConnector extends BaseExchangeConnector {
    * Uses MEXC's ticker endpoint to get the last traded price
    */
   async getMarketPrice(symbol: string): Promise<number> {
-    console.log(`[MEXCConnector] Fetching market price for ${symbol}`);
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    console.log(`[MEXCConnector] Fetching market price for ${symbol} (${normalizedSymbol})`);
 
     if (!this.isInitialized) {
       throw new Error('MEXC connector not initialized');
@@ -379,22 +506,22 @@ export class MEXCConnector extends BaseExchangeConnector {
       // MEXC uses getTickers() which returns all tickers
       // We need to filter for our specific symbol
       const tickers = await this.mexcService.getTickers();
-      const ticker = tickers.find((t) => t.symbol === symbol);
+      const ticker = tickers.find((t) => t.symbol === normalizedSymbol);
 
       if (!ticker) {
-        throw new Error(`No ticker data found for ${symbol}`);
+        throw new Error(`No ticker data found for ${normalizedSymbol}`);
       }
 
       const lastPrice = ticker.lastPrice;
 
       if (isNaN(lastPrice) || lastPrice <= 0) {
-        throw new Error(`Invalid price data for ${symbol}: ${ticker.lastPrice}`);
+        throw new Error(`Invalid price data for ${normalizedSymbol}: ${ticker.lastPrice}`);
       }
 
-      console.log(`[MEXCConnector] Current price for ${symbol}: $${lastPrice}`);
+      console.log(`[MEXCConnector] Current price for ${normalizedSymbol}: $${lastPrice}`);
       return lastPrice;
     } catch (error: any) {
-      console.error(`[MEXCConnector] Error fetching market price for ${symbol}:`, error.message);
+      console.error(`[MEXCConnector] Error fetching market price for ${normalizedSymbol}:`, error.message);
       throw error;
     }
   }
@@ -415,7 +542,8 @@ export class MEXCConnector extends BaseExchangeConnector {
     symbol: string,
     callback: (price: number, timestamp: number) => void
   ): Promise<() => void> {
-    console.log(`[MEXCConnector] Subscribing to price stream for ${symbol}`);
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    console.log(`[MEXCConnector] Subscribing to price stream for ${symbol} (${normalizedSymbol})`);
 
     if (!this.isInitialized) {
       throw new Error('MEXC connector not initialized');
@@ -432,7 +560,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         subscribeMessage: {
           method: 'sub.ticker',
           param: {
-            symbol,
+            symbol: normalizedSymbol,
           },
         },
         heartbeatInterval: 20000, // 20 seconds
@@ -443,13 +571,13 @@ export class MEXCConnector extends BaseExchangeConnector {
       // Subscribe using WebSocket manager
       const unsubscribe = await websocketManager.subscribe(
         'mexc',
-        symbol,
+        normalizedSymbol,
         config,
         (data: any) => {
           try {
             // MEXC WebSocket ticker format:
             // { "channel": "push.ticker", "data": { "lastPrice": 50000.5, "timestamp": 1234567890 }, "symbol": "BTC_USDT" }
-            if (data.channel === 'push.ticker' && data.data && data.symbol === symbol) {
+            if (data.channel === 'push.ticker' && data.data && data.symbol === normalizedSymbol) {
               const tickerData = data.data;
               const price = parseFloat(tickerData.lastPrice);
               const timestamp = tickerData.timestamp || Date.now();
@@ -457,19 +585,49 @@ export class MEXCConnector extends BaseExchangeConnector {
               if (!isNaN(price) && price > 0) {
                 callback(price, timestamp);
               } else {
-                console.warn(`[MEXCConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.lastPrice);
+                console.warn(`[MEXCConnector] Invalid price in WebSocket update for ${normalizedSymbol}:`, tickerData.lastPrice);
               }
             }
           } catch (error: any) {
-            console.error(`[MEXCConnector] Error processing WebSocket update for ${symbol}:`, error.message);
+            console.error(`[MEXCConnector] Error processing WebSocket update for ${normalizedSymbol}:`, error.message);
           }
         }
       );
 
-      console.log(`[MEXCConnector] Successfully subscribed to price stream for ${symbol}`);
+      console.log(`[MEXCConnector] Successfully subscribed to price stream for ${normalizedSymbol}`);
       return unsubscribe;
     } catch (error: any) {
-      console.error(`[MEXCConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      console.error(`[MEXCConnector] Error subscribing to price stream for ${normalizedSymbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get contract specification for quantity calculations
+   * MEXC uses contract sizes (e.g., 10 for many contracts)
+   */
+  async getContractSpecification(symbol: string): Promise<ContractSpecification> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    if (!this.isInitialized) {
+      throw new Error('MEXC connector not initialized');
+    }
+
+    try {
+      const contractDetails = await this.mexcService.getContractDetails(normalizedSymbol);
+      const contractSize = contractDetails.contractSize || 1;
+      const minVol = contractDetails.minVol || 1;
+      const maxVol = contractDetails.maxVol || 1000000;
+
+      return {
+        exchange: 'MEXC',
+        symbol: normalizedSymbol,
+        multiplier: contractSize, // MEXC contractSize (e.g., 10 for NMR_USDT)
+        minOrderSize: minVol,
+        maxOrderSize: maxVol,
+      };
+    } catch (error: any) {
+      console.error(`[MEXCConnector] Error getting contract specification for ${normalizedSymbol}:`, error.message);
       throw error;
     }
   }

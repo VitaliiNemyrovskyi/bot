@@ -1,5 +1,6 @@
 import { BaseExchangeConnector, OrderSide, OrderType } from './base-exchange.connector';
 import { GateIOService } from '@/lib/gateio';
+import { ContractSpecification } from '@/lib/contract-calculator';
 
 /**
  * Gate.io Exchange Connector
@@ -74,6 +75,9 @@ export class GateIOConnector extends BaseExchangeConnector {
 
   /**
    * Validate and adjust quantity to meet Gate.io's trading rules
+   * IMPORTANT: Gate.io uses contracts, not base currency units
+   * - Input quantity is in base currency (e.g., 16 AVNT)
+   * - Output is number of contracts (e.g., 2 contracts if quanto_multiplier=10)
    */
   private async validateAndAdjustQuantity(contract: string, quantity: number): Promise<number> {
     try {
@@ -82,37 +86,51 @@ export class GateIOConnector extends BaseExchangeConnector {
 
       const minOrderSize = contractDetails.order_size_min;
       const maxOrderSize = contractDetails.order_size_max;
+      const quantoMultiplier = parseFloat(contractDetails.quanto_multiplier);
 
       console.log(`[GateIOConnector] Trading rules for ${contract}:`, {
+        quantoMultiplier,
         minOrderSize,
         maxOrderSize,
-        requestedQty: quantity,
+        requestedQtyInBaseCurrency: quantity,
       });
 
-      // Check minimum quantity
-      if (quantity < minOrderSize) {
-        console.warn(`[GateIOConnector] Quantity ${quantity} is below minimum ${minOrderSize}, adjusting to minimum`);
-        quantity = minOrderSize;
+      // CRITICAL: Convert from base currency units to number of contracts
+      // Example: 16 AVNT / 10 (quanto_multiplier) = 1.6 contracts
+      let contractQuantity = quantity / quantoMultiplier;
+
+      console.log(`[GateIOConnector] Converted quantity:`, {
+        baseCurrencyQty: quantity,
+        quantoMultiplier,
+        contractsQty: contractQuantity,
+      });
+
+      // Check minimum quantity (in contracts)
+      if (contractQuantity < minOrderSize) {
+        console.warn(`[GateIOConnector] Quantity ${contractQuantity} contracts is below minimum ${minOrderSize} contracts, adjusting to minimum`);
+        contractQuantity = minOrderSize;
       }
 
-      // Check maximum quantity
-      if (quantity > maxOrderSize) {
-        console.warn(`[GateIOConnector] Quantity ${quantity} exceeds maximum ${maxOrderSize}, adjusting to maximum`);
-        quantity = maxOrderSize;
+      // Check maximum quantity (in contracts)
+      if (contractQuantity > maxOrderSize) {
+        console.warn(`[GateIOConnector] Quantity ${contractQuantity} contracts exceeds maximum ${maxOrderSize} contracts, adjusting to maximum`);
+        contractQuantity = maxOrderSize;
       }
 
-      // Gate.io uses integer quantities for most contracts
-      // Round to nearest integer
-      const adjustedQty = Math.round(quantity);
+      // Gate.io requires integer number of contracts
+      const adjustedQty = Math.round(contractQuantity);
 
-      if (adjustedQty !== quantity) {
-        console.log(`[GateIOConnector] Adjusted quantity from ${quantity} to ${adjustedQty}`);
-      }
+      console.log(`[GateIOConnector] Final quantity adjustment:`, {
+        requestedBaseCurrency: quantity,
+        calculatedContracts: contractQuantity,
+        roundedContracts: adjustedQty,
+        actualBaseCurrencyAmount: adjustedQty * quantoMultiplier,
+      });
 
       return adjustedQty;
     } catch (error: any) {
       console.error(`[GateIOConnector] Error validating quantity for ${contract}:`, error.message);
-      // Fallback: return rounded quantity
+      // Fallback: return rounded quantity (assuming multiplier=1)
       return Math.round(quantity);
     }
   }
@@ -150,12 +168,40 @@ export class GateIOConnector extends BaseExchangeConnector {
         tif: 'ioc', // Immediate or cancel (market order behavior)
       });
 
-      console.log('[GateIOConnector] Market order placed:', result);
+      console.log('[GateIOConnector] Market order placed:', {
+        orderId: result.id,
+        size: result.size,
+        finish_as: result.finish_as,
+        left: result.left
+      });
 
-      // Convert Gate.io order format to common format with orderId field
+      // Calculate actual filled quantity in base currency
+      // Gate.io returns size in contracts, need to convert to base currency
+      const contractDetails = await this.gateioService.getContractDetails(contract);
+      const quantoMultiplier = parseFloat(contractDetails.quanto_multiplier);
+      const filledContracts = Math.abs(result.size); // size can be negative for short
+      const filledQuantity = filledContracts * quantoMultiplier;
+
+      console.log('[GateIOConnector] Filled quantity calculation:', {
+        sizeInContracts: result.size,
+        filledContracts,
+        quantoMultiplier,
+        filledQuantityInBaseCurrency: filledQuantity
+      });
+
+      // Leverage should have been set BEFORE this order via setLeverage()
+      const cachedLeverage = this.leverageCache.get(contract);
+      if (cachedLeverage && cachedLeverage > 0) {
+        console.log(`[GateIOConnector] Order placed with ${cachedLeverage}x leverage (set previously)`);
+      } else {
+        console.warn(`[GateIOConnector] ⚠️ No leverage set for ${contract}, using account default`);
+      }
+
+      // Convert Gate.io order format to common format with orderId and filledQuantity fields
       return {
         ...result,
         orderId: result.id?.toString() || '',
+        filledQuantity, // Add filled quantity in base currency
       };
     } catch (error: any) {
       console.error('[GateIOConnector] Error placing market order:', error.message);
@@ -447,7 +493,7 @@ export class GateIOConnector extends BaseExchangeConnector {
 
   /**
    * Set leverage for a trading symbol
-   * IMPORTANT: Leverage must be set BEFORE opening positions
+   * IMPORTANT: This calls Gate.io API to set leverage BEFORE opening positions
    *
    * @param symbol Trading pair symbol (e.g., "BTCUSDT")
    * @param leverage Leverage multiplier (typically 1-100x)
@@ -471,28 +517,24 @@ export class GateIOConnector extends BaseExchangeConnector {
       throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 100.`);
     }
 
-    // ALWAYS cache the leverage value
-    this.leverageCache.set(contract, leverage);
-    console.log(`[GateIOConnector] ✓ Cached leverage ${leverage}x for ${contract}`);
+    try {
+      // Call Gate.io API to set leverage BEFORE placing orders
+      const result = await this.gateioService.setLeverageBeforeOrders(contract, leverage);
 
-    // IMPORTANT: Gate.io's /positions/{contract}/leverage endpoint only works for EXISTING positions
-    // When there's no position yet, the API returns "Missing required parameter: leverage"
-    // even though the parameter is sent correctly.
-    //
-    // WORKAROUND: Skip the API call and rely on cached leverage value.
-    // The leverage will be applied when placing orders.
-    // Users can also set leverage manually in Gate.io UI if needed.
+      // Cache the leverage for reference
+      this.leverageCache.set(contract, leverage);
 
-    console.warn(`[GateIOConnector] Skipping leverage API call for ${contract} (only works with existing positions)`);
-    console.warn(`[GateIOConnector] Leverage ${leverage}x is cached and will be used for orders`);
-    console.warn(`[GateIOConnector] Alternatively, set leverage manually in Gate.io UI before trading`);
+      console.log(`[GateIOConnector] ✓ Leverage ${leverage}x set successfully for ${contract}`);
 
-    // Return a mock response to indicate success
-    return {
-      contract,
-      leverage: leverage.toString(),
-      mode: 'single',
-    };
+      return {
+        contract: result.contract,
+        leverage: result.leverage,
+        mode: result.mode,
+      };
+    } catch (error: any) {
+      console.error(`[GateIOConnector] Failed to set leverage for ${contract}:`, error.message);
+      throw new Error(`Failed to set leverage: ${error.message}`);
+    }
   }
 
   /**
@@ -591,6 +633,32 @@ export class GateIOConnector extends BaseExchangeConnector {
       return unsubscribe;
     } catch (error: any) {
       console.error(`[GateIOConnector] Error subscribing to mark price stream for ${contract}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get contract specification for quantity calculations
+   */
+  async getContractSpecification(symbol: string): Promise<ContractSpecification> {
+    const contract = this.normalizeSymbol(symbol);
+
+    if (!this.isInitialized) {
+      throw new Error('Gate.io connector not initialized');
+    }
+
+    try {
+      const contractDetails = await this.gateioService.getContractDetails(contract);
+
+      return {
+        exchange: 'GATEIO',
+        symbol: contract,
+        multiplier: parseFloat(contractDetails.quanto_multiplier),
+        minOrderSize: contractDetails.order_size_min,
+        maxOrderSize: contractDetails.order_size_max,
+      };
+    } catch (error: any) {
+      console.error(`[GateIOConnector] Error getting contract specification for ${contract}:`, error.message);
       throw error;
     }
   }

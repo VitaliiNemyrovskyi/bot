@@ -396,6 +396,7 @@
             // Balance item styles
             .balance-item {
               height: 74px;
+
               .loading-balance {
                 display: flex;
                 align-items: center;
@@ -661,10 +662,9 @@
                     background: var(--background-secondary);
                     border: 1px solid var(--border-color);
                     border-radius: var(--border-radius-sm);
-                    box-shadow:
-                      0 4px 6px -1px rgba(0, 0, 0, 0.1),
-                      0 2px 4px -1px rgba(0, 0, 0, 0.06),
-                      0 0 0 1px rgba(59, 130, 246, 0.1);
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                    0 2px 4px -1px rgba(0, 0, 0, 0.06),
+                    0 0 0 1px rgba(59, 130, 246, 0.1);
                     z-index: 2;
                     overflow: hidden;
                     animation: dropdownFadeIn 0.15s ease-out;
@@ -772,8 +772,8 @@
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          padding: 12px 16px;
+          width: 0;
+          position: relative;
 
           .sync-lock-button {
             width: 48px;
@@ -786,7 +786,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
+            position: absolute;
+            top: 194px;
 
             .lock-icon {
               width: 24px;
@@ -1116,6 +1117,31 @@
               }
 
               &.actions {
+                display: flex;
+                gap: 8px;
+
+                .tpsl-button {
+                  padding: 6px 12px;
+                  font-size: 13px;
+                  font-weight: 600;
+                  color: #ffffff;
+                  background: #3b82f6;
+                  border: none;
+                  border-radius: var(--border-radius-sm);
+                  cursor: pointer;
+                  transition: var(--transition-fast);
+
+                  &:hover {
+                    background: #2563eb;
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+                  }
+
+                  &:active {
+                    transform: translateY(0);
+                  }
+                }
+
                 .stop-button {
                   padding: 6px 16px;
                   font-size: 13px;

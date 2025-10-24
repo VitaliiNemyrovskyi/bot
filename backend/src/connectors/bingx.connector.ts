@@ -922,6 +922,95 @@ export class BingXConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Set take-profit and stop-loss for an existing position
+   * BingX doesn't have a unified setTradingStop endpoint like Bybit
+   * Instead, we place separate conditional orders (TAKE_PROFIT_MARKET and STOP_MARKET)
+   */
+  async setTradingStop(params: {
+    symbol: string;
+    side: OrderSide;
+    takeProfit?: number;
+    stopLoss?: number;
+  }): Promise<{
+    success: boolean;
+    takeProfitOrderId?: string;
+    stopLossOrderId?: string;
+    message?: string;
+  }> {
+    console.log(`[BingXConnector] Setting TP/SL for ${params.symbol}:`, {
+      side: params.side,
+      takeProfit: params.takeProfit,
+      stopLoss: params.stopLoss,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    // Validate at least one is provided
+    if (!params.takeProfit && !params.stopLoss) {
+      throw new Error('At least one of takeProfit or stopLoss must be provided');
+    }
+
+    const results: {
+      success: boolean;
+      takeProfitOrderId?: string;
+      stopLossOrderId?: string;
+      message?: string;
+    } = {
+      success: true,
+    };
+
+    try {
+      // Place Take Profit order if specified
+      if (params.takeProfit) {
+        try {
+          console.log(`[BingXConnector] Placing Take Profit order at ${params.takeProfit}...`);
+          const tpResult = await this.placeTakeProfitOrder(
+            params.symbol,
+            params.takeProfit,
+            params.side
+          );
+          results.takeProfitOrderId = tpResult.order?.orderId || tpResult.orderId;
+          console.log(`[BingXConnector] ✓ Take Profit order placed: ${results.takeProfitOrderId}`);
+        } catch (tpError: any) {
+          console.error(`[BingXConnector] ✗ Failed to place Take Profit order:`, tpError.message);
+          results.success = false;
+          results.message = `Take Profit error: ${tpError.message}`;
+          throw tpError;
+        }
+      }
+
+      // Place Stop Loss order if specified
+      if (params.stopLoss) {
+        try {
+          console.log(`[BingXConnector] Placing Stop Loss order at ${params.stopLoss}...`);
+          const slResult = await this.placeStopLossOrder(
+            params.symbol,
+            params.stopLoss,
+            params.side
+          );
+          results.stopLossOrderId = slResult.order?.orderId || slResult.orderId;
+          console.log(`[BingXConnector] ✓ Stop Loss order placed: ${results.stopLossOrderId}`);
+        } catch (slError: any) {
+          console.error(`[BingXConnector] ✗ Failed to place Stop Loss order:`, slError.message);
+          results.success = false;
+          results.message = results.message
+            ? `${results.message}; Stop Loss error: ${slError.message}`
+            : `Stop Loss error: ${slError.message}`;
+          throw slError;
+        }
+      }
+
+      console.log(`[BingXConnector] ✓ Trading stop set successfully for ${params.symbol}`);
+      return results;
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error setting trading stop:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get current market price for a symbol (REST API)
    * Uses BingX's ticker endpoint to get the last traded price
    */

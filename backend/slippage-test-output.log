@@ -1,0 +1,267 @@
+
+🚀 Testing Real Slippage and Cost Buffer on Gate.io
+================================================================================
+
+✅ Markets loaded
+
+
+================================================================================
+📊 Analyzing BTC/USDT
+================================================================================
+Mid Price: 107610.80000000
+Bid: 107610.80000000 | Ask: 107610.90000000
+Spread: 0.10000000 (0.000%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.000%
+  100 USD: 0.000%
+  200 USD: 0.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.000%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 0.0705 tokens ($7583.98 USD)
+  Ask volume: 2.8873 tokens ($310704.12 USD)
+  Total bid volume: 0.6950 tokens
+  Total ask volume: 3.6078 tokens
+
+================================================================================
+📊 Analyzing ETH/USDT
+================================================================================
+Mid Price: 3799.15000000
+Bid: 3799.43000000 | Ask: 3799.44000000
+Spread: 0.01000000 (0.000%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.017%
+  100 USD: 0.017%
+  200 USD: 0.017%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.008%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 1.8828 tokens ($7153.04 USD)
+  Ask volume: 7.7036 tokens ($29267.13 USD)
+  Total bid volume: 7.2828 tokens
+  Total ask volume: 20.9715 tokens
+
+================================================================================
+📊 Analyzing ETH/BTC
+================================================================================
+Mid Price: 0.03531000
+Bid: 0.03531000 | Ask: 0.03531500
+Spread: 0.00000500 (0.014%)
+⚠️  Not enough liquidity for 50 USD buy order
+⚠️  Not enough liquidity for 100 USD buy order
+⚠️  Not enough liquidity for 200 USD buy order
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  999.000%
+  100 USD: 999.000%
+  200 USD: 999.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.014%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 0.6095 tokens ($0.02 USD)
+  Ask volume: 1.3508 tokens ($0.05 USD)
+  Total bid volume: 2.2324 tokens
+  Total ask volume: 2.2631 tokens
+
+================================================================================
+📊 Analyzing BNB/USDT
+================================================================================
+Mid Price: 1065.60000000
+Bid: 1065.60000000 | Ask: 1065.70000000
+Spread: 0.10000000 (0.009%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.000%
+  100 USD: 0.000%
+  200 USD: 0.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.009%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 10.6400 tokens ($11337.98 USD)
+  Ask volume: 20.2070 tokens ($21532.58 USD)
+  Total bid volume: 125.9800 tokens
+  Total ask volume: 122.9810 tokens
+
+================================================================================
+📊 Analyzing SOL/USDT
+================================================================================
+Mid Price: 181.43000000
+Bid: 181.42000000 | Ask: 181.43000000
+Spread: 0.01000000 (0.006%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.000%
+  100 USD: 0.000%
+  200 USD: 0.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.000%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 51.6260 tokens ($9366.51 USD)
+  Ask volume: 44.9340 tokens ($8152.38 USD)
+  Total bid volume: 805.2810 tokens
+  Total ask volume: 619.9780 tokens
+
+================================================================================
+📊 Analyzing DOGE/USDT
+================================================================================
+Mid Price: 0.19018000
+Bid: 0.19018000 | Ask: 0.19019000
+Spread: 0.00001000 (0.005%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.005%
+  100 USD: 0.005%
+  200 USD: 0.005%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.005%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 27249.6100 tokens ($5182.33 USD)
+  Ask volume: 28039.7600 tokens ($5332.60 USD)
+  Total bid volume: 326540.9500 tokens
+  Total ask volume: 260796.7900 tokens
+
+================================================================================
+📊 Analyzing DOGE/BTC
+================================================================================
+Mid Price: 0.00000177
+Bid: 0.00000177 | Ask: 0.00000177
+Spread: 0.00000000 (0.170%)
+⚠️  Not enough liquidity for 50 USD buy order
+⚠️  Not enough liquidity for 100 USD buy order
+⚠️  Not enough liquidity for 200 USD buy order
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  999.000%
+  100 USD: 999.000%
+  200 USD: 999.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.113%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 11179.7000 tokens ($0.02 USD)
+  Ask volume: 14196.5000 tokens ($0.03 USD)
+  Total bid volume: 34467.8000 tokens
+  Total ask volume: 53901.6000 tokens
+❌ Error analyzing MATIC/USDT: gateio does not have market symbol MATIC/USDT
+❌ Error analyzing MATIC/ETH: gateio does not have market symbol MATIC/ETH
+
+================================================================================
+📊 Analyzing LINK/USDT
+================================================================================
+Mid Price: 17.19200000
+Bid: 17.19100000 | Ask: 17.19200000
+Spread: 0.00100000 (0.006%)
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  0.006%
+  100 USD: 0.006%
+  200 USD: 0.005%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: 0.000%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 94.3900 tokens ($1622.75 USD)
+  Ask volume: 70.0600 tokens ($1204.47 USD)
+  Total bid volume: 3157.5700 tokens
+  Total ask volume: 3072.0100 tokens
+
+================================================================================
+📊 Analyzing LINK/ETH
+================================================================================
+Mid Price: 0.00452900
+Bid: 0.00452500 | Ask: 0.00452800
+Spread: 0.00000300 (0.066%)
+⚠️  Not enough liquidity for 50 USD buy order
+⚠️  Not enough liquidity for 100 USD buy order
+⚠️  Not enough liquidity for 200 USD buy order
+
+📈 Slippage Analysis (BUY orders):
+  50 USD:  999.000%
+  100 USD: 999.000%
+  200 USD: 999.000%
+
+💰 Cost Buffer Analysis:
+  Ticker.last vs Ask: -0.022%
+  Price movement buffer: 0.300%
+  Optimal cost buffer: 0.500%
+  Current cost buffer: 1.500% (may be too high!)
+
+💧 Liquidity (top 5 levels):
+  Bid volume: 63.9260 tokens ($0.29 USD)
+  Ask volume: 253.4580 tokens ($1.15 USD)
+  Total bid volume: 321.4650 tokens
+  Total ask volume: 500.4890 tokens
+
+================================================================================
+📊 SUMMARY STATISTICS
+================================================================================
+
+Average Bid/Ask Spread: 0.031%
+
+Average Slippage (BUY orders):
+  50 USD:  333.003%
+  100 USD: 333.003%
+  200 USD: 333.003%
+
+Average Optimal Cost Buffer: 0.500%
+
+================================================================================
+💡 RECOMMENDATIONS
+================================================================================
+
+Current settings:
+  SLIPPAGE = 0.500% per leg
+  COST_BUFFER = 1.500% per BUY leg
+
+Recommended settings based on real data:
+  SLIPPAGE = 333.003% per leg (for 50 USD orders)
+  COST_BUFFER = 0.500% per BUY leg
+
+Potential savings:
+  Slippage reduction: -997.509%
+  Cost buffer reduction: 2.000%
+  TOTAL SAVINGS: -995.509%
+
+⚠️  Current settings are already conservative.
+
+✅ Results saved to slippage-buffer-analysis.json

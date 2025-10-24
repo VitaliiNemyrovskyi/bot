@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BingXService } from '@/lib/bingx';
 import { BybitService } from '@/lib/bybit';
+import { MEXCService } from '@/lib/mexc';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import { AuthService } from '@/lib/auth';
 import { Exchange } from '@prisma/client';
@@ -70,8 +71,10 @@ export async function GET(request: NextRequest) {
       case 'GATEIO':
         balance = await getGateIOBalance(credentials.apiKey, credentials.apiSecret);
         break;
-      case 'BITGET':
       case 'MEXC':
+        balance = await getMEXCBalance(credentials.apiKey, credentials.apiSecret, credentials.authToken);
+        break;
+      case 'BITGET':
         return NextResponse.json(
           { success: false, error: `${exchange} balance not yet implemented` },
           { status: 501 }
@@ -240,6 +243,44 @@ async function getGateIOBalance(apiKey: string, apiSecret: string): Promise<Exch
     }
 
     // Throw original error if it's not a known case
+    throw error;
+  }
+}
+
+/**
+ * Get MEXC balance
+ */
+async function getMEXCBalance(apiKey: string, apiSecret: string, authToken?: string | null): Promise<ExchangeBalance | null> {
+  try {
+    const mexc = new MEXCService({
+      apiKey,
+      apiSecret,
+      authToken: authToken || undefined,
+      enableRateLimit: false,
+    });
+
+    const accountInfo = await mexc.getBalance();
+
+    console.log(`[MEXC] Balance retrieved:`, {
+      currency: accountInfo.currency,
+      equity: accountInfo.equity,
+      availableBalance: accountInfo.availableBalance,
+      positionMargin: accountInfo.positionMargin,
+      frozenBalance: accountInfo.frozenBalance,
+    });
+
+    // Calculate used balance (position margin + frozen balance)
+    const usedBalance = accountInfo.positionMargin + accountInfo.frozenBalance;
+
+    return {
+      exchange: 'MEXC',
+      totalBalance: accountInfo.equity.toString(),
+      availableBalance: accountInfo.availableBalance.toString(),
+      usedBalance: usedBalance.toString(),
+      currency: accountInfo.currency,
+    };
+  } catch (error: any) {
+    console.error('[MEXC] Error getting balance:', error.message);
     throw error;
   }
 }

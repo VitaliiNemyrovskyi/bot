@@ -119,6 +119,9 @@
                       </td>
                       <td class="timestamp">{{ formatTimestamp(position.startedAt) }}</td>
                       <td class="actions">
+                        <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" title="Set synchronized TP/SL">
+                          TP/SL
+                        </button>
                         <button class="stop-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
                           Stop
                         </button>
@@ -405,9 +408,6 @@
                 </svg>
               }
             </button>
-            <span class="sync-lock-label">
-              {{ orderParamsLocked() ? 'Synced' : 'Independent' }}
-            </span>
           </div>
 
           <!-- Hedge Exchange Column -->

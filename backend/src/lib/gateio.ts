@@ -8,7 +8,9 @@ import {
   GateIOTicker,
   GateIOFundingRate,
   GateIOContract,
-  GateIOBalance
+  GateIOBalance,
+  GateIOAccountBookEntry,
+  GateIOMyTrade
 } from '../types/gateio';
 
 /**
@@ -112,6 +114,12 @@ export class GateIOService {
     let bodyString = '';
     if (method === 'POST' && body) {
       bodyString = JSON.stringify(body);
+      console.log('[GateIOService] POST body stringified:', {
+        originalBody: body,
+        bodyString,
+        bodyStringLength: bodyString.length,
+        bodyBytes: Buffer.from(bodyString).toString('hex').substring(0, 100)
+      });
     }
 
     // Generate timestamp
@@ -178,7 +186,15 @@ export class GateIOService {
     } catch (error: any) {
       console.error('[GateIOService] API request failed:', {
         error: error.message,
+        errorName: error.name,
+        errorCode: error.code,
+        errorCause: error.cause,
+        errorStack: error.stack?.split('\n').slice(0, 3).join('\n'),
         endpoint,
+        url,
+        method,
+        hasBody: !!bodyString,
+        bodyLength: bodyString?.length || 0,
       });
       throw error;
     }
@@ -316,9 +332,17 @@ export class GateIOService {
       tif: orderRequest.tif || 'gtc',
     };
 
-    // Add price for limit orders (market orders don't have price)
-    if (orderRequest.price) {
+    // CRITICAL: Gate.io requires 'price' parameter for ALL orders
+    // For market orders (tif='ioc'), price should be "0"
+    // For limit orders, price should be the actual limit price
+    if (orderRequest.price !== undefined && orderRequest.price !== null) {
       orderBody.price = orderRequest.price;
+    } else if (orderRequest.tif === 'ioc') {
+      // Market order - price must be "0" (string)
+      orderBody.price = "0";
+      console.log('[GateIOService] Market order detected, setting price="0" for tif=ioc');
+    } else {
+      throw new Error('Price is required for non-market orders');
     }
 
     // Add optional fields
@@ -414,7 +438,9 @@ export class GateIOService {
 
   /**
    * Set leverage for a contract
-   * Endpoint: POST /positions/{contract}/leverage (baseUrl already includes settle=usdt)
+   * Endpoint: POST /positions/{contract}/leverage?leverage={value}
+   *
+   * Gate.io API expects leverage as a QUERY PARAMETER, not in the request body.
    */
   async setLeverage(
     contract: string,
@@ -432,29 +458,26 @@ export class GateIOService {
       throw new Error(`Invalid leverage: ${leverage}. Must be between 1 and 100.`);
     }
 
-    // According to official Gate.io SDK documentation (gateapi-nodejs):
-    // Request body should contain leverage as a NUMBER, not string
-    // Example: { leverage: 10 } NOT { leverage: "10" }
-    const body: any = {
-      leverage: leverage, // Send as number per official SDK
+    // Gate.io expects leverage as a QUERY PARAMETER (not in body)
+    // API format: POST /positions/{contract}/leverage?leverage={value}
+    const params: any = {
+      leverage: leverage  // Pass as query parameter
     };
 
     if (crossLeverageLimit) {
-      body.cross_leverage_limit = crossLeverageLimit;
+      params.cross_leverage_limit = crossLeverageLimit;
     }
 
-    console.log('[GateIOService] Setting leverage for contract:', {
+    console.log('[GateIOService] Setting leverage - query params:', {
       contract,
-      leverage,
-      bodyType: typeof leverage,
-      body
+      params
     });
 
     const data = await this.makeRequest<GateIOPosition>(
       'POST',
       `/positions/${contract}/leverage`,
-      {}, // No query params needed
-      body
+      params,  // Leverage as query parameter
+      null     // No body needed
     );
 
     console.log('[GateIOService] ✓ Leverage set successfully:', {
@@ -463,6 +486,64 @@ export class GateIOService {
     });
 
     return data;
+  }
+
+  /**
+   * Set leverage for a contract BEFORE placing orders
+   * Gate.io uses leverage to control margin mode:
+   * - leverage = 0: Cross margin mode
+   * - leverage > 0: Isolated margin mode with specified leverage
+   *
+   * IMPORTANT: This method should be called BEFORE opening any positions.
+   * The leverage setting applies to the contract and affects all subsequent orders.
+   *
+   * Gate.io API expects leverage as a QUERY PARAMETER, not in the request body.
+   * Endpoint: POST /positions/{contract}/leverage?leverage={value}
+   *
+   * @param contract - Contract name (e.g., 'BTC_USDT')
+   * @param leverage - Leverage to set (1-100 for isolated, 0 for cross)
+   */
+  async setLeverageBeforeOrders(
+    contract: string,
+    leverage: number
+  ): Promise<GateIOPosition> {
+    console.log('[GateIOService] Setting leverage BEFORE placing orders:', {
+      contract,
+      leverage,
+      marginMode: leverage === 0 ? 'CROSS' : 'ISOLATED'
+    });
+
+    // Gate.io expects leverage as a QUERY PARAMETER (not in body)
+    // API format: POST /positions/{contract}/leverage?leverage={value}
+    const params = {
+      leverage: leverage  // Pass as query parameter (will be stringified in makeRequest)
+    };
+
+    const data = await this.makeRequest<GateIOPosition>(
+      'POST',
+      `/positions/${contract}/leverage`,
+      params,  // Leverage as query parameter
+      null     // No body needed
+    );
+
+    console.log('[GateIOService] ✓ Leverage API response:', {
+      fullResponse: JSON.stringify(data),
+      isArray: Array.isArray(data),
+      type: typeof data,
+      keys: Object.keys(data || {})
+    });
+
+    // Gate.io returns an array with two positions (long and short)
+    const positionData = Array.isArray(data) ? data[0] : data;
+
+    console.log('[GateIOService] ✓ Leverage set successfully (applies to all future orders):', {
+      contract: positionData?.contract,
+      leverage: positionData?.leverage,
+      mode: positionData?.mode,
+      cross_leverage_limit: positionData?.cross_leverage_limit
+    });
+
+    return positionData || data;
   }
 
   /**
@@ -692,5 +773,96 @@ export class GateIOService {
 
     console.log(`[GateIOService] Successfully subscribed to mark price stream for ${contract}`);
     return unsubscribe;
+  }
+
+  /**
+   * Get account book (ledger) - history of account changes
+   * Includes funding settlements, trading fees, PnL, etc.
+   *
+   * @param params - Query parameters
+   *   - contract: Filter by contract (optional)
+   *   - type: Filter by type: "dnw" (deposit/withdrawal), "pnl" (PnL), "fee" (trading fee), "refr" (referral), "fund" (funding)
+   *   - from: Start timestamp (seconds)
+   *   - to: End timestamp (seconds)
+   *   - limit: Number of records to return (default: 100, max: 100)
+   */
+  async getAccountBook(params: {
+    contract?: string;
+    type?: 'dnw' | 'pnl' | 'fee' | 'refr' | 'fund';
+    from?: number;
+    to?: number;
+    limit?: number;
+  } = {}): Promise<GateIOAccountBookEntry[]> {
+    console.log('[GateIOService] Fetching account book with params:', params);
+
+    const queryParams: Record<string, any> = {
+      limit: params.limit || 100,
+    };
+
+    if (params.contract) {
+      queryParams.contract = params.contract;
+    }
+    if (params.type) {
+      queryParams.type = params.type;
+    }
+    if (params.from) {
+      queryParams.from = params.from;
+    }
+    if (params.to) {
+      queryParams.to = params.to;
+    }
+
+    const result = await this.makeRequest<GateIOAccountBookEntry[]>(
+      'GET',
+      '/account_book',
+      queryParams
+    );
+
+    console.log(`[GateIOService] Fetched ${result.length} account book entries`);
+    return result;
+  }
+
+  /**
+   * Get user's trading history (executed trades)
+   *
+   * @param params - Query parameters
+   *   - contract: Contract to query (required)
+   *   - order: Order ID to filter by (optional)
+   *   - from: Start timestamp (seconds)
+   *   - to: End timestamp (seconds)
+   *   - limit: Number of records to return (default: 100, max: 100)
+   */
+  async getMyTrades(params: {
+    contract: string;
+    order?: string;
+    from?: number;
+    to?: number;
+    limit?: number;
+  }): Promise<GateIOMyTrade[]> {
+    console.log('[GateIOService] Fetching my trades with params:', params);
+
+    const queryParams: Record<string, any> = {
+      contract: params.contract,
+      limit: params.limit || 100,
+    };
+
+    if (params.order) {
+      queryParams.order = params.order;
+    }
+    if (params.from) {
+      queryParams.from = params.from;
+    }
+    if (params.to) {
+      queryParams.to = params.to;
+    }
+
+    const result = await this.makeRequest<GateIOMyTrade[]>(
+      'GET',
+      '/my_trades',
+      queryParams
+    );
+
+    console.log(`[GateIOService] Fetched ${result.length} trade entries`);
+    return result;
   }
 }

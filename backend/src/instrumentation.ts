@@ -31,6 +31,11 @@ export async function register() {
       const { fundingTrackerService } = await import('@/services/funding-tracker.service');
       fundingTrackerService.startTracking();
       console.log('[Instrumentation] Funding tracker service started');
+
+      // Initialize liquidation monitor service to protect positions
+      const { liquidationMonitorService } = await import('@/services/liquidation-monitor.service');
+      liquidationMonitorService.startMonitoring();
+      console.log('[Instrumentation] Liquidation monitor service started');
     } catch (error: any) {
       console.error('[Instrumentation] Error initializing services:', error.message);
     }

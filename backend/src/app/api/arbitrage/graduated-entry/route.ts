@@ -13,6 +13,7 @@ import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
 import { BingXService } from '@/lib/bingx';
 import { BybitService } from '@/lib/bybit';
+import { MEXCService } from '@/lib/mexc';
 
 interface SymbolInfo {
   symbol: string;
@@ -390,12 +391,14 @@ export async function POST(request: NextRequest) {
         apiSecret: primaryCredentials.apiSecret,
         testnet,
         credentialId: primaryCredentials.id,
+        authToken: primaryCredentials.authToken,
       },
       {
         apiKey: hedgeCredentials.apiKey,
         apiSecret: hedgeCredentials.apiSecret,
         testnet: hedgeCredentials.environment === 'TESTNET',
         credentialId: hedgeCredentials.id,
+        authToken: hedgeCredentials.authToken,
       }
     );
 
@@ -492,6 +495,32 @@ function normalizeSymbolForGateIO(symbol: string): string {
 }
 
 /**
+ * Normalize symbol for MEXC exchange
+ * Converts symbols like "NMRUSDT" to "NMR_USDT"
+ */
+function normalizeSymbolForMEXC(symbol: string): string {
+  // If already has underscore, return as-is
+  if (symbol.includes('_')) {
+    return symbol;
+  }
+
+  // MEXC perpetual futures use USDT or USDC as quote currency
+  // Insert underscore before the quote currency
+  if (symbol.endsWith('USDT')) {
+    const base = symbol.slice(0, -4); // Remove 'USDT'
+    return `${base}_USDT`;
+  }
+
+  if (symbol.endsWith('USDC')) {
+    const base = symbol.slice(0, -4); // Remove 'USDC'
+    return `${base}_USDC`;
+  }
+
+  // If no known quote currency, return as-is
+  return symbol;
+}
+
+/**
  * Get symbol information for an exchange
  */
 async function getSymbolInfo(exchange: string, symbol: string): Promise<SymbolInfo | null> {
@@ -509,6 +538,11 @@ async function getSymbolInfo(exchange: string, symbol: string): Promise<SymbolIn
         const gateioSymbol = normalizeSymbolForGateIO(symbol);
         console.log(`[SymbolInfo] Gate.io symbol normalized: ${symbol} -> ${gateioSymbol}`);
         return await getGateIOSymbolInfo(gateioSymbol);
+      case 'MEXC':
+        // Normalize symbol for MEXC (e.g., NMRUSDT -> NMR_USDT)
+        const mexcSymbol = normalizeSymbolForMEXC(symbol);
+        console.log(`[SymbolInfo] MEXC symbol normalized: ${symbol} -> ${mexcSymbol}`);
+        return await getMEXCSymbolInfo(mexcSymbol);
       default:
         console.warn(`[SymbolInfo] Unsupported exchange: ${exchange}`);
         return null;
@@ -644,6 +678,56 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     };
   } catch (error: any) {
     console.error('[Gate.io] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get MEXC symbol information
+ */
+async function getMEXCSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    const mexc = new MEXCService({
+      apiKey: 'dummy',
+      apiSecret: 'dummy',
+      enableRateLimit: false,
+    });
+
+    const contractDetails = await mexc.getContractDetails(symbol);
+
+    if (!contractDetails) {
+      console.warn(`[MEXC] Symbol ${symbol} not found`);
+      return null;
+    }
+
+    // Handle array or single contract response
+    const contract = Array.isArray(contractDetails)
+      ? contractDetails.find((c: any) => c.symbol === symbol) || contractDetails[0]
+      : contractDetails;
+
+    // Calculate qtyStep from precision
+    const qtyStep = contract.volPrecision !== undefined
+      ? Math.pow(10, -contract.volPrecision)
+      : parseFloat(contract.minVol || '0.001');
+
+    // Price precision
+    const pricePrecision = contract.pricePrecision !== undefined
+      ? contract.pricePrecision
+      : 2;
+
+    return {
+      symbol: contract.symbol,
+      exchange: 'MEXC',
+      minOrderQty: parseFloat(contract.minVol || '0.001'),
+      minOrderValue: undefined,
+      qtyStep,
+      pricePrecision,
+      qtyPrecision: contract.volPrecision !== undefined ? contract.volPrecision : 3,
+      maxOrderQty: contract.maxVol ? parseFloat(contract.maxVol) : undefined,
+      maxLeverage: contract.maxLeverage ? parseInt(contract.maxLeverage) : undefined,
+    };
+  } catch (error: any) {
+    console.error('[MEXC] Error getting symbol info:', error.message);
     throw error;
   }
 }

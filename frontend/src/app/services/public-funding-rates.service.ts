@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, forkJoin, of, catchError, map, firstValueFrom } from 'rxjs';
+import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay } from 'rxjs';
 import { ExchangeFundingRate, FundingRateOpportunity, SpreadStabilityMetrics } from '../models/public-funding-rate.model';
 import { StatisticalUtilsService } from './statistical-utils.service';
 
@@ -25,6 +25,11 @@ export class PublicFundingRatesService {
     BITGET: 0.06,   // 0.06% per trade × 4 = 0.24% total
   };
 
+  // Cache for the funding rates observable to prevent duplicate HTTP requests
+  private fundingRatesCache$?: Observable<FundingRateOpportunity[]>;
+  private lastFetchTime: number = 0;
+  private readonly CACHE_DURATION_MS = 5000; // Cache for 5 seconds
+
   constructor(
     private http: HttpClient,
     private statisticalUtils: StatisticalUtilsService // PHASE2: Statistical calculations
@@ -33,10 +38,27 @@ export class PublicFundingRatesService {
   /**
    * Fetch funding rates from all supported exchanges
    * Returns array of opportunities sorted by funding spread
+   *
+   * IMPORTANT: This method implements request caching to prevent duplicate HTTP requests.
+   * Multiple subscriptions within 5 seconds will share the same cached Observable.
    */
   getFundingRatesOpportunities(): Observable<FundingRateOpportunity[]> {
+    const now = Date.now();
+    const cacheExpired = (now - this.lastFetchTime) > this.CACHE_DURATION_MS;
+
+    // If cache exists and hasn't expired, return cached observable
+    if (this.fundingRatesCache$ && !cacheExpired) {
+      const cacheAge = now - this.lastFetchTime;
+      console.log(`[PublicFundingRatesService] Using cached data (age: ${(cacheAge / 1000).toFixed(1)}s)`);
+      return this.fundingRatesCache$;
+    }
+
+    // Cache expired or doesn't exist - create new observable
+    console.log('[PublicFundingRatesService] Fetching fresh data from all exchanges...');
+    this.lastFetchTime = now;
+
     // Fetch from all exchanges in parallel
-    return forkJoin({
+    this.fundingRatesCache$ = forkJoin({
       bybit: this.fetchBybitFundingRates(),
       bingx: this.fetchBingXFundingRates(),
       mexc: this.fetchMEXCFundingRates(),
@@ -60,9 +82,15 @@ export class PublicFundingRatesService {
       }),
       catchError(error => {
         console.error('[PublicFundingRates] Error fetching funding rates:', error);
+        // Clear cache on error so next request will retry
+        this.fundingRatesCache$ = undefined;
+        this.lastFetchTime = 0;
         return of([]);
-      })
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }) // Share result with all subscribers
     );
+
+    return this.fundingRatesCache$;
   }
 
   /**

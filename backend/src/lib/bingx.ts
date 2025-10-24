@@ -1021,12 +1021,29 @@ export class BingXService {
       }
 
       // Transform to funding rate format
-      const fundingRates: BingXFundingRate[] = premiumIndexData.map((item: any) => ({
-        symbol: item.symbol,
-        fundingRate: item.lastFundingRate || '0',
-        fundingTime: item.nextFundingTime || Date.now(),
-        markPrice: item.markPrice
-      }));
+      // Calculate predicted funding rate from premium (Mark Price - Index Price) / Index Price
+      const fundingRates: BingXFundingRate[] = premiumIndexData.map((item: any) => {
+        const markPrice = parseFloat(item.markPrice || '0');
+        const indexPrice = parseFloat(item.indexPrice || '0');
+
+        // Calculate predicted funding rate from premium
+        let predictedFundingRate = '0';
+        if (indexPrice > 0 && markPrice > 0) {
+          const premium = (markPrice - indexPrice) / indexPrice;
+          // BingX funding rate is typically capped at ±0.75% per 8h interval
+          const clampedPremium = Math.max(-0.0075, Math.min(0.0075, premium));
+          predictedFundingRate = clampedPremium.toFixed(8);
+        }
+
+        return {
+          symbol: item.symbol,
+          fundingRate: predictedFundingRate, // Use predicted rate instead of lastFundingRate
+          fundingTime: item.nextFundingTime || Date.now(),
+          markPrice: item.markPrice,
+          // Store last funding rate for reference
+          lastFundingRate: item.lastFundingRate
+        };
+      });
 
       console.log(`[BingXService] Transformed ${fundingRates.length} funding rates`);
       return fundingRates;
