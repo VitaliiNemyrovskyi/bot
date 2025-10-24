@@ -1,0 +1,148 @@
+{
+  "timestamp": "2025-10-22T17:55:58.317Z",
+  "results": [
+    {
+      "symbol": "BTC/USDT",
+      "bidAskSpread": 0.09999999999126885,
+      "bidAskSpreadPercent": 0.00009292747567276599,
+      "slippageFor50USDT": 0,
+      "slippageFor100USDT": 0,
+      "slippageFor200USDT": 0,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 0.69505,
+        "totalAskVolume": 3.607755,
+        "top5BidVolume": 0.07047599999999998,
+        "top5AskVolume": 2.887295
+      }
+    },
+    {
+      "symbol": "ETH/USDT",
+      "bidAskSpread": 0.010000000000218279,
+      "bidAskSpreadPercent": 0.0002632167721784683,
+      "slippageFor50USDT": 0.01684458762343589,
+      "slippageFor100USDT": 0.01684458762343589,
+      "slippageFor200USDT": 0.01684458762343589,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 7.282800000000001,
+        "totalAskVolume": 20.9715,
+        "top5BidVolume": 1.8828,
+        "top5AskVolume": 7.7036
+      }
+    },
+    {
+      "symbol": "ETH/BTC",
+      "bidAskSpread": 0.0000049999999999980616,
+      "bidAskSpreadPercent": 0.01416029453412082,
+      "slippageFor50USDT": 999,
+      "slippageFor100USDT": 999,
+      "slippageFor200USDT": 999,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 2.2323999999999997,
+        "totalAskVolume": 2.2631,
+        "top5BidVolume": 0.6094999999999999,
+        "top5AskVolume": 1.3508
+      }
+    },
+    {
+      "symbol": "BNB/USDT",
+      "bidAskSpread": 0.10000000000013642,
+      "bidAskSpreadPercent": 0.009384384384397187,
+      "slippageFor50USDT": 0,
+      "slippageFor100USDT": 0,
+      "slippageFor200USDT": 0,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 125.97999999999999,
+        "totalAskVolume": 122.981,
+        "top5BidVolume": 10.64,
+        "top5AskVolume": 20.207
+      }
+    },
+    {
+      "symbol": "SOL/USDT",
+      "bidAskSpread": 0.010000000000019327,
+      "bidAskSpreadPercent": 0.00551176762388763,
+      "slippageFor50USDT": 0,
+      "slippageFor100USDT": 0,
+      "slippageFor200USDT": 0,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 805.281,
+        "totalAskVolume": 619.978,
+        "top5BidVolume": 51.626000000000005,
+        "top5AskVolume": 44.934
+      }
+    },
+    {
+      "symbol": "DOGE/USDT",
+      "bidAskSpread": 0.000010000000000010001,
+      "bidAskSpreadPercent": 0.005258176464407404,
+      "slippageFor50USDT": 0.005257899994747358,
+      "slippageFor100USDT": 0.005257899994747358,
+      "slippageFor200USDT": 0.005257899994747358,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 326540.94999999995,
+        "totalAskVolume": 260796.78999999998,
+        "top5BidVolume": 27249.61,
+        "top5AskVolume": 28039.76
+      }
+    },
+    {
+      "symbol": "DOGE/BTC",
+      "bidAskSpread": 3.0000000000000136e-9,
+      "bidAskSpreadPercent": 0.16977928692699568,
+      "slippageFor50USDT": 999,
+      "slippageFor100USDT": 999,
+      "slippageFor200USDT": 999,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 34467.80000000001,
+        "totalAskVolume": 53901.59999999999,
+        "top5BidVolume": 11179.7,
+        "top5AskVolume": 14196.5
+      }
+    },
+    {
+      "symbol": "LINK/USDT",
+      "bidAskSpread": 0.0010000000000012221,
+      "bidAskSpreadPercent": 0.00581665891112856,
+      "slippageFor50USDT": 0.00581665891112856,
+      "slippageFor100USDT": 0.00581665891112856,
+      "slippageFor200USDT": 0.005244724914187365,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 3157.57,
+        "totalAskVolume": 3072.01,
+        "top5BidVolume": 94.38999999999999,
+        "top5AskVolume": 70.06
+      }
+    },
+    {
+      "symbol": "LINK/ETH",
+      "bidAskSpread": 0.000002999999999999531,
+      "bidAskSpreadPercent": 0.06623978803266795,
+      "slippageFor50USDT": 999,
+      "slippageFor100USDT": 999,
+      "slippageFor200USDT": 999,
+      "optimalCostBuffer": 0.5,
+      "liquidity": {
+        "totalBidVolume": 321.465,
+        "totalAskVolume": 500.4889999999999,
+        "top5BidVolume": 63.926,
+        "top5AskVolume": 253.458
+      }
+    }
+  ],
+  "summary": {
+    "avgBidAskSpread": 0.030722944569495165,
+    "avgSlippage50": 333.00310212739214,
+    "avgSlippage100": 333.00310212739214,
+    "avgSlippage200": 333.0030385791703,
+    "avgOptimalBuffer": 0.5,
+    "potentialSavings": -995.5093063821764
+  }
+}

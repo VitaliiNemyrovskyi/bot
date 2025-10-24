@@ -1,5 +1,6 @@
 import { BaseExchangeConnector, OrderSide, OrderType } from './base-exchange.connector';
 import { BybitService } from '@/lib/bybit';
+import { ContractSpecification } from '@/lib/contract-calculator';
 
 /**
  * Bybit Exchange Connector
@@ -799,6 +800,45 @@ export class BybitConnector extends BaseExchangeConnector {
       };
     } catch (error: any) {
       console.error(`[BybitConnector] Error subscribing to price stream for ${symbol}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get contract specification for quantity calculations
+   * Bybit uses base currency (multiplier = 1) for most linear perpetuals
+   */
+  async getContractSpecification(symbol: string): Promise<ContractSpecification> {
+    if (!this.isInitialized) {
+      throw new Error('Bybit connector not initialized');
+    }
+
+    try {
+      const instrumentInfo = await this.bybitService.getInstrumentsInfo('linear', symbol);
+
+      if (!instrumentInfo || !instrumentInfo.list || instrumentInfo.list.length === 0) {
+        throw new Error(`No instrument info found for ${symbol}`);
+      }
+
+      const instrument = instrumentInfo.list[0];
+      const lotSizeFilter = instrument.lotSizeFilter;
+
+      if (!lotSizeFilter) {
+        throw new Error(`No lot size filter found for ${symbol}`);
+      }
+
+      const minOrderQty = parseFloat(lotSizeFilter.minOrderQty || '0.001');
+      const maxOrderQty = parseFloat(lotSizeFilter.maxOrderQty || '1000000');
+
+      return {
+        exchange: 'BYBIT',
+        symbol,
+        multiplier: 1, // Bybit uses base currency (e.g., 1 contract = 1 BTC)
+        minOrderSize: minOrderQty,
+        maxOrderSize: maxOrderQty,
+      };
+    } catch (error: any) {
+      console.error(`[BybitConnector] Error getting contract specification for ${symbol}:`, error.message);
       throw error;
     }
   }

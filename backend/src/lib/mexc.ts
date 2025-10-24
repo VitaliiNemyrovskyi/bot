@@ -924,4 +924,46 @@ export class MEXCService {
       balance
     };
   }
+
+  /**
+   * Get contract details for a specific symbol (PUBLIC ENDPOINT - no auth required)
+   * Endpoint: GET /api/v1/contract/detail
+   * Returns trading rules and limits for the contract
+   * Note: MEXC API doesn't support symbol parameter - fetches all contracts and filters client-side
+   */
+  async getContractDetails(symbol: string): Promise<any> {
+    console.log('[MEXCService] Fetching contract details for:', symbol);
+
+    // MEXC API doesn't support symbol parameter - fetch all contracts and filter
+    const allContracts = await this.getAllContractDetails();
+
+    // Find the specific contract
+    const contract = allContracts.find((c: any) => c.symbol === symbol);
+
+    if (!contract) {
+      throw new Error(`Contract ${symbol} not found in MEXC contracts list`);
+    }
+
+    return contract;
+  }
+
+  /**
+   * Get all contract details (PUBLIC ENDPOINT - no auth required)
+   * Endpoint: GET /api/v1/contract/detail
+   * Returns trading rules and limits for all contracts
+   */
+  async getAllContractDetails(): Promise<any[]> {
+    console.log('[MEXCService] Fetching all contract details...');
+
+    const response = await this.makePublicRequest<any[]>(
+      'GET',
+      '/api/v1/contract/detail'
+    );
+
+    if (!response.success || response.code !== 0) {
+      throw new Error(`Failed to get contract details: code ${response.code}`);
+    }
+
+    return response.data || [];
+  }
 }

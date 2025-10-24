@@ -1,0 +1,278 @@
+<div class="opportunity-list">
+  <!-- Loading State -->
+  @if (isLoading) {
+    <div class="loading-container">
+      <div class="spinner"></div>
+      <p>{{ translate('triangularArbitrage.opportunities.loading') }}</p>
+    </div>
+  }
+
+  <!-- Empty State - Scanner Stopped -->
+  @else if (scannerStatus !== 'scanning') {
+    <div class="empty-state">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" class="empty-icon">
+        <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <h3>{{ translate('triangularArbitrage.opportunities.scannerStopped') }}</h3>
+      <p>{{ translate('triangularArbitrage.opportunities.startScanningHint') }}</p>
+    </div>
+  }
+
+  <!-- Empty State - No Opportunities -->
+  @else if (opportunities.length === 0) {
+    <div class="empty-state">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" class="empty-icon">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 8v4m0 4h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <h3>{{ translate('triangularArbitrage.opportunities.noOpportunities') }}</h3>
+      <p>{{ translate('triangularArbitrage.opportunities.scanningHint') }}</p>
+    </div>
+  }
+
+  <!-- Opportunities Table -->
+  @else {
+    <!-- Filter Controls -->
+    <div class="filter-controls">
+      <label class="filter-checkbox">
+        <input
+          type="checkbox"
+          [checked]="showProblematicTokens()"
+          (change)="toggleProblematicFilter()"
+        />
+        <span class="checkbox-label">
+          {{ translate('triangularArbitrage.opportunities.filters.showProblematicTokens') }}
+          <span class="info-icon" [title]="translate('triangularArbitrage.opportunities.filters.problematicTokensHint')">ⓘ</span>
+        </span>
+      </label>
+      <div class="filter-summary">
+        {{ translate('triangularArbitrage.opportunities.filters.showing') }}
+        <strong>{{ sortedOpportunities.length }}</strong>
+        {{ translate('triangularArbitrage.opportunities.filters.of') }}
+        <strong>{{ opportunities.length }}</strong>
+        {{ translate('triangularArbitrage.opportunities.filters.opportunities') }}
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="opportunities-table">
+        <thead>
+          <tr>
+            <th>{{ translate('triangularArbitrage.opportunities.table.triangle') }}</th>
+            <th>{{ translate('triangularArbitrage.opportunities.table.exchange') }}</th>
+            <th class="sortable" (click)="toggleSort('profitPercentage')">
+              {{ translate('triangularArbitrage.opportunities.table.theoreticalProfit') }} {{ getSortIcon('profitPercentage') }}
+            </th>
+            <th class="sortable" (click)="toggleSort('realisticProfitPercentage')">
+              {{ translate('triangularArbitrage.opportunities.table.realisticProfit') }} {{ getSortIcon('realisticProfitPercentage') }}
+            </th>
+            <th>{{ translate('triangularArbitrage.opportunities.table.executionCost') }}</th>
+            <th class="sortable" (click)="toggleSort('detectedAt')">
+              {{ translate('triangularArbitrage.opportunities.table.detected') }} {{ getSortIcon('detectedAt') }}
+            </th>
+            <th>{{ translate('triangularArbitrage.opportunities.table.actions') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (opp of sortedOpportunities; track opp.id) {
+            <tr
+              [class.fresh]="isFresh(opp)"
+              [class.problematic-token]="hasProblematicToken(opp)"
+              (click)="openDetail(opp)"
+            >
+              <td class="triangle-cell">
+                <span class="triangle-path">{{ formatTriangle(opp) }}</span>
+                <span class="direction-indicator" [class.backward]="opp.triangle.direction === 'backward'">
+                  {{ getDirectionIcon(opp) }}
+                </span>
+                @if (hasProblematicToken(opp)) {
+                  <span class="problematic-badge" [title]="translate('triangularArbitrage.opportunities.problematicTokenWarning')">⚠️</span>
+                }
+              </td>
+              <td>
+                <span class="exchange-badge">{{ opp.exchange }}</span>
+              </td>
+              <td>
+                <span class="profit-value theoretical" [class]="getProfitColorClass(opp.profitPercentage)">
+                  {{ opp.profitPercentage.toFixed(3) }}%
+                </span>
+              </td>
+              <td>
+                @if (opp.realisticProfitPercentage !== undefined) {
+                  <span class="profit-value realistic" [class]="getProfitColorClass(opp.realisticProfitPercentage)">
+                    {{ opp.realisticProfitPercentage.toFixed(3) }}%
+                  </span>
+                } @else {
+                  <span class="profit-value unavailable">N/A</span>
+                }
+              </td>
+              <td>
+                @if (opp.realisticProfitPercentage !== undefined) {
+                  <span class="execution-cost" [class.high]="getExecutionCost(opp) > 3">
+                    {{ getExecutionCost(opp).toFixed(2) }}%
+                  </span>
+                } @else {
+                  <span class="execution-cost unavailable">N/A</span>
+                }
+              </td>
+              <td>
+                <span class="time-ago">{{ getRelativeTime(opp.detectedAt) }}</span>
+              </td>
+              <td class="actions-cell" (click)="$event.stopPropagation()">
+                <ui-button
+                  variant="primary"
+                  size="small"
+                  [disabled]="!opp.isExecutable"
+                  (clicked)="onExecute(opp)"
+                >
+                  {{ translate('triangularArbitrage.opportunities.execute') }}
+                </ui-button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <!-- Detail Modal -->
+  @if (showDetailModal() && selectedOpportunity(); as opp) {
+    <ui-dialog [open]="showDetailModal()" (openChange)="closeDetail()">
+      <ui-dialog-header>
+        <ui-dialog-title>{{ translate('triangularArbitrage.opportunities.details.title') }}</ui-dialog-title>
+      </ui-dialog-header>
+      <ui-dialog-content>
+        <div class="opportunity-details">
+          <!-- Triangle Visualizer -->
+          <app-triangle-visualizer [opportunity]="opp" />
+
+          <!-- Profit Comparison -->
+          <div class="profit-comparison">
+            <div class="comparison-header">
+              <h4>{{ translate('triangularArbitrage.opportunities.details.profitComparison') }}</h4>
+              <span class="info-hint">{{ translate('triangularArbitrage.opportunities.details.profitComparisonHint') }}</span>
+            </div>
+            <div class="comparison-grid">
+              <div class="comparison-item theoretical">
+                <div class="comparison-label">
+                  <span class="label-icon">📊</span>
+                  {{ translate('triangularArbitrage.opportunities.details.theoreticalProfit') }}
+                </div>
+                <div class="comparison-value" [class]="getProfitColorClass(opp.profitPercentage)">
+                  {{ opp.profitPercentage.toFixed(3) }}%
+                </div>
+                <div class="comparison-amount">${{ opp.profitAmount.toFixed(2) }}</div>
+              </div>
+              @if (opp.realisticProfitPercentage !== undefined) {
+                <div class="comparison-arrow">→</div>
+                <div class="comparison-item realistic">
+                  <div class="comparison-label">
+                    <span class="label-icon">🎯</span>
+                    {{ translate('triangularArbitrage.opportunities.details.realisticProfit') }}
+                  </div>
+                  <div class="comparison-value" [class]="getProfitColorClass(opp.realisticProfitPercentage)">
+                    {{ opp.realisticProfitPercentage.toFixed(3) }}%
+                  </div>
+                  <div class="comparison-amount">${{ (opp.realisticProfitAmount || 0).toFixed(2) }}</div>
+                </div>
+                <div class="comparison-cost">
+                  <div class="cost-label">{{ translate('triangularArbitrage.opportunities.details.executionCost') }}</div>
+                  <div class="cost-value" [class.high]="getExecutionCost(opp) > 3">
+                    -{{ getExecutionCost(opp).toFixed(2) }}%
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Additional Metrics -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <span class="metric-label">{{ translate('triangularArbitrage.opportunities.details.slippage') }}</span>
+              <span class="metric-value">{{ opp.estimatedSlippage.toFixed(2) }}%</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">{{ translate('triangularArbitrage.opportunities.details.netProfit') }}</span>
+              <span class="metric-value">{{ opp.netProfitPercentage.toFixed(3) }}%</span>
+            </div>
+          </div>
+
+          <!-- Leg Details -->
+          <div class="leg-details">
+            <h4>{{ translate('triangularArbitrage.opportunities.details.legs') }}</h4>
+            <div class="leg-card">
+              <div class="leg-header">
+                <span class="leg-number">1</span>
+                <span class="leg-pair">{{ opp.leg1.symbol }}</span>
+              </div>
+              <div class="leg-prices">
+                <div class="price-item">
+                  <span class="price-label">Bid:</span>
+                  <span class="price-value">${{ opp.leg1.bidPrice.toFixed(8) }}</span>
+                </div>
+                <div class="price-item">
+                  <span class="price-label">Ask:</span>
+                  <span class="price-value">${{ opp.leg1.askPrice.toFixed(8) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="leg-card">
+              <div class="leg-header">
+                <span class="leg-number">2</span>
+                <span class="leg-pair">{{ opp.leg2.symbol }}</span>
+              </div>
+              <div class="leg-prices">
+                <div class="price-item">
+                  <span class="price-label">Bid:</span>
+                  <span class="price-value">${{ opp.leg2.bidPrice.toFixed(8) }}</span>
+                </div>
+                <div class="price-item">
+                  <span class="price-label">Ask:</span>
+                  <span class="price-value">${{ opp.leg2.askPrice.toFixed(8) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="leg-card">
+              <div class="leg-header">
+                <span class="leg-number">3</span>
+                <span class="leg-pair">{{ opp.leg3.symbol }}</span>
+              </div>
+              <div class="leg-prices">
+                <div class="price-item">
+                  <span class="price-label">Bid:</span>
+                  <span class="price-value">${{ opp.leg3.bidPrice.toFixed(8) }}</span>
+                </div>
+                <div class="price-item">
+                  <span class="price-label">Ask:</span>
+                  <span class="price-value">${{ opp.leg3.askPrice.toFixed(8) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Warning Message -->
+          @if (opp.warningMessage) {
+            <div class="warning-message">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>{{ opp.warningMessage }}</span>
+            </div>
+          }
+        </div>
+      </ui-dialog-content>
+      <ui-dialog-footer>
+        <ui-button variant="ghost" (clicked)="closeDetail()">
+          {{ translate('triangularArbitrage.opportunities.details.close') }}
+        </ui-button>
+        <ui-button
+          variant="primary"
+          [disabled]="!opp.isExecutable"
+          (clicked)="executeFromModal()"
+        >
+          {{ translate('triangularArbitrage.opportunities.execute') }}
+        </ui-button>
+      </ui-dialog-footer>
+    </ui-dialog>
+  }
+</div>

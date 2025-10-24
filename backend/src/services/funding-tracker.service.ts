@@ -5,7 +5,7 @@
  * Fetches data from exchange APIs and updates database records with actual P&L.
  *
  * Features:
- * - Fetches funding payment history from Bybit, BingX, and other supported exchanges
+ * - Fetches funding payment history from Bybit, BingX, Gate.io and other supported exchanges
  * - Calculates cumulative funding earned/paid for each position
  * - Tracks trading fees from position entries
  * - Updates net profit = gross funding - fees
@@ -14,11 +14,13 @@
  * Exchange-specific implementations:
  * - Bybit: Uses /v5/position/closed-pnl endpoint for funding history
  * - BingX: Uses /openApi/swap/v2/user/income endpoint for income history
+ * - Gate.io: Uses /account_book and /my_trades endpoints for funding and fees
  */
 
 import { PrismaClient } from '@prisma/client';
 import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
+import { GateIOService } from '@/lib/gateio';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 
 interface FundingUpdate {
@@ -255,6 +257,8 @@ export class FundingTrackerService {
           return await this.fetchBybitFunding(credentials, symbol, side, startTime);
         case 'BINGX':
           return await this.fetchBingXFunding(credentials, symbol, side, startTime);
+        case 'GATEIO':
+          return await this.fetchGateIOFunding(credentials, symbol, side, startTime);
         default:
           console.warn(`[FundingTracker] Unsupported exchange: ${exchange}`);
           return null;
@@ -306,20 +310,21 @@ export class FundingTrackerService {
       });
 
       // Calculate funding totals from SETTLEMENT transactions
+      // NOTE: For many tokens, SETTLEMENT transactions have cashFlow='0' and actual funding
+      // is recorded in execution fees. We'll track SETTLEMENT for logging but get actual
+      // funding amounts from executions below.
       let totalFunding = 0;
       let lastFunding = 0;
       let fundingCount = 0;
+      let settlementCount = 0;
 
       if (transactionLog && transactionLog.length > 0) {
-        // Filter by symbol and sum funding payments
+        // Filter by symbol and log settlement records
         for (const tx of transactionLog) {
           // Check if transaction is for our symbol
           if (tx.symbol === symbol) {
-            // Funding fee is in the 'cashFlow' field
-            // Positive = received, negative = paid
-            const funding = parseFloat(tx.cashFlow || '0');
-            totalFunding += funding;
-            fundingCount++;
+            settlementCount++;
+            const cashFlow = parseFloat(tx.cashFlow || '0');
 
             console.log(`[FundingTracker] Bybit funding settlement:`, {
               symbol: tx.symbol,
@@ -328,18 +333,23 @@ export class FundingTrackerService {
               type: tx.type,
             });
 
-            // Track last funding payment (by absolute value)
-            if (Math.abs(funding) > Math.abs(lastFunding)) {
-              lastFunding = funding;
+            // Only count if cashFlow is non-zero (some tokens have $0 settlements)
+            if (cashFlow !== 0) {
+              totalFunding += cashFlow;
+              fundingCount++;
+
+              if (Math.abs(cashFlow) > Math.abs(lastFunding)) {
+                lastFunding = cashFlow;
+              }
             }
           }
         }
       }
 
-      console.log(`[FundingTracker] Bybit ${symbol} funding summary:`, {
-        fundingCount,
-        totalFunding,
-        lastFunding,
+      console.log(`[FundingTracker] Bybit ${symbol} SETTLEMENT summary:`, {
+        settlementRecords: settlementCount,
+        nonZeroSettlements: fundingCount,
+        totalFromSettlements: totalFunding,
       });
 
       // STEP 2: Get trading fees from execution history
@@ -367,12 +377,16 @@ export class FundingTrackerService {
           const execTime = new Date(parseInt(exec.execTime));
           const execHour = execTime.getUTCHours();
           const execMinute = execTime.getUTCMinutes();
+          const execSecond = execTime.getUTCSeconds();
 
           // Check if this is a funding payment:
           // 1. Large fee (> threshold)
-          // 2. Executed at funding time (00:00, 08:00, 16:00 UTC)
-          const isFundingTime = (execHour === 0 || execHour === 8 || execHour === 16) && execMinute === 0;
+          // 2. Executed at top of the hour (:00:00) - funding can occur at ANY hour depending on the token
+          // 3. Negative execFee (received) indicates funding income
+          // IMPORTANT: Some altcoins have hourly funding (not just 0/8/16), so check ANY hour
+          const isFundingTime = execMinute === 0 && execSecond === 0;
           const isLargeFee = feeAbs > FUNDING_FEE_THRESHOLD;
+          const isNegativeFee = feeValue < 0; // Negative = received (funding income)
 
           // Log ALL executions to debug funding detection
           console.log(`[FundingTracker] Bybit execution for ${symbol}:`, {
@@ -381,15 +395,17 @@ export class FundingTrackerService {
             execTime: execTime.toISOString(),
             execHour,
             execMinute,
+            execSecond,
             isFundingTime,
             isLargeFee,
-            willCountAsFunding: isLargeFee && isFundingTime,
+            isNegativeFee,
+            willCountAsFunding: isLargeFee && isFundingTime && isNegativeFee,
             side: exec.side,
             execQty: exec.execQty,
           });
 
-          if (isLargeFee && isFundingTime) {
-            // This is a funding payment
+          if (isLargeFee && isFundingTime && isNegativeFee) {
+            // This is a funding payment (negative fee = received funding)
             // IMPORTANT: Negative execFee = Positive funding income (received)
             //            Positive execFee = Negative funding payment (paid)
             // So we need to INVERT the sign
@@ -432,11 +448,12 @@ export class FundingTrackerService {
         : 0;
 
       console.log(`[FundingTracker] Bybit ${symbol} final summary:`, {
-        fundingPayments: fundingCount,
-        totalFunding,
-        lastFunding,
-        totalFees,
+        fundingPaymentsDetected: fundingCount,
+        totalFundingReceived: totalFunding,
+        lastFundingPayment: lastFunding,
+        tradingFeesPaid: totalFees,
         currentPrice,
+        note: 'Funding from execution list (SETTLEMENT had $0 cashFlow)',
       });
 
       return {
@@ -643,6 +660,139 @@ export class FundingTrackerService {
       };
     } catch (error: any) {
       console.error('[FundingTracker] BingX funding fetch error:', {
+        symbol,
+        error: error.message,
+        stack: error.stack,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Fetch funding data from Gate.io
+   *
+   * Gate.io provides funding data through account_book API:
+   * - Type 'fund' = funding fee settlements
+   * - Type 'fee' = trading fees from my_trades API
+   *
+   * We use both endpoints to get complete picture.
+   */
+  private async fetchGateIOFunding(
+    credentials: any,
+    symbol: string,
+    side: string,
+    startTime: Date
+  ): Promise<{ lastFunding: number; totalFunding: number; fees: number; currentPrice: number } | null> {
+    try {
+      const gateio = new GateIOService({
+        apiKey: credentials.apiKey,
+        apiSecret: credentials.apiSecret,
+        enableRateLimit: true,
+      });
+
+      console.log(`[FundingTracker] Fetching Gate.io data for ${symbol}, side=${side}, since ${startTime.toISOString()}`);
+
+      // Normalize symbol to Gate.io format (e.g., "AVNTUSDT" -> "AVNT_USDT")
+      const normalizedSymbol = symbol.replace(/USDT$/, '_USDT');
+      console.log(`[FundingTracker] Gate.io normalized symbol: ${symbol} -> ${normalizedSymbol}`);
+
+      const startTimestamp = Math.floor(startTime.getTime() / 1000);
+
+      // STEP 1: Get funding fee settlements from account book
+      const fundingEntries = await gateio.getAccountBook({
+        contract: normalizedSymbol,
+        type: 'fund',
+        from: startTimestamp,
+        limit: 100,
+      });
+
+      console.log(`[FundingTracker] Gate.io account_book (fund) response:`, {
+        recordCount: fundingEntries?.length || 0,
+        symbol: normalizedSymbol,
+      });
+
+      // Calculate funding totals
+      let totalFunding = 0;
+      let lastFunding = 0;
+      let fundingCount = 0;
+
+      if (fundingEntries && fundingEntries.length > 0) {
+        for (const entry of fundingEntries) {
+          const funding = parseFloat(entry.change || '0');
+          totalFunding += funding;
+          fundingCount++;
+
+          console.log(`[FundingTracker] Gate.io funding settlement:`, {
+            contract: normalizedSymbol,
+            change: entry.change,
+            time: new Date(entry.time * 1000).toISOString(),
+            type: entry.type,
+          });
+
+          // Track last funding payment
+          if (Math.abs(funding) > Math.abs(lastFunding)) {
+            lastFunding = funding;
+          }
+        }
+      }
+
+      console.log(`[FundingTracker] Gate.io ${normalizedSymbol} funding summary:`, {
+        fundingCount,
+        totalFunding,
+        lastFunding,
+      });
+
+      // STEP 2: Get trading fees from my_trades
+      const trades = await gateio.getMyTrades({
+        contract: normalizedSymbol,
+        from: startTimestamp,
+        limit: 100,
+      });
+
+      console.log(`[FundingTracker] Gate.io my_trades response:`, {
+        recordCount: trades?.length || 0,
+        symbol: normalizedSymbol,
+      });
+
+      let totalFees = 0;
+
+      if (trades && trades.length > 0) {
+        for (const trade of trades) {
+          // Gate.io fee is negative value (amount deducted)
+          const feeAmount = Math.abs(parseFloat(trade.fee || '0'));
+          totalFees += feeAmount;
+
+          console.log(`[FundingTracker] Gate.io trading fee:`, {
+            contract: trade.contract,
+            fee: trade.fee,
+            time: new Date(trade.create_time * 1000).toISOString(),
+            size: trade.size,
+            price: trade.price,
+            role: trade.role,
+          });
+        }
+      }
+
+      // STEP 3: Get current mark price
+      const ticker = await gateio.getTicker(normalizedSymbol);
+      const currentPrice = ticker?.mark_price ? parseFloat(ticker.mark_price) : 0;
+
+      console.log(`[FundingTracker] Gate.io ${normalizedSymbol} final summary:`, {
+        fundingPayments: fundingCount,
+        totalFunding,
+        lastFunding,
+        totalFees,
+        currentPrice,
+      });
+
+      return {
+        lastFunding,
+        totalFunding,
+        fees: totalFees,
+        currentPrice,
+      };
+    } catch (error: any) {
+      console.error('[FundingTracker] Gate.io funding fetch error:', {
         symbol,
         error: error.message,
         stack: error.stack,

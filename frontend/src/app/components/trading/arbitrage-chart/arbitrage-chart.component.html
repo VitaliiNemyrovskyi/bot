@@ -119,6 +119,9 @@
                       </td>
                       <td class="timestamp">{{ formatTimestamp(position.startedAt) }}</td>
                       <td class="actions">
+                        <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" title="Set synchronized TP/SL">
+                          TP/SL
+                        </button>
                         <button class="stop-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
                           Stop
                         </button>
@@ -382,6 +385,29 @@
                 <span class="form-hint">0.1s - 60s (1 minute)</span>
               </div>
             </form>
+          </div>
+
+          <!-- Sync Lock Button -->
+          <div class="sync-lock-container">
+            <button
+              type="button"
+              class="sync-lock-button"
+              [class.locked]="orderParamsLocked()"
+              [class.unlocked]="!orderParamsLocked()"
+              (click)="toggleOrderParamsLock()"
+              [title]="orderParamsLocked() ? 'Click to unlock and edit parameters independently' : 'Click to lock and synchronize parameters'">
+              @if (orderParamsLocked()) {
+                <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              } @else {
+                <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                </svg>
+              }
+            </button>
           </div>
 
           <!-- Hedge Exchange Column -->

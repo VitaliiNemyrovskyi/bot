@@ -1,0 +1,302 @@
+<div class="opportunity-scanner">
+  <!-- Active Scanners Section -->
+  @if (activeScannersList().length > 0) {
+    <div class="active-scanners-section">
+      <div class="section-header">
+        <h3 class="section-title">{{ translate('triangularArbitrage.scanner.activeScanners') }}</h3>
+        <ui-button
+          variant="danger"
+          size="medium"
+          (clicked)="onStopAll()"
+          class="stop-all-btn"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <rect x="6" y="6" width="12" height="12" fill="currentColor"/>
+          </svg>
+          {{ translate('triangularArbitrage.scanner.stopAll') }}
+        </ui-button>
+      </div>
+
+      <div class="active-scanners-grid">
+        @for (scanner of activeScannersList(); track scanner.exchange) {
+          <div class="scanner-card" [class.scanning]="scanner.status === 'scanning'" [class.error]="scanner.status === 'error'">
+            <!-- Scanner Header -->
+            <div class="scanner-header">
+              <div class="scanner-title-row">
+                <h4 class="scanner-exchange">{{ getExchangeName(scanner.exchange) }}</h4>
+                <div class="scanner-status" [class]="getStatusClass(scanner.status)">
+                  <span class="status-dot"></span>
+                  <span class="status-text">{{ getStatusText(scanner.status) }}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="scanner-stop-btn"
+                (click)="onStopExchange(scanner.exchange)"
+                [attr.aria-label]="translate('triangularArbitrage.scanner.stopExchange') + ' ' + getExchangeName(scanner.exchange)"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <rect x="6" y="6" width="12" height="12" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Scanner Stats -->
+            @if (scanner.stats) {
+              <div class="scanner-stats">
+                <div class="stat-row">
+                  <div class="stat-item">
+                    <span class="stat-icon">🎯</span>
+                    <div class="stat-content">
+                      <span class="stat-label">{{ translate('triangularArbitrage.scanner.stats.opportunities') }}</span>
+                      <span class="stat-value">{{ scanner.stats.opportunitiesDetectedToday || 0 }}</span>
+                    </div>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-icon">💰</span>
+                    <div class="stat-content">
+                      <span class="stat-label">{{ translate('triangularArbitrage.scanner.stats.profit') }}</span>
+                      <span class="stat-value stat-profit">${{ (scanner.stats.totalProfitToday || 0).toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="stat-row">
+                  <div class="stat-item">
+                    <span class="stat-icon">⏱️</span>
+                    <div class="stat-content">
+                      <span class="stat-label">{{ translate('triangularArbitrage.scanner.stats.runtime') }}</span>
+                      <span class="stat-value">{{ formatDuration(scanner.stats.scanningDuration || 0) }}</span>
+                    </div>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-icon">🔄</span>
+                    <div class="stat-content">
+                      <span class="stat-label">{{ translate('triangularArbitrage.scanner.stats.lastOpportunity') }}</span>
+                      <span class="stat-value stat-small">{{ scanner.stats.lastOpportunityAt ? (scanner.stats.lastOpportunityAt | date:'HH:mm:ss') : '-' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            } @else if (scanner.config) {
+              <!-- Show config info while waiting for stats -->
+              <div class="scanner-stats-placeholder">
+                <div class="placeholder-message">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="placeholder-icon">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                  <span class="placeholder-text">{{ translate('triangularArbitrage.scanner.scannerStarted') }}</span>
+                </div>
+              </div>
+            } @else {
+              <div class="scanner-stats-loading">
+                <span class="loading-text">{{ translate('triangularArbitrage.scanner.initializingScanner') }}</span>
+              </div>
+            }
+
+            <!-- Scanner Config Badge -->
+            @if (scanner.config) {
+              <div class="scanner-config">
+                <span class="config-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" fill="currentColor"/>
+                    <path d="M12 2l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4l2-4z" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                  Min Profit: {{ scanner.config.minProfitPercentage }}%
+                </span>
+                <span class="config-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                  Max Slippage: {{ scanner.config.maxSlippage }}%
+                </span>
+                <span class="config-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                  </svg>
+                  Position: {{ scanner.config.positionSize }} USDT
+                </span>
+                @if (scanner.config.autoExecute) {
+                  <span class="config-badge config-badge-warning">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor"/>
+                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" fill="none"/>
+                    </svg>
+                    Auto Execute
+                  </span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Configuration Form for New Scanner -->
+  <div class="new-scanner-section">
+    <div class="section-header">
+      <h3 class="section-title">
+        @if (activeScannersList().length === 0) {
+          {{ translate('triangularArbitrage.scanner.configuration') }}
+        } @else {
+          {{ translate('triangularArbitrage.scanner.addNewScanner') }}
+        }
+      </h3>
+      @if (getAvailableExchanges().length === 0 && activeScannersList().length > 0) {
+        <div class="info-message">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+            <path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>{{ translate('triangularArbitrage.scanner.allExchangesActive') }}</span>
+        </div>
+      }
+    </div>
+
+    <form [formGroup]="configForm" class="config-form">
+      <div class="form-row">
+        <!-- Exchange Selection -->
+        <div class="form-field">
+          <label for="exchange">{{ translate('triangularArbitrage.scanner.exchange') }}</label>
+          <select
+            id="exchange"
+            formControlName="exchange"
+            class="form-select"
+            [disabled]="getAvailableExchanges().length === 0"
+          >
+            @if (getAvailableExchanges().length === 0) {
+              <option value="">{{ translate('triangularArbitrage.scanner.noAvailableExchanges') }}</option>
+            } @else {
+              @for (exchange of getAvailableExchanges(); track exchange) {
+                <option [value]="exchange">{{ getExchangeName(exchange) }}</option>
+              }
+            }
+          </select>
+          <span class="field-hint">
+            @if (getAvailableExchanges().length === 0) {
+              {{ translate('triangularArbitrage.scanner.allExchangesActiveHint') }}
+            } @else {
+              {{ translate('triangularArbitrage.scanner.exchangeHint') }}
+            }
+          </span>
+        </div>
+
+        <!-- Position Size -->
+        <div class="form-field">
+          <label for="positionSize">{{ translate('triangularArbitrage.scanner.positionSize') }}</label>
+          <div class="input-group">
+            <input
+              id="positionSize"
+              type="number"
+              formControlName="positionSize"
+              class="form-input"
+              [disabled]="getAvailableExchanges().length === 0"
+              min="10"
+              max="100000"
+              step="10"
+            />
+            <span class="input-addon">USDT</span>
+          </div>
+          @if (configForm.get('positionSize')?.hasError('min') && configForm.get('positionSize')?.touched) {
+            <span class="field-hint field-hint-error">
+              {{ translate('triangularArbitrage.scanner.minPositionSize') }}
+            </span>
+          }
+        </div>
+      </div>
+
+      <!-- Advanced Settings Toggle -->
+      <button
+        type="button"
+        class="btn-advanced"
+        (click)="toggleAdvanced()"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" [class.rotated]="showAdvanced()">
+          <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        {{ translate('triangularArbitrage.scanner.advancedSettings') }}
+      </button>
+
+      <!-- Advanced Settings -->
+      @if (showAdvanced()) {
+        <div class="advanced-settings">
+          <div class="form-row">
+            <!-- Min Profit -->
+            <div class="form-field">
+              <label for="minProfit">{{ translate('triangularArbitrage.scanner.minProfit') }}</label>
+              <div class="input-group">
+                <input
+                  id="minProfit"
+                  type="number"
+                  formControlName="minProfitPercentage"
+                  class="form-input"
+                  [disabled]="getAvailableExchanges().length === 0"
+                  min="0.01"
+                  max="10"
+                  step="0.01"
+                />
+                <span class="input-addon">%</span>
+              </div>
+              <span class="field-hint">{{ translate('triangularArbitrage.scanner.minProfitHint') }}</span>
+            </div>
+
+            <!-- Max Slippage -->
+            <div class="form-field">
+              <label for="maxSlippage">{{ translate('triangularArbitrage.scanner.maxSlippage') }}</label>
+              <div class="input-group">
+                <input
+                  id="maxSlippage"
+                  type="number"
+                  formControlName="maxSlippage"
+                  class="form-input"
+                  [disabled]="getAvailableExchanges().length === 0"
+                  min="0.01"
+                  max="5"
+                  step="0.01"
+                />
+                <span class="input-addon">%</span>
+              </div>
+              <span class="field-hint">{{ translate('triangularArbitrage.scanner.maxSlippageHint') }}</span>
+            </div>
+
+            <!-- Auto Execute -->
+            <div class="form-field">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  formControlName="autoExecute"
+                  [disabled]="getAvailableExchanges().length === 0"
+                />
+                <span>{{ translate('triangularArbitrage.scanner.autoExecute') }}</span>
+              </label>
+              <span class="field-hint field-hint-warning">
+                {{ translate('triangularArbitrage.scanner.autoExecuteWarning') }}
+              </span>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Action Buttons -->
+      <div class="form-actions">
+        <ui-button
+          variant="primary"
+          size="large"
+          [disabled]="configForm.invalid || getAvailableExchanges().length === 0"
+          (clicked)="onStart()"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M5 3l14 9-14 9V3z" fill="currentColor"/>
+          </svg>
+          @if (activeScannersList().length === 0) {
+            {{ translate('triangularArbitrage.scanner.start') }}
+          } @else {
+            {{ translate('triangularArbitrage.scanner.addScanner') }}
+          }
+        </ui-button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -96,9 +96,10 @@ export interface BingXTicker {
 
 export interface BingXFundingRate {
   symbol: string;
-  fundingRate: string;
+  fundingRate: string;  // Predicted/current funding rate (calculated from premium)
   fundingTime: number;
   markPrice?: string;  // Mark price (fair price) from premium index
+  lastFundingRate?: string;  // Last paid/settled funding rate
 }
 
 export interface BingXApiResponse<T> {
