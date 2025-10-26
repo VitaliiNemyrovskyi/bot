@@ -46,6 +46,7 @@ export interface AppConfig {
         closePosition: string;
         historicalPrices: string;
         graduatedEntry: string;
+        graduatedEntryOpportunities: string;
         graduatedEntryStop: string;
         graduatedEntrySetTpSl: string;
       };
@@ -143,6 +144,7 @@ export const appConfig: AppConfig = {
         closePosition: '/arbitrage/positions/:id/close',
         historicalPrices: '/arbitrage/historical-prices',
         graduatedEntry: '/arbitrage/graduated-entry',
+        graduatedEntryOpportunities: '/arbitrage/graduated-entry/opportunities',
         graduatedEntryStop: '/arbitrage/graduated-entry/stop',
         graduatedEntrySetTpSl: '/arbitrage/graduated-entry/set-tpsl'
       },
