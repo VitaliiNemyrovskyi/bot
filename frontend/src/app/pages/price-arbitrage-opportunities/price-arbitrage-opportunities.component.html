@@ -50,6 +50,7 @@
             <option value="price_only">Price Only</option>
             <option value="spot_futures">Spot + Futures</option>
             <option value="funding_farm">Funding Farm (Δ-Neutral)</option>
+            <option value="graduated_entry">Graduated Entry (Spot+Futures)</option>
           </select>
         </div>
 
@@ -200,7 +201,7 @@
                     [size]="16"
                   ></ui-icon>
                 </th>
-                @if (!isSpotFuturesMode()) {
+                @if (!isSpotFuturesMode() && !isGraduatedEntryMode()) {
                   <th>Best Long<br><small>(Lower Price)</small></th>
                   <th>Best Short<br><small>(Higher Price)</small></th>
                 } @else {
@@ -222,16 +223,20 @@
                   @if (!isFundingFarmMode()) {
                     <td class="price-spread-cell">
                       <div class="price-spread-info">
-                        <span class="spread-percent">{{ formatPercent(opp.priceSpread * 100) }}</span>
-                        <span class="spread-usdt">{{ opp.priceSpreadUsdt }}</span>
+                        <span class="spread-percent">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
+                        <span class="spread-usdt">{{ opp.priceSpreadUsdt || '0.00' }}</span>
                       </div>
                     </td>
                   } @else {
                     <td class="hedge-ratio-cell">
-                      <div class="hedge-ratio-info">
-                        <span class="ratio-value">{{ formatHedgeRatio(opp) }}</span>
-                        <span class="ratio-label">Long/Short</span>
-                      </div>
+                      @if (isFundingRateOpportunity(opp)) {
+                        <div class="hedge-ratio-info">
+                          <span class="ratio-value">{{ formatHedgeRatio(opp) }}</span>
+                          <span class="ratio-label">Long/Short</span>
+                        </div>
+                      } @else {
+                        <span>—</span>
+                      }
                     </td>
                   }
 
@@ -247,7 +252,7 @@
                     @if (opp.combinedScore !== undefined) {
                       <span class="metric-value metric-highlight">{{ formatPercent(opp.combinedScore) }}</span>
                     } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
+                      <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
                     }
                   </td>
 
@@ -278,7 +283,7 @@
                     } @else if (opp.expectedDailyReturn !== undefined) {
                       <span class="metric-value">{{ formatPercent(opp.expectedDailyReturn) }}</span>
                     } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
+                      <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
                     }
                   </td>
 
@@ -309,7 +314,7 @@
                     } @else if (opp.estimatedMonthlyROI !== undefined) {
                       <span class="metric-value metric-highlight">{{ formatPercent(opp.estimatedMonthlyROI) }}</span>
                     } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
+                      <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
                     }
                   </td>
 
@@ -324,36 +329,60 @@
                     }
                   </td>
 
-                  @if (!isSpotFuturesMode()) {
-                    <!-- Best Long (Lower Price) -->
+                  @if (!isSpotFuturesMode() && !isGraduatedEntryMode()) {
+                    <!-- Best Long (Lower Price) - Cross-Exchange -->
                     <td class="best-long-cell">
-                      <div class="best-exchange">
-                        <span class="exchange-name">{{ opp.bestLong.exchange }}</span>
-                        <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.bestLong.fundingRate)">{{ formatFundingRate(opp.bestLong.fundingRate) }}</span>
-                        <span class="price">${{ opp.bestLong.lastPrice }}</span>
-                        <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.bestLong) }}</span>
-                      </div>
+                      @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                        <div class="best-exchange">
+                          <span class="exchange-name">{{ fundingOpp.bestLong.exchange }}</span>
+                          <span class="funding-rate" [ngClass]="getFundingRateColorClass(fundingOpp.bestLong.fundingRate)">{{ formatFundingRate(fundingOpp.bestLong.fundingRate) }}</span>
+                          <span class="price">${{ fundingOpp.bestLong.lastPrice }}</span>
+                          <span class="time-to-funding">{{ formatTimeToFundingWithInterval(fundingOpp.bestLong) }}</span>
+                        </div>
+                      }
                     </td>
 
-                    <!-- Best Short (Higher Price) -->
+                    <!-- Best Short (Higher Price) - Cross-Exchange -->
                     <td class="best-short-cell">
-                      <div class="best-exchange">
-                        <span class="exchange-name">{{ opp.bestShort.exchange }}</span>
-                        <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.bestShort.fundingRate)">{{ formatFundingRate(opp.bestShort.fundingRate) }}</span>
-                        <span class="price">${{ opp.bestShort.lastPrice }}</span>
-                        <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.bestShort) }}</span>
-                      </div>
+                      @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                        <div class="best-exchange">
+                          <span class="exchange-name">{{ fundingOpp.bestShort.exchange }}</span>
+                          <span class="funding-rate" [ngClass]="getFundingRateColorClass(fundingOpp.bestShort.fundingRate)">{{ formatFundingRate(fundingOpp.bestShort.fundingRate) }}</span>
+                          <span class="price">${{ fundingOpp.bestShort.lastPrice }}</span>
+                          <span class="time-to-funding">{{ formatTimeToFundingWithInterval(fundingOpp.bestShort) }}</span>
+                        </div>
+                      }
+                    </td>
+                  } @else if (isGraduatedEntryMode()) {
+                    <!-- Single Exchange for Graduated Entry (Spot+Futures) -->
+                    <td class="best-exchange-cell">
+                      @if (asGraduatedEntryOpportunity(opp); as gradOpp) {
+                        <div class="best-exchange">
+                          <span class="exchange-name">{{ gradOpp.exchange }}</span>
+                          <span class="funding-rate positive">{{ formatPercent(gradOpp.fundingRate) }}</span>
+                          <span class="price">${{ gradOpp.futuresPrice }}</span>
+                          @if (gradOpp.nextFundingTime && gradOpp.fundingInterval) {
+                            <span class="time-to-funding">{{ formatGraduatedEntryFundingTime(gradOpp.nextFundingTime, gradOpp.fundingInterval) }}</span>
+                          }
+                        </div>
+                      } @else {
+                        <span>—</span>
+                      }
                     </td>
                   } @else {
-                    <!-- Best Exchange for Spot-Futures -->
+                    <!-- Best Exchange for Spot-Futures (Cross-Exchange recommended) -->
                     <td class="best-exchange-cell">
-                      @if (opp.spotFuturesBestExchange) {
-                        <div class="best-exchange">
-                          <span class="exchange-name">{{ opp.spotFuturesBestExchange.exchange }}</span>
-                          <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.spotFuturesBestExchange.fundingRate)">{{ formatFundingRate(opp.spotFuturesBestExchange.fundingRate) }}</span>
-                          <span class="price">${{ opp.spotFuturesBestExchange.lastPrice }}</span>
-                          <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.spotFuturesBestExchange) }}</span>
-                        </div>
+                      @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                        @if (fundingOpp.spotFuturesBestExchange) {
+                          <div class="best-exchange">
+                            <span class="exchange-name">{{ fundingOpp.spotFuturesBestExchange.exchange }}</span>
+                            <span class="funding-rate" [ngClass]="getFundingRateColorClass(fundingOpp.spotFuturesBestExchange.fundingRate)">{{ formatFundingRate(fundingOpp.spotFuturesBestExchange.fundingRate) }}</span>
+                            <span class="price">${{ fundingOpp.spotFuturesBestExchange.lastPrice }}</span>
+                            <span class="time-to-funding">{{ formatTimeToFundingWithInterval(fundingOpp.spotFuturesBestExchange) }}</span>
+                          </div>
+                        } @else {
+                          <span>—</span>
+                        }
                       } @else {
                         <span>—</span>
                       }
@@ -365,26 +394,30 @@
                     <span class="badge" [ngClass]="getStrategyBadgeClass(opp.strategyType || 'price_only')">
                       {{ getStrategyTypeText(opp.strategyType || 'price_only') }}
                     </span>
-                    @if (opp.recommendedStrategy === 'spot-futures') {
-                      <span class="badge badge-recommendation" title="Spot-Futures арбітраж рекомендується для максимального прибутку">
-                        💡 SF
-                      </span>
+                    @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                      @if (fundingOpp.recommendedStrategy === 'spot-futures') {
+                        <span class="badge badge-recommendation" title="Spot-Futures арбітраж рекомендується для максимального прибутку">
+                          💡 SF
+                        </span>
+                      }
                     }
                   </td>
 
                   <!-- Actions -->
                   <td class="actions-cell">
-                    <!-- Analytics button for spread stability modal -->
-                    <ui-button
-                      (clicked)="openDetailsModal(opp)"
-                      variant="secondary"
-                      size="small"
-                      [iconOnly]="true"
-                      [className]="'btn-analytics'"
-                      [title]="'View historical stability metrics'"
-                    >
-                      <ui-icon name="analytics" [size]="20"></ui-icon>
-                    </ui-button>
+                    <!-- Analytics button for spread stability modal (only for cross-exchange) -->
+                    @if (!isGraduatedEntryMode() && isFundingRateOpportunity(opp)) {
+                      <ui-button
+                        (clicked)="openDetailsModal(opp)"
+                        variant="secondary"
+                        size="small"
+                        [iconOnly]="true"
+                        [className]="'btn-analytics'"
+                        [title]="'View historical stability metrics'"
+                      >
+                        <ui-icon name="analytics" [size]="20"></ui-icon>
+                      </ui-button>
+                    }
                     <!-- Start position button -->
                     <ui-button
                       (clicked)="startPosition(opp)"
@@ -447,6 +480,43 @@
       <li><strong>Cross-Exchange:</strong> Short high funding + Long low funding = earn only the DIFFERENCE</li>
       <li><strong>Example:</strong> If exchange has +0.15% funding, Spot-Futures earns 0.15%, Cross-Exchange earns 0.15% - 0.05% = 0.10%</li>
     </ul>
+
+    <h3>🏦 Graduated Entry (Spot+Futures)</h3>
+    <ul>
+      <li><strong>Strategy:</strong> Buy spot asset + Open SHORT futures on SAME exchange</li>
+      <li><strong>Profit Source:</strong> Earn FULL funding rate when longs pay shorts (positive funding)</li>
+      <li><strong>Comparison:</strong> Earns MORE than cross-exchange when funding is positive</li>
+      <li><strong>Example:</strong> If funding is +0.15%, you earn full 0.15%, not just differential</li>
+      <li><strong>Risk:</strong> No price spread profit - relies entirely on funding rates</li>
+      <li><strong>Capital Efficiency:</strong> Requires capital for both spot purchase and futures margin</li>
+      <li><strong>Best For:</strong> High positive funding rates (0.1%+ per 8h)</li>
+    </ul>
+
+    <h3>📊 Strategy Comparison</h3>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+      <thead>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Strategy</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Exchanges</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Profit Source</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Example Return</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;"><strong>Cross-Exchange</strong></td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">2 different exchanges</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">Price spread + Funding differential</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">0.05% spread + 0.10% funding diff</td>
+        </tr>
+        <tr>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;"><strong>Graduated Entry</strong></td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">1 exchange (spot + futures)</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">FULL funding rate</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">0.00% spread + 0.15% full funding</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </div>
 

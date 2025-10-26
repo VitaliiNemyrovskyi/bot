@@ -6,19 +6,41 @@ import { interval, Subscription, forkJoin, of } from 'rxjs';
 import { startWith, switchMap, catchError } from 'rxjs/operators';
 import { PublicFundingRatesService } from '../../services/public-funding-rates.service';
 import { FundingRateOpportunity } from '../../models/public-funding-rate.model';
+import { GraduatedEntryService } from '../../services/graduated-entry.service';
+import { GraduatedEntryOpportunity } from '../../models/graduated-entry.model';
 import { IconComponent } from '../../components/ui/icon/icon.component';
 import { ButtonComponent } from '../../components/ui/button/button.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
 
 /**
+ * Unified opportunity type that supports both strategies
+ */
+type UnifiedOpportunity = FundingRateOpportunity | (GraduatedEntryOpportunity & {
+  strategyType: 'graduated_entry';
+  bestLong?: never;
+  bestShort?: never;
+  exchanges?: never;
+  maxFundingSpread?: number;
+  maxFundingSpreadPercent?: string;
+  priceSpread?: number;
+  priceSpreadPercent?: string;
+  priceSpreadUsdt?: string;
+  combinedScore?: number;
+  volatility24h?: number;
+  volatility24hFormatted?: string;
+});
+
+/**
  * Price Arbitrage Opportunities Component
  *
- * Displays price arbitrage opportunities with combined strategy metrics (price spread + funding rates).
+ * Displays price arbitrage opportunities with support for multiple strategies:
+ * - Cross-Exchange Arbitrage (combined price spread + funding rates)
+ * - Graduated Entry (Spot + Futures on same exchange)
  * Features:
  * - Real-time price and funding rate data
  * - Combined score calculation (price + funding)
- * - Strategy type filtering (Combined / Price Only / Spot + Futures)
+ * - Strategy type filtering (Combined / Price Only / Spot + Futures / Graduated Entry)
  * - Sortable columns
  * - Auto-refresh every 30 seconds
  */
@@ -42,12 +64,14 @@ import { FundingSpreadDetailsComponent } from '../../components/trading/funding-
   styleUrls: ['./price-arbitrage-opportunities.component.scss'],
   encapsulation: ViewEncapsulation.None
 })
+
 export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   private fundingRatesService = inject(PublicFundingRatesService);
+  private graduatedEntryService = inject(GraduatedEntryService);
   private router = inject(Router);
 
   // State
-  opportunities = signal<FundingRateOpportunity[]>([]);
+  opportunities = signal<UnifiedOpportunity[]>([]);
   isLoading = signal<boolean>(false);
   error = signal<string | null>(null);
   lastUpdated = signal<Date | null>(null);
@@ -73,7 +97,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   // Filters
   searchQuery = signal<string>('');
   minCombinedScore = signal<number | null>(null);
-  strategyTypeFilter = signal<'combined' | 'price_only' | 'spot_futures' | 'funding_farm'>('combined');
+  strategyTypeFilter = signal<'combined' | 'price_only' | 'spot_futures' | 'funding_farm' | 'graduated_entry'>('combined');
   selectedExchanges = signal<string[]>([]);
 
   // Sorting
@@ -113,6 +137,11 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     return this.strategyTypeFilter() === 'funding_farm';
   });
 
+  // Check if graduated entry filter is active
+  isGraduatedEntryMode = computed(() => {
+    return this.strategyTypeFilter() === 'graduated_entry';
+  });
+
   // Computed filtered & sorted opportunities
   filteredOpportunities = computed(() => {
     let filtered = [...this.opportunities()];
@@ -125,9 +154,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     // Filter by strategy type
     const strategyFilter = this.strategyTypeFilter();
-    if (strategyFilter === 'spot_futures') {
+    if (strategyFilter === 'graduated_entry') {
+      // For graduated entry, already filtered by loadOpportunities()
+      // Keep all opportunities as they're already graduated entry type
+    } else if (strategyFilter === 'spot_futures') {
       // For spot-futures, show opportunities where recommendedStrategy is 'spot-futures'
-      filtered = filtered.filter(o => o.recommendedStrategy === 'spot-futures');
+      filtered = filtered.filter(o =>
+        'recommendedStrategy' in o && o.recommendedStrategy === 'spot-futures'
+      );
     } else if (strategyFilter === 'funding_farm') {
       // For funding farm, show all opportunities with positive funding differential
       // (we'll compensate price difference with delta-neutral hedging)
@@ -138,19 +172,33 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     // Filter by selected exchanges (case-insensitive comparison)
     const exchanges = this.selectedExchanges();
-    if (exchanges.length > 0) {
+    if (exchanges.length > 0 && strategyFilter !== 'graduated_entry') {
       const exchangesUpper = exchanges.map(e => e.toUpperCase());
-      filtered = filtered.filter(o =>
-        exchangesUpper.includes(o.bestShort.exchange.toUpperCase()) &&
-        exchangesUpper.includes(o.bestLong.exchange.toUpperCase())
-      );
+      filtered = filtered.filter(o => {
+        // Type guard: check if this is a FundingRateOpportunity with bestShort/bestLong
+        if ('bestShort' in o && 'bestLong' in o && o.bestShort && o.bestLong) {
+          return exchangesUpper.includes(o.bestShort.exchange.toUpperCase()) &&
+                 exchangesUpper.includes(o.bestLong.exchange.toUpperCase());
+        }
+        return false;
+      });
+    } else if (exchanges.length > 0 && strategyFilter === 'graduated_entry') {
+      // For graduated entry, filter by single exchange
+      const exchangesUpper = exchanges.map(e => e.toUpperCase());
+      filtered = filtered.filter(o => {
+        // Type guard: check if this is a GraduatedEntryOpportunity with exchange
+        if ('exchange' in o && typeof o.exchange === 'string') {
+          return exchangesUpper.includes(o.exchange.toUpperCase());
+        }
+        return false;
+      });
     }
 
     // Filter by minimum combined score
     const minScore = this.minCombinedScore();
     if (minScore !== null) {
       filtered = filtered.filter(o => {
-        const score = o.combinedScore !== undefined ? o.combinedScore : (o.priceSpread * 100);
+        const score = o.combinedScore !== undefined ? o.combinedScore : ((o.priceSpread || 0) * 100);
         return score >= minScore;
       });
     }
@@ -170,8 +218,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             : b.symbol.localeCompare(a.symbol);
 
         case 'spreadPercent':
-          aValue = a.priceSpread * 100;
-          bValue = b.priceSpread * 100;
+          aValue = (a.priceSpread || 0) * 100;
+          bValue = (b.priceSpread || 0) * 100;
           break;
 
         case 'fundingDifferential':
@@ -180,18 +228,18 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
           break;
 
         case 'combinedScore':
-          aValue = a.combinedScore ?? (a.priceSpread * 100);
-          bValue = b.combinedScore ?? (b.priceSpread * 100);
+          aValue = a.combinedScore ?? ((a.priceSpread || 0) * 100);
+          bValue = b.combinedScore ?? ((b.priceSpread || 0) * 100);
           break;
 
         case 'expectedDailyReturn':
-          aValue = a.expectedDailyReturn ?? (a.priceSpread * 100);
-          bValue = b.expectedDailyReturn ?? (b.priceSpread * 100);
+          aValue = a.expectedDailyReturn ?? ((a.priceSpread || 0) * 100);
+          bValue = b.expectedDailyReturn ?? ((b.priceSpread || 0) * 100);
           break;
 
         case 'estimatedMonthlyROI':
-          aValue = a.estimatedMonthlyROI ?? (a.priceSpread * 100);
-          bValue = b.estimatedMonthlyROI ?? (b.priceSpread * 100);
+          aValue = a.estimatedMonthlyROI ?? ((a.priceSpread || 0) * 100);
+          bValue = b.estimatedMonthlyROI ?? ((b.priceSpread || 0) * 100);
           break;
 
         case 'volatility':
@@ -245,24 +293,60 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
   /**
    * Load arbitrage opportunities from public APIs (with combined strategy metrics)
-   * Uses PublicFundingRatesService which fetches data directly from exchange public APIs
+   * Uses PublicFundingRatesService for cross-exchange or GraduatedEntryService for spot+futures
    */
   loadOpportunities(): void {
     this.isLoading.set(true);
     this.error.set(null);
 
-    this.fundingRatesService.getFundingRatesOpportunities().subscribe({
-      next: (opportunities) => {
-        this.opportunities.set(opportunities);
-        this.error.set(null);
-        this.isLoading.set(false);
-        this.lastUpdated.set(new Date());
-      },
-      error: (err) => {
-        this.error.set('Failed to load opportunities: ' + err.message);
-        this.isLoading.set(false);
-      },
-    });
+    const strategyFilter = this.strategyTypeFilter();
+
+    if (strategyFilter === 'graduated_entry') {
+      // Load graduated entry opportunities (spot + futures on same exchange)
+      this.graduatedEntryService.getOpportunities(0.01).subscribe({
+        next: (graduatedOpportunities) => {
+          // Map GraduatedEntryOpportunity to UnifiedOpportunity format
+          const unifiedOpportunities: UnifiedOpportunity[] = graduatedOpportunities.map(opp => ({
+            ...opp,
+            strategyType: 'graduated_entry' as const,
+            // Map funding rate to percentage format for display
+            maxFundingSpread: opp.fundingRate / 100, // Convert from % to decimal
+            maxFundingSpreadPercent: `${opp.fundingRate.toFixed(4)}%`,
+            // No price spread for graduated entry (same exchange)
+            priceSpread: 0,
+            priceSpreadPercent: '0.00%',
+            priceSpreadUsdt: '0.00',
+            // Combined score is just the funding rate
+            combinedScore: opp.fundingRate,
+            // Format volatility if available
+            volatility24hFormatted: opp.volatility24h ? `${(opp.volatility24h * 100).toFixed(2)}%` : undefined
+          }));
+
+          this.opportunities.set(unifiedOpportunities);
+          this.error.set(null);
+          this.isLoading.set(false);
+          this.lastUpdated.set(new Date());
+        },
+        error: (err) => {
+          this.error.set('Failed to load graduated entry opportunities: ' + err.message);
+          this.isLoading.set(false);
+        },
+      });
+    } else {
+      // Load cross-exchange opportunities (existing behavior)
+      this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+        next: (opportunities) => {
+          this.opportunities.set(opportunities);
+          this.error.set(null);
+          this.isLoading.set(false);
+          this.lastUpdated.set(new Date());
+        },
+        error: (err) => {
+          this.error.set('Failed to load opportunities: ' + err.message);
+          this.isLoading.set(false);
+        },
+      });
+    }
   }
 
   /**
@@ -323,9 +407,66 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
         return 'Price Only';
       case 'funding_only':
         return 'Funding Only';
+      case 'graduated_entry':
+        return 'Spot+Futures';
       default:
         return 'Unknown';
     }
+  }
+
+  /**
+   * Get time to funding for graduated entry opportunity
+   */
+  getGraduatedEntryTimeToFunding(nextFundingTime: Date): string {
+    const now = this.currentTime();
+    const fundingTime = typeof nextFundingTime === 'string' ? new Date(nextFundingTime).getTime() : nextFundingTime.getTime();
+    const diff = fundingTime - now;
+
+    if (diff <= 0) return '0m';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  }
+
+  /**
+   * Format time to funding with interval for graduated entry
+   */
+  formatGraduatedEntryFundingTime(nextFundingTime: Date, fundingInterval: number): string {
+    const timeToFunding = this.getGraduatedEntryTimeToFunding(nextFundingTime);
+    return `${timeToFunding} / ${fundingInterval}h`;
+  }
+
+  /**
+   * Type guard: check if opportunity is FundingRateOpportunity
+   */
+  isFundingRateOpportunity(opp: UnifiedOpportunity): opp is FundingRateOpportunity {
+    return 'bestLong' in opp && 'bestShort' in opp;
+  }
+
+  /**
+   * Type guard: check if opportunity is GraduatedEntryOpportunity
+   */
+  isGraduatedEntryOpportunity(opp: UnifiedOpportunity): boolean {
+    return !this.isFundingRateOpportunity(opp) && 'exchange' in opp;
+  }
+
+  /**
+   * Cast to FundingRateOpportunity for template use
+   */
+  asFundingRateOpportunity(opp: UnifiedOpportunity): FundingRateOpportunity | null {
+    return this.isFundingRateOpportunity(opp) ? opp : null;
+  }
+
+  /**
+   * Cast to GraduatedEntryOpportunity for template use
+   */
+  asGraduatedEntryOpportunity(opp: UnifiedOpportunity): (GraduatedEntryOpportunity & { strategyType: 'graduated_entry' }) | null {
+    return this.isGraduatedEntryOpportunity(opp) ? opp as (GraduatedEntryOpportunity & { strategyType: 'graduated_entry' }) : null;
   }
 
   /**
@@ -440,21 +581,25 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
    * Calculate delta-neutral hedge ratio for funding farm strategy
    * Returns the ratio of long position size to short position size
    */
-  calculateHedgeRatio(opportunity: FundingRateOpportunity): number {
-    const longPrice = parseFloat(opportunity.bestLong.lastPrice);
-    const shortPrice = parseFloat(opportunity.bestShort.lastPrice);
+  calculateHedgeRatio(opportunity: UnifiedOpportunity): number {
+    // Type guard: only calculate for FundingRateOpportunity
+    if ('bestLong' in opportunity && 'bestShort' in opportunity && opportunity.bestLong && opportunity.bestShort) {
+      const longPrice = parseFloat(opportunity.bestLong.lastPrice);
+      const shortPrice = parseFloat(opportunity.bestShort.lastPrice);
 
-    if (longPrice === 0 || shortPrice === 0) return 1;
+      if (longPrice === 0 || shortPrice === 0) return 1;
 
-    // To be delta-neutral: Long value = Short value
-    // If Short price is higher, we need MORE long contracts
-    return shortPrice / longPrice;
+      // To be delta-neutral: Long value = Short value
+      // If Short price is higher, we need MORE long contracts
+      return shortPrice / longPrice;
+    }
+    return 1;
   }
 
   /**
    * Format hedge ratio for display
    */
-  formatHedgeRatio(opportunity: FundingRateOpportunity): string {
+  formatHedgeRatio(opportunity: UnifiedOpportunity): string {
     const ratio = this.calculateHedgeRatio(opportunity);
     return ratio.toFixed(4);
   }
@@ -505,32 +650,50 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Start arbitrage position - navigate to arbitrage chart page
    */
-  startPosition(opportunity: FundingRateOpportunity): void {
+  startPosition(opportunity: UnifiedOpportunity): void {
     console.log('[PriceArbitrageOpportunities] Starting position for:', opportunity.symbol);
 
     // Determine strategy type based on current filter
     const strategy = this.strategyTypeFilter();
 
-    // Navigate to arbitrage chart with symbol, exchanges, and strategy
-    // Format: /arbitrage/chart/:symbol/:longExchange/:shortExchange/:strategy
-    this.router.navigate([
-      '/arbitrage/chart',
-      opportunity.symbol,
-      opportunity.bestLong.exchange,
-      opportunity.bestShort.exchange,
-      strategy
-    ]);
+    if (strategy === 'graduated_entry') {
+      // For graduated entry (spot + futures on same exchange)
+      // Navigate with spot_futures strategy parameter
+      const graduatedOpp = opportunity as GraduatedEntryOpportunity & { strategyType: 'graduated_entry' };
+      this.router.navigate([
+        '/arbitrage/chart',
+        graduatedOpp.symbol,
+        graduatedOpp.exchange, // Same exchange for both positions
+        graduatedOpp.exchange, // Same exchange for both positions
+        'spot_futures' // Use spot_futures strategy for graduated entry
+      ]);
+    } else {
+      // For cross-exchange arbitrage
+      const crossExchangeOpp = opportunity as FundingRateOpportunity;
+      // Navigate to arbitrage chart with symbol, exchanges, and strategy
+      // Format: /arbitrage/chart/:symbol/:longExchange/:shortExchange/:strategy
+      this.router.navigate([
+        '/arbitrage/chart',
+        crossExchangeOpp.symbol,
+        crossExchangeOpp.bestLong.exchange,
+        crossExchangeOpp.bestShort.exchange,
+        strategy
+      ]);
+    }
   }
 
   /**
    * Open details modal for displaying spread stability metrics
    * Triggers loading of historical stability metrics
    */
-  openDetailsModal(opp: FundingRateOpportunity): void {
-    this.selectedOpportunity.set(opp);
-    this.showDetailsModal.set(true);
-    // Trigger Phase 2 load
-    this.loadPhase2MetricsForSymbol(opp.symbol);
+  openDetailsModal(opp: UnifiedOpportunity): void {
+    // Only open modal for cross-exchange opportunities
+    if ('bestShort' in opp && 'bestLong' in opp) {
+      this.selectedOpportunity.set(opp as FundingRateOpportunity);
+      this.showDetailsModal.set(true);
+      // Trigger Phase 2 load
+      this.loadPhase2MetricsForSymbol(opp.symbol);
+    }
   }
 
   /**
@@ -560,6 +723,9 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     // Find opportunity
     const opp = this.filteredOpportunities().find(o => o.symbol === symbol);
     if (!opp) return;
+
+    // Only load for FundingRateOpportunity (not GraduatedEntry)
+    if (!this.isFundingRateOpportunity(opp)) return;
 
     // Set loading
     const loading = new Set(this.loadingPhase2Metrics());
