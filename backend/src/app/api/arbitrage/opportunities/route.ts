@@ -370,6 +370,7 @@ export async function GET(request: NextRequest) {
       let combinedScore: number | undefined;
       let expectedDailyReturn: number | undefined;
       let estimatedMonthlyROI: number | undefined;
+      let realisticMetricsData: any = undefined;
       let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
       if (primaryFundingRate !== undefined && hedgeFundingRate !== undefined) {
@@ -393,11 +394,36 @@ export async function GET(request: NextRequest) {
           7 // 7 days historical data
         );
 
+        // Also get funding differential metrics for data quality info
+        const fundingMetrics = await calculateFundingDifferentialMetrics(
+          primaryExchangeEnum,
+          hedgeExchangeEnum,
+          symbol,
+          7
+        );
+
         if (realisticMetrics) {
           // Use realistic calculations based on historical data
           expectedDailyReturn = realisticMetrics.expectedDailyReturn.realistic;
           estimatedMonthlyROI = realisticMetrics.expectedMonthlyROI.realistic;
           combinedScore = spreadPercent + (realisticMetrics.expectedDailyReturn.realistic * 7);
+
+          // Prepare realistic metrics object for response
+          realisticMetricsData = {
+            dailyReturn: {
+              pessimistic: realisticMetrics.expectedDailyReturn.pessimistic,
+              realistic: realisticMetrics.expectedDailyReturn.realistic,
+              optimistic: realisticMetrics.expectedDailyReturn.optimistic,
+            },
+            monthlyROI: {
+              pessimistic: realisticMetrics.expectedMonthlyROI.pessimistic,
+              realistic: realisticMetrics.expectedMonthlyROI.realistic,
+              optimistic: realisticMetrics.expectedMonthlyROI.optimistic,
+            },
+            confidence: realisticMetrics.confidence,
+            dataPoints: fundingMetrics?.dataPoints,
+            historicalPeriodDays: 7,
+          };
         } else {
           // Fallback to simple calculation if no historical data
           const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
@@ -433,6 +459,7 @@ export async function GET(request: NextRequest) {
         combinedScore,
         expectedDailyReturn,
         estimatedMonthlyROI,
+        realisticMetrics: realisticMetricsData,
         strategyType,
       });
     }

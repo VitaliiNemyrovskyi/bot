@@ -276,10 +276,32 @@ export interface PriceArbitrageOpportunity {
   hedgeFundingRate?: number; // Funding rate на hedge exchange (% per 8h)
   fundingDifferential?: number; // Разница funding rates (% per 8h)
 
-  // Combined strategy metrics
+  // Combined strategy metrics (LEGACY - простые расчеты)
   combinedScore?: number; // Комбинированная оценка (price spread + funding)
-  expectedDailyReturn?: number; // Ожидаемая дневная доходность (%)
-  estimatedMonthlyROI?: number; // Прогноз месячного ROI (%)
+  expectedDailyReturn?: number; // Ожидаемая дневная доходность (%) - LEGACY
+  estimatedMonthlyROI?: number; // Прогноз месячного ROI (%) - LEGACY
+
+  // REALISTIC METRICS - based on historical data (NEW)
+  realisticMetrics?: {
+    // Daily return scenarios (%)
+    dailyReturn: {
+      pessimistic: number; // avg - 1 stddev
+      realistic: number; // avg
+      optimistic: number; // avg + 1 stddev
+    };
+    // Monthly ROI scenarios (%)
+    monthlyROI: {
+      pessimistic: number;
+      realistic: number;
+      optimistic: number;
+    };
+    // Confidence score (0-100)
+    // Higher = more reliable historical data
+    confidence: number;
+    // Data quality indicators
+    dataPoints?: number; // Number of historical samples
+    historicalPeriodDays?: number; // Period of analysis (usually 7 days)
+  };
 
   // Strategy type
   strategyType: 'price_only' | 'funding_only' | 'combined'; // Тип стратегии
