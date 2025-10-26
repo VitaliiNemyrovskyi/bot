@@ -412,6 +412,63 @@
   }
 }
 
+// Realistic Metrics Display (with ranges)
+.metric-realistic {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+
+  .metric-value {
+    font-size: 0.95rem;
+  }
+
+  .metric-range {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    font-size: 0.75rem;
+    opacity: 0.8;
+    cursor: help;
+
+    .range-pessimistic {
+      color: rgb(239, 68, 68); // Red for pessimistic
+    }
+
+    .range-separator {
+      color: var(--text-secondary);
+    }
+
+    .range-optimistic {
+      color: rgb(34, 197, 94); // Green for optimistic
+    }
+  }
+
+  .confidence-badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    cursor: help;
+
+    &.high {
+      background-color: rgba(34, 197, 94, 0.15);
+      color: rgb(34, 197, 94);
+    }
+
+    &.medium {
+      background-color: rgba(245, 158, 11, 0.15);
+      color: rgb(245, 158, 11);
+    }
+
+    &.low {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: rgb(239, 68, 68);
+    }
+  }
+}
+
 // States
 .loading-state, .error-state {
   display: flex;

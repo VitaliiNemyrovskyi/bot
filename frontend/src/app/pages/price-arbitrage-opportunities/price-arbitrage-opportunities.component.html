@@ -253,7 +253,29 @@
 
                   <!-- Daily Return -->
                   <td class="daily-return-cell">
-                    @if (opp.expectedDailyReturn !== undefined) {
+                    @if (opp.realisticMetrics) {
+                      <div class="metric-realistic">
+                        <span class="metric-value metric-highlight"
+                              [title]="'Realistic: ' + formatPercent(opp.realisticMetrics.dailyReturn.realistic) + ' | Range: ' + formatPercent(opp.realisticMetrics.dailyReturn.pessimistic) + ' - ' + formatPercent(opp.realisticMetrics.dailyReturn.optimistic)">
+                          {{ formatPercent(opp.realisticMetrics.dailyReturn.realistic) }}
+                        </span>
+                        <span class="metric-range"
+                              [title]="'Based on ' + (opp.realisticMetrics.dataPoints || 0) + ' historical data points over ' + (opp.realisticMetrics.historicalPeriodDays || 7) + ' days'">
+                          <small class="range-pessimistic">{{ formatPercent(opp.realisticMetrics.dailyReturn.pessimistic, 1) }}</small>
+                          <small class="range-separator">-</small>
+                          <small class="range-optimistic">{{ formatPercent(opp.realisticMetrics.dailyReturn.optimistic, 1) }}</small>
+                        </span>
+                        @if (opp.realisticMetrics.confidence) {
+                          <span class="confidence-badge"
+                                [class.high]="opp.realisticMetrics.confidence >= 70"
+                                [class.medium]="opp.realisticMetrics.confidence >= 40 && opp.realisticMetrics.confidence < 70"
+                                [class.low]="opp.realisticMetrics.confidence < 40"
+                                [title]="'Confidence: ' + opp.realisticMetrics.confidence + '/100 (based on historical data quality)'">
+                            {{ opp.realisticMetrics.confidence }}%
+                          </span>
+                        }
+                      </div>
+                    } @else if (opp.expectedDailyReturn !== undefined) {
                       <span class="metric-value">{{ formatPercent(opp.expectedDailyReturn) }}</span>
                     } @else {
                       <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
@@ -262,7 +284,29 @@
 
                   <!-- Monthly ROI -->
                   <td class="monthly-roi-cell">
-                    @if (opp.estimatedMonthlyROI !== undefined) {
+                    @if (opp.realisticMetrics) {
+                      <div class="metric-realistic">
+                        <span class="metric-value metric-highlight"
+                              [title]="'Realistic: ' + formatPercent(opp.realisticMetrics.monthlyROI.realistic) + ' | Range: ' + formatPercent(opp.realisticMetrics.monthlyROI.pessimistic) + ' - ' + formatPercent(opp.realisticMetrics.monthlyROI.optimistic)">
+                          {{ formatPercent(opp.realisticMetrics.monthlyROI.realistic) }}
+                        </span>
+                        <span class="metric-range"
+                              [title]="'Based on ' + (opp.realisticMetrics.dataPoints || 0) + ' historical data points over ' + (opp.realisticMetrics.historicalPeriodDays || 7) + ' days'">
+                          <small class="range-pessimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.pessimistic, 1) }}</small>
+                          <small class="range-separator">-</small>
+                          <small class="range-optimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.optimistic, 1) }}</small>
+                        </span>
+                        @if (opp.realisticMetrics.confidence) {
+                          <span class="confidence-badge"
+                                [class.high]="opp.realisticMetrics.confidence >= 70"
+                                [class.medium]="opp.realisticMetrics.confidence >= 40 && opp.realisticMetrics.confidence < 70"
+                                [class.low]="opp.realisticMetrics.confidence < 40"
+                                [title]="'Confidence: ' + opp.realisticMetrics.confidence + '/100 (based on historical data quality)'">
+                            {{ opp.realisticMetrics.confidence }}%
+                          </span>
+                        }
+                      </div>
+                    } @else if (opp.estimatedMonthlyROI !== undefined) {
                       <span class="metric-value metric-highlight">{{ formatPercent(opp.estimatedMonthlyROI) }}</span>
                     } @else {
                       <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
@@ -380,8 +424,20 @@
       <li><strong>Price Spread:</strong> Immediate profit opportunity from price difference between exchanges</li>
       <li><strong>Funding Diff:</strong> Net funding rate you receive/pay every 8 hours (SHORT - LONG)</li>
       <li><strong>Combined Score:</strong> Price spread + projected funding for 7 days</li>
-      <li><strong>Daily Return:</strong> Expected daily profit (spread + funding × 3)</li>
-      <li><strong>Monthly ROI:</strong> Estimated profit over 30 days (spread + funding × 90)</li>
+      <li><strong>Daily Return:</strong> Expected daily profit based on 7-day historical average funding rates (spread + funding × 3)</li>
+      <li><strong>Monthly ROI:</strong> Estimated profit over 30 days based on historical data (spread + funding × 90)</li>
+    </ul>
+
+    <h3>📊 Realistic Metrics (NEW)</h3>
+    <ul>
+      <li><strong>Historical Analysis:</strong> Return estimates are now based on 7 days of historical funding rate data</li>
+      <li><strong>Pessimistic Scenario:</strong> Lower bound (average - 1 standard deviation) - worst case from historical data</li>
+      <li><strong>Realistic Scenario:</strong> Middle estimate (historical average) - most likely outcome</li>
+      <li><strong>Optimistic Scenario:</strong> Upper bound (average + 1 standard deviation) - best case from historical data</li>
+      <li><strong>Confidence Score:</strong> Data quality indicator (0-100%) - higher means more reliable historical data</li>
+      <li><strong>Green badge (70%+):</strong> High confidence - lots of historical data, consistent rates</li>
+      <li><strong>Orange badge (40-70%):</strong> Medium confidence - moderate data, some variance</li>
+      <li><strong>Red badge (&lt;40%):</strong> Low confidence - limited data or high variance</li>
     </ul>
 
     <h3>💡 Spot-Futures Recommendation</h3>

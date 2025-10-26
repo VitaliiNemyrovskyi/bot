@@ -57,9 +57,31 @@ export interface FundingRateOpportunity {
 
   // Combined Strategy Metrics (price + funding)
   combinedScore?: number;                // Combined score (price spread + funding for 7 days)
-  expectedDailyReturn?: number;          // Expected daily return (%) = price spread + funding × 3
-  estimatedMonthlyROI?: number;          // Estimated monthly ROI (%) = price spread + funding × 90
+  expectedDailyReturn?: number;          // Expected daily return (%) = price spread + funding × 3 - LEGACY
+  estimatedMonthlyROI?: number;          // Estimated monthly ROI (%) = price spread + funding × 90 - LEGACY
   strategyType?: 'price_only' | 'funding_only' | 'combined'; // Strategy type
+
+  // REALISTIC METRICS - based on historical data (NEW)
+  realisticMetrics?: {
+    // Daily return scenarios (%)
+    dailyReturn: {
+      pessimistic: number; // avg - 1 stddev
+      realistic: number; // avg
+      optimistic: number; // avg + 1 stddev
+    };
+    // Monthly ROI scenarios (%)
+    monthlyROI: {
+      pessimistic: number;
+      realistic: number;
+      optimistic: number;
+    };
+    // Confidence score (0-100)
+    // Higher = more reliable historical data
+    confidence: number;
+    // Data quality indicators
+    dataPoints?: number; // Number of historical samples
+    historicalPeriodDays?: number; // Period of analysis (usually 7 days)
+  };
 
   // Recommended Strategy (based on funding rate analysis)
   recommendedStrategy?: 'cross-exchange' | 'spot-futures'; // Optimal strategy for this opportunity
