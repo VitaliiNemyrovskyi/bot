@@ -4,6 +4,7 @@ import { BingXService } from '@/lib/bingx';
 import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
+import { calculateRealisticROI, calculateOpportunityConfidence, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
 
 /**
  * GET /api/arbitrage/opportunities
@@ -332,12 +333,12 @@ export async function GET(request: NextRequest) {
     // 7. Calculate arbitrage opportunities with combined metrics
     const opportunities: PriceArbitrageOpportunity[] = [];
 
-    symbolMap.forEach((exchanges, symbol) => {
+    for (const [symbol, exchanges] of symbolMap.entries()) {
       // Only analyze symbols with at least 2 exchanges
-      if (exchanges.length < 2) return;
+      if (exchanges.length < 2) continue;
 
       // Apply symbol filter if specified
-      if (symbolFilter && symbol !== symbolFilter) return;
+      if (symbolFilter && symbol !== symbolFilter) continue;
 
       // Sort by price (lowest to highest)
       const sortedExchanges = [...exchanges].sort((a, b) => a.price - b.price);
@@ -352,7 +353,7 @@ export async function GET(request: NextRequest) {
       // Check if spread meets minimum threshold
       const arbitrageOpportunity = spreadPercent >= minSpread;
 
-      if (!arbitrageOpportunity) return;
+      if (!arbitrageOpportunity) continue;
 
       // Get funding rates for primary and hedge exchanges
       const primaryExchangeName = sortedExchanges[sortedExchanges.length - 1].exchange;
@@ -380,16 +381,30 @@ export async function GET(request: NextRequest) {
         // If PRIMARY funding is +0.05% and HEDGE funding is +0.01%, we receive +0.04% net
         fundingDifferential = primaryFundingRate - hedgeFundingRate;
 
-        // Expected daily return = price spread (one-time) + funding differential (3x per day)
-        // For price spread, we assume it will converge over some period (e.g., 1 day)
-        const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
-        expectedDailyReturn = spreadPercent + dailyFundingReturn;
+        // Calculate realistic ROI based on historical data
+        const primaryExchangeEnum = primaryExchangeName as any; // Convert string to Exchange enum
+        const hedgeExchangeEnum = hedgeExchangeName as any;
 
-        // Estimated monthly ROI (assuming price spread closes once, funding accumulates)
-        estimatedMonthlyROI = spreadPercent + (dailyFundingReturn * 30);
+        const realisticMetrics = await calculateRealisticROI(
+          primaryExchangeEnum,
+          hedgeExchangeEnum,
+          symbol,
+          spreadPercent,
+          7 // 7 days historical data
+        );
 
-        // Combined score = immediate price spread + projected funding for 7 days
-        combinedScore = spreadPercent + (dailyFundingReturn * 7);
+        if (realisticMetrics) {
+          // Use realistic calculations based on historical data
+          expectedDailyReturn = realisticMetrics.expectedDailyReturn.realistic;
+          estimatedMonthlyROI = realisticMetrics.expectedMonthlyROI.realistic;
+          combinedScore = spreadPercent + (realisticMetrics.expectedDailyReturn.realistic * 7);
+        } else {
+          // Fallback to simple calculation if no historical data
+          const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
+          expectedDailyReturn = spreadPercent + dailyFundingReturn;
+          estimatedMonthlyROI = spreadPercent + (dailyFundingReturn * 30);
+          combinedScore = spreadPercent + (dailyFundingReturn * 7);
+        }
 
         strategyType = 'combined';
       }
@@ -420,7 +435,7 @@ export async function GET(request: NextRequest) {
         estimatedMonthlyROI,
         strategyType,
       });
-    });
+    }
 
     // Sort by combined score (if available), otherwise by spread (highest first)
     opportunities.sort((a, b) => {
