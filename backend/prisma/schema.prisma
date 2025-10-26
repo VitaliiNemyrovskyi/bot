@@ -883,6 +883,11 @@ model GraduatedEntryPosition {
   grossProfit Float @default(0) // Total funding earned (primary + hedge, in USDT)
   netProfit   Float @default(0) // Gross profit - total fees (in USDT)
 
+  // Liquidation monitoring status
+  isMonitoringEnabled Boolean   @default(true) // Whether liquidation monitoring is enabled for this position
+  lastMonitoringCheck DateTime? // Last time monitoring checked this position
+  monitoringStatus    String?   @default("active") // "active", "paused", "disabled"
+
   lastFundingUpdate  DateTime? // When funding was last updated from exchange APIs
   fundingUpdateCount Int       @default(0) // Number of times funding has been updated
 
@@ -895,6 +900,12 @@ model GraduatedEntryPosition {
   hedgeInDanger           Boolean   @default(false) // True if hedge within 10% of liquidation
   lastLiquidationCheck    DateTime? // When liquidation proximity was last checked
   liquidationAlertSent    Boolean   @default(false) // Whether alert was sent for this position
+
+  // Stop Loss and Take Profit prices
+  primaryStopLoss   Float? // Stop loss price for primary position
+  primaryTakeProfit Float? // Take profit price for primary position
+  hedgeStopLoss     Float? // Stop loss price for hedge position
+  hedgeTakeProfit   Float? // Take profit price for hedge position
 
   // Timestamps
   createdAt   DateTime  @default(now())
@@ -1079,4 +1090,31 @@ model TriangularArbitrageOpportunity {
   @@index([detectedAt])
   @@index([theoreticalProfit])
   @@map("triangular_arbitrage_opportunities")
+}
+
+// Historical funding rates for calculating realistic metrics
+model PublicFundingRate {
+  id String @id @default(cuid())
+
+  // Symbol and exchange
+  symbol   String // e.g., "BTC/USDT"
+  exchange Exchange // BINANCE, BYBIT, BINGX, etc.
+
+  // Funding rate data
+  fundingRate Float // Current funding rate (e.g., 0.0001 = 0.01%)
+  nextFundingTime DateTime // When next funding will occur
+  fundingInterval Int // Interval in hours (usually 8)
+
+  // Price data (optional, for historical tracking)
+  markPrice  Float? // Mark price at this snapshot
+  indexPrice Float? // Index price at this snapshot
+
+  // Timestamp
+  timestamp DateTime @default(now())
+
+  // Indexes for fast queries
+  @@index([symbol, exchange, timestamp])
+  @@index([timestamp])
+  @@index([exchange])
+  @@map("public_funding_rates")
 }

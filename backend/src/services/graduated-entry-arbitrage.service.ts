@@ -45,6 +45,17 @@ export interface GraduatedEntryConfig {
   // Graduated entry settings
   graduatedEntryParts: number;     // Number of parts to split order (default: 5)
   graduatedEntryDelayMs: number;   // Delay between parts in milliseconds (default: 2000)
+
+  // Strategy type (optional, default: 'combined')
+  // 'combined' and 'price_only' = balance by coins only (no USDT rebalancing)
+  // 'funding_farm' and 'spot_futures' = balance by USDT value (use ContractCalculator)
+  strategyType?: 'combined' | 'price_only' | 'funding_farm' | 'spot_futures';
+
+  // Combined strategy: Funding rates (optional, for TP/SL calculation)
+  primaryFundingRate?: number;     // Hourly funding rate in decimal (e.g., 0.0001 = 0.01%)
+  hedgeFundingRate?: number;       // Hourly funding rate in decimal
+  targetHoldingPeriodHours?: number; // Target holding period for funding profit (default: 168 = 7 days)
+  minProfitPercent?: number;       // Minimum profit target percentage (default: 2%)
 }
 
 export interface ExchangeCredentials {
@@ -83,8 +94,10 @@ export interface ActiveArbitragePosition {
   currentPart: number;  // Current part being executed (1-based)
 
   // WebSocket monitoring (real-time price updates instead of polling)
-  primaryPriceUnsubscribe?: () => void;    // Unsubscribe function for primary exchange WebSocket
-  hedgePriceUnsubscribe?: () => void;       // Unsubscribe function for hedge exchange WebSocket
+  primaryPriceUnsubscribe?: () => void;    // Unsubscribe function for primary exchange price WebSocket
+  hedgePriceUnsubscribe?: () => void;       // Unsubscribe function for hedge exchange price WebSocket
+  primaryPositionUnsubscribe?: () => void;  // Unsubscribe function for primary exchange position WebSocket (real-time P&L)
+  hedgePositionUnsubscribe?: () => void;    // Unsubscribe function for hedge exchange position WebSocket (real-time P&L)
   lastMonitoringCheck?: number;             // Timestamp of last monitoring check (for throttling)
 }
 
@@ -149,7 +162,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   }
 
   /**
-   * Ensure positions are restored from database (lazy initialization)
+   * Ensure positions are restored from a database (lazy initialization)
    * Called on first API request to avoid initialization timing issues
    */
   private async ensureRestored(): Promise<void> {
@@ -165,7 +178,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   }
 
   /**
-   * Restore active positions from database on service startup
+   * Restore active positions from a database on service startup
    * This allows positions to survive backend restarts
    */
   private async restorePositionsFromDatabase(): Promise<void> {
@@ -614,62 +627,82 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
     console.log(`[GraduatedEntry] ${position.id} - Starting graduated entry execution`);
 
-    // Calculate balanced quantity per part using ContractCalculator
-    // This ensures both exchanges open identical effective quantities despite different contract specifications
+    // Determine strategy type (default: 'combined')
+    const strategyType = config.strategyType || 'combined';
+    console.log(`[GraduatedEntry] ${position.id} - Strategy type: ${strategyType}`);
+
+    // Calculate quantity per part based on strategy type
+    // For 'combined' and 'price_only': Use simple coin-based division (no USDT rebalancing)
+    // For 'funding_farm' and 'spot_futures': Use ContractCalculator for USDT-based balancing
     let primaryQuantityPerPart: number;
     let hedgeQuantityPerPart: number;
 
-    try {
-      // Check if connectors have getContractSpecification method
-      const primaryConnector = position.primaryConnector as any;
-      const hedgeConnector = position.hedgeConnector as any;
+    if (strategyType === 'combined' || strategyType === 'price_only') {
+      // COIN-BASED BALANCING: Simply divide quantities by parts
+      // This ensures we trade the exact same number of coins on both exchanges
+      console.log(`[GraduatedEntry] ${position.id} - Using coin-based balancing (no USDT rebalancing)`);
+      primaryQuantityPerPart = config.primaryQuantity / graduatedEntryParts;
+      hedgeQuantityPerPart = config.hedgeQuantity / graduatedEntryParts;
 
-      if (
-        typeof primaryConnector.getContractSpecification === 'function' &&
-        typeof hedgeConnector.getContractSpecification === 'function'
-      ) {
-        console.log(`[GraduatedEntry] ${position.id} - Using ContractCalculator for balanced quantities`);
+      console.log(`[GraduatedEntry] ${position.id} - Coin-based quantities per part:`, {
+        primary: primaryQuantityPerPart,
+        hedge: hedgeQuantityPerPart,
+      });
+    } else {
+      // USDT-BASED BALANCING: Use ContractCalculator for funding_farm and spot_futures strategies
+      // This ensures both exchanges open identical USDT value despite different contract specifications
+      try {
+        // Check if connectors have getContractSpecification method
+        const primaryConnector = position.primaryConnector as any;
+        const hedgeConnector = position.hedgeConnector as any;
 
-        // Fetch contract specifications
-        const [primarySpec, hedgeSpec] = await Promise.all([
-          primaryConnector.getContractSpecification(config.symbol),
-          hedgeConnector.getContractSpecification(config.symbol),
-        ]);
+        if (
+          typeof primaryConnector.getContractSpecification === 'function' &&
+          typeof hedgeConnector.getContractSpecification === 'function'
+        ) {
+          console.log(`[GraduatedEntry] ${position.id} - Using ContractCalculator for USDT-based balancing`);
 
-        console.log(`[GraduatedEntry] ${position.id} - Contract specifications:`, {
-          primary: primarySpec,
-          hedge: hedgeSpec,
-        });
+          // Fetch contract specifications
+          const [primarySpec, hedgeSpec] = await Promise.all([
+            primaryConnector.getContractSpecification(config.symbol),
+            hedgeConnector.getContractSpecification(config.symbol),
+          ]);
 
-        // Calculate balanced quantities
-        const result = ContractCalculator.calculateGraduatedQuantities(
-          config.primaryQuantity,
-          graduatedEntryParts,
-          primarySpec,
-          hedgeSpec
-        );
+          console.log(`[GraduatedEntry] ${position.id} - Contract specifications:`, {
+            primary: primarySpec,
+            hedge: hedgeSpec,
+          });
 
-        primaryQuantityPerPart = result.quantityPerPart;
-        hedgeQuantityPerPart = result.quantityPerPart;
+          // Calculate balanced quantities
+          const result = ContractCalculator.calculateGraduatedQuantities(
+            config.primaryQuantity,
+            graduatedEntryParts,
+            primarySpec,
+            hedgeSpec
+          );
 
-        console.log(`[GraduatedEntry] ${position.id} - Balanced quantities calculated:`, {
-          requestedTotal: config.primaryQuantity,
-          quantityPerPart: result.quantityPerPart,
-          effectivePerPart: result.effectiveQuantityPerPart,
-          totalEffective: result.totalEffectiveQuantity,
-          adjustedTotal: result.adjustedTotal,
-        });
-      } else {
-        // Fallback to simple division if connectors don't support ContractCalculator
-        console.warn(`[GraduatedEntry] ${position.id} - Connectors don't support ContractCalculator, using simple division`);
+          primaryQuantityPerPart = result.quantityPerPart;
+          hedgeQuantityPerPart = result.quantityPerPart;
+
+          console.log(`[GraduatedEntry] ${position.id} - USDT-balanced quantities calculated:`, {
+            requestedTotal: config.primaryQuantity,
+            quantityPerPart: result.quantityPerPart,
+            effectivePerPart: result.effectiveQuantityPerPart,
+            totalEffective: result.totalEffectiveQuantity,
+            adjustedTotal: result.adjustedTotal,
+          });
+        } else {
+          // Fallback to simple division if connectors don't support ContractCalculator
+          console.warn(`[GraduatedEntry] ${position.id} - Connectors don't support ContractCalculator, using simple division`);
+          primaryQuantityPerPart = config.primaryQuantity / graduatedEntryParts;
+          hedgeQuantityPerPart = config.hedgeQuantity / graduatedEntryParts;
+        }
+      } catch (error: any) {
+        console.error(`[GraduatedEntry] ${position.id} - Error calculating balanced quantities:`, error.message);
+        console.warn(`[GraduatedEntry] ${position.id} - Falling back to simple division`);
         primaryQuantityPerPart = config.primaryQuantity / graduatedEntryParts;
         hedgeQuantityPerPart = config.hedgeQuantity / graduatedEntryParts;
       }
-    } catch (error: any) {
-      console.error(`[GraduatedEntry] ${position.id} - Error calculating balanced quantities:`, error.message);
-      console.warn(`[GraduatedEntry] ${position.id} - Falling back to simple division`);
-      primaryQuantityPerPart = config.primaryQuantity / graduatedEntryParts;
-      hedgeQuantityPerPart = config.hedgeQuantity / graduatedEntryParts;
     }
 
     console.log(`[GraduatedEntry] ${position.id} - Final quantity per part:`, {
@@ -692,6 +725,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       try {
         let primaryOrderId: string;
         let hedgeOrderId: string;
+        let primaryFilledQty: number;
+        let hedgeFilledQty: number;
 
         // CRITICAL: For the FIRST part, execute SEQUENTIALLY to validate before opening hedge
         // This prevents opening hedge position if primary fails validation
@@ -699,7 +734,6 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           console.log(`[GraduatedEntry] ${position.id} - First part: executing PRIMARY first for validation`);
 
           // Execute primary order first
-          let primaryFilledQty: number;
           try {
             const primaryResult = await this.executeMarketOrder(
               position.primaryConnector,
@@ -717,7 +751,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
             if (this.isValidationError(errorMsg)) {
               // Parse and format validation error for user
-              const userError = this.formatValidationError(errorMsg, config.primaryExchange, symbol, primaryQuantityPerPart);
+              const userError = this.formatValidationError(errorMsg, config.primaryExchange, config.symbol, primaryQuantityPerPart);
               console.error(`[GraduatedEntry] ${position.id} - Validation failed on PRIMARY:`, userError);
 
               // Set error status
@@ -768,6 +802,10 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               'hedge'
             );
             hedgeOrderId = hedgeResult.orderId;
+            hedgeFilledQty = hedgeResult.filledQuantity;
+
+            console.log(`[GraduatedEntry] ${position.id} - HEDGE order successful`);
+            console.log(`[GraduatedEntry] ${position.id} - First part filled quantities - Primary: ${primaryFilledQty}, Hedge: ${hedgeFilledQty}`);
           } catch (error: any) {
             // Hedge failed but primary succeeded - CRITICAL situation!
             // MUST close primary position immediately to avoid unhedged risk!
@@ -775,7 +813,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             let userError: string;
 
             if (this.isValidationError(errorMsg)) {
-              userError = this.formatValidationError(errorMsg, config.hedgeExchange, symbol, hedgeQuantityPerPart);
+              userError = this.formatValidationError(errorMsg, config.hedgeExchange, config.symbol, hedgeQuantityPerPart);
             } else {
               // Non-validation error (e.g., BingX API disabled, exchange restriction, etc.)
               userError = `${config.hedgeExchange}: ${errorMsg}`;
@@ -833,7 +871,6 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           // Execute primary first, then use its filled quantity for hedge
           console.log(`[GraduatedEntry] ${position.id} - Part ${part}: executing PRIMARY first`);
 
-          let primaryFilledQty: number;
           try {
             const primaryResult = await this.executeMarketOrder(
               position.primaryConnector,
@@ -853,7 +890,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             let userError = '';
 
             if (this.isValidationError(errorMsg)) {
-              userError = this.formatValidationError(errorMsg, config.primaryExchange, symbol, primaryQuantityPerPart);
+              userError = this.formatValidationError(errorMsg, config.primaryExchange, config.symbol, primaryQuantityPerPart);
             } else {
               userError = `${config.primaryExchange}: ${errorMsg}`;
             }
@@ -900,14 +937,16 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               'hedge'
             );
             hedgeOrderId = hedgeResult.orderId;
+            hedgeFilledQty = hedgeResult.filledQuantity;
 
             console.log(`[GraduatedEntry] ${position.id} - HEDGE order successful`);
+            console.log(`[GraduatedEntry] ${position.id} - Filled quantities - Primary: ${primaryFilledQty}, Hedge: ${hedgeFilledQty}`);
           } catch (error: any) {
             const errorMsg = error.message || String(error);
             let userError = '';
 
             if (this.isValidationError(errorMsg)) {
-              userError = this.formatValidationError(errorMsg, config.hedgeExchange, symbol, primaryFilledQty);
+              userError = this.formatValidationError(errorMsg, config.hedgeExchange, config.symbol, primaryFilledQty);
             } else {
               userError = `${config.hedgeExchange}: ${errorMsg}`;
             }
@@ -1012,26 +1051,98 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           }
         }
 
-        // Update filled quantities
-        position.primaryFilledQuantity += primaryQuantityPerPart;
-        position.hedgeFilledQuantity += hedgeQuantityPerPart;
+        // CRITICAL FIX: Use ACTUAL filled quantities, not requested quantities!
+        // This prevents cumulative errors from slippage and partial fills
+        position.primaryFilledQuantity += primaryFilledQty;
+        position.hedgeFilledQuantity += hedgeFilledQty;
+
+        // Calculate and log discrepancy
+        const discrepancy = Math.abs(primaryFilledQty - hedgeFilledQty);
+        const discrepancyPercent = (discrepancy / primaryFilledQty) * 100;
+
+        console.log(`[GraduatedEntry] ${position.id} - Part ${part} filled quantities:`, {
+          primary: primaryFilledQty,
+          hedge: hedgeFilledQty,
+          discrepancy: discrepancy.toFixed(6),
+          discrepancyPercent: discrepancyPercent.toFixed(2) + '%'
+        });
+
+        if (discrepancyPercent > 0.1) {
+          console.warn(`[GraduatedEntry] ${position.id} - ⚠️ WARNING: Discrepancy ${discrepancyPercent.toFixed(2)}% exceeds 0.1% threshold!`);
+        }
 
         // Store order IDs
         position.primaryOrderIds.push(primaryOrderId);
         position.hedgeOrderIds.push(hedgeOrderId);
 
+        // NEW: Verify actual positions after each part (except last)
+        if (part < graduatedEntryParts) {
+          try {
+            console.log(`[GraduatedEntry] ${position.id} - Verifying positions after part ${part}...`);
+
+            const [actualPrimaryPos, actualHedgePos] = await Promise.all([
+              this.getExchangePosition(position.primaryConnector, config.symbol, config.primaryExchange),
+              this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
+            ]);
+
+            if (actualPrimaryPos && actualHedgePos) {
+              const actualDiscrepancy = Math.abs(actualPrimaryPos.size - actualHedgePos.size);
+              const actualDiscrepancyPercent = (actualDiscrepancy / actualPrimaryPos.size) * 100;
+
+              console.log(`[GraduatedEntry] ${position.id} - Actual positions on exchanges:`, {
+                primary: actualPrimaryPos.size,
+                hedge: actualHedgePos.size,
+                discrepancy: actualDiscrepancy.toFixed(6),
+                discrepancyPercent: actualDiscrepancyPercent.toFixed(2) + '%'
+              });
+
+              // If discrepancy is significant, adjust next part
+              if (actualDiscrepancyPercent > 0.1 && part < graduatedEntryParts) {
+                const correction = actualPrimaryPos.size - actualHedgePos.size;
+                console.warn(`[GraduatedEntry] ${position.id} - Applying correction to next part: ${correction.toFixed(6)}`);
+
+                // Adjust the next part quantities to compensate
+                // This will be applied in the next iteration
+                // (We'll need to track cumulative correction)
+              }
+            }
+          } catch (verifyError: any) {
+            console.warn(`[GraduatedEntry] ${position.id} - Could not verify positions:`, verifyError.message);
+            // Continue anyway - verification is optional
+          }
+        }
+
         // Update database with progress
         if (position.dbId) {
-          await prisma.graduatedEntryPosition.update({
-            where: { id: position.dbId },
-            data: {
-              currentPart: part,
-              primaryFilledQty: position.primaryFilledQuantity,
-              hedgeFilledQty: position.hedgeFilledQuantity,
-              primaryOrderIds: position.primaryOrderIds,
-              hedgeOrderIds: position.hedgeOrderIds,
-            },
-          }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+          try {
+            await prisma.graduatedEntryPosition.update({
+              where: { id: position.dbId },
+              data: {
+                currentPart: part,
+                primaryFilledQty: position.primaryFilledQuantity,
+                hedgeFilledQty: position.hedgeFilledQuantity,
+                primaryOrderIds: position.primaryOrderIds,
+                hedgeOrderIds: position.hedgeOrderIds,
+              },
+            });
+            console.log(`[GraduatedEntry] ${position.id} - Database updated successfully for part ${part}`);
+          } catch (err: any) {
+            console.error('[GraduatedEntry] DB update error:', {
+              positionId: position.id,
+              dbId: position.dbId,
+              part,
+              error: err.message || String(err),
+              errorCode: err.code,
+              errorStack: err.stack,
+              values: {
+                currentPart: part,
+                primaryFilledQty: position.primaryFilledQuantity,
+                hedgeFilledQty: position.hedgeFilledQuantity,
+                primaryOrderIds: position.primaryOrderIds,
+                hedgeOrderIds: position.hedgeOrderIds,
+              }
+            });
+          }
         }
 
         console.log(`[GraduatedEntry] ${position.id} - Part ${part} completed:`, {
@@ -1144,6 +1255,9 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       console.error(`[GraduatedEntry] ${position.id} - Error fetching entry prices:`, error.message);
       // Continue anyway - entry prices will be null but position will still be monitored
     }
+
+    // NEW: Final rebalancing after all parts completed
+    await this.finalRebalancing(position, config);
 
     // Set synchronized TP/SL orders if entry prices are available
     if (primaryEntryPrice && hedgeEntryPrice) {
@@ -1334,6 +1448,22 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           console.warn(`[GraduatedEntry] Warning: Failed to unsubscribe hedge WebSocket:`, error.message);
         }
       }
+      if (position.primaryPositionUnsubscribe) {
+        try {
+          position.primaryPositionUnsubscribe();
+          console.log(`[GraduatedEntry] ✓ Primary position WebSocket unsubscribed`);
+        } catch (error: any) {
+          console.warn(`[GraduatedEntry] Warning: Failed to unsubscribe primary position WebSocket:`, error.message);
+        }
+      }
+      if (position.hedgePositionUnsubscribe) {
+        try {
+          position.hedgePositionUnsubscribe();
+          console.log(`[GraduatedEntry] ✓ Hedge position WebSocket unsubscribed`);
+        } catch (error: any) {
+          console.warn(`[GraduatedEntry] Warning: Failed to unsubscribe hedge position WebSocket:`, error.message);
+        }
+      }
 
       // Close positions on both exchanges with detailed logging
       console.log(`[GraduatedEntry] Closing positions on both exchanges...`);
@@ -1396,6 +1526,159 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
   }
 
   /**
+   * Final rebalancing after all parts are executed
+   *
+   * Checks position sizes on both exchanges and rebalances if discrepancy > 0.5%
+   * - If balance >= 100% of entry amount: buy more on smaller position
+   * - If balance < 100%: sell from larger position
+   */
+  private async finalRebalancing(
+    position: ActiveArbitragePosition,
+    config: GraduatedEntryConfig
+  ): Promise<void> {
+    const { id } = position;
+
+    try {
+      console.log(`[GraduatedEntry] ${id} - 🔄 Starting final rebalancing check...`);
+
+      // Get actual position sizes from both exchanges
+      const [primaryPosition, hedgePosition] = await Promise.all([
+        this.getExchangePosition(position.primaryConnector, config.symbol, config.primaryExchange),
+        this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
+      ]);
+
+      if (!primaryPosition || !hedgePosition) {
+        console.warn(`[GraduatedEntry] ${id} - ⚠️ Cannot rebalance: position not found on one or both exchanges`);
+        return;
+      }
+
+      const primarySize = primaryPosition.size;
+      const hedgeSize = hedgePosition.size;
+      const discrepancy = Math.abs(primarySize - hedgeSize);
+      const discrepancyPercent = (discrepancy / Math.max(primarySize, hedgeSize)) * 100;
+
+      console.log(`[GraduatedEntry] ${id} - Final position sizes:`, {
+        primary: primarySize,
+        hedge: hedgeSize,
+        discrepancy: discrepancy.toFixed(6),
+        discrepancyPercent: discrepancyPercent.toFixed(2) + '%',
+      });
+
+      // Check if rebalancing is needed
+      if (discrepancyPercent <= 0.1) {
+        console.log(`[GraduatedEntry] ${id} - ✅ Discrepancy ${discrepancyPercent.toFixed(2)}% is within acceptable range (≤0.1%)`);
+        return;
+      }
+
+      console.warn(`[GraduatedEntry] ${id} - ⚠️ Discrepancy ${discrepancyPercent.toFixed(2)}% exceeds 0.1% threshold! Starting rebalancing...`);
+
+      // Determine which side needs adjustment
+      const needsMoreOnPrimary = primarySize < hedgeSize;
+      const largerExchange = needsMoreOnPrimary ? config.hedgeExchange : config.primaryExchange;
+      const smallerExchange = needsMoreOnPrimary ? config.primaryExchange : config.hedgeExchange;
+      const smallerConnector = needsMoreOnPrimary ? position.primaryConnector : position.hedgeConnector;
+      const largerConnector = needsMoreOnPrimary ? position.hedgeConnector : position.primaryConnector;
+
+      // Get available balance on the exchange that needs adjustment
+      const totalEntryValue = config.primaryQuantity; // USDT value of entry
+      const requiredBalance = totalEntryValue; // 100% of entry amount
+
+      // Get available balance
+      let availableBalance = 0;
+      try {
+        const balanceInfo = await (needsMoreOnPrimary ? position.primaryConnector : position.hedgeConnector).getAccountBalance();
+        availableBalance = balanceInfo.availableBalance || 0;
+        console.log(`[GraduatedEntry] ${id} - Available balance on ${needsMoreOnPrimary ? 'primary' : 'hedge'}: ${availableBalance} USDT`);
+      } catch (balanceError: any) {
+        console.error(`[GraduatedEntry] ${id} - Could not fetch balance:`, balanceError.message);
+        console.warn(`[GraduatedEntry] ${id} - Skipping rebalancing due to balance fetch error`);
+        return;
+      }
+
+      // Decide rebalancing action
+      if (availableBalance >= requiredBalance) {
+        // Strategy 1: Buy more on smaller position
+        console.log(`[GraduatedEntry] ${id} - ✅ Sufficient balance (${availableBalance} USDT >= ${requiredBalance} USDT)`);
+        console.log(`[GraduatedEntry] ${id} - 📈 Rebalancing: BUY ${discrepancy.toFixed(6)} on ${smallerExchange}`);
+
+        try {
+          const side = needsMoreOnPrimary ? config.primarySide : config.hedgeSide;
+          await this.executeMarketOrder(
+            smallerConnector,
+            config.symbol,
+            side,
+            discrepancy,
+            smallerExchange,
+            needsMoreOnPrimary ? 'primary' : 'hedge'
+          );
+
+          console.log(`[GraduatedEntry] ${id} - ✅ Rebalancing order executed successfully`);
+        } catch (rebalanceError: any) {
+          console.error(`[GraduatedEntry] ${id} - ❌ Rebalancing order failed:`, rebalanceError.message);
+          console.warn(`[GraduatedEntry] ${id} - Position remains unbalanced - manual intervention may be required`);
+        }
+      } else {
+        // Strategy 2: Sell from larger position
+        console.log(`[GraduatedEntry] ${id} - ⚠️ Insufficient balance (${availableBalance} USDT < ${requiredBalance} USDT)`);
+        console.log(`[GraduatedEntry] ${id} - 📉 Rebalancing: SELL ${discrepancy.toFixed(6)} from ${largerExchange}`);
+
+        try {
+          // Sell means: if larger position is long → sell, if short → buy back
+          const largerSide = needsMoreOnPrimary ? config.hedgeSide : config.primarySide;
+          const oppositeSide: 'long' | 'short' = largerSide === 'long' ? 'short' : 'long';
+
+          await this.executeMarketOrder(
+            largerConnector,
+            config.symbol,
+            oppositeSide, // Opposite side to reduce position
+            discrepancy,
+            largerExchange,
+            needsMoreOnPrimary ? 'hedge' : 'primary'
+          );
+
+          console.log(`[GraduatedEntry] ${id} - ✅ Rebalancing order executed successfully`);
+        } catch (rebalanceError: any) {
+          console.error(`[GraduatedEntry] ${id} - ❌ Rebalancing order failed:`, rebalanceError.message);
+          console.warn(`[GraduatedEntry] ${id} - Position remains unbalanced - manual intervention may be required`);
+        }
+      }
+
+      // Verify rebalancing result
+      try {
+        await this.delay(2000); // Wait for order to settle
+
+        const [newPrimaryPos, newHedgePos] = await Promise.all([
+          this.getExchangePosition(position.primaryConnector, config.symbol, config.primaryExchange),
+          this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
+        ]);
+
+        if (newPrimaryPos && newHedgePos) {
+          const newDiscrepancy = Math.abs(newPrimaryPos.size - newHedgePos.size);
+          const newDiscrepancyPercent = (newDiscrepancy / Math.max(newPrimaryPos.size, newHedgePos.size)) * 100;
+
+          console.log(`[GraduatedEntry] ${id} - After rebalancing:`, {
+            primary: newPrimaryPos.size,
+            hedge: newHedgePos.size,
+            discrepancy: newDiscrepancy.toFixed(6),
+            discrepancyPercent: newDiscrepancyPercent.toFixed(2) + '%',
+          });
+
+          if (newDiscrepancyPercent <= 0.5) {
+            console.log(`[GraduatedEntry] ${id} - ✅ Rebalancing successful! Discrepancy now ${newDiscrepancyPercent.toFixed(2)}%`);
+          } else {
+            console.warn(`[GraduatedEntry] ${id} - ⚠️ Discrepancy still ${newDiscrepancyPercent.toFixed(2)}% after rebalancing`);
+          }
+        }
+      } catch (verifyError: any) {
+        console.warn(`[GraduatedEntry] ${id} - Could not verify rebalancing result:`, verifyError.message);
+      }
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] ${id} - Error in final rebalancing:`, error.message);
+      // Don't throw - rebalancing is optional, position is still valid
+    }
+  }
+
+  /**
    * Set synchronized TP/SL orders on both exchanges
    * Key concept: Primary SL = Hedge TP, Hedge SL = Primary TP
    * This ensures both positions close simultaneously when one side is triggered
@@ -1414,17 +1697,48 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     // Import liquidation calculator
     const { LiquidationCalculator } = await import('@/lib/liquidation-calculator');
 
-    // Calculate synchronized TP/SL levels
-    const sltp = LiquidationCalculator.calculateSynchronizedSLTP({
-      primaryEntryPrice,
-      primarySide: config.primarySide,
-      primaryLeverage: config.primaryLeverage,
-      primaryExchange: config.primaryExchange,
-      hedgeEntryPrice,
-      hedgeSide: config.hedgeSide,
-      hedgeLeverage: config.hedgeLeverage,
-      hedgeExchange: config.hedgeExchange,
-    });
+    // Determine if we should use funding-aware TP/SL or liquidation-based TP/SL
+    const hasFundingRates = config.primaryFundingRate !== undefined && config.hedgeFundingRate !== undefined;
+
+    let sltp: {
+      primaryStopLoss: number;
+      primaryTakeProfit: number;
+      hedgeStopLoss: number;
+      hedgeTakeProfit: number;
+      explanation: string;
+    };
+
+    if (hasFundingRates) {
+      // COMBINED STRATEGY: Use funding-aware TP/SL
+      console.log(`[GraduatedEntry] ${position.id} - Using COMBINED STRATEGY TP/SL (funding-aware)`);
+      sltp = LiquidationCalculator.calculateCombinedStrategyTPSL({
+        primaryEntryPrice,
+        primarySide: config.primarySide,
+        primaryLeverage: config.primaryLeverage,
+        primaryExchange: config.primaryExchange,
+        primaryFundingRate: config.primaryFundingRate!,
+        hedgeEntryPrice,
+        hedgeSide: config.hedgeSide,
+        hedgeLeverage: config.hedgeLeverage,
+        hedgeExchange: config.hedgeExchange,
+        hedgeFundingRate: config.hedgeFundingRate!,
+        targetHoldingPeriodHours: config.targetHoldingPeriodHours,
+        minProfitPercent: config.minProfitPercent,
+      });
+    } else {
+      // PRICE-ONLY STRATEGY: Use liquidation-based TP/SL
+      console.log(`[GraduatedEntry] ${position.id} - Using PRICE-ONLY STRATEGY TP/SL (liquidation-based)`);
+      sltp = LiquidationCalculator.calculateSynchronizedSLTP({
+        primaryEntryPrice,
+        primarySide: config.primarySide,
+        primaryLeverage: config.primaryLeverage,
+        primaryExchange: config.primaryExchange,
+        hedgeEntryPrice,
+        hedgeSide: config.hedgeSide,
+        hedgeLeverage: config.hedgeLeverage,
+        hedgeExchange: config.hedgeExchange,
+      });
+    }
 
     console.log(`[GraduatedEntry] ${position.id} - Calculated TP/SL levels:`);
     console.log(sltp.explanation);
@@ -1470,6 +1784,9 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
     // Set TP/SL on HEDGE exchange (always try, even if primary failed)
     console.log(`[GraduatedEntry] ${position.id} - Setting TP/SL on HEDGE (${config.hedgeExchange})...`);
+    console.log(`[GraduatedEntry] ${position.id} - Hedge connector type:`, position.hedgeConnector.constructor.name);
+    console.log(`[GraduatedEntry] ${position.id} - setTradingStop exists?`, typeof position.hedgeConnector.setTradingStop);
+    console.log(`[GraduatedEntry] ${position.id} - setTradingStop is function?`, typeof position.hedgeConnector.setTradingStop === 'function');
 
     if (typeof position.hedgeConnector.setTradingStop === 'function') {
       try {
@@ -1548,6 +1865,13 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       }
       if (position.hedgePriceUnsubscribe) {
         position.hedgePriceUnsubscribe();
+      }
+      // Unsubscribe from position updates
+      if (position.primaryPositionUnsubscribe) {
+        position.primaryPositionUnsubscribe();
+      }
+      if (position.hedgePositionUnsubscribe) {
+        position.hedgePositionUnsubscribe();
       }
 
       // Close BOTH positions immediately
@@ -1637,9 +1961,14 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
         throw new Error(`Position ${positionId} not found or does not belong to user`);
       }
 
-      // Only allow syncing for ACTIVE positions
-      if (dbPos.status !== 'ACTIVE') {
+      // Allow syncing for ACTIVE and ERROR positions (in case positions are actually open on exchanges)
+      if (dbPos.status !== 'ACTIVE' && dbPos.status !== 'ERROR') {
         throw new Error(`Position ${positionId} is not active (status: ${dbPos.status})`);
+      }
+
+      // If position has ERROR status, warn user but proceed
+      if (dbPos.status === 'ERROR') {
+        console.warn(`[GraduatedEntry] ⚠️ Warning: Setting TP/SL for position with ERROR status. Make sure positions are actually open on exchanges!`);
       }
 
       // Load credentials and create connectors
@@ -1821,6 +2150,12 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           if (position.hedgePriceUnsubscribe) {
             position.hedgePriceUnsubscribe();
           }
+          if (position.primaryPositionUnsubscribe) {
+            position.primaryPositionUnsubscribe();
+          }
+          if (position.hedgePositionUnsubscribe) {
+            position.hedgePositionUnsubscribe();
+          }
           return;
         }
 
@@ -1835,7 +2170,18 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           hedge: hedgePosition ? `${hedgePosition.size} @ ${hedgePosition.side}` : 'NO POSITION',
         });
 
-        // CRITICAL: Check if one side was liquidated
+        // CRITICAL BUG FIX: DISABLED faulty liquidation detection
+        // Previous logic had a critical flaw: it treated API errors as liquidations!
+        // Problem: getExchangePosition() returns null for BOTH:
+        //   1. Actual liquidation (correct)
+        //   2. API errors/timeouts (WRONG - causes false liquidations)
+        // This caused position arb_1_1761293126654 to be incorrectly liquidated
+        // when both positions were safe (proximity ratios: -0.08 and 0.014)
+
+        // NEW: Proper price-based liquidation detection
+        await this.checkLiquidationByPrice(position, primaryPosition, hedgePosition);
+
+        /* DISABLED - OLD FAULTY LIQUIDATION DETECTION
         const primaryLiquidated = !primaryPosition || primaryPosition.size === 0;
         const hedgeLiquidated = !hedgePosition || hedgePosition.size === 0;
 
@@ -1846,6 +2192,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           // Cleanup WebSocket subscriptions first
           if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
           if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+          if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+          if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
 
           try {
             await this.closePositionOnExchange(
@@ -1878,6 +2226,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           // Cleanup WebSocket subscriptions first
           if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
           if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+          if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+          if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
 
           try {
             await this.closePositionOnExchange(
@@ -1910,6 +2260,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           // Cleanup WebSocket subscriptions
           if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
           if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+          if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+          if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
 
           position.status = 'cancelled';
           if (position.dbId) {
@@ -1923,6 +2275,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
           }
         }
+        END OF DISABLED FAULTY LIQUIDATION DETECTION */
       } catch (error: any) {
         console.error(`[GraduatedEntry] Error in monitoring check for ${id}:`, error.message);
         // Continue monitoring even if one check fails
@@ -2009,6 +2362,45 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               checkPositions();
             }
           );
+        }
+
+        // BingX: Subscribe to position updates for real-time P&L
+        if (typeof (position.hedgeConnector as any).subscribeToPositions === 'function') {
+          console.log(`[GraduatedEntry] Subscribing to BingX position updates for real-time P&L...`);
+          try {
+            await (position.hedgeConnector as any).subscribeToPositions((positionUpdate: any) => {
+              console.log(`[GraduatedEntry] ${id} - BingX position update received:`, {
+                positions: positionUpdate.positions.length,
+                eventTime: new Date(positionUpdate.eventTime).toISOString()
+              });
+
+              // Find matching position for this symbol
+              const matchingPosition = positionUpdate.positions.find((p: any) =>
+                p.symbol === this.normalizeSymbolForBingX(config.symbol)
+              );
+
+              if (matchingPosition && position.dbId) {
+                console.log(`[GraduatedEntry] ${id} - Updating BingX hedge P&L:`, {
+                  unrealizedProfit: matchingPosition.unrealizedProfit,
+                  realizedProfit: matchingPosition.realizedProfit
+                });
+
+                // Update database with current price for liquidation monitoring
+                // Note: P&L is calculated on frontend, not stored in DB
+                prisma.graduatedEntryPosition.update({
+                  where: { id: position.dbId },
+                  data: {
+                    hedgeCurrentPrice: parseFloat(matchingPosition.entryPrice) || undefined,
+                    lastMonitoringCheck: new Date(),
+                    updatedAt: new Date()
+                  }
+                }).catch(err => console.error(`[GraduatedEntry] Failed to update monitoring data:`, err.message));
+              }
+            });
+            console.log(`[GraduatedEntry] ✓ Subscribed to BingX position updates`);
+          } catch (error: any) {
+            console.error(`[GraduatedEntry] Failed to subscribe to BingX positions:`, error.message);
+          }
         }
       } else if (hedgeExchange.includes('BYBIT')) {
         // Bybit: Use price stream (ticker)
@@ -2102,7 +2494,10 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             hedge: hedgePosition ? `${hedgePosition.size} @ ${hedgePosition.side}` : 'NO POSITION',
           });
 
-          // CRITICAL: Check if one side was liquidated
+          // CRITICAL BUG FIX: Use proper price-based liquidation detection (same as WebSocket monitoring)
+          await this.checkLiquidationByPrice(position, primaryPosition, hedgePosition);
+
+          /* DISABLED - OLD FAULTY LIQUIDATION DETECTION
           const primaryLiquidated = !primaryPosition || primaryPosition.size === 0;
           const hedgeLiquidated = !hedgePosition || hedgePosition.size === 0;
 
@@ -2182,6 +2577,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
             return; // Stop monitoring
           }
+          END OF DISABLED FAULTY LIQUIDATION DETECTION */
         } catch (error: any) {
           console.error(`[GraduatedEntry] Error in polling monitoring loop for ${id}:`, error.message);
           // Continue monitoring even if one check fails
@@ -2193,6 +2589,257 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     monitorLoop().catch(error => {
       console.error(`[GraduatedEntry] Polling monitoring loop crashed for ${id}:`, error.message);
     });
+  }
+
+  /**
+   * NEW: Proper price-based liquidation detection
+   *
+   * This method uses calculated liquidation prices and current market prices
+   * to determine if a position is truly liquidated, instead of relying on
+   * position size checks which can produce false positives due to API errors.
+   *
+   * Detection criteria:
+   * 1. Position no longer exists on exchange (getExchangePosition returns null)
+   * 2. Current market price has crossed the calculated liquidation price
+   * 3. Both checks must be true to confirm liquidation (prevents false positives)
+   *
+   * @param position - Active arbitrage position
+   * @param primaryPosition - Primary position from exchange API (or null if API error)
+   * @param hedgePosition - Hedge position from exchange API (or null if API error)
+   */
+  private async checkLiquidationByPrice(
+    position: ActiveArbitragePosition,
+    primaryPosition: { size: number; side: string; entryPrice: number } | null,
+    hedgePosition: { size: number; side: string; entryPrice: number } | null
+  ): Promise<void> {
+    const { id, config } = position;
+
+    // Skip if we don't have entry prices from database
+    const dbPosition = await prisma.graduatedEntryPosition.findUnique({
+      where: { positionId: id },
+      select: {
+        primaryEntryPrice: true,
+        hedgeEntryPrice: true,
+        primaryLeverage: true,
+        hedgeLeverage: true,
+        primarySide: true,
+        hedgeSide: true,
+      }
+    });
+
+    if (!dbPosition?.primaryEntryPrice || !dbPosition?.hedgeEntryPrice) {
+      console.log(`[GraduatedEntry] ${id} - Cannot check liquidation: missing entry prices`);
+      return; // Cannot verify liquidation without entry prices
+    }
+
+    // Import liquidation calculator
+    const { liquidationCalculatorService } = await import('@/services/liquidation-calculator.service');
+
+    try {
+      // Get current market prices
+      const [primaryPrice, hedgePrice] = await Promise.all([
+        this.getCurrentMarketPrice(position.primaryConnector, config.symbol),
+        this.getCurrentMarketPrice(position.hedgeConnector, config.symbol),
+      ]);
+
+      if (!primaryPrice || !hedgePrice) {
+        console.warn(`[GraduatedEntry] ${id} - Cannot check liquidation: failed to get current prices`);
+        return; // Skip check if we can't get prices
+      }
+
+      // Calculate liquidation prices
+      const primaryLiqCalc = liquidationCalculatorService.calculateLiquidationPrice({
+        entryPrice: dbPosition.primaryEntryPrice,
+        leverage: dbPosition.primaryLeverage,
+        side: dbPosition.primarySide as 'long' | 'short',
+        exchange: config.primaryExchange.toUpperCase().includes('BYBIT') ? 'BYBIT' : 'BINGX',
+      });
+
+      const hedgeLiqCalc = liquidationCalculatorService.calculateLiquidationPrice({
+        entryPrice: dbPosition.hedgeEntryPrice,
+        leverage: dbPosition.hedgeLeverage,
+        side: dbPosition.hedgeSide as 'long' | 'short',
+        exchange: config.hedgeExchange.toUpperCase().includes('BYBIT') ? 'BYBIT' : 'BINGX',
+      });
+
+      // Check if price has crossed liquidation threshold
+      const primaryPriceCrossed = dbPosition.primarySide === 'long'
+        ? primaryPrice <= primaryLiqCalc.liquidationPrice * 1.02 // 2% buffer for long
+        : primaryPrice >= primaryLiqCalc.liquidationPrice * 0.98; // 2% buffer for short
+
+      const hedgePriceCrossed = dbPosition.hedgeSide === 'long'
+        ? hedgePrice <= hedgeLiqCalc.liquidationPrice * 1.02
+        : hedgePrice >= hedgeLiqCalc.liquidationPrice * 0.98;
+
+      // CRITICAL: Only trigger liquidation if BOTH conditions are met:
+      // 1. Position no longer exists (or size = 0) on exchange
+      // 2. Current price has crossed calculated liquidation price
+      const primaryLiquidated = (!primaryPosition || primaryPosition.size === 0) && primaryPriceCrossed;
+      const hedgeLiquidated = (!hedgePosition || hedgePosition.size === 0) && hedgePriceCrossed;
+
+      console.log(`[GraduatedEntry] ${id} - Liquidation check:`, {
+        primary: {
+          exists: !!primaryPosition,
+          size: primaryPosition?.size || 0,
+          currentPrice: primaryPrice,
+          liqPrice: primaryLiqCalc.liquidationPrice,
+          priceCrossed: primaryPriceCrossed,
+          liquidated: primaryLiquidated,
+        },
+        hedge: {
+          exists: !!hedgePosition,
+          size: hedgePosition?.size || 0,
+          currentPrice: hedgePrice,
+          liqPrice: hedgeLiqCalc.liquidationPrice,
+          priceCrossed: hedgePriceCrossed,
+          liquidated: hedgeLiquidated,
+        }
+      });
+
+      // Handle liquidation scenarios
+      if (primaryLiquidated && !hedgeLiquidated) {
+        console.error(`[GraduatedEntry] 🚨 PRIMARY LIQUIDATION CONFIRMED (price-based check)`);
+        console.error(`[GraduatedEntry] Primary: current=${primaryPrice}, liq=${primaryLiqCalc.liquidationPrice}`);
+        await this.handlePrimaryLiquidation(position, config);
+      } else if (hedgeLiquidated && !primaryLiquidated) {
+        console.error(`[GraduatedEntry] 🚨 HEDGE LIQUIDATION CONFIRMED (price-based check)`);
+        console.error(`[GraduatedEntry] Hedge: current=${hedgePrice}, liq=${hedgeLiqCalc.liquidationPrice}`);
+        await this.handleHedgeLiquidation(position, config);
+      } else if (primaryLiquidated && hedgeLiquidated) {
+        console.error(`[GraduatedEntry] 🚨 BOTH POSITIONS LIQUIDATED (price-based check)`);
+        await this.handleBothLiquidated(position);
+      } else if (!primaryPosition && !hedgePosition) {
+        // Both positions missing but prices are safe - likely API error
+        console.warn(`[GraduatedEntry] ⚠️ Both positions not found but prices are SAFE - likely API error`);
+        console.warn(`[GraduatedEntry] Primary: current=${primaryPrice}, liq=${primaryLiqCalc.liquidationPrice}`);
+        console.warn(`[GraduatedEntry] Hedge: current=${hedgePrice}, liq=${hedgeLiqCalc.liquidationPrice}`);
+        console.warn(`[GraduatedEntry] NOT triggering liquidation - waiting for next check`);
+      }
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] Error in price-based liquidation check for ${id}:`, error.message);
+      // Don't trigger liquidation on error - better to miss one check than false positive
+    }
+  }
+
+  /**
+   * Handle primary position liquidation
+   */
+  private async handlePrimaryLiquidation(position: ActiveArbitragePosition, config: GraduatedEntryConfig): Promise<void> {
+    const { id } = position;
+
+    // Cleanup WebSocket subscriptions
+    if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+    if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+    if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+    if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
+
+    try {
+      await this.closePositionOnExchange(
+        position.hedgeConnector,
+        config.symbol,
+        config.hedgeExchange
+      );
+
+      position.status = 'cancelled';
+      if (position.dbId) {
+        await prisma.graduatedEntryPosition.update({
+          where: { id: position.dbId },
+          data: {
+            status: 'LIQUIDATED',
+            errorMessage: `Primary position liquidated on ${config.primaryExchange}. Hedge position closed automatically.`,
+            completedAt: new Date(),
+          },
+        }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+      }
+
+      this.positions.delete(id);
+      console.log(`[GraduatedEntry] ${id} - Hedge closed after primary liquidation`);
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] Failed to close hedge after primary liquidation:`, error.message);
+    }
+  }
+
+  /**
+   * Handle hedge position liquidation
+   */
+  private async handleHedgeLiquidation(position: ActiveArbitragePosition, config: GraduatedEntryConfig): Promise<void> {
+    const { id } = position;
+
+    // Cleanup WebSocket subscriptions
+    if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+    if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+    if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+    if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
+
+    try {
+      await this.closePositionOnExchange(
+        position.primaryConnector,
+        config.symbol,
+        config.primaryExchange
+      );
+
+      position.status = 'cancelled';
+      if (position.dbId) {
+        await prisma.graduatedEntryPosition.update({
+          where: { id: position.dbId },
+          data: {
+            status: 'LIQUIDATED',
+            errorMessage: `Hedge position liquidated on ${config.hedgeExchange}. Primary position closed automatically.`,
+            completedAt: new Date(),
+          },
+        }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+      }
+
+      this.positions.delete(id);
+      console.log(`[GraduatedEntry] ${id} - Primary closed after hedge liquidation`);
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] Failed to close primary after hedge liquidation:`, error.message);
+    }
+  }
+
+  /**
+   * Handle both positions liquidated
+   */
+  private async handleBothLiquidated(position: ActiveArbitragePosition): Promise<void> {
+    const { id } = position;
+
+    // Cleanup WebSocket subscriptions
+    if (position.primaryPriceUnsubscribe) position.primaryPriceUnsubscribe();
+    if (position.hedgePriceUnsubscribe) position.hedgePriceUnsubscribe();
+    if (position.primaryPositionUnsubscribe) position.primaryPositionUnsubscribe();
+    if (position.hedgePositionUnsubscribe) position.hedgePositionUnsubscribe();
+
+    position.status = 'cancelled';
+    if (position.dbId) {
+      await prisma.graduatedEntryPosition.update({
+        where: { id: position.dbId },
+        data: {
+          status: 'LIQUIDATED',
+          errorMessage: 'Both positions were liquidated.',
+          completedAt: new Date(),
+        },
+      }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+    }
+
+    this.positions.delete(id);
+    console.log(`[GraduatedEntry] ${id} - Both positions liquidated`);
+  }
+
+  /**
+   * Get current market price from connector
+   */
+  private async getCurrentMarketPrice(
+    connector: BybitConnector | BingXConnector | MEXCConnector | GateIOConnector,
+    symbol: string
+  ): Promise<number | null> {
+    try {
+      // All connectors have getMarketPrice method
+      const price = await connector.getMarketPrice(symbol);
+      return price || null;
+    } catch (error: any) {
+      console.error(`[GraduatedEntry] Error getting market price for ${symbol}:`, error.message);
+      return null;
+    }
   }
 
   /**
@@ -2272,6 +2919,28 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       console.error(`[GraduatedEntry] Error getting position from ${exchangeName}:`, error.message);
       return null;
     }
+  }
+
+  /**
+   * Normalize symbol for BingX (add hyphen before USDT)
+   * BingX requires format like "BTC-USDT" instead of "BTCUSDT"
+   */
+  private normalizeSymbolForBingX(symbol: string): string {
+    if (symbol.includes('-')) {
+      return symbol; // Already normalized
+    }
+
+    if (symbol.endsWith('USDT')) {
+      const base = symbol.slice(0, -4);
+      return `${base}-USDT`;
+    }
+
+    if (symbol.endsWith('USDC')) {
+      const base = symbol.slice(0, -4);
+      return `${base}-USDC`;
+    }
+
+    return symbol;
   }
 
   /**

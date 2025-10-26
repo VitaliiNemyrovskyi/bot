@@ -189,7 +189,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       if (exchanges.length > 0 && this.selectedExchanges().size === 0) {
         this.selectAllExchanges();
       }
-    });
+    }, { allowSignalWrites: true });
   }
 
   ngOnInit(): void {

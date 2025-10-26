@@ -61,6 +61,12 @@ export const routes: Routes = [
     // No auth guard - public page using public exchange APIs
   },
   {
+    path: 'arbitrage/chart/:symbol/:primary/:hedge/:strategy',
+    loadComponent: () => import('./components/trading/arbitrage-chart/arbitrage-chart.component').then(m => m.ArbitrageChartComponent),
+    canActivate: [AuthGuard]
+  },
+  {
+    // Backwards compatibility - strategy parameter is optional
     path: 'arbitrage/chart/:symbol/:primary/:hedge',
     loadComponent: () => import('./components/trading/arbitrage-chart/arbitrage-chart.component').then(m => m.ArbitrageChartComponent),
     canActivate: [AuthGuard]
@@ -83,6 +89,11 @@ export const routes: Routes = [
   {
     path: 'arbitrage/triangular',
     loadComponent: () => import('./pages/triangular-arbitrage/triangular-arbitrage.component').then(m => m.TriangularArbitrageComponent),
+    canActivate: [AuthGuard]
+  },
+  {
+    path: 'arbitrage/opportunities',
+    loadComponent: () => import('./pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component').then(m => m.PriceArbitrageOpportunitiesComponent),
     canActivate: [AuthGuard]
   }
 ];

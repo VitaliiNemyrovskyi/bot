@@ -10,7 +10,9 @@ import {
   GateIOContract,
   GateIOBalance,
   GateIOAccountBookEntry,
-  GateIOMyTrade
+  GateIOMyTrade,
+  GateIOPriceOrderRequest,
+  GateIOPriceOrder
 } from '../types/gateio';
 
 /**
@@ -864,5 +866,94 @@ export class GateIOService {
 
     console.log(`[GateIOService] Fetched ${result.length} trade entries`);
     return result;
+  }
+
+  /**
+   * Place a price-triggered order (conditional order for TP/SL)
+   * Endpoint: POST /api/v4/futures/usdt/price_orders
+   *
+   * Gate.io uses price-triggered orders for take-profit and stop-loss functionality.
+   * These orders are triggered when the market price reaches a specified level.
+   *
+   * @param orderRequest - Price-triggered order request
+   * @returns Price-triggered order details
+   */
+  async placePriceTriggeredOrder(orderRequest: GateIOPriceOrderRequest): Promise<GateIOPriceOrder> {
+    console.log('[GateIOService] Placing price-triggered order:', orderRequest);
+
+    // Prepare order body with 'initial' and 'trigger' structure
+    const orderBody: any = {
+      initial: {
+        contract: orderRequest.contract,
+      },
+      trigger: {
+        strategy_type: orderRequest.trigger.strategy_type,
+        price_type: orderRequest.trigger.price_type,
+        price: orderRequest.trigger.price,
+        rule: orderRequest.trigger.rule, // 1 = price >= threshold, 2 = price <= threshold
+      },
+    };
+
+    // Add optional fields to 'initial' object
+    if (orderRequest.size !== undefined) {
+      orderBody.initial.size = orderRequest.size;
+    }
+
+    if (orderRequest.close !== undefined) {
+      orderBody.initial.close = orderRequest.close;
+    }
+
+    if (orderRequest.reduce_only !== undefined) {
+      orderBody.initial.reduce_only = orderRequest.reduce_only;
+    }
+
+    if (orderRequest.text) {
+      orderBody.initial.text = orderRequest.text;
+    }
+
+    // Add order execution details to 'initial'
+    if (orderRequest.put) {
+      console.log('[GateIOService] Processing put:', JSON.stringify(orderRequest.put));
+
+      // IMPORTANT: Always include side for the order execution
+      if (orderRequest.put.side) {
+        // Gate.io expects 'b' for bid (buy/close short) and 'a' for ask (sell/close long)
+        orderBody.initial.side = orderRequest.put.side === 'bid' ? 'b' : 'a';
+        console.log(`[GateIOService] Mapped side: ${orderRequest.put.side} -> ${orderBody.initial.side}`);
+      } else {
+        console.warn('[GateIOService] WARNING: put.side is undefined!');
+      }
+
+      // For market orders, set price to "0" and tif to "ioc"
+      if (orderRequest.put.type === 'market') {
+        orderBody.initial.price = "0";
+        orderBody.initial.tif = "ioc";
+      } else if (orderRequest.put.price) {
+        orderBody.initial.price = orderRequest.put.price;
+        orderBody.initial.tif = "gtc";
+      }
+    } else {
+      console.error('[GateIOService] ERROR: orderRequest.put is undefined!');
+      console.error('[GateIOService] Full orderRequest:', JSON.stringify(orderRequest));
+    }
+
+    console.log('[GateIOService] Price-triggered order body:', JSON.stringify(orderBody, null, 2));
+
+    const data = await this.makeRequest<GateIOPriceOrder>(
+      'POST',
+      '/price_orders',
+      {},
+      orderBody
+    );
+
+    console.log('[GateIOService] Price-triggered order placed:', {
+      orderId: data.id,
+      contract: data.contract,
+      triggerPrice: data.trigger.price,
+      side: data.put.side,
+      status: data.status,
+    });
+
+    return data;
   }
 }

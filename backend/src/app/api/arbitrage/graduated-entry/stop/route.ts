@@ -87,8 +87,10 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // If position has CANCELLED, ERROR, or LIQUIDATED status, mark it as COMPLETED
-        if (dbPosition.status === 'CANCELLED' || dbPosition.status === 'ERROR' || dbPosition.status === 'LIQUIDATED') {
+        // If position has CANCELLED or LIQUIDATED status, mark it as COMPLETED
+        // NOTE: ERROR status is NOT included here - we need to try closing positions on exchanges
+        //       because some ERROR positions may have partially opened positions on exchanges
+        if (dbPosition.status === 'CANCELLED' || dbPosition.status === 'LIQUIDATED') {
           console.log(`[API] Position ${positionId} has status ${dbPosition.status}, marking as COMPLETED...`);
 
           await prisma.graduatedEntryPosition.update({
@@ -111,6 +113,8 @@ export async function POST(request: NextRequest) {
             message: `Position marked as completed (was ${dbPosition.status.toLowerCase()})`,
           });
         }
+
+        // For ERROR status positions, we still try to close positions on exchanges (continue below)
 
         // CRITICAL FIX: Position is still active in DB but not in memory
         // This happens after backend restart - we MUST close positions on exchanges!

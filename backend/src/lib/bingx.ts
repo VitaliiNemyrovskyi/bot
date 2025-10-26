@@ -48,6 +48,13 @@ export class BingXService {
   private wsUrl = 'wss://open-api-swap.bingx.com/swap-market';
   private subscriptions: Map<string, (data: any) => void> = new Map();
 
+  // WebSocket client for user data stream (positions, orders, account updates)
+  private userDataWsClient: WebSocket | null = null;
+  private userDataWsUrl = 'wss://open-api-swap.bingx.com/swap-market';
+  private listenKey: string | null = null;
+  private listenKeyRefreshInterval: NodeJS.Timeout | null = null;
+  private userDataSubscriptions: Map<string, (data: any) => void> = new Map();
+
   constructor(config: BingXConfig & { userId?: string; credentialId?: string }) {
     // CRITICAL: Trim API keys to remove any whitespace, newlines, or hidden characters
     // This is a common source of signature verification failures
@@ -1021,26 +1028,17 @@ export class BingXService {
       }
 
       // Transform to funding rate format
-      // Calculate predicted funding rate from premium (Mark Price - Index Price) / Index Price
+      // Use lastFundingRate from API (actual funding rate paid in last period)
       const fundingRates: BingXFundingRate[] = premiumIndexData.map((item: any) => {
-        const markPrice = parseFloat(item.markPrice || '0');
-        const indexPrice = parseFloat(item.indexPrice || '0');
-
-        // Calculate predicted funding rate from premium
-        let predictedFundingRate = '0';
-        if (indexPrice > 0 && markPrice > 0) {
-          const premium = (markPrice - indexPrice) / indexPrice;
-          // BingX funding rate is typically capped at ±0.75% per 8h interval
-          const clampedPremium = Math.max(-0.0075, Math.min(0.0075, premium));
-          predictedFundingRate = clampedPremium.toFixed(8);
-        }
+        // Use lastFundingRate from API, which is the actual funding rate
+        // This is what traders see on BingX website
+        const actualFundingRate = item.lastFundingRate || '0';
 
         return {
           symbol: item.symbol,
-          fundingRate: predictedFundingRate, // Use predicted rate instead of lastFundingRate
+          fundingRate: actualFundingRate, // Use actual lastFundingRate from API
           fundingTime: item.nextFundingTime || Date.now(),
           markPrice: item.markPrice,
-          // Store last funding rate for reference
           lastFundingRate: item.lastFundingRate
         };
       });
@@ -1454,5 +1452,305 @@ export class BingXService {
     }
 
     console.log('[BingXService] ✓ All WebSocket subscriptions closed');
+  }
+
+  /**
+   * Create a listenKey for user data stream
+   * BingX User Data Stream requires a listenKey to be created first
+   * Endpoint: POST /openApi/user/auth/userDataStream
+   *
+   * The listenKey is valid for 60 minutes and must be refreshed periodically
+   *
+   * @returns listenKey string
+   */
+  async createListenKey(): Promise<string> {
+    console.log('[BingXService] Creating listenKey for user data stream...');
+
+    const response = await this.makeRequest<{ listenKey: string }>(
+      'POST',
+      '/openApi/user/auth/userDataStream',
+      {}
+    );
+
+    if (response.code !== 0) {
+      throw new Error(`Failed to create listenKey: ${response.msg} (code: ${response.code})`);
+    }
+
+    this.listenKey = response.data.listenKey;
+    console.log('[BingXService] ✓ ListenKey created:', this.listenKey?.substring(0, 20) + '...');
+
+    return this.listenKey;
+  }
+
+  /**
+   * Extend/refresh the listenKey to keep it alive
+   * Endpoint: PUT /openApi/user/auth/userDataStream
+   *
+   * Should be called every 30-60 minutes to prevent listenKey expiration
+   */
+  async extendListenKey(): Promise<void> {
+    if (!this.listenKey) {
+      throw new Error('No listenKey to extend. Call createListenKey() first.');
+    }
+
+    console.log('[BingXService] Extending listenKey...');
+
+    const response = await this.makeRequest(
+      'PUT',
+      '/openApi/user/auth/userDataStream',
+      { listenKey: this.listenKey }
+    );
+
+    if (response.code !== 0) {
+      console.error('[BingXService] Failed to extend listenKey:', response.msg);
+      // Try to create a new listenKey if extension fails
+      await this.createListenKey();
+      return;
+    }
+
+    console.log('[BingXService] ✓ ListenKey extended');
+  }
+
+  /**
+   * Start periodic listenKey refresh
+   * Refreshes listenKey every 30 minutes to keep it alive
+   */
+  private startListenKeyRefresh(): void {
+    if (this.listenKeyRefreshInterval) {
+      console.log('[BingXService] ListenKey refresh already running');
+      return;
+    }
+
+    // Refresh every 30 minutes (listenKey expires after 60 minutes)
+    const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+
+    console.log('[BingXService] Starting listenKey refresh (interval: 30 minutes)');
+
+    this.listenKeyRefreshInterval = setInterval(async () => {
+      try {
+        await this.extendListenKey();
+      } catch (error: any) {
+        console.error('[BingXService] Failed to extend listenKey:', error.message);
+      }
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  /**
+   * Stop periodic listenKey refresh
+   */
+  private stopListenKeyRefresh(): void {
+    if (this.listenKeyRefreshInterval) {
+      clearInterval(this.listenKeyRefreshInterval);
+      this.listenKeyRefreshInterval = null;
+      console.log('[BingXService] ListenKey refresh stopped');
+    }
+  }
+
+  /**
+   * Initialize user data WebSocket connection
+   * Connects to BingX user data stream using listenKey
+   *
+   * @param listenKey The listenKey to use for authentication
+   */
+  private initializeUserDataWebSocket(listenKey: string): void {
+    if (this.userDataWsClient && this.userDataWsClient.readyState === WebSocket.OPEN) {
+      console.log('[BingXService] User data WebSocket already connected');
+      return;
+    }
+
+    console.log('[BingXService] Initializing user data WebSocket connection...');
+
+    // User data stream URL format: wss://open-api-swap.bingx.com/swap-market?listenKey={listenKey}
+    const wsUrlWithKey = `${this.userDataWsUrl}?listenKey=${listenKey}`;
+
+    this.userDataWsClient = new WebSocket(wsUrlWithKey);
+
+    this.userDataWsClient.on('open', () => {
+      console.log('[BingXService] ✓ User data WebSocket connected');
+    });
+
+    this.userDataWsClient.on('message', (data: Buffer) => {
+      this.handleUserDataWebSocketMessage(data);
+    });
+
+    this.userDataWsClient.on('error', (error: Error) => {
+      console.error('[BingXService] User data WebSocket error:', error.message);
+    });
+
+    this.userDataWsClient.on('close', (code: number, reason: string) => {
+      console.log('[BingXService] User data WebSocket closed:', { code, reason: reason.toString() });
+      this.userDataWsClient = null;
+
+      // Try to reconnect after 5 seconds
+      setTimeout(() => {
+        if (this.listenKey) {
+          console.log('[BingXService] Attempting to reconnect user data WebSocket...');
+          this.initializeUserDataWebSocket(this.listenKey);
+        }
+      }, 5000);
+    });
+  }
+
+  /**
+   * Handle incoming user data WebSocket messages
+   * BingX sends gzip-compressed messages that need to be decompressed
+   *
+   * Message types:
+   * - ACCOUNT_UPDATE: Account balance updates
+   * - ORDER_TRADE_UPDATE: Order status updates
+   * - listenKeyExpired: ListenKey expiration warning
+   *
+   * @param data Raw message buffer from WebSocket
+   */
+  private handleUserDataWebSocketMessage(data: Buffer): void {
+    try {
+      // Decompress gzip message
+      const decodedMsg = zlib.gunzipSync(data).toString('utf-8');
+
+      // Handle ping/pong heartbeat
+      if (decodedMsg === 'Ping') {
+        if (this.userDataWsClient && this.userDataWsClient.readyState === WebSocket.OPEN) {
+          this.userDataWsClient.send('Pong');
+          console.log('[BingXService] Sent Pong (user data)');
+        }
+        return;
+      }
+
+      // Parse JSON message
+      const message = JSON.parse(decodedMsg);
+
+      // Log message for debugging
+      console.log('[BingXService] User data message received:', JSON.stringify(message).substring(0, 200) + '...');
+
+      // Handle listenKey expiration warning
+      if (message.e === 'listenKeyExpired') {
+        console.warn('[BingXService] ⚠️ ListenKey expired, recreating...');
+        this.createListenKey().then((newKey) => {
+          this.initializeUserDataWebSocket(newKey);
+        }).catch((error) => {
+          console.error('[BingXService] Failed to recreate listenKey:', error.message);
+        });
+        return;
+      }
+
+      // Route message to appropriate callbacks based on event type
+      // ACCOUNT_UPDATE: Contains position updates with unrealizedProfit and realisedProfit
+      if (message.e === 'ACCOUNT_UPDATE') {
+        const callback = this.userDataSubscriptions.get('ACCOUNT_UPDATE');
+        if (callback) {
+          callback(message);
+        }
+      }
+
+      // ORDER_TRADE_UPDATE: Order execution updates
+      if (message.e === 'ORDER_TRADE_UPDATE') {
+        const callback = this.userDataSubscriptions.get('ORDER_TRADE_UPDATE');
+        if (callback) {
+          callback(message);
+        }
+      }
+    } catch (error: any) {
+      console.error('[BingXService] Error handling user data WebSocket message:', error.message);
+    }
+  }
+
+  /**
+   * Subscribe to position updates via user data stream
+   * Receives real-time position updates including unrealizedProfit and realisedProfit
+   *
+   * Position update format (ACCOUNT_UPDATE event):
+   * {
+   *   "e": "ACCOUNT_UPDATE",
+   *   "E": 1672364262474,
+   *   "a": {
+   *     "B": [{ "a": "USDT", "wb": "100.5", "cw": "95.2" }],  // Balance updates
+   *     "P": [{  // Position updates
+   *       "s": "BTC-USDT",
+   *       "pa": "0.5",           // Position amount (quantity)
+   *       "ep": "50000.5",       // Entry price
+   *       "up": "125.5",         // Unrealized profit
+   *       "mt": "cross",         // Margin type
+   *       "ps": "LONG"           // Position side
+   *     }]
+   *   }
+   * }
+   *
+   * @param callback Function to call when position updates are received
+   * @returns Promise<void>
+   */
+  async subscribeToPositions(callback: (data: any) => void): Promise<void> {
+    console.log('[BingXService] Subscribing to position updates...');
+
+    // Create listenKey if not already created
+    if (!this.listenKey) {
+      await this.createListenKey();
+    }
+
+    // Initialize user data WebSocket if not connected
+    if (!this.userDataWsClient || this.userDataWsClient.readyState !== WebSocket.OPEN) {
+      this.initializeUserDataWebSocket(this.listenKey!);
+    }
+
+    // Start periodic listenKey refresh
+    this.startListenKeyRefresh();
+
+    // Register callback for ACCOUNT_UPDATE events (contains position data)
+    this.userDataSubscriptions.set('ACCOUNT_UPDATE', (message: any) => {
+      try {
+        // Extract position updates from ACCOUNT_UPDATE message
+        if (message.a && message.a.P) {
+          // Parse position data
+          const positions = message.a.P.map((p: any) => ({
+            symbol: p.s,
+            positionAmt: p.pa,
+            entryPrice: p.ep,
+            unrealizedProfit: p.up,
+            marginType: p.mt,
+            positionSide: p.ps,
+            leverage: p.l,
+            // Add timestamp from message
+            updateTime: message.E
+          }));
+
+          // Call user callback with parsed position data
+          callback({
+            eventType: 'ACCOUNT_UPDATE',
+            eventTime: message.E,
+            positions: positions,
+            rawData: message
+          });
+        }
+      } catch (error: any) {
+        console.error('[BingXService] Error processing position update:', error.message);
+      }
+    });
+
+    console.log('[BingXService] ✓ Subscribed to position updates');
+  }
+
+  /**
+   * Unsubscribe from all user data subscriptions and close connection
+   */
+  unsubscribeUserDataStream(): void {
+    console.log('[BingXService] Unsubscribing from user data stream...');
+
+    // Stop listenKey refresh
+    this.stopListenKeyRefresh();
+
+    // Clear all user data subscriptions
+    this.userDataSubscriptions.clear();
+
+    // Close user data WebSocket connection
+    if (this.userDataWsClient) {
+      if (this.userDataWsClient.readyState === WebSocket.OPEN || this.userDataWsClient.readyState === WebSocket.CONNECTING) {
+        this.userDataWsClient.close();
+      }
+      this.userDataWsClient = null;
+    }
+
+    // Clear listenKey
+    this.listenKey = null;
+
+    console.log('[BingXService] ✓ User data stream closed');
   }
 }

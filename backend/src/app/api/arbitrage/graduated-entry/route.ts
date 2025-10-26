@@ -97,6 +97,9 @@ export async function GET(request: NextRequest) {
           liquidationPrice: position.primaryLiquidationPrice,
           proximityRatio: position.primaryProximityRatio,
           inDanger: position.primaryInDanger,
+          // Stop Loss and Take Profit
+          stopLoss: position.primaryStopLoss,
+          takeProfit: position.primaryTakeProfit,
         },
         hedge: {
           exchange: position.hedgeExchange,
@@ -117,6 +120,9 @@ export async function GET(request: NextRequest) {
           liquidationPrice: position.hedgeLiquidationPrice,
           proximityRatio: position.hedgeProximityRatio,
           inDanger: position.hedgeInDanger,
+          // Stop Loss and Take Profit
+          stopLoss: position.hedgeStopLoss,
+          takeProfit: position.hedgeTakeProfit,
         },
         graduatedEntry: {
           parts: position.graduatedParts,
@@ -131,6 +137,12 @@ export async function GET(request: NextRequest) {
         netProfit: position.netProfit || 0,
         lastFundingUpdate: position.lastFundingUpdate,
         fundingUpdateCount: position.fundingUpdateCount || 0,
+        // Liquidation monitoring status
+        monitoring: {
+          enabled: position.isMonitoringEnabled,
+          status: position.monitoringStatus,
+          lastCheck: position.lastMonitoringCheck,
+        },
       }));
 
       return NextResponse.json({
@@ -788,4 +800,93 @@ function validateOrderQuantity(
     valid: true,
     adjustedQuantity: adjustedQuantity
   };
+}
+
+/**
+ * PATCH handler - Enable/disable liquidation monitoring for a position
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    // Authenticate user
+    const { success, user } = await AuthService.authenticateRequest(request);
+    if (!success || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const { positionId, isMonitoringEnabled } = body;
+
+    if (!positionId) {
+      return NextResponse.json(
+        { success: false, error: 'positionId is required' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof isMonitoringEnabled !== 'boolean') {
+      return NextResponse.json(
+        { success: false, error: 'isMonitoringEnabled must be a boolean' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[API] Updating monitoring status for position ${positionId}: ${isMonitoringEnabled}`);
+
+    // Update database
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    try {
+      const position = await prisma.graduatedEntryPosition.findFirst({
+        where: {
+          positionId: positionId,
+          userId: user.userId,
+        },
+      });
+
+      if (!position) {
+        return NextResponse.json(
+          { success: false, error: 'Position not found' },
+          { status: 404 }
+        );
+      }
+
+      // Update monitoring status
+      await prisma.graduatedEntryPosition.update({
+        where: { id: position.id },
+        data: {
+          isMonitoringEnabled,
+          monitoringStatus: isMonitoringEnabled ? 'active' : 'disabled',
+          updatedAt: new Date(),
+        },
+      });
+
+      console.log(`[API] ✓ Monitoring ${isMonitoringEnabled ? 'enabled' : 'disabled'} for position ${positionId}`);
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          positionId,
+          isMonitoringEnabled,
+          monitoringStatus: isMonitoringEnabled ? 'active' : 'disabled',
+        },
+        message: `Monitoring ${isMonitoringEnabled ? 'enabled' : 'disabled'} successfully`,
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  } catch (error: any) {
+    console.error('[API] Error updating monitoring status:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message || 'Failed to update monitoring status',
+      },
+      { status: 500 }
+    );
+  }
 }

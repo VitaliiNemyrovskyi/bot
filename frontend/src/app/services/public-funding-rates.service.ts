@@ -411,13 +411,13 @@ export class PublicFundingRatesService {
 
       // Filter out unrealistic spreads (> 100%)
       if (Math.abs(priceSpread) > 1.0) {
-        console.warn(`[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadPercent}%`);
+        console.debug(`[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadPercent}%`);
         return;
       }
 
       // Filter out invalid prices
       if (bestLongPrice <= 0 || bestShortPrice <= 0) {
-        console.warn(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
+        console.debug(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
         return;
       }
 
@@ -450,6 +450,70 @@ export class PublicFundingRatesService {
       const volatility24h = this.calculateVolatility24h(exchanges);
       const volatility24hFormatted = volatility24h !== undefined ? (volatility24h * 100).toFixed(2) + '%' : undefined;
 
+      // 8. Determine Recommended Strategy (spot-futures vs cross-exchange)
+      let recommendedStrategy: 'cross-exchange' | 'spot-futures' = 'cross-exchange';
+      let spotFuturesBestExchange: ExchangeFundingRate | undefined;
+
+      const bestLongFunding = parseFloat(bestLong.fundingRate);
+      const bestShortFunding = parseFloat(bestShort.fundingRate);
+
+      // If BOTH funding rates are positive, spot-futures is more profitable
+      // Spot-futures: Buy spot + Short futures on same exchange = earn full funding rate
+      // Cross-exchange: Short on high funding - Long on low funding = earn only the spread
+      if (bestLongFunding > 0 && bestShortFunding > 0) {
+        recommendedStrategy = 'spot-futures';
+        // Choose exchange with highest funding rate for spot-futures
+        spotFuturesBestExchange = bestShort; // Highest funding rate
+        console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both fundings positive: ${bestLongFunding.toFixed(4)}%, ${bestShortFunding.toFixed(4)}%)`);
+      } else {
+        recommendedStrategy = 'cross-exchange';
+        console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (fundings: ${bestLongFunding.toFixed(4)}%, ${bestShortFunding.toFixed(4)}%)`);
+      }
+
+      // 9. Combined Strategy Metrics (price spread + funding differential)
+      // Calculate combined score only if we have both price and funding data
+      let combinedScore: number | undefined;
+      let expectedDailyReturn: number | undefined;
+      let estimatedMonthlyROI: number | undefined;
+      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
+
+      // Check if we have valid funding spread (not just price data)
+      if (Math.abs(fundingSpread) > 0.0001) {
+        // We have funding data - calculate combined metrics
+
+        // Convert price spread to percentage
+        const priceSpreadPercent = priceSpread * 100;
+
+        // Funding differential per 8h period (as percentage)
+        const fundingDifferentialPercent = fundingSpread * 100;
+
+        // Expected daily return = price spread (one-time) + funding differential (3 times per day)
+        // Assumption: price convergence happens within 1 day
+        const dailyFundingReturn = fundingDifferentialPercent * 3; // 3 funding periods per day (every 8h)
+        expectedDailyReturn = priceSpreadPercent + dailyFundingReturn;
+
+        // Estimated monthly ROI = price spread (one-time) + funding for 30 days
+        estimatedMonthlyROI = priceSpreadPercent + (dailyFundingReturn * 30);
+
+        // Combined score = immediate price spread + projected funding for 7 days
+        combinedScore = priceSpreadPercent + (dailyFundingReturn * 7);
+
+        strategyType = 'combined';
+      } else if (Math.abs(priceSpread) > 0.0001) {
+        // We have price spread but minimal/no funding data
+        strategyType = 'price_only';
+        combinedScore = priceSpread * 100; // Just the price spread
+        expectedDailyReturn = priceSpread * 100;
+        estimatedMonthlyROI = priceSpread * 100;
+      } else if (Math.abs(fundingSpread) > 0.0001) {
+        // We have funding but minimal/no price spread
+        strategyType = 'funding_only';
+        const dailyFundingReturn = fundingSpread * 100 * 3;
+        combinedScore = dailyFundingReturn * 7;
+        expectedDailyReturn = dailyFundingReturn;
+        estimatedMonthlyROI = dailyFundingReturn * 30;
+      }
+
       opportunities.push({
         symbol,
         exchanges: sortedExchanges,
@@ -476,6 +540,14 @@ export class PublicFundingRatesService {
         openInterestFormatted,
         volatility24h,
         volatility24hFormatted,
+        // Combined Strategy Metrics
+        combinedScore,
+        expectedDailyReturn,
+        estimatedMonthlyROI,
+        strategyType,
+        // Recommended Strategy
+        recommendedStrategy,
+        spotFuturesBestExchange,
       });
     });
 

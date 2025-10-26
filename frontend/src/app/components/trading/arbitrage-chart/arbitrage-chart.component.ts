@@ -43,6 +43,12 @@ interface ArbitragePosition {
     inDanger?: boolean;             // True if within 10% of liquidation
     entryPrice?: number;            // Entry price for this position
     currentPrice?: number;          // Current market price
+    // Stop Loss and Take Profit
+    stopLoss?: number;              // Stop loss price
+    takeProfit?: number;            // Take profit price
+    // P&L data (real-time from WebSocket)
+    unrealizedProfit?: number;      // Real-time unrealized P&L in USDT
+    realizedProfit?: number;        // Realized P&L in USDT
   };
   hedge: {
     exchange: string;
@@ -60,6 +66,12 @@ interface ArbitragePosition {
     inDanger?: boolean;             // True if within 10% of liquidation
     entryPrice?: number;            // Entry price for this position
     currentPrice?: number;          // Current market price
+    // Stop Loss and Take Profit
+    stopLoss?: number;              // Stop loss price
+    takeProfit?: number;            // Take profit price
+    // P&L data (real-time from WebSocket)
+    unrealizedProfit?: number;      // Real-time unrealized P&L in USDT
+    realizedProfit?: number;        // Realized P&L in USDT
   };
   graduatedEntry: {
     parts: number;
@@ -67,9 +79,16 @@ interface ArbitragePosition {
   };
   startedAt: Date;
   status: string;
+  errorMessage?: string;           // Error message for failed positions
   // Financial metrics
   grossProfit?: number;            // Total funding earned (primary + hedge)
   netProfit?: number;              // Gross profit - fees
+  // Liquidation monitoring status
+  monitoring?: {
+    enabled: boolean;              // Whether monitoring is enabled
+    status: string;                // "active", "paused", "disabled"
+    lastCheck?: Date;              // Last monitoring check timestamp
+  };
 }
 
 /**
@@ -100,6 +119,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   symbol = signal<string>('');
   primaryExchange = signal<string>('');
   hedgeExchange = signal<string>('');
+  strategy = signal<string>('combined'); // Default to 'combined' strategy
 
   // Loading state
   loading = signal<boolean>(true);
@@ -126,6 +146,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   spread = signal<number>(0);
   spreadPercent = signal<string>('0.0000');
   fundingSpread = signal<number>(0); // Funding rate spread in percentage
+  primarySide = signal<'long' | 'short'>('long'); // Track primary side for price spread calculation
 
   // Order forms
   primaryOrderForm!: FormGroup;
@@ -165,6 +186,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Filter positions that match the current symbol
     const filtered = allPositions.filter(pos => pos.symbol === currentSymbol);
     console.log(`[ArbitrageChart] Filtering positions: ${allPositions.length} total, ${filtered.length} for ${currentSymbol}`);
+
+    // DEBUG: Log filtered positions details
+    if (filtered.length > 0) {
+      console.log('[ArbitrageChart] Filtered positions:', filtered.map(p => ({
+        positionId: p.positionId,
+        symbol: p.symbol,
+        status: p.status,
+        primary: `${p.primary.exchange} (${p.primary.side})`,
+        hedge: `${p.hedge.exchange} (${p.hedge.side})`
+      })));
+    }
+
     return filtered;
   });
 
@@ -228,6 +261,23 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   // Destroyed flag to prevent updates after component destruction
   private isDestroyed = false;
 
+  // Current time signal for funding countdown - updates every 10 seconds
+  private currentTime = signal<number>(Date.now());
+  private timeUpdateInterval: any;
+
+  // Computed signals for formatted funding info to prevent ExpressionChangedAfterItHasBeenCheckedError
+  primaryFormattedFunding = computed(() => {
+    // Trigger recomputation when currentTime changes
+    this.currentTime();
+    return this.formatFundingInfo(this.primaryData().fundingRate, this.primaryData().nextFundingTime);
+  });
+
+  hedgeFormattedFunding = computed(() => {
+    // Trigger recomputation when currentTime changes
+    this.currentTime();
+    return this.formatFundingInfo(this.hedgeData().fundingRate, this.hedgeData().nextFundingTime);
+  });
+
   // Flags to prevent circular synchronization
   private isSyncingQuantity = false;
   private isSyncingSide = false;
@@ -290,11 +340,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.symbol.set(params['symbol'] || '');
       this.primaryExchange.set(params['primary'] || '');
       this.hedgeExchange.set(params['hedge'] || '');
+      this.strategy.set(params['strategy'] || 'combined');
 
       console.log('[ArbitrageChart] Loaded with params:', {
         symbol: this.symbol(),
         primary: this.primaryExchange(),
-        hedge: this.hedgeExchange()
+        hedge: this.hedgeExchange(),
+        strategy: this.strategy()
       });
 
       // Initialize exchange data
@@ -337,19 +389,46 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.hedgeDropdownOpen.set(false);
       }
     });
+
+    // Set up time update interval for funding countdown (every 10 seconds)
+    this.timeUpdateInterval = setInterval(() => {
+      if (!this.isDestroyed) {
+        this.currentTime.set(Date.now());
+      }
+    }, 10000); // Update every 10 seconds
   }
 
   ngAfterViewInit(): void {
-    // Wait for loading to complete
-    setTimeout(async () => {
-      this.initializeChart();
+    // Wait for view to be fully ready, then initialize chart with retry logic
+    this.tryInitializeChart(0);
+  }
 
-      // Load historical data first
-      await this.loadHistoricalData();
+  /**
+   * Try to initialize chart with retry logic
+   */
+  private async tryInitializeChart(attempt: number): Promise<void> {
+    const MAX_ATTEMPTS = 5;
+    const RETRY_DELAY = 300;
 
-      // Then connect WebSockets for real-time updates
-      this.connectWebSockets();
-    }, 600);
+    if (attempt >= MAX_ATTEMPTS) {
+      console.warn('[ArbitrageChart] Chart container not available after', MAX_ATTEMPTS, 'attempts');
+      return;
+    }
+
+    if (!this.chartContainer) {
+      // ViewChild not ready yet, retry
+      setTimeout(() => this.tryInitializeChart(attempt + 1), RETRY_DELAY);
+      return;
+    }
+
+    // Chart container is ready, initialize
+    this.initializeChart();
+
+    // Load historical data first
+    await this.loadHistoricalData();
+
+    // Then connect WebSockets for real-time updates
+    this.connectWebSockets();
   }
 
   ngOnDestroy(): void {
@@ -375,6 +454,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (this.gateioRefreshInterval) {
       clearInterval(this.gateioRefreshInterval);
       this.gateioRefreshInterval = undefined;
+    }
+
+    // Clear time update interval
+    if (this.timeUpdateInterval) {
+      clearInterval(this.timeUpdateInterval);
+      this.timeUpdateInterval = null;
     }
 
     // Remove resize observer
@@ -457,7 +542,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    */
   private initializeChart(): void {
     if (!this.chartContainer) {
-      console.error('[ArbitrageChart] Chart container not found');
+      console.warn('[ArbitrageChart] Chart container not yet available, will retry');
       return;
     }
 
@@ -1431,17 +1516,56 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const hedgeRate = (hedgeRateStr && hedgeRateStr !== 'null') ? parseFloat(hedgeRateStr) : NaN;
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
-      // Funding spread = primaryFundingRate - hedgeFundingRate
-      // Note: Funding rates are already in decimal format (e.g., -0.009629 = -0.9629%)
-      // So we don't multiply by 100 here - that's done in display formatting
-      const spreadValue = primaryRate - hedgeRate;
-      this.fundingSpread.set(spreadValue);
+      // Calculate NET funding profit based on actual positions
+      // Get current sides
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+      // Calculate actual cash flow for each position
+      // LONG: receives when rate is negative (shorts pay longs), pays when positive
+      // SHORT: pays when rate is negative, receives when positive
+      const primaryCashFlow = primarySide === 'long' ? -primaryRate : primaryRate;
+      const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRate : hedgeRate;
+
+      // NET funding profit = sum of both cash flows
+      const netFundingProfit = primaryCashFlow + hedgeCashFlow;
+      this.fundingSpread.set(netFundingProfit);
 
       // Automatically set optimal sides based on funding rates
       this.setOptimalSides(primaryRate, hedgeRate);
     } else {
       // If either rate is unavailable, set spread to 0 or NaN
       this.fundingSpread.set(NaN);
+    }
+  }
+
+  /**
+   * Recalculate funding spread based on current sides and funding rates
+   */
+  private recalculateFundingSpread(): void {
+    const primaryRateStr = this.primaryData().fundingRate;
+    const hedgeRateStr = this.hedgeData().fundingRate;
+
+    const primaryRate = (primaryRateStr && primaryRateStr !== 'null') ? parseFloat(primaryRateStr) : NaN;
+    const hedgeRate = (hedgeRateStr && hedgeRateStr !== 'null') ? parseFloat(hedgeRateStr) : NaN;
+
+    if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+      const primaryCashFlow = primarySide === 'long' ? -primaryRate : primaryRate;
+      const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRate : hedgeRate;
+
+      const netFundingProfit = primaryCashFlow + hedgeCashFlow;
+      this.fundingSpread.set(netFundingProfit);
+
+      console.log('[ArbitrageChart] Funding spread recalculated:', {
+        primaryRate,
+        hedgeRate,
+        primarySide,
+        hedgeSide,
+        netFundingProfit: (netFundingProfit * 100).toFixed(4) + '%'
+      });
     }
   }
 
@@ -1465,10 +1589,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       // Primary has higher funding rate -> Primary = Short, Hedge = Long
       this.primaryOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
       this.hedgeOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
+      this.primarySide.set('short');
     } else {
       // Hedge has higher funding rate (or equal) -> Primary = Long, Hedge = Short
       this.primaryOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
       this.hedgeOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
+      this.primarySide.set('long');
     }
 
     this.isSyncingSide = false;
@@ -1543,6 +1669,29 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Convert decimal to percentage for display (e.g., 0.001 -> 0.1000%)
     const percentageValue = spread * 100;
     return `${sign}${percentageValue.toFixed(4)}%`;
+  }
+
+  /**
+   * Get CSS class for price spread badge based on whether it's favorable
+   *
+   * Logic:
+   * - If Primary = LONG (buying): favorable when primaryPrice < hedgePrice (buy cheap, sell expensive)
+   * - If Primary = SHORT (selling): favorable when primaryPrice > hedgePrice (sell expensive, buy cheap)
+   */
+  getPriceSpreadClass(): string {
+    const primaryPrice = this.primaryData().price;
+    const hedgePrice = this.hedgeData().price;
+    const side = this.primarySide();
+
+    if (!primaryPrice || !hedgePrice) {
+      return ''; // No color if no data
+    }
+
+    const isFavorable = side === 'long'
+      ? primaryPrice < hedgePrice  // LONG: want to buy cheap (primary) and sell expensive (hedge)
+      : primaryPrice > hedgePrice; // SHORT: want to sell expensive (primary) and buy cheap (hedge)
+
+    return isFavorable ? 'favorable' : 'unfavorable';
   }
 
   /**
@@ -1649,6 +1798,30 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
+   * Get status badge configuration for display
+   */
+  getStatusBadge(status: string): { label: string; class: string } {
+    switch (status?.toUpperCase()) {
+      case 'INITIALIZING':
+        return { label: 'Initializing', class: 'initializing' };
+      case 'EXECUTING':
+        return { label: 'Executing', class: 'executing' };
+      case 'ACTIVE':
+        return { label: 'Active', class: 'active' };
+      case 'COMPLETED':
+        return { label: 'Completed', class: 'completed' };
+      case 'LIQUIDATED':
+        return { label: 'Liquidated', class: 'liquidated' };
+      case 'ERROR':
+        return { label: 'Error', class: 'error' };
+      case 'CANCELLED':
+        return { label: 'Cancelled', class: 'cancelled' };
+      default:
+        return { label: status || 'Unknown', class: 'unknown' };
+    }
+  }
+
+  /**
    * Change timeframe
    */
   async changeTimeframe(timeframe: string): Promise<void> {
@@ -1739,7 +1912,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Navigate back to funding rates page
    */
   goBack(): void {
-    this.router.navigate(['/arbitrage/funding']);
+    this.router.navigate(['/arbitrage/opportunities']);
   }
 
   /**
@@ -1854,6 +2027,21 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         console.log(`[ArbitrageChart] Hedge: Converting ${hedgeOrder.quantity} USDT to ${hedgeQuantityInCoins} coins`);
       }
 
+      // Get funding rates and convert to decimal (hourly rate)
+      const primaryFundingRateStr = this.primaryData().fundingRate;
+      const hedgeFundingRateStr = this.hedgeData().fundingRate;
+
+      let primaryFundingRate: number | undefined;
+      let hedgeFundingRate: number | undefined;
+
+      // Parse funding rates if available
+      if (primaryFundingRateStr && primaryFundingRateStr !== 'null') {
+        primaryFundingRate = parseFloat(primaryFundingRateStr);
+      }
+      if (hedgeFundingRateStr && hedgeFundingRateStr !== 'null') {
+        hedgeFundingRate = parseFloat(hedgeFundingRateStr);
+      }
+
       const requestBody = {
         symbol: this.symbol(),
         primaryExchange: this.primaryExchange(),
@@ -1865,7 +2053,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         hedgeLeverage: hedgeOrder.leverage,
         hedgeQuantity: hedgeQuantityInCoins,
         graduatedEntryParts: primaryOrder.graduatedParts || 5,  // Use form value or default to 5
-        graduatedEntryDelayMs: (primaryOrder.graduatedDelayMs || 2) * 1000  // Convert seconds to milliseconds (default 2s = 2000ms)
+        graduatedEntryDelayMs: (primaryOrder.graduatedDelayMs || 2) * 1000,  // Convert seconds to milliseconds (default 2s = 2000ms)
+        // Strategy type (for quantity balancing logic)
+        strategyType: this.strategy() || 'combined',
+        // Funding rates for combined strategy TP/SL (optional)
+        ...(primaryFundingRate !== undefined && { primaryFundingRate }),
+        ...(hedgeFundingRate !== undefined && { hedgeFundingRate }),
+        // Optional TP/SL preferences (can be made configurable later)
+        targetHoldingPeriodHours: 168,  // Default: 7 days
+        minProfitPercent: 2  // Default: 2%
       };
 
       console.log('[ArbitrageChart] Sending request to graduated entry API:', requestBody);
@@ -2080,7 +2276,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
               currentPrice: pos.primary.currentPrice,
               liquidationPrice: pos.primary.liquidationPrice,
               proximityRatio: pos.primary.proximityRatio,
-              inDanger: pos.primary.inDanger
+              inDanger: pos.primary.inDanger,
+              // P&L data
+              unrealizedProfit: pos.primary.unrealizedProfit,
+              realizedProfit: pos.primary.realizedProfit
             },
             hedge: {
               exchange: pos.hedge.exchange,
@@ -2096,7 +2295,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
               currentPrice: pos.hedge.currentPrice,
               liquidationPrice: pos.hedge.liquidationPrice,
               proximityRatio: pos.hedge.proximityRatio,
-              inDanger: pos.hedge.inDanger
+              inDanger: pos.hedge.inDanger,
+              // P&L data
+              unrealizedProfit: pos.hedge.unrealizedProfit,
+              realizedProfit: pos.hedge.realizedProfit
             },
             graduatedEntry: {
               parts: pos.graduatedEntry.parts,
@@ -2111,6 +2313,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
         this.activePositions.set(positions);
         console.log('[ArbitrageChart] Active positions loaded successfully');
+
+        // DEBUG: Log all positions with their symbols
+        console.log('[ArbitrageChart] All active positions:', positions.map(p => ({
+          positionId: p.positionId,
+          symbol: p.symbol,
+          primary: p.primary.exchange,
+          hedge: p.hedge.exchange,
+          status: p.status
+        })));
       }
     } catch (error: any) {
       console.error('[ArbitrageChart] Failed to load active positions:', error);
@@ -2529,10 +2740,71 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
+   * Toggle liquidation monitoring for an active position
+   */
+  async toggleMonitoring(position: ArbitragePosition): Promise<void> {
+    const newState = !position.monitoring?.enabled;
+    const action = newState ? 'enable' : 'disable';
+
+    try {
+      console.log(`[ArbitrageChart] ${action} monitoring for position:`, position.positionId);
+
+      // Call backend API to toggle monitoring
+      const token = this.authService.authState().token;
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      });
+
+      const url = 'http://localhost:3000/api/arbitrage/graduated-entry';
+
+      const response = await this.http.patch<any>(url, {
+        positionId: position.positionId,
+        isMonitoringEnabled: newState
+      }, { headers }).toPromise();
+
+      if (response?.success) {
+        console.log(`[ArbitrageChart] Monitoring ${action}d successfully:`, response.data);
+
+        // Update local position
+        const updatedPositions = this.activePositions().map(p => {
+          if (p.positionId === position.positionId) {
+            return {
+              ...p,
+              monitoring: {
+                enabled: newState,
+                status: newState ? 'active' : 'disabled',
+                lastCheck: p.monitoring?.lastCheck
+              }
+            };
+          }
+          return p;
+        });
+        this.activePositions.set(updatedPositions);
+
+        alert(`Monitoring ${action}d successfully`);
+      } else {
+        throw new Error(response?.error || 'Unknown error from server');
+      }
+    } catch (error: any) {
+      console.error(`[ArbitrageChart] Failed to ${action} monitoring:`, error);
+      const errorMessage = error.error?.error || error.message || 'Unknown error';
+      alert(`Failed to ${action} monitoring: ${errorMessage}`);
+    }
+  }
+
+  /**
    * Synchronize TP/SL for an active position
    * Sets synchronized Take-Profit and Stop-Loss where Primary SL = Hedge TP and vice versa
    */
   async syncTpSl(positionId: string): Promise<void> {
+    console.log('=== syncTpSl CALLED ===', positionId);
+    console.log('Current time:', new Date().toISOString());
+
     const confirmed = confirm(
       `Set synchronized TP/SL for position ${positionId}?\n\n` +
       `This will:\n` +
@@ -2540,6 +2812,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       `• Set Hedge Stop-Loss = Primary Take-Profit\n` +
       `• Both positions will close simultaneously when either price is hit`
     );
+    console.log('User confirmed:', confirmed);
     if (!confirmed) return;
 
     try {
@@ -2647,6 +2920,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Watch primary side changes
     this.primaryOrderForm.get('side')?.valueChanges.subscribe((value: 'long' | 'short') => {
+      // Update signal for price spread color calculation
+      this.primarySide.set(value);
+
       if (this.orderParamsLocked() && !this.isSyncingSide) {
         this.hasManualSideSelection = true;
         this.isSyncingSide = true;
@@ -2655,6 +2931,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.isSyncingSide = false;
         console.log('[ArbitrageChart] Side synced from primary to hedge');
       }
+
+      // Recalculate funding spread when side changes
+      this.recalculateFundingSpread();
     });
 
     // Watch primary leverage changes
@@ -2723,6 +3002,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.isSyncingSide = false;
         console.log('[ArbitrageChart] Side synced from hedge to primary');
       }
+
+      // Recalculate funding spread when side changes
+      this.recalculateFundingSpread();
     });
 
     // Watch hedge leverage changes
@@ -2828,6 +3110,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const graduatedParts = this.hedgeOrderForm.get('graduatedParts')?.value || 1;
     const unit = this.hedgeQuantityUnit();
     const price = this.hedgeData().price;
+
+    console.log(`[ArbitrageChart] Hedge validation input: form quantity=${quantity}, unit=${unit}, price=${price}, parts=${graduatedParts}`);
 
     // Convert quantity to coin if it's in USDT
     let actualQuantity = quantity;

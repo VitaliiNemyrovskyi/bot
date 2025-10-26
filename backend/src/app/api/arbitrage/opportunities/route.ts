@@ -265,7 +265,71 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // 6. Calculate arbitrage opportunities
+    // 6. Fetch funding rates for all exchanges and symbols
+    const fundingRateMap: Map<string, Map<string, number>> = new Map(); // Map<exchange, Map<symbol, fundingRate>>
+    console.log(`[PriceOpportunities] Fetching funding rates...`);
+
+    for (const result of validResults) {
+      if (!result) continue;
+
+      try {
+        if (result.exchange === 'BYBIT') {
+          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
+          if (!credential) continue;
+
+          const bybitService = new BybitService({
+            apiKey: credential.apiKey,
+            apiSecret: credential.apiSecret,
+            testnet: credential.environment === 'TESTNET',
+            enableRateLimit: true,
+            userId,
+          });
+
+          const tickers = await bybitService.getTicker('linear');
+          const symbolFundingMap = new Map<string, number>();
+
+          tickers.forEach((t) => {
+            if (t.fundingRate) {
+              const fundingRatePercent = parseFloat(t.fundingRate) * 100; // Convert to percentage
+              symbolFundingMap.set(t.symbol, fundingRatePercent);
+            }
+          });
+
+          fundingRateMap.set(result.exchange, symbolFundingMap);
+          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BYBIT`);
+
+        } else if (result.exchange === 'BINGX') {
+          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
+          if (!credential) continue;
+
+          const bingxService = new BingXService({
+            apiKey: credential.apiKey,
+            apiSecret: credential.apiSecret,
+            testnet: credential.environment === 'TESTNET',
+            enableRateLimit: true,
+          });
+
+          await bingxService.syncTime();
+          const rates = await bingxService.getAllFundingRates();
+          const symbolFundingMap = new Map<string, number>();
+
+          rates.forEach((r) => {
+            if (r.fundingRate) {
+              const fundingRatePercent = parseFloat(r.fundingRate) * 100; // Convert to percentage
+              const normalizedSymbol = r.symbol.replace(/-/g, ''); // BTC-USDT -> BTCUSDT
+              symbolFundingMap.set(normalizedSymbol, fundingRatePercent);
+            }
+          });
+
+          fundingRateMap.set(result.exchange, symbolFundingMap);
+          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX`);
+        }
+      } catch (error: any) {
+        console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
+      }
+    }
+
+    // 7. Calculate arbitrage opportunities with combined metrics
     const opportunities: PriceArbitrageOpportunity[] = [];
 
     symbolMap.forEach((exchanges, symbol) => {
@@ -290,16 +354,56 @@ export async function GET(request: NextRequest) {
 
       if (!arbitrageOpportunity) return;
 
+      // Get funding rates for primary and hedge exchanges
+      const primaryExchangeName = sortedExchanges[sortedExchanges.length - 1].exchange;
+      const hedgeExchangeName = sortedExchanges[0].exchange;
+
+      const primaryFundingMap = fundingRateMap.get(primaryExchangeName);
+      const hedgeFundingMap = fundingRateMap.get(hedgeExchangeName);
+
+      const primaryFundingRate = primaryFundingMap?.get(symbol);
+      const hedgeFundingRate = hedgeFundingMap?.get(symbol);
+
+      // Calculate funding differential (if both funding rates available)
+      let fundingDifferential: number | undefined;
+      let combinedScore: number | undefined;
+      let expectedDailyReturn: number | undefined;
+      let estimatedMonthlyROI: number | undefined;
+      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
+
+      if (primaryFundingRate !== undefined && hedgeFundingRate !== undefined) {
+        // PRIMARY (higher price) = SHORT = we RECEIVE funding if positive, PAY if negative
+        // HEDGE (lower price) = LONG = we PAY funding if positive, RECEIVE if negative
+
+        // Net funding = what we receive on SHORT - what we pay on LONG
+        // If PRIMARY funding is +0.01% and HEDGE funding is +0.01%, we pay 0 net (both cancel)
+        // If PRIMARY funding is +0.05% and HEDGE funding is +0.01%, we receive +0.04% net
+        fundingDifferential = primaryFundingRate - hedgeFundingRate;
+
+        // Expected daily return = price spread (one-time) + funding differential (3x per day)
+        // For price spread, we assume it will converge over some period (e.g., 1 day)
+        const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
+        expectedDailyReturn = spreadPercent + dailyFundingReturn;
+
+        // Estimated monthly ROI (assuming price spread closes once, funding accumulates)
+        estimatedMonthlyROI = spreadPercent + (dailyFundingReturn * 30);
+
+        // Combined score = immediate price spread + projected funding for 7 days
+        combinedScore = spreadPercent + (dailyFundingReturn * 7);
+
+        strategyType = 'combined';
+      }
+
       opportunities.push({
         symbol,
         primaryExchange: {
-          name: sortedExchanges[sortedExchanges.length - 1].exchange,
+          name: primaryExchangeName,
           credentialId: sortedExchanges[sortedExchanges.length - 1].credentialId,
           price: highestPrice,
           environment: sortedExchanges[sortedExchanges.length - 1].environment,
         },
         hedgeExchange: {
-          name: sortedExchanges[0].exchange,
+          name: hedgeExchangeName,
           credentialId: sortedExchanges[0].credentialId,
           price: lowestPrice,
           environment: sortedExchanges[0].environment,
@@ -308,23 +412,43 @@ export async function GET(request: NextRequest) {
         spreadPercent,
         arbitrageOpportunity,
         allExchanges: sortedExchanges,
+        primaryFundingRate,
+        hedgeFundingRate,
+        fundingDifferential,
+        combinedScore,
+        expectedDailyReturn,
+        estimatedMonthlyROI,
+        strategyType,
       });
     });
 
-    // Sort by spread (highest first)
-    opportunities.sort((a, b) => b.spread - a.spread);
+    // Sort by combined score (if available), otherwise by spread (highest first)
+    opportunities.sort((a, b) => {
+      const scoreA = a.combinedScore !== undefined ? a.combinedScore : a.spreadPercent;
+      const scoreB = b.combinedScore !== undefined ? b.combinedScore : b.spreadPercent;
+      return scoreB - scoreA;
+    });
 
     console.log(`[PriceOpportunities] Found ${opportunities.length} opportunities with spread >= ${minSpread}%`);
 
-    // 7. Return response
+    // Calculate stats
+    const combinedOpportunities = opportunities.filter(o => o.strategyType === 'combined').length;
+    const priceOnlyOpportunities = opportunities.filter(o => o.strategyType === 'price_only').length;
+
+    console.log(`[PriceOpportunities] Strategy breakdown: ${combinedOpportunities} combined, ${priceOnlyOpportunities} price-only`);
+
+    // 8. Return response
     return NextResponse.json(
       {
         success: true,
         data: opportunities,
         stats: {
           totalOpportunities: opportunities.length,
+          combinedStrategy: opportunities.filter(o => o.strategyType === 'combined').length,
+          priceOnly: opportunities.filter(o => o.strategyType === 'price_only').length,
           minSpread: minSpread,
           exchangesAnalyzed: validResults.length,
+          fundingDataAvailable: fundingRateMap.size > 0,
         },
         timestamp: new Date().toISOString(),
       },

@@ -447,7 +447,7 @@ export class GateIOConnector extends BaseExchangeConnector {
   /**
    * Set take-profit and stop-loss for an existing position
    * Gate.io doesn't have a direct setTradingStop endpoint like Bybit
-   * Instead, we need to place conditional orders
+   * Instead, we need to place price-triggered conditional orders
    */
   async setTradingStop(params: {
     symbol: string;
@@ -460,7 +460,20 @@ export class GateIOConnector extends BaseExchangeConnector {
     stopLossOrderId?: string;
     message?: string;
   }> {
-    console.log(`[GateIOConnector] Setting trading stop for ${params.symbol}:`, {
+    // DEBUG: Log raw params to understand what's being passed
+    console.log('[GateIOConnector] setTradingStop called with params:', JSON.stringify(params));
+
+    if (!params) {
+      throw new Error('[GateIOConnector] setTradingStop: params is undefined or null');
+    }
+
+    if (!params.symbol) {
+      throw new Error('[GateIOConnector] setTradingStop: params.symbol is required');
+    }
+
+    const contract = this.normalizeSymbol(params.symbol);
+
+    console.log(`[GateIOConnector] Setting trading stop for ${contract}:`, {
       side: params.side,
       takeProfit: params.takeProfit,
       stopLoss: params.stopLoss,
@@ -476,17 +489,118 @@ export class GateIOConnector extends BaseExchangeConnector {
     }
 
     try {
-      // Gate.io requires placing conditional orders for TP/SL
-      // This is not implemented in the current version
-      console.warn('[GateIOConnector] setTradingStop not fully implemented for Gate.io');
-      console.warn('[GateIOConnector] Gate.io requires placing separate conditional orders for TP/SL');
+      // First, check if there's an open position
+      const position = await this.getPosition(params.symbol);
+
+      if (!position || position.size === 0) {
+        throw new Error(
+          `No open position found for ${contract}. ` +
+          `Please open a position first before setting take-profit or stop-loss.`
+        );
+      }
+
+      const positionSize = position.size;
+      const isLongPosition = positionSize > 0;
+      const isShortPosition = positionSize < 0;
+      const absoluteSize = Math.abs(positionSize);
+
+      console.log(`[GateIOConnector] Current position for ${contract}:`, {
+        size: positionSize,
+        absoluteSize,
+        isLong: isLongPosition,
+        isShort: isShortPosition,
+        entryPrice: position.entry_price,
+      });
+
+      // Determine the closing side based on position
+      // For LONG positions (size > 0), we need to SELL (ask) to exit
+      // For SHORT positions (size < 0), we need to BUY (bid) to exit
+      // Gate.io uses "ask" for sell and "bid" for buy in price-triggered orders
+      const closingSide = isLongPosition ? 'ask' : 'bid';
+
+      let takeProfitOrderId: string | undefined;
+      let stopLossOrderId: string | undefined;
+
+      // Place Take-Profit order if provided
+      if (params.takeProfit) {
+        console.log(`[GateIOConnector] Placing take-profit order at $${params.takeProfit}`);
+
+        // For LONG: TP triggers when price >= takeProfit (price goes up)
+        // For SHORT: TP triggers when price <= takeProfit (price goes down)
+        // Gate.io uses strategy_type 0 (by price) and price_type 0 (last price)
+        // Note: In dual mode, cannot use close:true, must specify size + reduce_only
+
+        const tpOrder = await this.gateioService.placePriceTriggeredOrder({
+          contract,
+          size: absoluteSize, // Specify exact position size to close
+          reduce_only: true, // Ensure this only reduces the position
+          trigger: {
+            strategy_type: 0, // 0 = by price
+            price_type: 0, // 0 = last price
+            price: params.takeProfit.toString(),
+            rule: isLongPosition ? 1 : 2, // LONG: price >= TP (rule=1), SHORT: price <= TP (rule=2)
+          },
+          put: {
+            type: 'market', // Use market order when triggered for fast execution
+            side: closingSide, // 'ask' for LONG, 'bid' for SHORT
+          },
+          text: 'TP', // Mark as take-profit order
+        });
+
+        takeProfitOrderId = tpOrder.id.toString();
+        console.log(`[GateIOConnector] Take-profit order placed: ${takeProfitOrderId}`);
+      }
+
+      // Place Stop-Loss order if provided
+      if (params.stopLoss) {
+        console.log(`[GateIOConnector] Placing stop-loss order at $${params.stopLoss}`);
+
+        // For LONG: SL triggers when price <= stopLoss (price goes down)
+        // For SHORT: SL triggers when price >= stopLoss (price goes up)
+        // Note: In dual mode, cannot use close:true, must specify size + reduce_only
+
+        const slOrder = await this.gateioService.placePriceTriggeredOrder({
+          contract,
+          size: absoluteSize, // Specify exact position size to close
+          reduce_only: true, // Ensure this only reduces the position
+          trigger: {
+            strategy_type: 0, // 0 = by price
+            price_type: 0, // 0 = last price
+            price: params.stopLoss.toString(),
+            rule: isLongPosition ? 2 : 1, // LONG: price <= SL (rule=2), SHORT: price >= SL (rule=1)
+          },
+          put: {
+            type: 'market', // Use market order when triggered for fast execution
+            side: closingSide, // 'ask' for LONG, 'bid' for SHORT
+          },
+          text: 'SL', // Mark as stop-loss order
+        });
+
+        stopLossOrderId = slOrder.id.toString();
+        console.log(`[GateIOConnector] Stop-loss order placed: ${stopLossOrderId}`);
+      }
+
+      console.log('[GateIOConnector] Trading stop set successfully:', {
+        contract,
+        positionSide: isLongPosition ? 'LONG' : 'SHORT',
+        takeProfitOrderId,
+        stopLossOrderId,
+      });
 
       return {
-        success: false,
-        message: 'TP/SL via conditional orders not yet implemented for Gate.io. Please set manually.',
+        success: true,
+        takeProfitOrderId,
+        stopLossOrderId,
+        message: 'Trading stop set successfully via price-triggered orders',
       };
     } catch (error: any) {
       console.error('[GateIOConnector] Error setting trading stop:', error.message);
+
+      // Provide helpful error messages
+      if (error.message.includes('No open position')) {
+        throw error; // Re-throw the position error as-is
+      }
+
       throw new Error(`Failed to set trading stop: ${error.message}`);
     }
   }

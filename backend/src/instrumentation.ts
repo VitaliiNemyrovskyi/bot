@@ -36,6 +36,12 @@ export async function register() {
       const { liquidationMonitorService } = await import('@/services/liquidation-monitor.service');
       liquidationMonitorService.startMonitoring();
       console.log('[Instrumentation] Liquidation monitor service started');
+
+      // Initialize funding rate collector to save historical data for analysis
+      const { getFundingRateCollector } = await import('@/services/funding-rate-collector.service');
+      const fundingRateCollector = getFundingRateCollector();
+      fundingRateCollector.start();
+      console.log('[Instrumentation] Funding rate collector service started');
     } catch (error: any) {
       console.error('[Instrumentation] Error initializing services:', error.message);
     }

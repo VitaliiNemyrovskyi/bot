@@ -3,23 +3,23 @@ import prisma from './src/lib/prisma';
 
 async function main() {
   // Get Gate.io credentials
-  const gateioC cred = await prisma.exchangeCredentials.findFirst({
+  const gateioCred = await prisma.exchangeCredentials.findFirst({
     where: { exchange: 'GATEIO', isActive: true },
     orderBy: { createdAt: 'desc' }
   });
 
-  if (!gateioC cred) {
+  if (!gateioCred) {
     console.log('❌ No active Gate.io credentials found');
     return;
   }
 
   console.log('✅ Using Gate.io credentials:', {
-    id: gateioC cred.id,
-    label: gateioC cred.label,
-    apiKeyPrefix: gateioC cred.apiKey.substring(0, 8) + '...'
+    id: gateioCred.id,
+    label: gateioCred.label,
+    apiKeyPrefix: gateioCred.apiKey.substring(0, 8) + '...'
   });
 
-  const gateio = new GateIOConnector(gateioC cred.apiKey, gateioC cred.apiSecret);
+  const gateio = new GateIOConnector(gateioCred.apiKey, gateioCred.apiSecret);
   await gateio.initialize();
 
   console.log('\n📊 Checking P_USDT position on Gate.io...\n');

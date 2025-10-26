@@ -190,3 +190,59 @@ export interface GateIOMyTrade {
   fee: string;           // Trading fee (negative value)
   point_fee: string;     // Points used to deduct fee
 }
+
+/**
+ * Gate.io Price-Triggered Order Request
+ * Used for creating conditional orders (TP/SL)
+ * Endpoint: POST /api/v4/futures/usdt/price_orders
+ */
+export interface GateIOPriceOrderRequest {
+  contract: string;      // Contract name (e.g., "BTC_USDT")
+  size?: number;         // Order size (optional, use with reduce_only for partial close)
+  close?: boolean;       // Close position flag (deprecated, use reduce_only instead)
+  reduce_only?: boolean; // Reduce-only flag (only close position, don't open new)
+  trigger: {
+    strategy_type: number; // 0 = by price, 1 = by mark price
+    price_type: number;    // 0 = last price, 1 = mark price, 2 = index price
+    price: string;         // Trigger price
+    rule: number;          // 1 = price >= trigger, 2 = price <= trigger
+  };
+  put: {
+    type: string;          // Order type when triggered: "market" or "limit"
+    side: string;          // Order side: "ask" (sell/close long) or "bid" (buy/close short)
+    price?: string;        // Limit price (required if type is "limit")
+  };
+  text?: string;         // User-defined text
+}
+
+/**
+ * Gate.io Price-Triggered Order Response
+ */
+export interface GateIOPriceOrder {
+  id: number;            // Price order ID
+  user: number;          // User ID
+  contract: string;      // Contract name
+  trigger: {
+    strategy_type: number;
+    price_type: number;
+    price: string;
+    rule: number;
+  };
+  put: {
+    type: string;
+    side: string;
+    price: string;
+    amount: string;
+    tif: string;
+  };
+  is_close: boolean;
+  is_reduce_only: boolean;
+  is_liq: boolean;
+  status: string;        // Order status: "open", "finished"
+  reason: string;
+  create_time: number;
+  finish_time: number;
+  finish_as: string;     // How order finished: "filled", "cancelled", etc.
+  size: number;
+  me_order_id: string;
+}

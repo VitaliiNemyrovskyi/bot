@@ -1163,4 +1163,84 @@ export class BingXConnector extends BaseExchangeConnector {
       throw error;
     }
   }
+
+  /**
+   * Subscribe to real-time position updates via WebSocket
+   * Receives updates including unrealizedProfit and realisedProfit
+   *
+   * This method uses BingXService's user data stream to receive position updates
+   *
+   * Position update data format:
+   * {
+   *   eventType: 'ACCOUNT_UPDATE',
+   *   eventTime: 1672364262474,
+   *   positions: [{
+   *     symbol: 'BTC-USDT',
+   *     positionAmt: '0.5',
+   *     entryPrice: '50000.5',
+   *     unrealizedProfit: '125.5',
+   *     marginType: 'cross',
+   *     positionSide: 'LONG',
+   *     leverage: '10',
+   *     updateTime: 1672364262474
+   *   }],
+   *   rawData: { ... }
+   * }
+   *
+   * @param callback - Callback function called on each position update
+   * @returns Promise<void>
+   */
+  async subscribeToPositions(callback: (data: any) => void): Promise<void> {
+    console.log(`[BingXConnector] Subscribing to position updates...`);
+
+    if (!this.isInitialized) {
+      throw new Error('BingX connector not initialized');
+    }
+
+    try {
+      // Use BingXService's native WebSocket support for position updates
+      await this.bingxService.subscribeToPositions((positionUpdate: any) => {
+        // Normalize position data for consistency with other exchanges
+        const normalizedUpdate = {
+          eventType: positionUpdate.eventType,
+          eventTime: positionUpdate.eventTime,
+          positions: positionUpdate.positions.map((pos: any) => ({
+            symbol: pos.symbol,
+            positionAmt: pos.positionAmt,
+            entryPrice: pos.entryPrice,
+            unrealizedProfit: pos.unrealizedProfit,
+            realizedProfit: pos.realisedProfit, // Note: BingX uses 'realisedProfit' in API
+            marginType: pos.marginType,
+            positionSide: pos.positionSide,
+            leverage: pos.leverage,
+            updateTime: pos.updateTime
+          })),
+          rawData: positionUpdate.rawData
+        };
+
+        callback(normalizedUpdate);
+      });
+
+      console.log(`[BingXConnector] Successfully subscribed to position updates`);
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error subscribing to position updates:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Unsubscribe from all user data stream subscriptions
+   * Closes the WebSocket connection and stops all position update callbacks
+   */
+  unsubscribeFromUserDataStream(): void {
+    console.log(`[BingXConnector] Unsubscribing from user data stream...`);
+
+    try {
+      this.bingxService.unsubscribeUserDataStream();
+      console.log(`[BingXConnector] Successfully unsubscribed from user data stream`);
+    } catch (error: any) {
+      console.error(`[BingXConnector] Error unsubscribing from user data stream:`, error.message);
+      throw error;
+    }
+  }
 }

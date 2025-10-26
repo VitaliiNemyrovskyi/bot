@@ -3,8 +3,8 @@
  * Get trading symbol information including minimum order requirements
  *
  * Query params:
- * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET
- * - symbol: Trading symbol (e.g., BTC-USDT for BingX, BTCUSDT for Bybit)
+ * - exchange: BINGX | BINANCE | BYBIT | MEXC | GATEIO | BITGET
+ * - symbol: Trading symbol (e.g., BTC-USDT for BingX, BTCUSDT for Bybit/Binance)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -125,6 +125,9 @@ export async function GET(request: NextRequest) {
         const bingxSymbol = normalizeSymbolForBingX(symbol);
         console.log(`[API] BingX symbol normalized: ${symbol} -> ${bingxSymbol}`);
         symbolInfo = await getBingXSymbolInfo(bingxSymbol);
+        break;
+      case 'BINANCE':
+        symbolInfo = await getBinanceSymbolInfo(symbol);
         break;
       case 'BYBIT':
         symbolInfo = await getBybitSymbolInfo(symbol);
@@ -555,6 +558,82 @@ async function getMEXCSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     };
   } catch (error: any) {
     console.error('[MEXC] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get Binance Futures symbol information
+ */
+async function getBinanceSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    const url = 'https://fapi.binance.com/fapi/v1/exchangeInfo';
+
+    console.log(`[Binance] Fetching futures exchange info...`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`Binance API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Find the symbol in the symbols array
+      const symbolData = data.symbols?.find((s: any) => s.symbol === symbol);
+
+      if (!symbolData) {
+        console.warn(`[Binance] Symbol ${symbol} not found in exchange info`);
+        return null;
+      }
+
+      console.log(`[Binance] Found symbol ${symbol}:`, {
+        status: symbolData.status,
+        quantityPrecision: symbolData.quantityPrecision,
+        pricePrecision: symbolData.pricePrecision,
+        filters: symbolData.filters,
+      });
+
+      // Extract filters
+      const lotSizeFilter = symbolData.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+      const minNotionalFilter = symbolData.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
+      const priceFilter = symbolData.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
+
+      return {
+        symbol: symbolData.symbol,
+        exchange: 'BINANCE',
+        minOrderQty: lotSizeFilter?.minQty ? parseFloat(lotSizeFilter.minQty) : 0.001,
+        minOrderValue: minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : undefined,
+        qtyStep: lotSizeFilter?.stepSize ? parseFloat(lotSizeFilter.stepSize) : 0.001,
+        pricePrecision: symbolData.pricePrecision || 2,
+        qtyPrecision: symbolData.quantityPrecision || 3,
+        maxOrderQty: lotSizeFilter?.maxQty ? parseFloat(lotSizeFilter.maxQty) : undefined,
+        maxLeverage: undefined, // Binance doesn't provide this in exchangeInfo
+      };
+    } catch (fetchError: any) {
+      clearTimeout(timeout);
+
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Binance API request timed out after 30 seconds');
+      }
+
+      throw fetchError;
+    }
+  } catch (error: any) {
+    console.error('[Binance] Error getting symbol info:', error.message);
     throw error;
   }
 }

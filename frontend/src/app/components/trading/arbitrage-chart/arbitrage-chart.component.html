@@ -32,11 +32,17 @@
         <div class="chart-card">
           <div class="chart-card-header">
             <div class="header-left">
-              <h2>Real-Time Price Comparison</h2>
-              <div class="spread-badge"
-                   [class.positive]="fundingSpread() > 0"
-                   [class.negative]="fundingSpread() < 0">
-                Funding Spread: {{ formatFundingSpread() }}
+              <div class="spread-badges">
+                <div class="spread-badge price-spread"
+                     [class.favorable]="getPriceSpreadClass() === 'favorable'"
+                     [class.unfavorable]="getPriceSpreadClass() === 'unfavorable'">
+                  Price Spread: {{ spreadPercent() }}%
+                </div>
+                <div class="spread-badge funding-spread"
+                     [class.positive]="fundingSpread() > 0"
+                     [class.negative]="fundingSpread() < 0">
+                  Funding Spread: {{ formatFundingSpread() }}
+                </div>
               </div>
             </div>
             <div class="header-right">
@@ -115,12 +121,21 @@
                         </div>
                       </td>
                       <td class="status">
-                        <span class="status-badge active">Active</span>
+                        <span class="status-badge" [ngClass]="getStatusBadge(position.status).class">
+                          {{ getStatusBadge(position.status).label }}
+                        </span>
                       </td>
                       <td class="timestamp">{{ formatTimestamp(position.startedAt) }}</td>
                       <td class="actions">
                         <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" title="Set synchronized TP/SL">
                           TP/SL
+                        </button>
+                        <button
+                          [class.monitoring-enabled]="position.monitoring?.enabled"
+                          [class.monitoring-disabled]="!position.monitoring?.enabled"
+                          (click)="toggleMonitoring(position); $event.stopPropagation()"
+                          [title]="position.monitoring?.enabled ? 'Monitoring Active (click to disable)' : 'Monitoring Disabled (click to enable)'">
+                          {{ position.monitoring?.enabled ? '👁️ ON' : '👁️ OFF' }}
                         </button>
                         <button class="stop-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
                           Stop
@@ -147,6 +162,36 @@
                                   <td class="metric-value">{{ position.primary.entryPrice ? (position.primary.entryPrice | number:'1.2-6') : 'N/A' }}</td>
                                   <td class="metric-value">{{ position.hedge.entryPrice ? (position.hedge.entryPrice | number:'1.2-6') : 'N/A' }}</td>
                                 </tr>
+                                @if (position.primary.unrealizedProfit !== undefined || position.hedge.unrealizedProfit !== undefined) {
+                                  <tr>
+                                    <td class="metric-label">Unrealized P&L</td>
+                                    <td class="metric-value"
+                                        [class.positive]="(position.primary.unrealizedProfit || 0) > 0"
+                                        [class.negative]="(position.primary.unrealizedProfit || 0) < 0">
+                                      {{ formatCurrency(position.primary.unrealizedProfit) }} USDT
+                                    </td>
+                                    <td class="metric-value"
+                                        [class.positive]="(position.hedge.unrealizedProfit || 0) > 0"
+                                        [class.negative]="(position.hedge.unrealizedProfit || 0) < 0">
+                                      {{ formatCurrency(position.hedge.unrealizedProfit) }} USDT
+                                    </td>
+                                  </tr>
+                                }
+                                @if (position.primary.realizedProfit !== undefined || position.hedge.realizedProfit !== undefined) {
+                                  <tr>
+                                    <td class="metric-label">Realized P&L</td>
+                                    <td class="metric-value"
+                                        [class.positive]="(position.primary.realizedProfit || 0) > 0"
+                                        [class.negative]="(position.primary.realizedProfit || 0) < 0">
+                                      {{ formatCurrency(position.primary.realizedProfit) }} USDT
+                                    </td>
+                                    <td class="metric-value"
+                                        [class.positive]="(position.hedge.realizedProfit || 0) > 0"
+                                        [class.negative]="(position.hedge.realizedProfit || 0) < 0">
+                                      {{ formatCurrency(position.hedge.realizedProfit) }} USDT
+                                    </td>
+                                  </tr>
+                                }
                                 @if (position.primary.liquidationPrice || position.hedge.liquidationPrice) {
                                   <tr>
                                     <td class="metric-label">Liquidation Price</td>
@@ -189,6 +234,20 @@
                                     </td>
                                   </tr>
                                 }
+                                @if (position.primary.stopLoss || position.hedge.stopLoss) {
+                                  <tr>
+                                    <td class="metric-label">Stop Loss</td>
+                                    <td class="metric-value">{{ position.primary.stopLoss ? (position.primary.stopLoss | number:'1.2-6') : 'N/A' }}</td>
+                                    <td class="metric-value">{{ position.hedge.stopLoss ? (position.hedge.stopLoss | number:'1.2-6') : 'N/A' }}</td>
+                                  </tr>
+                                }
+                                @if (position.primary.takeProfit || position.hedge.takeProfit) {
+                                  <tr>
+                                    <td class="metric-label">Take Profit</td>
+                                    <td class="metric-value">{{ position.primary.takeProfit ? (position.primary.takeProfit | number:'1.2-6') : 'N/A' }}</td>
+                                    <td class="metric-value">{{ position.hedge.takeProfit ? (position.hedge.takeProfit | number:'1.2-6') : 'N/A' }}</td>
+                                  </tr>
+                                }
                                 <tr>
                                   <td class="metric-label">Last Funding Paid</td>
                                   <td class="metric-value">{{ formatCurrency(position.primary.lastFundingPaid) }} USDT</td>
@@ -216,6 +275,66 @@
                                 </tr>
                               </tbody>
                             </table>
+
+                            <!-- Error Message Section for ERROR status -->
+                            @if (position.status === 'ERROR' && position.errorMessage) {
+                              <div class="error-message-section">
+                                <div class="error-header">
+                                  <span class="error-icon">⚠️</span>
+                                  <span class="error-title">Position Failed - Troubleshooting Required</span>
+                                </div>
+                                <div class="error-content">
+                                  <div class="error-details">
+                                    <h4>Error Details:</h4>
+                                    <p class="error-text">{{ position.errorMessage }}</p>
+                                  </div>
+
+                                  <div class="troubleshooting-section">
+                                    <h4>How to Fix:</h4>
+                                    <ol class="fix-steps">
+                                      <li>
+                                        <strong>Check Exchange Connectivity:</strong>
+                                        <ul>
+                                          <li>Verify your internet connection is stable</li>
+                                          <li>Check if {{ position.primary.exchange }} and {{ position.hedge.exchange }} APIs are operational</li>
+                                          <li>Look for "fetch failed" or timeout errors in browser console</li>
+                                        </ul>
+                                      </li>
+                                      <li>
+                                        <strong>Verify API Credentials:</strong>
+                                        <ul>
+                                          <li>Go to Profile → Trading Platforms</li>
+                                          <li>Test connection for both exchanges</li>
+                                          <li>Check if API keys have required permissions (trading, reading positions)</li>
+                                        </ul>
+                                      </li>
+                                      <li>
+                                        <strong>Check Exchange Status:</strong>
+                                        <ul>
+                                          <li>Visit exchange websites to verify they're not under maintenance</li>
+                                          <li>Check if your IP is not rate-limited or blocked</li>
+                                        </ul>
+                                      </li>
+                                    </ol>
+                                  </div>
+
+                                  <div class="error-actions">
+                                    <div class="status-info">
+                                      <p class="warning-text">
+                                        ⚠️ <strong>This position is partially filled.</strong> After fixing connectivity issues,
+                                        you should close this position to clean up partial orders on exchanges.
+                                      </p>
+                                    </div>
+                                    <button class="close-error-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
+                                      Close Position
+                                    </button>
+                                    <p class="error-help-text">
+                                      The "Close Position" button will attempt to close any partial positions on exchanges and mark this as cancelled.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            }
                           </div>
                         </td>
                       </tr>
@@ -231,15 +350,14 @@
       <!-- Right Side: Info Panel (1/3 width) -->
       <div class="info-panel">
         <div class="exchange-info-grid">
-          <!-- Primary Exchange Column -->
           <div class="exchange-column primary-column">
             <button
-              class="column-header primary"
-              (click)="openExchange(primaryExchange())"
-              type="button"
-              title="Open {{ primaryExchange() }} in new window">
+                class="column-header primary"
+                (click)="openExchange(primaryExchange())"
+                type="button"
+                title="Open {{ primaryExchange() }} in new window">
               <h3>{{ primaryExchange() }}</h3>
-              <div class="exchange-label">Primary Exchange</div>
+              <!--<div class="exchange-label">Primary Exchange</div>-->
             </button>
 
             <div class="info-items">
@@ -248,7 +366,7 @@
                 <span class="info-value text-sm"
                       [class.positive]="parseFloat(primaryData().fundingRate) > 0"
                       [class.negative]="parseFloat(primaryData().fundingRate) < 0">
-                  {{ formatFundingInfo(primaryData().fundingRate, primaryData().nextFundingTime) }}
+                  {{ primaryFormattedFunding() }}
                 </span>
               </div>
 
@@ -274,12 +392,63 @@
                 }
               </div>
             </div>
+          </div>
+          <div class="sync-lock-container"></div>
+          <div class="exchange-column hedge-column">
+            <button
+                class="column-header hedge"
+                (click)="openExchange(hedgeExchange())"
+                type="button"
+                title="Open {{ hedgeExchange() }} in new window">
+              <h3>{{ hedgeExchange() }}</h3>
+              <!--<div class="exchange-label">Hedge Exchange</div>-->
+            </button>
+
+            <div class="info-items">
+              <div class="info-item">
+                <span class="info-label">Funding</span>
+                <span class="info-value text-sm"
+                      [class.positive]="parseFloat(hedgeData().fundingRate) > 0"
+                      [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
+                  {{ hedgeFormattedFunding() }}
+                </span>
+              </div>
+
+              <!-- Account Balance -->
+              <div class="info-item balance-item">
+                <span class="info-label">Account Balance</span>
+                @if (hedgeBalance().loading) {
+                  <span class="info-value loading-balance">
+                    <span class="balance-spinner"></span>
+                    Loading...
+                  </span>
+                } @else {
+                  <div class="balance-values">
+                    <div class="balance-row">
+                      <span class="balance-label">Total:</span>
+                      <span class="balance-value">{{ hedgeBalance().totalBalance }} USDT</span>
+                    </div>
+                    <div class="balance-row">
+                      <span class="balance-label">Available:</span>
+                      <span class="balance-value available">{{ hedgeBalance().availableBalance }} USDT</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="exchange-info-grid">
+          <!-- Primary Exchange Column -->
+          <div class="exchange-column primary-column">
+
 
             <!-- Order Form for Primary Exchange -->
             <form [formGroup]="primaryOrderForm" class="order-form">
-              <div class="form-header">
+             <!-- <div class="form-header">
                 <h4>Order Parameters</h4>
-              </div>
+              </div>-->
 
               <div class="form-field">
                 <label class="form-label">Side</label>
@@ -296,7 +465,7 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Leverage</label>
+                <label class="form-label">Leverage (1x - 125x)</label>
                 <input
                   type="number"
                   formControlName="leverage"
@@ -305,11 +474,14 @@
                   min="1"
                   max="125"
                   step="1">
-                <span class="form-hint">1x - 125x</span>
               </div>
 
               <div class="form-field">
-                <label class="form-label">Quantity ({{ primaryQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }})</label>
+                @if (primarySymbolInfo()) {
+                  <label class="form-label">Quantity (min: {{ primarySymbolInfo()!.minOrderQty }}{{ getCoinSymbol() }}/order)</label>
+                } @else {
+                  <label class="form-label">Quantity (min: 0.001{{ getCoinSymbol() }})</label>
+                }
                 <div class="quantity-input-wrapper" [class.error]="!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched">
                   <input
                     type="number"
@@ -319,7 +491,7 @@
                     min="0.001"
                     step="0.001">
                   <div class="quantity-unit-dropdown">
-                    <button 
+                    <button
                       type="button"
                       class="quantity-unit-trigger"
                       (click)="togglePrimaryQuantityDropdown(); $event.stopPropagation()">
@@ -328,14 +500,14 @@
                     </button>
                     @if (primaryDropdownOpen()) {
                       <div class="quantity-unit-options">
-                        <button 
+                        <button
                           type="button"
                           class="quantity-unit-option"
                           [class.active]="primaryQuantityUnit() === 'coin'"
                           (click)="setPrimaryQuantityUnit('coin')">
                           {{ getCoinSymbol() }}
                         </button>
-                        <button 
+                        <button
                           type="button"
                           class="quantity-unit-option"
                           [class.active]="primaryQuantityUnit() === 'usdt'"
@@ -346,11 +518,6 @@
                     }
                   </div>
                 </div>
-                @if (primarySymbolInfo()) {
-                  <span class="form-hint">Min: {{ primarySymbolInfo()!.minOrderQty }} {{ getCoinSymbol() }} per order</span>
-                } @else {
-                  <span class="form-hint">Min: 0.001 {{ getCoinSymbol() }}</span>
-                }
                 @if (!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
@@ -360,7 +527,7 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Graduated Entry Parts</label>
+                <label class="form-label">Parts (1-20)</label>
                 <input
                   type="number"
                   formControlName="graduatedParts"
@@ -369,11 +536,10 @@
                   min="1"
                   max="20"
                   step="1">
-                <span class="form-hint">Split order into 1-20 parts</span>
               </div>
 
               <div class="form-field">
-                <label class="form-label">Delay Between Parts (sec)</label>
+                <label class="form-label">Delay (0.1s - 60s)</label>
                 <input
                   type="number"
                   formControlName="graduatedDelayMs"
@@ -382,7 +548,6 @@
                   min="0.1"
                   max="60"
                   step="0.1">
-                <span class="form-hint">0.1s - 60s (1 minute)</span>
               </div>
             </form>
           </div>
@@ -412,53 +577,11 @@
 
           <!-- Hedge Exchange Column -->
           <div class="exchange-column hedge-column">
-            <button
-              class="column-header hedge"
-              (click)="openExchange(hedgeExchange())"
-              type="button"
-              title="Open {{ hedgeExchange() }} in new window">
-              <h3>{{ hedgeExchange() }}</h3>
-              <div class="exchange-label">Hedge Exchange</div>
-            </button>
-
-            <div class="info-items">
-              <div class="info-item">
-                <span class="info-label">Funding</span>
-                <span class="info-value text-sm"
-                      [class.positive]="parseFloat(hedgeData().fundingRate) > 0"
-                      [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
-                  {{ formatFundingInfo(hedgeData().fundingRate, hedgeData().nextFundingTime) }}
-                </span>
-              </div>
-
-              <!-- Account Balance -->
-              <div class="info-item balance-item">
-                <span class="info-label">Account Balance</span>
-                @if (hedgeBalance().loading) {
-                  <span class="info-value loading-balance">
-                    <span class="balance-spinner"></span>
-                    Loading...
-                  </span>
-                } @else {
-                  <div class="balance-values">
-                    <div class="balance-row">
-                      <span class="balance-label">Total:</span>
-                      <span class="balance-value">{{ hedgeBalance().totalBalance }} USDT</span>
-                    </div>
-                    <div class="balance-row">
-                      <span class="balance-label">Available:</span>
-                      <span class="balance-value available">{{ hedgeBalance().availableBalance }} USDT</span>
-                    </div>
-                  </div>
-                }
-              </div>
-            </div>
-
             <!-- Order Form for Hedge Exchange -->
             <form [formGroup]="hedgeOrderForm" class="order-form">
-              <div class="form-header">
+            <!--  <div class="form-header">
                 <h4>Order Parameters</h4>
-              </div>
+              </div>-->
 
               <div class="form-field">
                 <label class="form-label">Side</label>
@@ -475,7 +598,7 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Leverage</label>
+                <label class="form-label">Leverage (1x - 125x)</label>
                 <input
                   type="number"
                   formControlName="leverage"
@@ -484,11 +607,14 @@
                   min="1"
                   max="125"
                   step="1">
-                <span class="form-hint">1x - 125x</span>
               </div>
 
               <div class="form-field">
-                <label class="form-label">Quantity ({{ hedgeQuantityUnit() === 'coin' ? getCoinSymbol() : 'USDT' }})</label>
+                @if (hedgeSymbolInfo()) {
+                  <label class="form-label">Quantity (min: {{ hedgeSymbolInfo()!.minOrderQty }}{{ getCoinSymbol() }}/order)</label>
+                } @else {
+                  <label class="form-label">Quantity (min: 0.001{{ getCoinSymbol() }})</label>
+                }
                 <div class="quantity-input-wrapper" [class.error]="!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched">
                   <input
                     type="number"
@@ -498,7 +624,7 @@
                     min="0.001"
                     step="0.001">
                   <div class="quantity-unit-dropdown">
-                    <button 
+                    <button
                       type="button"
                       class="quantity-unit-trigger"
                       (click)="toggleHedgeQuantityDropdown(); $event.stopPropagation()">
@@ -507,14 +633,14 @@
                     </button>
                     @if (hedgeDropdownOpen()) {
                       <div class="quantity-unit-options">
-                        <button 
+                        <button
                           type="button"
                           class="quantity-unit-option"
                           [class.active]="hedgeQuantityUnit() === 'coin'"
                           (click)="setHedgeQuantityUnit('coin')">
                           {{ getCoinSymbol() }}
                         </button>
-                        <button 
+                        <button
                           type="button"
                           class="quantity-unit-option"
                           [class.active]="hedgeQuantityUnit() === 'usdt'"
@@ -525,11 +651,6 @@
                     }
                   </div>
                 </div>
-                @if (hedgeSymbolInfo()) {
-                  <span class="form-hint">Min: {{ hedgeSymbolInfo()!.minOrderQty }} {{ getCoinSymbol() }} per order</span>
-                } @else {
-                  <span class="form-hint">Min: 0.001 {{ getCoinSymbol() }}</span>
-                }
                 @if (!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
@@ -539,7 +660,7 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Graduated Entry Parts</label>
+                <label class="form-label">Parts (1-20)</label>
                 <input
                   type="number"
                   formControlName="graduatedParts"
@@ -548,11 +669,10 @@
                   min="1"
                   max="20"
                   step="1">
-                <span class="form-hint">Split order into 1-20 parts</span>
               </div>
 
               <div class="form-field">
-                <label class="form-label">Delay Between Parts (sec)</label>
+                <label class="form-label">Delay (0.1s - 60s)</label>
                 <input
                   type="number"
                   formControlName="graduatedDelayMs"
@@ -561,7 +681,6 @@
                   min="0.1"
                   max="60"
                   step="0.1">
-                <span class="form-hint">0.1s - 60s (1 minute)</span>
               </div>
             </form>
           </div>

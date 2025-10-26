@@ -55,6 +55,16 @@ export interface FundingRateOpportunity {
   volatility24h?: number;                // Simple 24h volatility as decimal
   volatility24hFormatted?: string;       // Formatted volatility (e.g., "3.45%")
 
+  // Combined Strategy Metrics (price + funding)
+  combinedScore?: number;                // Combined score (price spread + funding for 7 days)
+  expectedDailyReturn?: number;          // Expected daily return (%) = price spread + funding × 3
+  estimatedMonthlyROI?: number;          // Estimated monthly ROI (%) = price spread + funding × 90
+  strategyType?: 'price_only' | 'funding_only' | 'combined'; // Strategy type
+
+  // Recommended Strategy (based on funding rate analysis)
+  recommendedStrategy?: 'cross-exchange' | 'spot-futures'; // Optimal strategy for this opportunity
+  spotFuturesBestExchange?: ExchangeFundingRate;  // Best exchange for spot-futures (if recommended)
+
   // Phase 2 Historical Spread Stability Metrics (requires backend API calls)
   // Loaded lazily on-demand when user expands row for performance
   spreadHistory7d?: SpreadStabilityMetrics;   // 7-day historical stability analysis

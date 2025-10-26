@@ -1,0 +1,832 @@
+.price-arbitrage-opportunities-container {
+  padding: 2rem;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+// Page Header
+.page-header {
+  margin-bottom: 2rem;
+
+  .page-title {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--text-primary, #1a1a1a);
+    margin: 0 0 0.5rem 0;
+  }
+
+  .page-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-secondary, #666);
+    margin: 0;
+  }
+}
+
+// Controls section
+.controls-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+
+  .filters {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+
+    .header-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+
+      .section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary, #1a1a1a);
+      }
+    }
+  }
+
+  .status-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    .last-updated {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary, #666);
+    }
+  }
+}
+
+// Badges
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-info {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: rgb(59, 130, 246);
+}
+
+.badge-combined {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: rgb(16, 185, 129);
+}
+
+.badge-price-only {
+  background-color: rgba(156, 163, 175, 0.1);
+  color: rgb(107, 114, 128);
+}
+
+.badge-funding-only {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: rgb(245, 158, 11);
+}
+
+.badge-success {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: rgb(34, 197, 94);
+}
+
+.badge-default {
+  background-color: rgba(156, 163, 175, 0.1);
+  color: rgb(107, 114, 128);
+}
+
+.badge-recommendation {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: rgb(245, 158, 11);
+  font-size: 0.7rem;
+  margin-top: 0.25rem;
+  cursor: help;
+}
+
+// Filters Section
+.filters-section {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background-color: var(--card-bg, white);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 200px;
+
+  label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary, #666);
+  }
+}
+
+.filter-input, .filter-select {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background-color: var(--input-bg, white);
+  color: var(--text-primary, #1a1a1a);
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: var(--text-tertiary, #999);
+  }
+}
+
+.filter-input-number {
+  min-width: 150px;
+}
+
+.filter-group-exchanges {
+  flex: 1;
+  min-width: 300px;
+
+  .exchange-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .exchange-checkbox {
+    padding: 0.5rem 1rem;
+    background: var(--background-secondary, #f9fafb);
+    border: 2px solid var(--border-color, #e0e0e0);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary, #666);
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    display: inline-block;
+
+    &:hover {
+      background: var(--card-bg, white);
+      border-color: var(--primary-color, #3b82f6);
+      color: var(--primary-color, #3b82f6);
+    }
+
+    &.active {
+      background: var(--primary-color, #3b82f6);
+      border-color: var(--primary-color, #3b82f6);
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+
+      &:hover {
+        background: var(--primary-hover, #2563eb);
+        border-color: var(--primary-hover, #2563eb);
+      }
+    }
+
+    input[type="checkbox"] {
+      display: none;
+    }
+
+    span {
+      font-size: 0.75rem;
+      font-weight: inherit;
+      color: inherit;
+      text-transform: uppercase;
+    }
+  }
+
+  .exchange-actions {
+    display: flex;
+    gap: 0.25rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--border-color, #e0e0e0);
+    margin-left: 0.5rem;
+  }
+}
+
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  margin-left: auto;
+}
+
+// Table Container
+.table-container {
+  background: var(--card-bg, white);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #f1f1f1);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #888);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover, #555);
+    }
+  }
+
+  .results-count {
+    padding: 0.75rem 1rem;
+    background: var(--card-header-bg, #f9fafb);
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary, #666);
+  }
+}
+
+// Opportunities Table
+.opportunities-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1300px;
+
+  thead {
+    background: var(--table-header-bg, #fafafa);
+
+    tr {
+      border-bottom: 2px solid var(--border-color, #e0e0e0);
+    }
+
+    th {
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary, #666);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+
+      small {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 400;
+        color: var(--text-secondary, #666);
+        margin-top: 0.25rem;
+        text-transform: none;
+        letter-spacing: normal;
+      }
+
+      &.sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: color 0.2s;
+
+        &:hover {
+          color: var(--primary-color, #3b82f6);
+        }
+
+        ui-icon {
+          margin-left: 0.25rem;
+          font-size: 0.75rem;
+        }
+      }
+
+      &.text-right {
+        text-align: right;
+      }
+
+      &.text-center {
+        text-align: center;
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--border-color, #e0e0e0);
+      transition: background-color 0.2s;
+
+      &:hover {
+        background: var(--row-hover-bg, #f9fafb);
+      }
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &.highlight-combined {
+        background-color: rgba(16, 185, 129, 0.03);
+      }
+
+      td {
+        padding: 0.65rem 0.75rem;
+        font-size: 0.8rem;
+        color: var(--text-primary, #1a1a1a);
+
+        &.text-right {
+          text-align: right;
+        }
+
+        &.text-center {
+          text-align: center;
+        }
+      }
+    }
+  }
+}
+
+// Table Cells
+.symbol-cell {
+  .symbol {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  strong {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+}
+
+// Strategy Cell
+.strategy-cell {
+  // Removed display: flex to preserve table structure
+  vertical-align: middle;
+
+  .badge {
+    display: inline-block;
+    margin-bottom: 0.375rem;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+// Metric Values
+.metric-value {
+  font-weight: 500;
+  color: var(--text-primary);
+
+  &.positive {
+    color: rgb(34, 197, 94);
+  }
+
+  &.negative {
+    color: rgb(239, 68, 68);
+  }
+
+  &.metric-highlight {
+    font-weight: 700;
+    color: var(--primary-color);
+  }
+}
+
+// States
+.loading-state, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1rem;
+
+  ui-icon {
+    font-size: 3rem;
+    color: var(--text-secondary);
+  }
+
+  p {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+}
+
+.error-state {
+  ui-icon {
+    color: rgb(239, 68, 68);
+  }
+}
+
+// Help Section
+.help-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: rgba(59, 130, 246, 0.05);
+  border-radius: 8px;
+  border-left: 4px solid rgb(59, 130, 246);
+
+  h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.5rem;
+
+    li {
+      margin-bottom: 0.5rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+
+      strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+// Utility Classes
+.text-muted {
+  color: var(--text-secondary);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Responsive Design
+@media (max-width: 1400px) {
+  .opportunities-table {
+    font-size: 0.8rem;
+
+    thead th, tbody td {
+      padding: 0.75rem 0.5rem;
+    }
+  }
+}
+
+// Actions cell
+.actions-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+// Empty row styles
+.empty-row {
+  .empty-cell {
+    padding: 3rem 2rem;
+    text-align: center;
+
+    p {
+      color: var(--text-secondary, #666);
+      font-size: 1rem;
+      margin: 1rem 0 0 0;
+    }
+
+    ui-icon {
+      color: var(--text-muted, #9ca3af);
+    }
+  }
+}
+
+// Color classes for funding spread and volatility
+.text-green-600 {
+  color: #16a34a;
+}
+
+.text-yellow-600 {
+  color: #ca8a04;
+}
+
+.text-red-600 {
+  color: #dc2626;
+}
+
+.text-gray-600 {
+  color: #6b7280;
+}
+
+// Funding spread cell
+.funding-spread-cell {
+  .funding-spread {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+}
+
+// Price spread cell
+.price-spread-cell {
+  .price-spread-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+
+    .spread-percent {
+      font-weight: 500;
+      font-size: 0.8rem;
+    }
+
+    .spread-usdt {
+      font-size: 0.7rem;
+      color: var(--text-secondary, #666);
+    }
+  }
+}
+
+// Best Long/Short cells
+.best-long-cell,
+.best-short-cell {
+  .best-exchange {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+
+    .exchange-name {
+      font-weight: 600;
+      font-size: 0.75rem;
+      color: var(--primary-color, #3b82f6);
+
+      &.clickable {
+        cursor: pointer;
+        transition: all 0.2s;
+
+        &:hover {
+          color: var(--primary-hover, #2563eb);
+          text-decoration: underline;
+        }
+      }
+    }
+
+    .funding-rate {
+      font-size: 0.75rem;
+      color: var(--text-secondary, #666);
+
+      &.positive {
+        color: rgb(34, 197, 94);
+      }
+
+      &.negative {
+        color: rgb(239, 68, 68);
+      }
+
+      &.text-red-600 {
+        color: #dc2626;
+      }
+
+      &.text-green-600 {
+        color: #16a34a;
+      }
+
+      &.text-gray-600 {
+        color: #6b7280;
+      }
+    }
+
+    .price {
+      font-size: 0.7rem;
+      color: var(--text-tertiary, #999);
+    }
+
+    .time-to-funding {
+      font-size: 0.7rem;
+      color: var(--text-tertiary, #999);
+      font-style: italic;
+    }
+  }
+}
+
+// Dark mode support
+@media (prefers-color-scheme: dark) {
+  .price-arbitrage-opportunities-container {
+    .page-header {
+      .page-title {
+        color: var(--text-primary-dark, #f5f5f5);
+      }
+
+      .page-subtitle {
+        color: var(--text-secondary-dark, #a0a0a0);
+      }
+    }
+
+    .controls-section {
+      .filters {
+        .header-info {
+          .section-title {
+            color: var(--text-primary-dark, #f5f5f5);
+          }
+        }
+      }
+
+      .status-section {
+        .last-updated {
+          color: var(--text-secondary-dark, #a0a0a0);
+        }
+      }
+    }
+
+    .filters-section {
+      background: var(--card-bg-dark, #1e1e1e);
+      border: none;
+
+      .filter-group {
+        label {
+          color: var(--text-secondary-dark, #a0a0a0);
+        }
+
+        .filter-input,
+        .filter-select {
+          background: var(--input-bg-dark, #2a2a2a);
+          border-color: var(--border-color-dark, #404040);
+          color: var(--text-primary-dark, #f5f5f5);
+
+          &:focus {
+            border-color: var(--primary-color, #3b82f6);
+          }
+        }
+      }
+
+      .filter-group-exchanges {
+        .exchange-checkbox {
+          background: var(--background-secondary-dark, #2a2a2a);
+          border-color: var(--border-color-dark, #404040);
+          color: var(--text-secondary-dark, #a0a0a0);
+
+          &:hover {
+            background: var(--card-bg-dark, #1e1e1e);
+            border-color: var(--primary-color, #3b82f6);
+            color: var(--primary-color, #3b82f6);
+          }
+
+          &.active {
+            background: var(--primary-color, #3b82f6);
+            border-color: var(--primary-color, #3b82f6);
+            color: white;
+          }
+        }
+
+        .exchange-actions {
+          border-left-color: var(--border-color-dark, #404040);
+        }
+      }
+    }
+
+    .table-container {
+      background: var(--card-bg-dark, #1e1e1e);
+      border: none;
+
+      &::-webkit-scrollbar-track {
+        background: var(--scrollbar-track-dark, #2a2a2a);
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb-dark, #555);
+
+        &:hover {
+          background: var(--scrollbar-thumb-hover-dark, #777);
+        }
+      }
+
+      .results-count {
+        background: var(--card-header-bg-dark, #252525);
+        color: var(--text-secondary-dark, #a0a0a0);
+      }
+
+      .opportunities-table {
+        thead {
+          background: var(--table-header-bg-dark, #252525);
+
+          th {
+            color: var(--text-secondary-dark, #a0a0a0);
+          }
+        }
+
+        tbody {
+          tr {
+            border-color: var(--border-color-dark, #404040);
+
+            &:hover {
+              background: var(--row-hover-bg-dark, #252525);
+            }
+
+            td {
+              color: var(--text-primary-dark, #f5f5f5);
+            }
+          }
+        }
+      }
+    }
+
+    .help-section {
+      background-color: rgba(59, 130, 246, 0.1);
+      border-left-color: rgb(59, 130, 246);
+
+      h3, li {
+        color: var(--text-primary-dark, #f5f5f5);
+      }
+
+      li {
+        color: var(--text-secondary-dark, #a0a0a0);
+
+        strong {
+          color: var(--text-primary-dark, #f5f5f5);
+        }
+      }
+    }
+  }
+
+  .text-green-400 {
+    color: #4ade80;
+  }
+
+  .text-yellow-400 {
+    color: #facc15;
+  }
+
+  .text-red-400 {
+    color: #f87171;
+  }
+
+  .text-gray-400 {
+    color: #9ca3af;
+  }
+}
+
+@media (max-width: 768px) {
+  .price-arbitrage-opportunities-container {
+    padding: 1rem;
+  }
+
+  .filters-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    min-width: auto;
+  }
+
+  .filter-group-exchanges {
+    min-width: auto;
+
+    .exchange-checkboxes {
+      gap: 0.5rem;
+    }
+
+    .exchange-checkbox {
+      font-size: 0.7rem;
+      padding: 0.25rem 0.5rem;
+    }
+  }
+
+  .filter-actions {
+    margin-left: 0;
+  }
+
+  .table-container {
+    overflow-x: scroll;
+  }
+
+  .opportunities-table {
+    min-width: 1200px;
+  }
+}

@@ -23,7 +23,9 @@ import {
   StartPriceArbitrageParams,
   ClosePositionResponse,
   PriceArbitrageStatus,
-  isPriceArbitrageError
+  isPriceArbitrageError,
+  FundingRateData,
+  FundingRatesResponse
 } from '../models/price-arbitrage.model';
 
 @Injectable({
@@ -64,6 +66,115 @@ export class PriceArbitrageService {
         return throwError(() => error);
       })
     );
+  }
+
+  /**
+   * HYBRID APPROACH: Fetch ONLY price opportunities (fast, without funding rates)
+   * @returns Observable of price-only arbitrage opportunities
+   */
+  getPricesOnly(): Observable<PriceArbitrageOpportunity[]> {
+    const url = getEndpointUrl('arbitrage', 'opportunities') + '?skipFunding=true';
+
+    return this.http.get<PriceArbitrageOpportunitiesResponse>(url, {
+      headers: this.getHeaders()
+    }).pipe(
+      map(response => {
+        if (response.success && response.data) {
+          return response.data;
+        }
+        throw new Error('Failed to fetch price opportunities');
+      }),
+      catchError(error => {
+        console.error('Error fetching price opportunities:', error);
+        return throwError(() => error);
+      })
+    );
+  }
+
+  /**
+   * HYBRID APPROACH: Fetch funding rates from all exchanges (with caching)
+   * @returns Observable of funding rates
+   */
+  getFundingRates(): Observable<FundingRateData[]> {
+    const url = '/api/funding-rates'; // Direct top-level endpoint with caching
+
+    return this.http.get<FundingRatesResponse>(url, {
+      headers: this.getHeaders()
+    }).pipe(
+      map(response => {
+        if (response.success && response.data) {
+          console.log(`[PriceArbitrageService] Fetched ${response.data.length} funding rates (cached: ${response.cached})`);
+          return response.data;
+        }
+        throw new Error('Failed to fetch funding rates');
+      }),
+      catchError(error => {
+        console.error('Error fetching funding rates:', error);
+        // Return empty array on error - we can still show price-only opportunities
+        return throwError(() => error);
+      })
+    );
+  }
+
+  /**
+   * HYBRID APPROACH: Combine price opportunities with funding rates
+   * @param priceOpps Price-only opportunities
+   * @param fundingRates Funding rates from all exchanges
+   * @returns Combined opportunities with funding rate metrics
+   */
+  combinePricesWithFunding(
+    priceOpps: PriceArbitrageOpportunity[],
+    fundingRates: FundingRateData[]
+  ): PriceArbitrageOpportunity[] {
+    // Create funding rate map: Map<exchange:symbol, fundingRate>
+    const fundingMap = new Map<string, number>();
+    fundingRates.forEach(fr => {
+      const key = `${fr.exchange}:${fr.symbol}`;
+      fundingMap.set(key, fr.fundingRate);
+    });
+
+    // Enrich opportunities with funding data
+    return priceOpps.map(opp => {
+      const primaryKey = `${opp.primaryExchange.name}:${opp.symbol}`;
+      const hedgeKey = `${opp.hedgeExchange.name}:${opp.symbol}`;
+
+      const primaryFundingRate = fundingMap.get(primaryKey);
+      const hedgeFundingRate = fundingMap.get(hedgeKey);
+
+      // If no funding data available, return as-is (price_only strategy)
+      if (primaryFundingRate === undefined || hedgeFundingRate === undefined) {
+        return {
+          ...opp,
+          strategyType: 'price_only' as const
+        };
+      }
+
+      // Calculate combined metrics
+      // PRIMARY (SHORT) = we RECEIVE funding if positive
+      // HEDGE (LONG) = we PAY funding if positive
+      const fundingDifferential = primaryFundingRate - hedgeFundingRate;
+
+      // Expected daily return = price spread + funding × 3 periods per day
+      const dailyFundingReturn = fundingDifferential * 3;
+      const expectedDailyReturn = opp.spreadPercent + dailyFundingReturn;
+
+      // Estimated monthly ROI
+      const estimatedMonthlyROI = opp.spreadPercent + (dailyFundingReturn * 30);
+
+      // Combined score = spread + funding for 7 days
+      const combinedScore = opp.spreadPercent + (dailyFundingReturn * 7);
+
+      return {
+        ...opp,
+        primaryFundingRate,
+        hedgeFundingRate,
+        fundingDifferential,
+        combinedScore,
+        expectedDailyReturn,
+        estimatedMonthlyROI,
+        strategyType: 'combined' as const
+      };
+    });
   }
 
   /**

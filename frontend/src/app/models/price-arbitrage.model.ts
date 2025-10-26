@@ -99,7 +99,7 @@ export interface PriceArbitragePositionDTO {
 }
 
 /**
- * Arbitrage opportunity (price-based, not funding rate based)
+ * Arbitrage opportunity (combined price + funding rate arbitrage)
  */
 export interface PriceArbitrageOpportunity {
   symbol: string;
@@ -134,6 +134,20 @@ export interface PriceArbitrageOpportunity {
     price: number;
     environment: string;
   }>;
+
+  // NEW FIELDS FOR COMBINED STRATEGY
+  // Funding rate data (optional - may not be available for all symbols)
+  primaryFundingRate?: number; // Funding rate on primary exchange (% per 8h)
+  hedgeFundingRate?: number; // Funding rate on hedge exchange (% per 8h)
+  fundingDifferential?: number; // Difference in funding rates (% per 8h)
+
+  // Combined strategy metrics
+  combinedScore?: number; // Combined score (price spread + funding)
+  expectedDailyReturn?: number; // Expected daily return (%)
+  estimatedMonthlyROI?: number; // Estimated monthly ROI (%)
+
+  // Strategy type
+  strategyType: 'price_only' | 'funding_only' | 'combined'; // Type of strategy
 }
 
 /**
@@ -169,10 +183,34 @@ export interface PriceArbitrageOpportunitiesResponse {
   data: PriceArbitrageOpportunity[]; // Direct array, not nested
   stats?: {
     totalOpportunities: number;
+    combinedStrategy: number; // Number of combined strategy opportunities
+    priceOnly: number; // Number of price-only opportunities
     minSpread: number;
     exchangesAnalyzed: number;
+    fundingDataAvailable: boolean; // Whether funding data is available
   };
   timestamp: string;
+}
+
+/**
+ * Funding Rate Data (from /api/funding-rates endpoint)
+ */
+export interface FundingRateData {
+  exchange: string;
+  symbol: string;
+  fundingRate: number; // percentage (e.g., 0.01 = 0.01%)
+  credentialId: string;
+  environment: string;
+}
+
+/**
+ * API Response wrapper for funding rates (hybrid approach)
+ */
+export interface FundingRatesResponse {
+  success: boolean;
+  data: FundingRateData[];
+  timestamp: string;
+  cached: boolean; // indicates if data is from cache
 }
 
 /**

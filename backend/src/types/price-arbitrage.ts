@@ -234,7 +234,7 @@ export interface PriceArbitragePositionDTO {
 }
 
 /**
- * Arbitrage opportunity (price-based, not funding rate based)
+ * Arbitrage opportunity (combined price + funding rate arbitrage)
  */
 export interface PriceArbitrageOpportunity {
   symbol: string;
@@ -269,6 +269,20 @@ export interface PriceArbitrageOpportunity {
     price: number;
     environment: string;
   }>;
+
+  // НОВЫЕ ПОЛЯ ДЛЯ КОМБИНИРОВАННОЙ СТРАТЕГИИ
+  // Funding rate data (optional - may not be available for all symbols)
+  primaryFundingRate?: number; // Funding rate на primary exchange (% per 8h)
+  hedgeFundingRate?: number; // Funding rate на hedge exchange (% per 8h)
+  fundingDifferential?: number; // Разница funding rates (% per 8h)
+
+  // Combined strategy metrics
+  combinedScore?: number; // Комбинированная оценка (price spread + funding)
+  expectedDailyReturn?: number; // Ожидаемая дневная доходность (%)
+  estimatedMonthlyROI?: number; // Прогноз месячного ROI (%)
+
+  // Strategy type
+  strategyType: 'price_only' | 'funding_only' | 'combined'; // Тип стратегии
 }
 
 /**

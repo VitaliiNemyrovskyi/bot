@@ -131,6 +131,12 @@
               margin: 0;
             }
 
+            .spread-badges {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+            }
+
             .spread-badge {
               padding: 6px 12px;
               border-radius: var(--border-radius-sm);
@@ -139,6 +145,26 @@
               background: var(--background-tertiary);
               color: var(--text-primary);
               border: 1px solid var(--border-color);
+              white-space: nowrap;
+
+              &.price-spread {
+                background: rgba(59, 130, 246, 0.15);
+                color: rgb(59, 130, 246);
+                border-color: rgba(59, 130, 246, 0.3);
+              }
+
+              // Price spread favorable/unfavorable states
+              &.favorable {
+                background: rgba(34, 197, 94, 0.15);
+                color: var(--success-color);
+                border-color: rgba(34, 197, 94, 0.3);
+              }
+
+              &.unfavorable {
+                background: rgba(239, 68, 68, 0.15);
+                color: var(--error-color);
+                border-color: rgba(239, 68, 68, 0.3);
+              }
 
               &.positive {
                 background: rgba(34, 197, 94, 0.15);
@@ -1108,6 +1134,48 @@
                     color: var(--success-color);
                     border: 1px solid rgba(34, 197, 94, 0.3);
                   }
+
+                  &.initializing {
+                    background: rgba(59, 130, 246, 0.15);
+                    color: #3b82f6;
+                    border: 1px solid rgba(59, 130, 246, 0.3);
+                  }
+
+                  &.executing {
+                    background: rgba(251, 191, 36, 0.15);
+                    color: #f59e0b;
+                    border: 1px solid rgba(251, 191, 36, 0.3);
+                  }
+
+                  &.error {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                  }
+
+                  &.liquidated {
+                    background: rgba(220, 38, 38, 0.15);
+                    color: #dc2626;
+                    border: 1px solid rgba(220, 38, 38, 0.3);
+                  }
+
+                  &.cancelled {
+                    background: rgba(107, 114, 128, 0.15);
+                    color: #6b7280;
+                    border: 1px solid rgba(107, 114, 128, 0.3);
+                  }
+
+                  &.completed {
+                    background: rgba(34, 197, 94, 0.15);
+                    color: #22c55e;
+                    border: 1px solid rgba(34, 197, 94, 0.3);
+                  }
+
+                  &.unknown {
+                    background: rgba(156, 163, 175, 0.15);
+                    color: #9ca3af;
+                    border: 1px solid rgba(156, 163, 175, 0.3);
+                  }
                 }
               }
 
@@ -1135,6 +1203,50 @@
                     background: #2563eb;
                     transform: translateY(-1px);
                     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+                  }
+
+                  &:active {
+                    transform: translateY(0);
+                  }
+                }
+
+                .monitoring-enabled {
+                  padding: 6px 12px;
+                  font-size: 13px;
+                  font-weight: 600;
+                  color: #ffffff;
+                  background: #10b981;
+                  border: none;
+                  border-radius: var(--border-radius-sm);
+                  cursor: pointer;
+                  transition: var(--transition-fast);
+
+                  &:hover {
+                    background: #059669;
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+                  }
+
+                  &:active {
+                    transform: translateY(0);
+                  }
+                }
+
+                .monitoring-disabled {
+                  padding: 6px 12px;
+                  font-size: 13px;
+                  font-weight: 600;
+                  color: #ffffff;
+                  background: #6b7280;
+                  border: none;
+                  border-radius: var(--border-radius-sm);
+                  cursor: pointer;
+                  transition: var(--transition-fast);
+
+                  &:hover {
+                    background: #4b5563;
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
                   }
 
                   &:active {
@@ -1307,6 +1419,187 @@
                 50% {
                   opacity: 0.8;
                   transform: scale(1.05);
+                }
+              }
+
+              // Error message section for ERROR status positions
+              .error-message-section {
+                margin-top: 24px;
+                padding: 20px;
+                background: rgba(239, 68, 68, 0.1);
+                border: 2px solid rgba(239, 68, 68, 0.3);
+                border-radius: var(--border-radius);
+                animation: slideDown 0.3s ease-out;
+
+                .error-header {
+                  display: flex;
+                  align-items: center;
+                  gap: 12px;
+                  margin-bottom: 16px;
+                  padding-bottom: 12px;
+                  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+
+                  .error-icon {
+                    font-size: 24px;
+                  }
+
+                  .error-title {
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #ef4444;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                  }
+                }
+
+                .error-content {
+                  .error-details {
+                    margin-bottom: 20px;
+
+                    h4 {
+                      margin: 0 0 8px 0;
+                      font-size: 14px;
+                      font-weight: 700;
+                      color: #ef4444;
+                      text-transform: uppercase;
+                      letter-spacing: 0.5px;
+                    }
+
+                    .error-text {
+                      margin: 0;
+                      padding: 12px;
+                      background: rgba(0, 0, 0, 0.3);
+                      border-radius: var(--border-radius-sm);
+                      border-left: 4px solid #ef4444;
+                      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                      font-size: 13px;
+                      line-height: 1.6;
+                      color: var(--text-primary);
+                      word-break: break-word;
+                    }
+                  }
+
+                  .troubleshooting-section {
+                    margin-bottom: 20px;
+                    padding: 16px;
+                    background: rgba(59, 130, 246, 0.08);
+                    border-radius: var(--border-radius-sm);
+                    border-left: 4px solid #3b82f6;
+
+                    h4 {
+                      margin: 0 0 12px 0;
+                      font-size: 14px;
+                      font-weight: 700;
+                      color: #3b82f6;
+                      text-transform: uppercase;
+                      letter-spacing: 0.5px;
+                    }
+
+                    .fix-steps {
+                      margin: 0;
+                      padding-left: 20px;
+                      color: var(--text-primary);
+
+                      li {
+                        margin-bottom: 12px;
+                        font-size: 13px;
+                        line-height: 1.6;
+
+                        &:last-child {
+                          margin-bottom: 0;
+                        }
+
+                        strong {
+                          color: var(--text-primary);
+                          font-weight: 600;
+                        }
+
+                        ul {
+                          margin: 8px 0 0 0;
+                          padding-left: 20px;
+                          color: var(--text-secondary);
+
+                          li {
+                            margin-bottom: 6px;
+                            font-size: 13px;
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  .error-actions {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+
+                    .status-info {
+                      padding: 12px;
+                      background: rgba(251, 191, 36, 0.15);
+                      border: 1px solid rgba(251, 191, 36, 0.3);
+                      border-radius: var(--border-radius-sm);
+
+                      .warning-text {
+                        margin: 0;
+                        font-size: 13px;
+                        line-height: 1.6;
+                        color: var(--text-primary);
+
+                        strong {
+                          color: #f59e0b;
+                          font-weight: 700;
+                        }
+                      }
+                    }
+
+                    .close-error-button {
+                      padding: 12px 24px;
+                      font-size: 14px;
+                      font-weight: 600;
+                      color: #ffffff;
+                      background: #ef4444;
+                      border: none;
+                      border-radius: var(--border-radius-sm);
+                      cursor: pointer;
+                      transition: var(--transition-fast);
+                      align-self: flex-start;
+
+                      &:hover {
+                        background: #dc2626;
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+                      }
+
+                      &:active {
+                        transform: translateY(0);
+                      }
+
+                      &:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                        transform: none;
+                      }
+                    }
+
+                    .error-help-text {
+                      margin: 0;
+                      font-size: 12px;
+                      line-height: 1.6;
+                      color: var(--text-secondary);
+                      font-style: italic;
+                    }
+                  }
+                }
+
+                @keyframes slideDown {
+                  from {
+                    opacity: 0;
+                    transform: translateY(-10px);
+                  }
+                  to {
+                    opacity: 1;
+                    transform: translateY(0);
+                  }
                 }
               }
             }
