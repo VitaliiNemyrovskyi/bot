@@ -74,64 +74,36 @@ export class GateIOConnector extends BaseExchangeConnector {
   }
 
   /**
-   * Validate and adjust quantity to meet Gate.io's trading rules
-   * IMPORTANT: Gate.io uses contracts, not base currency units
-   * - Input quantity is in base currency (e.g., 16 AVNT)
-   * - Output is number of contracts (e.g., 2 contracts if quanto_multiplier=10)
+   * Convert quantity from base currency to contracts
+   * SINGLE RESPONSIBILITY: Format conversion only, NO business logic
+   *
+   * @throws Error if quantity cannot be converted to whole contracts
    */
-  private async validateAndAdjustQuantity(contract: string, quantity: number): Promise<number> {
+  private async convertToContracts(contract: string, quantity: number): Promise<number> {
     try {
-      // Fetch contract details to get trading rules
+      // Fetch contract details to get quanto_multiplier
       const contractDetails = await this.gateioService.getContractDetails(contract);
-
-      const minOrderSize = contractDetails.order_size_min;
-      const maxOrderSize = contractDetails.order_size_max;
       const quantoMultiplier = parseFloat(contractDetails.quanto_multiplier);
 
-      console.log(`[GateIOConnector] Trading rules for ${contract}:`, {
-        quantoMultiplier,
-        minOrderSize,
-        maxOrderSize,
-        requestedQtyInBaseCurrency: quantity,
-      });
+      console.log(`[GateIOConnector] Converting ${quantity} to contracts (multiplier: ${quantoMultiplier})`);
 
-      // CRITICAL: Convert from base currency units to number of contracts
-      // Example: 16 AVNT / 10 (quanto_multiplier) = 1.6 contracts
-      let contractQuantity = quantity / quantoMultiplier;
+      // Convert from base currency to contracts
+      const contractQuantity = quantity / quantoMultiplier;
 
-      console.log(`[GateIOConnector] Converted quantity:`, {
-        baseCurrencyQty: quantity,
-        quantoMultiplier,
-        contractsQty: contractQuantity,
-      });
-
-      // Check minimum quantity (in contracts)
-      if (contractQuantity < minOrderSize) {
-        console.warn(`[GateIOConnector] Quantity ${contractQuantity} contracts is below minimum ${minOrderSize} contracts, adjusting to minimum`);
-        contractQuantity = minOrderSize;
+      // Gate.io API requires INTEGER number of contracts
+      // If not integer, this is a business logic error - throw exception
+      if (contractQuantity !== Math.floor(contractQuantity)) {
+        throw new Error(
+          `Quantity ${quantity} ${contract.split('_')[0]} cannot be converted to whole contracts. ` +
+          `Quanto multiplier is ${quantoMultiplier}. Use multiple of ${quantoMultiplier}.`
+        );
       }
 
-      // Check maximum quantity (in contracts)
-      if (contractQuantity > maxOrderSize) {
-        console.warn(`[GateIOConnector] Quantity ${contractQuantity} contracts exceeds maximum ${maxOrderSize} contracts, adjusting to maximum`);
-        contractQuantity = maxOrderSize;
-      }
-
-      // Gate.io requires integer number of contracts
-      const adjustedQty = Math.round(contractQuantity);
-
-      console.log(`[GateIOConnector] Final quantity adjustment:`, {
-        requestedBaseCurrency: quantity,
-        calculatedContracts: contractQuantity,
-        roundedContracts: adjustedQty,
-        actualBaseCurrencyAmount: adjustedQty * quantoMultiplier,
-      });
-
-      return adjustedQty;
+      console.log(`[GateIOConnector] Converted: ${quantity} → ${contractQuantity} contracts`);
+      return contractQuantity;
     } catch (error: any) {
-      console.error(`[GateIOConnector] Error validating quantity for ${contract}:`, error.message);
-      // Fallback: return rounded quantity (assuming multiplier=1)
-      return Math.round(quantity);
+      console.error(`[GateIOConnector] Error converting quantity for ${contract}:`, error.message);
+      throw error;
     }
   }
 
@@ -156,11 +128,11 @@ export class GateIOConnector extends BaseExchangeConnector {
     }
 
     try {
-      // Validate and adjust quantity
-      const validatedQty = await this.validateAndAdjustQuantity(contract, quantity);
+      // Convert quantity to contracts (throws if not valid)
+      const contractQty = await this.convertToContracts(contract, quantity);
 
       // Gate.io uses positive size for long, negative size for short
-      const orderSize = side === 'Buy' ? validatedQty : -validatedQty;
+      const orderSize = side === 'Buy' ? contractQty : -contractQty;
 
       const result = await this.gateioService.placeOrder({
         contract,
@@ -232,11 +204,11 @@ export class GateIOConnector extends BaseExchangeConnector {
     }
 
     try {
-      // Validate and adjust quantity
-      const validatedQty = await this.validateAndAdjustQuantity(contract, quantity);
+      // Convert quantity to contracts (throws if not valid)
+      const contractQty = await this.convertToContracts(contract, quantity);
 
       // Gate.io uses positive size for long, negative size for short
-      const orderSize = side === 'Buy' ? validatedQty : -validatedQty;
+      const orderSize = side === 'Buy' ? contractQty : -contractQty;
 
       const result = await this.gateioService.placeOrder({
         contract,
@@ -418,11 +390,11 @@ export class GateIOConnector extends BaseExchangeConnector {
     }
 
     try {
-      // Validate and adjust quantity
-      const validatedQty = await this.validateAndAdjustQuantity(contract, quantity);
+      // Convert quantity to contracts (throws if not valid)
+      const contractQty = await this.convertToContracts(contract, quantity);
 
       // Gate.io uses positive size for long, negative size for short
-      const orderSize = side === 'Buy' ? validatedQty : -validatedQty;
+      const orderSize = side === 'Buy' ? contractQty : -contractQty;
 
       const result = await this.gateioService.placeOrder({
         contract,

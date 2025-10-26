@@ -8,6 +8,7 @@ import { ButtonComponent } from '../../ui/button/button.component';
 import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from 'lightweight-charts';
 import { AuthService } from '../../../services/auth.service';
 import { ThemeService } from '../../../services/theme.service';
+import { ToastService } from '../../../services/toast.service';
 import { ExchangeCredentialsService } from '../../../services/exchange-credentials.service';
 import { ExchangeType } from '../../../models/exchange-credentials.model';
 import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.service';
@@ -292,6 +293,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private http = inject(HttpClient);
   private authService = inject(AuthService);
   private themeService = inject(ThemeService);
+  private toastService = inject(ToastService);
   private credentialsService = inject(ExchangeCredentialsService);
   private symbolInfoService = inject(SymbolInfoService);
   private tradingSettings = inject(TradingSettingsService);
@@ -1921,7 +1923,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   async startArbitragePosition(): Promise<void> {
     // Validate both forms
     if (this.primaryOrderForm.invalid || this.hedgeOrderForm.invalid) {
-      alert('Please fill in all required fields correctly');
+      this.toastService.error('Please fill in all required fields correctly');
       return;
     }
 
@@ -1930,18 +1932,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const hedgeValidation = this.hedgeValidation();
 
     if (!primaryValidation.valid) {
-      alert(`Primary order validation failed:\n${primaryValidation.error}\n\nSuggestion: ${primaryValidation.suggestion}`);
+      this.toastService.error(`Primary order validation failed:\n${primaryValidation.error}\n\nSuggestion: ${primaryValidation.suggestion}`);
       return;
     }
 
     if (!hedgeValidation.valid) {
-      alert(`Hedge order validation failed:\n${hedgeValidation.error}\n\nSuggestion: ${hedgeValidation.suggestion}`);
+      this.toastService.error(`Hedge order validation failed:\n${hedgeValidation.error}\n\nSuggestion: ${hedgeValidation.suggestion}`);
       return;
     }
 
     // Check credentials
     if (!this.hasPrimaryCredentials() || !this.hasHedgeCredentials()) {
-      alert(this.credentialsWarning() || 'Please configure exchange credentials in Profile -> Trading Platforms');
+      this.toastService.error(this.credentialsWarning() || 'Please configure exchange credentials in Profile -> Trading Platforms');
       return;
     }
 
@@ -2108,7 +2110,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         const updatedPositions = [...this.activePositions(), newPosition];
         this.activePositions.set(updatedPositions);
 
-        alert(`Arbitrage position started successfully!\nPosition ID: ${response.data.positionId}`);
+        this.toastService.success(`Arbitrage position started successfully!\nPosition ID: ${response.data.positionId}`);
 
         // Reset manual side selection flag to allow automatic selection for next position
         this.hasManualSideSelection = false;
@@ -2142,7 +2144,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     } catch (error: any) {
       console.error('[ArbitrageChart] Failed to start arbitrage position:', error);
       const errorMessage = error.error?.error || error.message || 'Unknown error';
-      alert(`Failed to start arbitrage position: ${errorMessage}`);
+      this.toastService.error(`Failed to start arbitrage position:\n${errorMessage}`, 10000);
     } finally {
       this.isSubmittingOrder.set(false);
     }
@@ -2728,14 +2730,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         const updatedPositions = this.activePositions().filter(p => p.positionId !== positionId);
         this.activePositions.set(updatedPositions);
 
-        alert(`Position ${positionId} stopped successfully`);
+        this.toastService.success(`Position ${positionId} stopped successfully`);
       } else {
         throw new Error(response?.error || 'Unknown error from server');
       }
     } catch (error: any) {
       console.error('[ArbitrageChart] Failed to stop position:', error);
       const errorMessage = error.error?.error || error.message || 'Unknown error';
-      alert(`Failed to stop position: ${errorMessage}`);
+      this.toastService.error(`Failed to stop position: ${errorMessage}`);
     }
   }
 
@@ -2786,14 +2788,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         });
         this.activePositions.set(updatedPositions);
 
-        alert(`Monitoring ${action}d successfully`);
+        this.toastService.success(`Monitoring ${action}d successfully`);
       } else {
         throw new Error(response?.error || 'Unknown error from server');
       }
     } catch (error: any) {
       console.error(`[ArbitrageChart] Failed to ${action} monitoring:`, error);
       const errorMessage = error.error?.error || error.message || 'Unknown error';
-      alert(`Failed to ${action} monitoring: ${errorMessage}`);
+      this.toastService.error(`Failed to ${action} monitoring: ${errorMessage}`);
     }
   }
 
@@ -2835,14 +2837,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       if (response?.success) {
         console.log('[ArbitrageChart] TP/SL synchronized successfully:', response.data);
-        alert(`Synchronized TP/SL set successfully for position ${positionId}\n\nCheck your exchange UI to verify the orders.`);
+        this.toastService.success(`Synchronized TP/SL set successfully for position ${positionId}\n\nCheck your exchange UI to verify the orders.`);
       } else {
         throw new Error(response?.error || 'Unknown error from server');
       }
     } catch (error: any) {
       console.error('[ArbitrageChart] Failed to sync TP/SL:', error);
       const errorMessage = error.error?.error || error.message || 'Unknown error';
-      alert(`Failed to sync TP/SL: ${errorMessage}`);
+      this.toastService.error(`Failed to sync TP/SL: ${errorMessage}`);
     }
   }
 
