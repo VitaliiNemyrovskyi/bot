@@ -7,6 +7,7 @@ import { routes } from './app/app.routes';
 import { authInterceptor } from './app/interceptors/auth.interceptor';
 import { provideExperimentalZonelessChangeDetection } from '@angular/core';
 import { AuthGuard } from './app/guards/auth.guard';
+import './disable-logs'; // Disable console.log for performance
 
 bootstrapApplication(AppComponent, {
   providers: [
