@@ -10,7 +10,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   if (token) {
     const authReq = req.clone({
-      headers: req.headers.set('Authorization', `Bearer ${token}`)
+      headers: req.headers
+        .set('Authorization', `Bearer ${token}`)
+        .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+        .set('Pragma', 'no-cache')
+        .set('Expires', '0')
     });
 
     return next(authReq).pipe(
@@ -41,5 +45,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     );
   }
 
-  return next(req);
+  // Add cache-control headers even for requests without auth token
+  const noCacheReq = req.clone({
+    headers: req.headers
+      .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+      .set('Pragma', 'no-cache')
+      .set('Expires', '0')
+  });
+
+  return next(noCacheReq);
 };
