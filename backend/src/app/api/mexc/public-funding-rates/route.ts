@@ -47,13 +47,13 @@ function calculateNextFundingTime(): number {
   // Calculate next funding time (next hour at :00)
   const nextFunding = new Date(nowDate);
 
+  // Set to :00:00.000 of current hour first
+  nextFunding.setUTCMinutes(0, 0, 0);
+
   // If we're past the hour mark (even by 1 second), move to next hour
   if (currentMinute > 0 || currentSecond > 0) {
     nextFunding.setUTCHours(nextFunding.getUTCHours() + 1);
   }
-
-  // Set to :00:00.000
-  nextFunding.setUTCMinutes(0, 0, 0);
 
   return nextFunding.getTime();
 }
