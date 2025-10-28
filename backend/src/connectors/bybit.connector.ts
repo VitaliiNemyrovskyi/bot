@@ -842,4 +842,26 @@ export class BybitConnector extends BaseExchangeConnector {
       throw error;
     }
   }
+
+  /**
+   * Check if a symbol is being delisted on Bybit
+   *
+   * @param symbol - The trading symbol to check (e.g., "HIFIUSDT")
+   * @param thresholdDays - Number of days before delivery to consider as "delisting" (default: 7)
+   * @returns DelistingInfo object with delisting status and details
+   */
+  async checkDelisting(symbol: string, thresholdDays: number = 7) {
+    return this.bybitService.checkDelisting(symbol, 'linear', thresholdDays);
+  }
+
+  /**
+   * Check multiple symbols for delisting in batch
+   *
+   * @param symbols - Array of symbols to check
+   * @param thresholdDays - Number of days before delivery to consider as "delisting"
+   * @returns Array of DelistingInfo objects
+   */
+  async checkMultipleDelisting(symbols: string[], thresholdDays: number = 7) {
+    return this.bybitService.checkMultipleDelisting(symbols, 'linear', thresholdDays);
+  }
 }

@@ -423,6 +423,63 @@ export async function POST(request: NextRequest) {
     console.log(`[API] Order quantity validation passed for both exchanges`);
     console.log(`[API] Final quantities: Primary=${finalQuantity}, Hedge=${finalQuantity}`);
 
+    // Check for delisting on exchanges that support this check
+    // Currently only Bybit provides deliveryTime data
+    const exchangesToCheck = [];
+    if (primaryExchange.toUpperCase() === 'BYBIT') {
+      exchangesToCheck.push({ exchange: primaryExchange, role: 'primary' });
+    }
+    if (hedgeExchange.toUpperCase() === 'BYBIT') {
+      exchangesToCheck.push({ exchange: hedgeExchange, role: 'hedge' });
+    }
+
+    if (exchangesToCheck.length > 0) {
+      console.log(`[API] Checking delisting status for ${symbol} on ${exchangesToCheck.map(e => e.exchange).join(', ')}...`);
+
+      try {
+        // Check delisting using Bybit service (no auth required for public data)
+        const bybitService = new BybitService({ enableRateLimit: true });
+        const delistingInfo = await bybitService.checkDelisting(symbol, 'linear', 7); // 7-day threshold
+
+        if (delistingInfo.isDelisting) {
+          const daysRemaining = delistingInfo.daysUntilDelivery?.toFixed(1) || 'unknown';
+          const deliveryDate = delistingInfo.deliveryTime > 0
+            ? new Date(delistingInfo.deliveryTime).toISOString()
+            : 'unknown';
+
+          console.error(`[API] ⚠️ Symbol ${symbol} is being delisted on Bybit:`, {
+            daysUntilDelivery: daysRemaining,
+            deliveryTime: deliveryDate,
+            status: delistingInfo.status,
+          });
+
+          const affectedExchanges = exchangesToCheck.map(e => e.exchange).join(' and ');
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Symbol ${symbol} is being delisted on ${affectedExchanges}`,
+              message: `This symbol will be settled/closed in approximately ${daysRemaining} days (${deliveryDate}). ` +
+                       `New positions cannot be opened. Please choose a different symbol.`,
+              delistingInfo: {
+                symbol: symbol,
+                exchange: 'BYBIT',
+                daysUntilDelivery: parseFloat(daysRemaining),
+                deliveryTime: deliveryDate,
+              }
+            },
+            { status: 400 }
+          );
+        } else {
+          console.log(`[API] ✓ Symbol ${symbol} is not being delisted on Bybit (perpetual contract)`);
+        }
+      } catch (delistingCheckError: any) {
+        // Log error but don't block position creation
+        // (delisting check is a safety feature, not critical)
+        console.warn(`[API] Warning: Failed to check delisting status for ${symbol}:`, delistingCheckError.message);
+      }
+    }
+
     // Start graduated entry arbitrage position
     const testnet = primaryCredentials.environment === 'TESTNET';
 

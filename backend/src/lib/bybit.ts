@@ -215,6 +215,47 @@ export interface UserProfile {
   feeRates?: FeeRate[];
 }
 
+export interface InstrumentInfo {
+  symbol: string;
+  contractType: string;
+  status: string;
+  baseCoin: string;
+  quoteCoin: string;
+  launchTime: string;
+  deliveryTime: string; // "0" for perpetual, timestamp for expiring contracts
+  deliveryFeeRate: string;
+  priceScale: string;
+  leverageFilter: {
+    minLeverage: string;
+    maxLeverage: string;
+    leverageStep: string;
+  };
+  priceFilter: {
+    minPrice: string;
+    maxPrice: string;
+    tickSize: string;
+  };
+  lotSizeFilter: {
+    maxOrderQty: string;
+    minOrderQty: string;
+    qtyStep: string;
+    postOnlyMaxOrderQty: string;
+    maxMktOrderQty: string;
+    minNotionalValue: string;
+  };
+  unifiedMarginTrade: boolean;
+  fundingInterval: number;
+  settleCoin: string;
+}
+
+export interface DelistingInfo {
+  symbol: string;
+  isDelisting: boolean;
+  deliveryTime: number; // 0 for no delivery, timestamp for delivery
+  daysUntilDelivery?: number;
+  status: string;
+}
+
 export class BybitService {
   private restClient: RestClientV5;
   private wsClient?: WebsocketClient;
@@ -1340,6 +1381,96 @@ export class BybitService {
       console.error('Error fetching instruments info:', error);
       throw error;
     }
+  }
+
+  /**
+   * Check if a symbol is being delisted on Bybit
+   *
+   * Bybit uses deliveryTime field to indicate contract expiry:
+   * - "0" = perpetual contract (no delisting)
+   * - non-zero timestamp = contract will be settled/delisted at that time
+   *
+   * When a contract is approaching delivery, Bybit prevents opening new positions
+   * but keeps status as "Trading" for existing positions.
+   *
+   * @param symbol - The trading symbol to check (e.g., "HIFIUSDT")
+   * @param category - The category ('linear', 'spot', 'option')
+   * @param thresholdDays - Number of days before delivery to consider as "delisting" (default: 7)
+   * @returns DelistingInfo object with delisting status and details
+   */
+  async checkDelisting(
+    symbol: string,
+    category: 'linear' | 'spot' | 'option' = 'linear',
+    thresholdDays: number = 7
+  ): Promise<DelistingInfo> {
+    try {
+      const response = await this.getInstrumentsInfo(category, symbol);
+
+      if (!response.list || response.list.length === 0) {
+        return {
+          symbol,
+          isDelisting: true, // Symbol not found = effectively delisted
+          deliveryTime: 0,
+          status: 'NOT_FOUND',
+        };
+      }
+
+      const instrument = response.list[0] as InstrumentInfo;
+      const deliveryTimeMs = parseInt(instrument.deliveryTime);
+
+      // deliveryTime = "0" means perpetual contract (no expiry)
+      if (deliveryTimeMs === 0) {
+        return {
+          symbol,
+          isDelisting: false,
+          deliveryTime: 0,
+          status: instrument.status,
+        };
+      }
+
+      // Calculate days until delivery
+      const now = Date.now();
+      const daysUntilDelivery = (deliveryTimeMs - now) / (1000 * 60 * 60 * 24);
+
+      // Consider as delisting if within threshold
+      const isDelisting = daysUntilDelivery <= thresholdDays;
+
+      return {
+        symbol,
+        isDelisting,
+        deliveryTime: deliveryTimeMs,
+        daysUntilDelivery: Math.max(0, daysUntilDelivery),
+        status: instrument.status,
+      };
+    } catch (error: any) {
+      console.error(`[BybitService] Error checking delisting for ${symbol}:`, error.message);
+      // On error, assume it might be delisting to be safe
+      return {
+        symbol,
+        isDelisting: true,
+        deliveryTime: 0,
+        status: 'ERROR',
+      };
+    }
+  }
+
+  /**
+   * Check multiple symbols for delisting in batch
+   *
+   * @param symbols - Array of symbols to check
+   * @param category - The category ('linear', 'spot', 'option')
+   * @param thresholdDays - Number of days before delivery to consider as "delisting"
+   * @returns Array of DelistingInfo objects
+   */
+  async checkMultipleDelisting(
+    symbols: string[],
+    category: 'linear' | 'spot' | 'option' = 'linear',
+    thresholdDays: number = 7
+  ): Promise<DelistingInfo[]> {
+    const results = await Promise.all(
+      symbols.map(symbol => this.checkDelisting(symbol, category, thresholdDays))
+    );
+    return results;
   }
 
   // WebSocket Methods
