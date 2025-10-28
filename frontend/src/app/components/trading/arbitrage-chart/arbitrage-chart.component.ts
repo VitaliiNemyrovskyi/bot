@@ -2840,9 +2840,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Content-Type': 'application/json'
       });
 
-      const url = getEndpointUrl('arbitrage', 'spotFuturesStop');
+      // Use the standard close position endpoint
+      const url = getEndpointUrl('arbitrage', 'closePosition').replace(':id', positionId);
 
-      const response = await this.http.post<any>(url, { positionId }, { headers }).toPromise();
+      const response = await this.http.post<any>(url, {}, { headers }).toPromise();
 
       if (response?.success) {
         console.log('[ArbitrageChart] Position stopped successfully:', response.data);
