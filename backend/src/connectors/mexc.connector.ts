@@ -681,7 +681,13 @@ export class MEXCConnector extends BaseExchangeConnector {
       });
 
       // Check minimum notional value requirement (MEXC requires ~$5 USDT minimum for conditional orders)
-      const currentPrice = await this.getCurrentPrice(params.symbol);
+      // Use position's average price as current price approximation
+      const currentPrice = parseFloat(position.holdAvgPrice || '0');
+
+      if (currentPrice === 0) {
+        throw new Error(`Cannot determine current price for ${normalizedSymbol}. Position data may be incomplete.`);
+      }
+
       const notionalValue = positionVol * currentPrice;
       const MIN_NOTIONAL_VALUE = 5; // MEXC minimum order value in USDT
 

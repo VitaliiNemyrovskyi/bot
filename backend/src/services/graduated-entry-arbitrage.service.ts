@@ -1801,6 +1801,12 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       primarySuccess = true;
     } else if (typeof position.primaryConnector.setTradingStop === 'function') {
       try {
+        // Set expectedPositionSize as fallback in case position is not yet visible in API
+        if ('expectedPositionSize' in position.primaryConnector) {
+          (position.primaryConnector as any).expectedPositionSize = config.primaryQuantity;
+          console.log(`[GraduatedEntry] ${position.id} - Set PRIMARY expectedPositionSize: ${config.primaryQuantity}`);
+        }
+
         await position.primaryConnector.setTradingStop({
           symbol: config.symbol,
           side: config.primarySide,
@@ -1839,6 +1845,12 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       hedgeSuccess = true;
     } else if (typeof position.hedgeConnector.setTradingStop === 'function') {
       try {
+        // Set expectedPositionSize as fallback in case position is not yet visible in API
+        if ('expectedPositionSize' in position.hedgeConnector) {
+          (position.hedgeConnector as any).expectedPositionSize = config.hedgeQuantity;
+          console.log(`[GraduatedEntry] ${position.id} - Set HEDGE expectedPositionSize: ${config.hedgeQuantity}`);
+        }
+
         await position.hedgeConnector.setTradingStop({
           symbol: config.symbol,
           side: config.hedgeSide,
