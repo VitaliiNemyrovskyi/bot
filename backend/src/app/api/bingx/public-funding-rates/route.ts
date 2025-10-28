@@ -10,19 +10,21 @@ const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
  *
  * Source: https://bingx.com/en/support/ (various funding rate adjustment announcements)
  * Last updated: 2025-10
+ *
+ * Note: Values are in hours (number) for database storage
  */
-const BINGX_FUNDING_INTERVALS: Record<string, string> = {
+const BINGX_FUNDING_INTERVALS: Record<string, number> = {
   // 1-hour intervals
-  'SVSA-USDT': '1h',
-  '0G-USDT': '1h',
+  'SVSA-USDT': 1,
+  '0G-USDT': 1,
 
   // 4-hour intervals
-  'COAI-USDT': '4h',
-  'DOG-USDT': '4h',
-  'BROCCOLIF3B-USDT': '4h',
-  'BR-USDT': '4h',
-  'HEI-USDT': '4h',
-  'SOLV-USDT': '4h',
+  'COAI-USDT': 4,
+  'DOG-USDT': 4,
+  'BROCCOLIF3B-USDT': 4,
+  'BR-USDT': 4,
+  'HEI-USDT': 4,
+  'SOLV-USDT': 4,
 
   // Default: 8h for all others (BingX standard)
 };
@@ -161,10 +163,13 @@ export async function GET(request: NextRequest) {
     // Step 5: Return transformed data with funding intervals
     const enrichedData = {
       ...rawData,
-      data: data.map((item: any) => ({
-        ...item,
-        fundingInterval: BINGX_FUNDING_INTERVALS[item.symbol] || '8h',
-      })),
+      data: data.map((item: any) => {
+        const intervalHours = BINGX_FUNDING_INTERVALS[item.symbol] || 8;
+        return {
+          ...item,
+          fundingInterval: `${intervalHours}h`, // Convert to string format for API response
+        };
+      }),
     };
 
     return NextResponse.json(enrichedData, {
