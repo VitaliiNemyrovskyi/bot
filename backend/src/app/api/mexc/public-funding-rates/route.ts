@@ -32,6 +32,50 @@ const MEXC_FUNDING_INTERVALS: Record<string, string> = {
 };
 
 /**
+ * Calculate next funding time for MEXC
+ * MEXC funding times (UTC):
+ * - 8h interval: 00:00, 08:00, 16:00
+ * - 4h interval: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+ */
+function calculateNextFundingTime(intervalHours: number): number {
+  const now = Date.now();
+  const nowDate = new Date(now);
+
+  // Get current UTC time components
+  const currentHour = nowDate.getUTCHours();
+  const currentMinute = nowDate.getUTCMinutes();
+  const currentSecond = nowDate.getUTCSeconds();
+
+  // Calculate funding hours based on interval
+  let fundingHours: number[];
+  if (intervalHours === 4) {
+    fundingHours = [0, 4, 8, 12, 16, 20];
+  } else {
+    // Default 8h: 00:00, 08:00, 16:00
+    fundingHours = [0, 8, 16];
+  }
+
+  // Find next funding hour
+  let nextFundingHour = fundingHours.find(hour => hour > currentHour);
+
+  // If no funding hour found today, use first hour tomorrow
+  if (nextFundingHour === undefined) {
+    nextFundingHour = fundingHours[0];
+    // Set to tomorrow
+    const tomorrow = new Date(nowDate);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(nextFundingHour, 0, 0, 0);
+    return tomorrow.getTime();
+  }
+
+  // Set to today at next funding hour
+  const nextFunding = new Date(nowDate);
+  nextFunding.setUTCHours(nextFundingHour, 0, 0, 0);
+
+  return nextFunding.getTime();
+}
+
+/**
  * MEXC Public Funding Rates Proxy with Funding Intervals
  *
  * Proxies requests to MEXC public API to bypass CORS restrictions
@@ -77,14 +121,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Enrich data with funding intervals
+    // Enrich data with funding intervals and next funding time
     const enrichedData = {
       ...rawData,
       data: Array.isArray(rawData.data)
-        ? rawData.data.map((ticker: any) => ({
-            ...ticker,
-            fundingInterval: MEXC_FUNDING_INTERVALS[ticker.symbol] || '8h',
-          }))
+        ? rawData.data.map((ticker: any) => {
+            const fundingInterval = MEXC_FUNDING_INTERVALS[ticker.symbol] || '8h';
+            const intervalHours = parseInt(fundingInterval.replace('h', ''));
+            const nextFundingTime = calculateNextFundingTime(intervalHours);
+
+            return {
+              ...ticker,
+              fundingInterval,
+              nextFundingTime,
+            };
+          })
         : []
     };
 
