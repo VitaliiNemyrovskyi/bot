@@ -37,6 +37,7 @@ export interface RealisticROIEstimate {
 
 /**
  * Calculate statistical metrics for funding rates over a period
+ * Normalizes all funding rates to 8-hour intervals for fair comparison
  */
 export async function calculateFundingRateMetrics(
   exchange: Exchange,
@@ -60,6 +61,7 @@ export async function calculateFundingRateMetrics(
       },
       select: {
         fundingRate: true,
+        fundingInterval: true, // Include interval for normalization
       },
     });
 
@@ -67,7 +69,12 @@ export async function calculateFundingRateMetrics(
       return null;
     }
 
-    const values = rates.map((r) => r.fundingRate);
+    // Normalize all rates to 8-hour interval for fair comparison
+    const values = rates.map((r) => {
+      // Convert interval (in hours) to normalization multiplier
+      const multiplier = 8 / r.fundingInterval;
+      return r.fundingRate * multiplier;
+    });
 
     // Calculate average
     const average = values.reduce((sum, val) => sum + val, 0) / values.length;
@@ -160,6 +167,9 @@ export async function calculateFundingDifferentialMetrics(
 
 /**
  * Calculate realistic ROI estimate based on historical data
+ *
+ * IMPORTANT: All funding rates are normalized to 8-hour intervals by calculateFundingRateMetrics()
+ * This ensures fair comparison even if exchanges have different funding intervals (1h, 4h, 8h)
  */
 export async function calculateRealisticROI(
   primaryExchange: Exchange,
@@ -180,7 +190,8 @@ export async function calculateRealisticROI(
       return null;
     }
 
-    // Funding payments per day (assuming 3 payments with 8-hour intervals)
+    // Funding payments per day for 8-hour intervals (3 times per day)
+    // Note: All rates are already normalized to 8h intervals by calculateFundingRateMetrics()
     const paymentsPerDay = 3;
     const daysPerMonth = 30;
 

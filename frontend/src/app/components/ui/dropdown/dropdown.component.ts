@@ -2,6 +2,8 @@ import { Component, Input, Output, EventEmitter, forwardRef, signal, computed, e
 import { CommonModule } from '@angular/common';
 import { FormsModule, NG_VALUE_ACCESSOR, ControlValueAccessor } from '@angular/forms';
 import { ThemeService } from '../../../services/theme.service';
+import { DomSanitizer } from '@angular/platform-browser';
+import { SafeHtmlPipe } from '../../../pipes';
 
 export interface DropdownOption {
   value: string;
@@ -36,7 +38,7 @@ export interface DropdownOption {
 @Component({
   selector: 'ui-dropdown',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SafeHtmlPipe],
   templateUrl: './dropdown.component.html',
   styleUrl: './dropdown.component.scss',
   providers: [
@@ -53,6 +55,7 @@ export class DropdownComponent implements ControlValueAccessor {
   @Input() options: DropdownOption[] = [];
   @Input() placeholder: string = 'Select an option';
   @Input() searchable: boolean = true;
+  @Input() showClearButton: boolean = true;
   @Input() disabled: boolean = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
   @Input() width: 'normal' | 'medium' | 'wide' = 'normal';
@@ -93,7 +96,8 @@ export class DropdownComponent implements ControlValueAccessor {
 
   constructor(
     private themeService: ThemeService,
-    private elementRef: ElementRef
+    private elementRef: ElementRef,
+    public sanitizer: DomSanitizer
   ) {
     // Close dropdown when clicking outside
     effect((onCleanup) => {

@@ -170,6 +170,23 @@ export interface PriceArbitrageOpportunity {
 
   // Strategy type
   strategyType: 'price_only' | 'funding_only' | 'combined'; // Type of strategy
+
+  // NEW FIELDS FOR SPOT+FUTURES STRATEGY DISPLAY
+  // Best exchange for funding (positive funding - where you go LONG spot + SHORT futures)
+  bestFundingExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., 0.001 = 0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
+
+  // Best exchange for shorting (negative funding - where you go SHORT)
+  bestShortExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., -0.001 = -0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
 }
 
 /**

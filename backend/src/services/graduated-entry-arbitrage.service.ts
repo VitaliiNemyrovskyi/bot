@@ -1750,10 +1750,56 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     let primaryError: string | null = null;
     let hedgeError: string | null = null;
 
+    // Check if TP/SL are already set in DATABASE (to avoid duplicates)
+    // If they're already in DB, this means they were set before (either automatically or manually)
+    let skipPrimary = false;
+    let skipHedge = false;
+
+    try {
+      // Check database for existing TP/SL values
+      const dbPosition = await prisma.graduatedEntryPosition.findUnique({
+        where: { positionId: position.id },
+        select: {
+          primaryTakeProfit: true,
+          primaryStopLoss: true,
+          hedgeTakeProfit: true,
+          hedgeStopLoss: true,
+        },
+      });
+
+      if (dbPosition) {
+        // Check if TP/SL values match the ones we're trying to set (within 0.1% tolerance)
+        const primaryTPMatch = dbPosition.primaryTakeProfit &&
+          Math.abs(dbPosition.primaryTakeProfit - sltp.primaryTakeProfit) / sltp.primaryTakeProfit < 0.001;
+        const primarySLMatch = dbPosition.primaryStopLoss &&
+          Math.abs(dbPosition.primaryStopLoss - sltp.primaryStopLoss) / sltp.primaryStopLoss < 0.001;
+
+        const hedgeTPMatch = dbPosition.hedgeTakeProfit &&
+          Math.abs(dbPosition.hedgeTakeProfit - sltp.hedgeTakeProfit) / sltp.hedgeTakeProfit < 0.001;
+        const hedgeSLMatch = dbPosition.hedgeStopLoss &&
+          Math.abs(dbPosition.hedgeStopLoss - sltp.hedgeStopLoss) / sltp.hedgeStopLoss < 0.001;
+
+        if (primaryTPMatch && primarySLMatch) {
+          console.log(`[GraduatedEntry] ${position.id} - ℹ️ PRIMARY TP/SL already set with same values, skipping to avoid duplicates`);
+          skipPrimary = true;
+        }
+
+        if (hedgeTPMatch && hedgeSLMatch) {
+          console.log(`[GraduatedEntry] ${position.id} - ℹ️ HEDGE TP/SL already set with same values, skipping to avoid duplicates`);
+          skipHedge = true;
+        }
+      }
+    } catch (error: any) {
+      console.warn(`[GraduatedEntry] ${position.id} - Could not check DB TP/SL status:`, error.message);
+    }
+
     // Set TP/SL on PRIMARY exchange
     console.log(`[GraduatedEntry] ${position.id} - Setting TP/SL on PRIMARY (${config.primaryExchange})...`);
 
-    if (typeof position.primaryConnector.setTradingStop === 'function') {
+    if (skipPrimary) {
+      console.log(`[GraduatedEntry] ${position.id} - ⏭️ Skipping PRIMARY TP/SL (already set)`);
+      primarySuccess = true;
+    } else if (typeof position.primaryConnector.setTradingStop === 'function') {
       try {
         await position.primaryConnector.setTradingStop({
           symbol: config.symbol,
@@ -1788,7 +1834,10 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     console.log(`[GraduatedEntry] ${position.id} - setTradingStop exists?`, typeof position.hedgeConnector.setTradingStop);
     console.log(`[GraduatedEntry] ${position.id} - setTradingStop is function?`, typeof position.hedgeConnector.setTradingStop === 'function');
 
-    if (typeof position.hedgeConnector.setTradingStop === 'function') {
+    if (skipHedge) {
+      console.log(`[GraduatedEntry] ${position.id} - ⏭️ Skipping HEDGE TP/SL (already set)`);
+      hedgeSuccess = true;
+    } else if (typeof position.hedgeConnector.setTradingStop === 'function') {
       try {
         await position.hedgeConnector.setTradingStop({
           symbol: config.symbol,

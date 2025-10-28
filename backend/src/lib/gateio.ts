@@ -956,4 +956,55 @@ export class GateIOService {
 
     return data;
   }
+
+  /**
+   * Get list of price-triggered orders
+   * Endpoint: GET /api/v4/futures/usdt/price_orders
+   *
+   * @param contract - Trading pair contract (e.g., "BTC_USDT")
+   * @param status - Order status filter: "open" | "finished" (optional)
+   * @returns List of price-triggered orders
+   */
+  async getPriceOrders(
+    contract: string,
+    status?: 'open' | 'finished'
+  ): Promise<GateIOPriceOrder[]> {
+    console.log(`[GateIOService] Getting price orders for ${contract}, status: ${status || 'all'}`);
+
+    const queryParams: Record<string, string> = {
+      contract,
+    };
+
+    if (status) {
+      queryParams.status = status;
+    }
+
+    const data = await this.makeRequest<GateIOPriceOrder[]>(
+      'GET',
+      '/price_orders',
+      queryParams
+    );
+
+    console.log(`[GateIOService] Retrieved ${data.length} price orders for ${contract}`);
+    return data;
+  }
+
+  /**
+   * Cancel a price-triggered order
+   * Endpoint: DELETE /api/v4/futures/usdt/price_orders/{order_id}
+   *
+   * @param orderId - Price-triggered order ID
+   * @returns Cancelled order details
+   */
+  async cancelPriceOrder(orderId: string): Promise<GateIOPriceOrder> {
+    console.log(`[GateIOService] Cancelling price order: ${orderId}`);
+
+    const data = await this.makeRequest<GateIOPriceOrder>(
+      'DELETE',
+      `/price_orders/${orderId}`
+    );
+
+    console.log(`[GateIOService] Price order ${orderId} cancelled successfully`);
+    return data;
+  }
 }

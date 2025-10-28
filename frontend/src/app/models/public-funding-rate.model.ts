@@ -7,7 +7,8 @@ export interface ExchangeFundingRate {
   exchange: string;           // 'BYBIT', 'BINGX', 'MEXC'
   symbol: string;             // Normalized symbol (BTCUSDT)
   originalSymbol: string;     // Original exchange symbol (BTC-USDT, BTC/USDT:USDT)
-  fundingRate: string;        // Current funding rate as string (e.g., "0.0001")
+  fundingRate: string;        // Original funding rate as string (e.g., "0.0001")
+  fundingRateNormalized?: number; // Normalized funding rate to 8h interval for fair comparison
   nextFundingTime: number;    // Next funding time timestamp (ms)
   lastPrice: string;          // Current mark/last price
   fundingInterval?: string;   // Funding interval (8h, 4h, 1h)
@@ -24,8 +25,10 @@ export interface FundingRateOpportunity {
   exchanges: ExchangeFundingRate[];      // All exchanges for this symbol
 
   // Funding spread (difference between best long and best short funding rates)
-  maxFundingSpread: number;              // Max spread as decimal (e.g., 0.0015 = 0.15%)
-  maxFundingSpreadPercent: string;       // Max spread as percentage string (e.g., "0.15%")
+  maxFundingSpread: number;              // Max spread as decimal (e.g., 0.0015 = 0.15%) - LEGACY
+  maxFundingSpreadPercent: string;       // Max spread as percentage string (e.g., "0.15%") - LEGACY
+  fundingSpread?: number;                // Normalized funding spread (8h basis) as decimal
+  fundingSpreadPercent?: string;         // Normalized funding spread as percentage string
 
   // Best exchanges for arbitrage
   bestLong: ExchangeFundingRate;         // Lowest (most negative) funding rate - open LONG here
@@ -59,7 +62,7 @@ export interface FundingRateOpportunity {
   combinedScore?: number;                // Combined score (price spread + funding for 7 days)
   expectedDailyReturn?: number;          // Expected daily return (%) = price spread + funding × 3 - LEGACY
   estimatedMonthlyROI?: number;          // Estimated monthly ROI (%) = price spread + funding × 90 - LEGACY
-  strategyType?: 'price_only' | 'funding_only' | 'combined'; // Strategy type
+  strategyType?: 'price_only' | 'funding_only' | 'combined' | 'spot_futures' | 'funding_farm'; // Strategy type
 
   // REALISTIC METRICS - based on historical data (NEW)
   realisticMetrics?: {
@@ -95,6 +98,23 @@ export interface FundingRateOpportunity {
   // Comparison metrics (comparing 7d vs 30d)
   spreadStabilityTrend?: 'improving' | 'stable' | 'declining'; // Trend direction
   spreadStabilityConfidence?: number;    // Confidence score 0-1 based on data quality
+
+  // NEW FIELDS FOR SPOT+FUTURES STRATEGY DISPLAY
+  // Best exchange for funding (positive funding - where you go LONG spot + SHORT futures)
+  bestFundingExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., 0.001 = 0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
+
+  // Best exchange for shorting (negative funding - where you go SHORT)
+  bestShortExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., -0.001 = -0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
 }
 
 /**

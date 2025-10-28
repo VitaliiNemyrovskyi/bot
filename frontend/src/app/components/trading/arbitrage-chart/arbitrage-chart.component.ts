@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormControl, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from 'lightweight-charts';
@@ -13,6 +14,7 @@ import { ExchangeCredentialsService } from '../../../services/exchange-credentia
 import { ExchangeType } from '../../../models/exchange-credentials.model';
 import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.service';
 import { TradingSettingsService } from '../../../services/trading-settings.service';
+import { PublicFundingRatesService } from '../../../services/public-funding-rates.service';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
 
@@ -22,6 +24,7 @@ interface ExchangeData {
   fundingRate: string;
   nextFundingTime: number;
   fundingInterval?: number; // Funding interval in milliseconds (e.g., 8h = 28800000ms)
+  fundingIntervalStr?: string; // Funding interval as string (e.g., "8h", "4h", "1h") - from API/DB
   lastUpdate: Date;
 }
 
@@ -248,8 +251,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private hedgeWs: WebSocket | null = null;
   private reconnectTimeout: any;
 
-  // BingX funding rates storage
-  private bingxFundingRates = new Map<string, { fundingRate: string; fundingTime: number }>();
+  // Funding rates storage for both exchanges
+  private fundingRatesMap = new Map<string, { fundingRate: string; fundingTime: number; fundingInterval?: string }>();
   private fundingRateRefreshInterval: any;
 
   // Track previous funding times to calculate intervals
@@ -270,13 +273,21 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   primaryFormattedFunding = computed(() => {
     // Trigger recomputation when currentTime changes
     this.currentTime();
-    return this.formatFundingInfo(this.primaryData().fundingRate, this.primaryData().nextFundingTime);
+    return this.formatFundingInfo(
+      this.primaryData().fundingRate,
+      this.primaryData().nextFundingTime,
+      this.primaryData().fundingIntervalStr // From DB/API
+    );
   });
 
   hedgeFormattedFunding = computed(() => {
     // Trigger recomputation when currentTime changes
     this.currentTime();
-    return this.formatFundingInfo(this.hedgeData().fundingRate, this.hedgeData().nextFundingTime);
+    return this.formatFundingInfo(
+      this.hedgeData().fundingRate,
+      this.hedgeData().nextFundingTime,
+      this.hedgeData().fundingIntervalStr // From DB/API
+    );
   });
 
   // Flags to prevent circular synchronization
@@ -297,6 +308,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private credentialsService = inject(ExchangeCredentialsService);
   private symbolInfoService = inject(SymbolInfoService);
   private tradingSettings = inject(TradingSettingsService);
+  private fundingRatesService = inject(PublicFundingRatesService);
 
   constructor(
     private route: ActivatedRoute,
@@ -351,6 +363,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         strategy: this.strategy()
       });
 
+      // Adjust form for spot_futures strategy
+      if (this.strategy() === 'spot_futures') {
+        this.adjustFormsForSpotFutures();
+      }
+
       // Initialize exchange data
       this.primaryData.set({
         ...this.primaryData(),
@@ -398,6 +415,56 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.currentTime.set(Date.now());
       }
     }, 10000); // Update every 10 seconds
+  }
+
+  /**
+   * Adjust forms for spot_futures strategy
+   * Primary = SPOT (no leverage, no side selector, simpler graduated entry)
+   * Hedge = FUTURES (full features)
+   */
+  private adjustFormsForSpotFutures(): void {
+    // Primary form (SPOT): Set leverage to 1x (non-editable in UI)
+    this.primaryOrderForm.get('leverage')?.setValue(1);
+    this.primaryOrderForm.get('leverage')?.disable();
+
+    // Primary form (SPOT): Set side to 'long' (buy only)
+    this.primaryOrderForm.get('side')?.setValue('long');
+    this.primaryOrderForm.get('side')?.disable();
+
+    // Primary form (SPOT): Adjust graduated entry limits for simpler spot trading
+    const primaryParts = this.primaryOrderForm.get('graduatedParts');
+    const primaryDelay = this.primaryOrderForm.get('graduatedDelayMs');
+
+    if (primaryParts) {
+      // Reduce max parts from 20 to 5 for spot
+      primaryParts.setValidators([Validators.required, Validators.min(1), Validators.max(5)]);
+      primaryParts.updateValueAndValidity();
+      // If current value exceeds new max, adjust it
+      if (primaryParts.value > 5) {
+        primaryParts.setValue(3);
+      }
+    }
+
+    if (primaryDelay) {
+      // Reduce max delay from 60s to 10s for spot
+      primaryDelay.setValidators([Validators.required, Validators.min(0.1), Validators.max(10)]);
+      primaryDelay.updateValueAndValidity();
+      // If current value exceeds new max, adjust it
+      if (primaryDelay.value > 10) {
+        primaryDelay.setValue(1);
+      }
+    }
+
+    // Disable sync lock for spot_futures strategy (different parameter sets)
+    this.orderParamsLocked.set(false);
+
+    console.log('[ArbitrageChart] Forms adjusted for spot_futures strategy', {
+      primaryLeverage: this.primaryOrderForm.get('leverage')?.value,
+      primarySide: this.primaryOrderForm.get('side')?.value,
+      primaryPartsMax: 5,
+      primaryDelayMax: 10,
+      syncLockDisabled: true
+    });
   }
 
   ngAfterViewInit(): void {
@@ -689,20 +756,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     console.log('[ArbitrageChart] Connecting WebSockets for', { symbol, primaryExchange, hedgeExchange });
 
-    // If either exchange is BingX, fetch funding rates first
-    if (primaryExchange === 'BINGX' || hedgeExchange === 'BINGX') {
-      await this.fetchBingXFundingRates();
+    // Fetch funding rates for both exchanges
+    await this.fetchFundingRates();
 
-      // Set up periodic refresh for BingX funding rates (every 5 minutes)
-      this.fundingRateRefreshInterval = setInterval(() => {
-        if (!this.isDestroyed) {
-          console.log('[ArbitrageChart] Refreshing BingX funding rates...');
-          this.fetchBingXFundingRates();
-        }
-      }, 5 * 60 * 1000); // 5 minutes
+    // Set up periodic refresh for funding rates (every 2 minutes)
+    this.fundingRateRefreshInterval = setInterval(() => {
+      if (!this.isDestroyed) {
+        console.log('[ArbitrageChart] Refreshing funding rates...');
+        this.fetchFundingRates();
+      }
+    }, 2 * 60 * 1000); // 2 minutes
 
-      console.log('[ArbitrageChart] BingX funding rate refresh interval set (5 minutes)');
-    }
+    console.log('[ArbitrageChart] Funding rate refresh interval set (2 minutes)');
+
 
     // Connect to Primary Exchange
     this.connectExchangeWebSocket(
@@ -1007,7 +1073,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
           // Get funding rate from stored map (BingX ticker doesn't include funding rates)
           const symbolForLookup = data.dataType.split('@')[0]; // Extract symbol from dataType
-          const fundingData = this.getBingXFundingRate(symbolForLookup);
+          const fundingData = this.getFundingRate('BINGX', symbolForLookup);
           fundingRate = fundingData.fundingRate;
           nextFundingTime = fundingData.nextFundingTime;
 
@@ -1172,57 +1238,102 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Fetch BingX funding rates via REST API
-   * BingX doesn't include funding rates in ticker WebSocket, so we need a separate call
+   * Fetch funding rates for both exchanges from optimized endpoint
+   * Uses the new /api/arbitrage/public-funding-rates endpoint which returns only needed data
    */
-  private async fetchBingXFundingRates(): Promise<void> {
+  private async fetchFundingRates(): Promise<void> {
     try {
-      console.log('[ArbitrageChart] Fetching BingX funding rates...');
-      const token = this.authService.authState().token;
-      if (!token) {
-        console.warn('[ArbitrageChart] No auth token available, cannot fetch BingX funding rates');
+      const currentSymbol = this.symbol();
+      const primaryEx = this.primaryExchange().toUpperCase();
+      const hedgeEx = this.hedgeExchange().toUpperCase();
+
+      if (!currentSymbol || !primaryEx || !hedgeEx) {
+        console.warn('[ArbitrageChart] Missing symbol or exchange data, skipping funding rates fetch');
         return;
       }
 
-      const headers = new HttpHeaders({
-        'Authorization': `Bearer ${token}`
-      });
+      console.log(`[ArbitrageChart] Fetching funding rates for ${primaryEx} and ${hedgeEx} - ${currentSymbol}`);
 
-      const url = getEndpointUrl('bingx', 'fundingRates');
-      const response = await this.http.get<any>(url, { headers }).toPromise();
+      // Use the new optimized endpoint - only fetch data for needed exchanges
+      const exchanges = [primaryEx, hedgeEx];
+      const fundingRates = await lastValueFrom(
+        this.fundingRatesService.getArbitrageFundingRates(exchanges, currentSymbol)
+      );
 
-      if (response?.success && response?.data) {
-        console.log(`[ArbitrageChart] Received ${response.data.length} BingX funding rates`);
+      console.log(`[ArbitrageChart] Received ${fundingRates.length} funding rates`);
 
-        // Store funding rates in map for quick lookup
-        this.bingxFundingRates.clear();
-        response.data.forEach((item: any) => {
-          this.bingxFundingRates.set(item.symbol, {
-            fundingRate: item.fundingRate,
-            fundingTime: item.fundingTime
-          });
+      // Store all rates in map with exchange-symbol as key
+      this.fundingRatesMap.clear();
+      fundingRates.forEach(rate => {
+        const key = `${rate.exchange}-${rate.symbol}`;
+        this.fundingRatesMap.set(key, {
+          fundingRate: rate.fundingRate,
+          fundingTime: rate.nextFundingTime,
+          fundingInterval: rate.fundingInterval // e.g., "8h", "4h", "1h" - from DB
         });
 
-        console.log(`[ArbitrageChart] Stored ${this.bingxFundingRates.size} BingX funding rates in map`);
-      } else {
-        console.warn('[ArbitrageChart] Invalid BingX funding rates response:', response);
+        console.log(`[ArbitrageChart] Stored funding rate: ${key}`, {
+          rate: rate.fundingRate,
+          interval: rate.fundingInterval,
+          nextTime: new Date(rate.nextFundingTime).toISOString()
+        });
+      });
+
+      // Update primary exchange data
+      const primaryData = this.getFundingRate(primaryEx, currentSymbol);
+      if (primaryData.fundingRate && primaryData.nextFundingTime && primaryData.fundingInterval) {
+        console.log('[ArbitrageChart] Updating primary with funding data:', primaryData);
+        this.updatePrimaryData(
+          this.primaryData().price || 0,
+          primaryData.fundingRate,
+          primaryData.nextFundingTime
+        );
+      }
+
+      // Update hedge exchange data
+      const hedgeData = this.getFundingRate(hedgeEx, currentSymbol);
+      if (hedgeData.fundingRate && hedgeData.nextFundingTime && hedgeData.fundingInterval) {
+        console.log('[ArbitrageChart] Updating hedge with funding data:', hedgeData);
+        this.updateHedgeData(
+          this.hedgeData().price || 0,
+          hedgeData.fundingRate,
+          hedgeData.nextFundingTime
+        );
       }
     } catch (error) {
-      console.error('[ArbitrageChart] Failed to fetch BingX funding rates:', error);
+      console.error('[ArbitrageChart] Failed to fetch funding rates:', error);
     }
   }
 
   /**
-   * Get BingX funding rate for a symbol
+   * Get funding rate for a specific exchange and symbol
+   * Tries multiple symbol format variations to find a match
    */
-  private getBingXFundingRate(symbol: string): { fundingRate?: string; nextFundingTime?: number } {
-    const fundingData = this.bingxFundingRates.get(symbol);
-    if (fundingData) {
-      return {
-        fundingRate: fundingData.fundingRate,
-        nextFundingTime: fundingData.fundingTime
-      };
+  private getFundingRate(exchange: string, symbol: string): { fundingRate?: string; nextFundingTime?: number; fundingInterval?: string } {
+    // Try multiple symbol format variations
+    const symbolVariations = [
+      symbol,                              // Original (e.g., "BTC-USDT" or "BTCUSDT")
+      symbol.replace(/-/g, ''),           // Remove hyphens: BTC-USDT -> BTCUSDT
+      symbol.replace(/USDT$/, '-USDT'),   // Add hyphen before USDT: BTCUSDT -> BTC-USDT
+      symbol.replace(/-/g, '').replace(/USDT$/, 'USDT'), // Normalize: any format -> BTCUSDT
+      symbol.replace(/USDT$/, '/USDT'),   // Slash format: BTCUSDT -> BTC/USDT
+      symbol.replace(/-/g, '/'),          // Convert hyphens to slashes: BTC-USDT -> BTC/USDT
+    ];
+
+    for (const variant of symbolVariations) {
+      const key = `${exchange}-${variant}`;
+      const fundingData = this.fundingRatesMap.get(key);
+      if (fundingData) {
+        console.log(`[ArbitrageChart] Found funding for ${exchange} symbol "${symbol}" using variant "${variant}"`);
+        return {
+          fundingRate: fundingData.fundingRate,
+          nextFundingTime: fundingData.fundingTime,
+          fundingInterval: fundingData.fundingInterval // From DB/API
+        };
+      }
     }
+
+    console.warn(`[ArbitrageChart] Funding rate not found for ${exchange} ${symbol} (tried ${symbolVariations.length} variants)`);
     return {};
   }
 
@@ -1355,12 +1466,22 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousPrimaryFundingTime = nextFundingTime;
     }
 
+    // Get fundingInterval from Map (from DB/API) for any exchange
+    let fundingIntervalStr = this.primaryData().fundingIntervalStr;
+    if (this.primaryExchange() && this.symbol()) {
+      const fundingData = this.getFundingRate(this.primaryExchange().toUpperCase(), this.symbol());
+      if (fundingData.fundingInterval) {
+        fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
+      }
+    }
+
     const updatedData = {
       exchange: this.primaryExchange(),
       price,
       fundingRate: fundingRate || this.primaryData().fundingRate,
       nextFundingTime: nextFundingTime || this.primaryData().nextFundingTime,
       fundingInterval: fundingInterval,
+      fundingIntervalStr: fundingIntervalStr, // From DB/API for BingX
       lastUpdate: new Date()
     };
 
@@ -1436,12 +1557,22 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousHedgeFundingTime = nextFundingTime;
     }
 
+    // Get fundingInterval from Map (from DB/API) for any exchange
+    let fundingIntervalStr = this.hedgeData().fundingIntervalStr;
+    if (this.hedgeExchange() && this.symbol()) {
+      const fundingData = this.getFundingRate(this.hedgeExchange().toUpperCase(), this.symbol());
+      if (fundingData.fundingInterval) {
+        fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
+      }
+    }
+
     const updatedData = {
       exchange: this.hedgeExchange(),
       price,
       fundingRate: fundingRate || this.hedgeData().fundingRate,
       nextFundingTime: nextFundingTime || this.hedgeData().nextFundingTime,
       fundingInterval: fundingInterval,
+      fundingIntervalStr: fundingIntervalStr, // From DB/API for BingX
       lastUpdate: new Date()
     };
 
@@ -1756,7 +1887,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Format funding information in compact format: rate / time / interval
    * Example: -0.6869% / 02:30 / 8h
    */
-  formatFundingInfo(rate: string, nextFundingTime: number): string {
+  formatFundingInfo(rate: string, nextFundingTime: number, fundingIntervalStr?: string): string {
     if (!rate && (!nextFundingTime || nextFundingTime === 0)) return 'N/A';
 
     // Format funding rate
@@ -1770,10 +1901,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Format time remaining as HH:MM
     let timeFormatted = 'N/A';
-    let remaining = 0;
     if (nextFundingTime && nextFundingTime > 0) {
       const now = Date.now();
-      remaining = nextFundingTime - now;
+      const remaining = nextFundingTime - now;
 
       if (remaining <= 0) {
         timeFormatted = '00:00';
@@ -1784,17 +1914,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Calculate funding interval dynamically based on time until next funding
-    // This logic is taken from arbitrage-funding.component.ts to ensure consistency
-    let intervalFormatted = '8h'; // Default
-    if (remaining > 0) {
-      if (remaining <= 1 * 60 * 60 * 1000) {
-        intervalFormatted = '1h';
-      } else if (remaining <= 4 * 60 * 60 * 1000) {
-        intervalFormatted = '4h';
-      }
-      // else keep default '8h'
-    }
+    // Use funding interval from API/DB if available, otherwise default to 8h
+    const intervalFormatted = fundingIntervalStr || '8h';
 
     return `${rateFormatted} / ${timeFormatted} / ${intervalFormatted}`;
   }
@@ -2430,7 +2551,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         return `https://bingx.com/en/perpetual/${bingxSymbol}`;
       case 'MEXC':
         const mexcSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
-        return `https://www.mexc.com/exchange/${mexcSymbol}`;
+        return `https://www.mexc.com/uk-UA/futures/${mexcSymbol}`;
       case 'GATEIO':
         const gateioSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT').replace(/USDC$/, '_USDC');
         return `https://www.gate.com/uk/futures/USDT/${gateioSymbol}`;
@@ -2719,7 +2840,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Content-Type': 'application/json'
       });
 
-      const url = getEndpointUrl('arbitrage', 'graduatedEntryStop');
+      const url = getEndpointUrl('arbitrage', 'spotFuturesStop');
 
       const response = await this.http.post<any>(url, { positionId }, { headers }).toPromise();
 
@@ -2762,7 +2883,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Content-Type': 'application/json'
       });
 
-      const url = 'http://localhost:3000/api/arbitrage/graduated-entry';
+      const url = 'http://localhost:3000/api/arbitrage/positions';
 
       const response = await this.http.patch<any>(url, {
         positionId: position.positionId,
@@ -2831,7 +2952,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Content-Type': 'application/json'
       });
 
-      const url = getEndpointUrl('arbitrage', 'graduatedEntrySetTpSl');
+      const url = getEndpointUrl('arbitrage', 'spotFuturesSetTpSl');
 
       const response = await this.http.post<any>(url, { positionId }, { headers }).toPromise();
 

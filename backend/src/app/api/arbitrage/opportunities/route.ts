@@ -7,6 +7,41 @@ import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
 import { calculateRealisticROI, calculateOpportunityConfidence, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
 
 /**
+ * Get default funding interval for an exchange
+ * Most exchanges use 8h intervals (3 times per day)
+ */
+function getDefaultFundingInterval(exchange: string): string {
+  const intervals: Record<string, string> = {
+    'BINANCE': '8h',
+    'BYBIT': '8h',
+    'BINGX': '8h',
+    'OKX': '8h',
+    'GATEIO': '8h',
+    'MEXC': '8h',
+  };
+  return intervals[exchange.toUpperCase()] || '8h';
+}
+
+/**
+ * Normalize funding rate to 8-hour interval for fair comparison
+ *
+ * @param fundingRate - Original funding rate as decimal (e.g., 0.0001)
+ * @param fundingInterval - Funding interval (e.g., "8h", "4h", "1h")
+ * @returns Normalized funding rate to 8h interval as decimal
+ */
+function normalizeFundingRateTo8h(fundingRate: number, fundingInterval: string): number {
+  // Normalization multipliers to convert to 8h interval
+  const multipliers: Record<string, number> = {
+    '1h': 8,   // 8 hourly payments = 1 eight-hour period
+    '4h': 2,   // 2 four-hour payments = 1 eight-hour period
+    '8h': 1,   // Already 8h interval
+  };
+
+  const multiplier = multipliers[fundingInterval] || 1;
+  return fundingRate * multiplier;
+}
+
+/**
  * GET /api/arbitrage/opportunities
  *
  * Fetches current prices from all active exchange credentials and identifies price arbitrage opportunities.
@@ -267,7 +302,8 @@ export async function GET(request: NextRequest) {
     });
 
     // 6. Fetch funding rates for all exchanges and symbols
-    const fundingRateMap: Map<string, Map<string, number>> = new Map(); // Map<exchange, Map<symbol, fundingRate>>
+    // Map<exchange, Map<symbol, {rate: number, interval: string}>>
+    const fundingRateMap: Map<string, Map<string, {rate: number, interval: string}>> = new Map();
     console.log(`[PriceOpportunities] Fetching funding rates...`);
 
     for (const result of validResults) {
@@ -287,17 +323,19 @@ export async function GET(request: NextRequest) {
           });
 
           const tickers = await bybitService.getTicker('linear');
-          const symbolFundingMap = new Map<string, number>();
+          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
+          const fundingInterval = getDefaultFundingInterval(result.exchange);
 
           tickers.forEach((t) => {
             if (t.fundingRate) {
-              const fundingRatePercent = parseFloat(t.fundingRate) * 100; // Convert to percentage
-              symbolFundingMap.set(t.symbol, fundingRatePercent);
+              const fundingRateDecimal = parseFloat(t.fundingRate); // Keep as decimal for normalization
+              const fundingRatePercent = fundingRateDecimal * 100; // Convert to percentage
+              symbolFundingMap.set(t.symbol, { rate: fundingRatePercent, interval: fundingInterval });
             }
           });
 
           fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BYBIT`);
+          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BYBIT (${fundingInterval})`);
 
         } else if (result.exchange === 'BINGX') {
           const credential = validActiveCredentials.find(c => c.id === result.credentialId);
@@ -312,18 +350,20 @@ export async function GET(request: NextRequest) {
 
           await bingxService.syncTime();
           const rates = await bingxService.getAllFundingRates();
-          const symbolFundingMap = new Map<string, number>();
+          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
+          const fundingInterval = getDefaultFundingInterval(result.exchange);
 
           rates.forEach((r) => {
             if (r.fundingRate) {
-              const fundingRatePercent = parseFloat(r.fundingRate) * 100; // Convert to percentage
+              const fundingRateDecimal = parseFloat(r.fundingRate); // Keep as decimal for normalization
+              const fundingRatePercent = fundingRateDecimal * 100; // Convert to percentage
               const normalizedSymbol = r.symbol.replace(/-/g, ''); // BTC-USDT -> BTCUSDT
-              symbolFundingMap.set(normalizedSymbol, fundingRatePercent);
+              symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval: fundingInterval });
             }
           });
 
           fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX`);
+          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX (${fundingInterval})`);
         }
       } catch (error: any) {
         console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
@@ -362,8 +402,12 @@ export async function GET(request: NextRequest) {
       const primaryFundingMap = fundingRateMap.get(primaryExchangeName);
       const hedgeFundingMap = fundingRateMap.get(hedgeExchangeName);
 
-      const primaryFundingRate = primaryFundingMap?.get(symbol);
-      const hedgeFundingRate = hedgeFundingMap?.get(symbol);
+      const primaryFundingData = primaryFundingMap?.get(symbol);
+      const hedgeFundingData = hedgeFundingMap?.get(symbol);
+
+      // Extract rates for display (original rates in %)
+      const primaryFundingRate = primaryFundingData?.rate;
+      const hedgeFundingRate = hedgeFundingData?.rate;
 
       // Calculate funding differential (if both funding rates available)
       let fundingDifferential: number | undefined;
@@ -373,14 +417,32 @@ export async function GET(request: NextRequest) {
       let realisticMetricsData: any = undefined;
       let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
-      if (primaryFundingRate !== undefined && hedgeFundingRate !== undefined) {
+      if (primaryFundingData && hedgeFundingData) {
         // PRIMARY (higher price) = SHORT = we RECEIVE funding if positive, PAY if negative
         // HEDGE (lower price) = LONG = we PAY funding if positive, RECEIVE if negative
 
-        // Net funding = what we receive on SHORT - what we pay on LONG
+        // CRITICAL: Normalize funding rates to 8h interval before calculating differential
+        // Example: GATEIO -1.587% per 1h → -1.587% × 8 = -12.696% per 8h
+        //          BINGX 0.0152% per 8h → 0.0152% × 1 = 0.0152% per 8h
+        const primaryNormalized = normalizeFundingRateTo8h(
+          primaryFundingData.rate / 100, // Convert % to decimal
+          primaryFundingData.interval
+        ) * 100; // Convert back to %
+
+        const hedgeNormalized = normalizeFundingRateTo8h(
+          hedgeFundingData.rate / 100, // Convert % to decimal
+          hedgeFundingData.interval
+        ) * 100; // Convert back to %
+
+        console.log(`[PriceOpportunities] ${symbol} funding normalization:`);
+        console.log(`  Primary (${primaryExchangeName}): ${primaryFundingData.rate.toFixed(4)}% (${primaryFundingData.interval}) → ${primaryNormalized.toFixed(4)}% (8h)`);
+        console.log(`  Hedge (${hedgeExchangeName}): ${hedgeFundingData.rate.toFixed(4)}% (${hedgeFundingData.interval}) → ${hedgeNormalized.toFixed(4)}% (8h)`);
+
+        // Net funding = what we receive on SHORT - what we pay on LONG (using normalized rates)
         // If PRIMARY funding is +0.01% and HEDGE funding is +0.01%, we pay 0 net (both cancel)
         // If PRIMARY funding is +0.05% and HEDGE funding is +0.01%, we receive +0.04% net
-        fundingDifferential = primaryFundingRate - hedgeFundingRate;
+        fundingDifferential = primaryNormalized - hedgeNormalized;
+        console.log(`  Funding differential (normalized): ${fundingDifferential.toFixed(4)}%`);
 
         // Calculate realistic ROI based on historical data
         const primaryExchangeEnum = primaryExchangeName as any; // Convert string to Exchange enum

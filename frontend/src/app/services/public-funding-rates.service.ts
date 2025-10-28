@@ -36,6 +36,53 @@ export class PublicFundingRatesService {
   ) {}
 
   /**
+   * Fetch funding rates for specific exchanges and symbol
+   * Optimized endpoint for arbitrage chart - returns only needed data
+   *
+   * @param exchanges - Array of exchange names (e.g., ['GATEIO', 'BINGX'])
+   * @param symbol - Trading symbol (e.g., 'AVNTUSDT')
+   * @returns Observable of funding rate data for specified exchanges
+   */
+  getArbitrageFundingRates(exchanges: string[], symbol: string): Observable<Array<{
+    exchange: string;
+    symbol: string;
+    fundingRate: string;
+    nextFundingTime: number;
+    fundingInterval: string;
+  }>> {
+    const exchangesParam = exchanges.join(',');
+    const url = `/api/arbitrage/public-funding-rates?exchanges=${exchangesParam}&symbol=${symbol}`;
+
+    console.log(`[PublicFundingRatesService] Fetching funding rates for ${exchanges.join(', ')} - ${symbol}`);
+
+    return this.http.get<{
+      success: boolean;
+      data: Array<{
+        exchange: string;
+        symbol: string;
+        fundingRate: string;
+        nextFundingTime: number;
+        fundingInterval: string;
+      }>;
+      timestamp: string;
+    }>(url).pipe(
+      map(response => {
+        if (!response.success) {
+          console.error('[PublicFundingRatesService] API error:', response);
+          return [];
+        }
+
+        console.log(`[PublicFundingRatesService] Received ${response.data.length} funding rates`);
+        return response.data;
+      }),
+      catchError(error => {
+        console.error('[PublicFundingRatesService] Error fetching arbitrage funding rates:', error);
+        return of([]);
+      })
+    );
+  }
+
+  /**
    * Fetch funding rates from all supported exchanges
    * Returns array of opportunities sorted by funding spread
    *
@@ -120,7 +167,7 @@ export class PublicFundingRatesService {
             fundingRate: t.fundingRate,
             nextFundingTime: parseInt(t.nextFundingTime) || 0,
             lastPrice: t.lastPrice,
-            fundingInterval: '8h', // Bybit uses 8h intervals
+            fundingInterval: t.fundingIntervalHour ? `${t.fundingIntervalHour}h` : '8h', // Use API-provided interval
             volume24h: t.turnover24h, // Bybit uses 'turnover24h' for volume in USDT
             openInterest: t.openInterest,
             high24h: t.highPrice24h,
@@ -162,7 +209,7 @@ export class PublicFundingRatesService {
             fundingRate: p.lastFundingRate,
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
             lastPrice: p.markPrice,
-            fundingInterval: '8h', // Binance uses 8h intervals
+            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
             volume24h: '0', // Not provided in premium index endpoint
             openInterest: '0', // Not provided in premium index endpoint
             high24h: '0',
@@ -205,7 +252,7 @@ export class PublicFundingRatesService {
             fundingRate: p.lastFundingRate,
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
             lastPrice: p.markPrice,
-            fundingInterval: '8h', // BingX uses 8h intervals
+            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
             volume24h: p.volume24h,
             openInterest: p.openInterest,
             high24h: p.high24h,
@@ -253,7 +300,7 @@ export class PublicFundingRatesService {
             fundingRate: t.fundingRate.toString(),
             nextFundingTime: 0, // MEXC doesn't provide nextFundingTime in tickers
             lastPrice: t.lastPrice > 0 ? t.lastPrice.toString() : t.fairPrice.toString(),
-            fundingInterval: '8h', // MEXC uses 8h intervals
+            fundingInterval: t.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
             volume24h: t.volume24 ? t.volume24.toString() : undefined,
             openInterest: t.holdVol ? t.holdVol.toString() : undefined,
             high24h: t.high24Price ? t.high24Price.toString() : undefined,
@@ -301,7 +348,7 @@ export class PublicFundingRatesService {
             fundingRate: c.funding_rate,
             nextFundingTime: parseInt(c.funding_next_apply) * 1000 || 0, // Convert to ms
             lastPrice: c.last_price,
-            fundingInterval: '8h', // Gate.io uses 8h intervals
+            fundingInterval: c.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
             volume24h: c.trade_size,
             openInterest: c.position_size,
             high24h: undefined,
@@ -347,7 +394,7 @@ export class PublicFundingRatesService {
             fundingRate: fr.fundingRate,
             nextFundingTime: parseInt(fr.nextUpdate) || 0,
             lastPrice: '0', // Bitget funding rate endpoint doesn't include price, will be 0
-            fundingInterval: '8h', // Bitget uses 8h intervals
+            fundingInterval: fr.fundingRateInterval ? `${fr.fundingRateInterval}h` : '8h', // Use API-provided interval
             volume24h: undefined,
             openInterest: undefined,
             high24h: undefined,
@@ -362,17 +409,75 @@ export class PublicFundingRatesService {
   }
 
   /**
+   * Calculate funding interval based on time until next funding
+   * Uses REAL data from exchange API instead of hardcoded assumptions
+   */
+  private calculateFundingInterval(nextFundingTime: number): string {
+    const now = Date.now();
+    const timeUntilFunding = nextFundingTime - now;
+
+    if (timeUntilFunding <= 0) {
+      return '8h'; // Default if funding time is in the past
+    }
+
+    const hoursUntilFunding = timeUntilFunding / (1000 * 60 * 60);
+
+    // Determine interval based on actual time until next funding
+    if (hoursUntilFunding <= 1.5) {
+      return '1h';  // GATEIO, some MEXC symbols
+    } else if (hoursUntilFunding <= 5) {
+      return '4h';  // Some MEXC symbols
+    } else {
+      return '8h';  // BYBIT, BINANCE, BINGX, OKX, most symbols
+    }
+  }
+
+  /**
+   * Normalize funding rate to 8-hour interval for fair comparison
+   * Different exchanges use different intervals (1h, 4h, 8h)
+   */
+  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval: string = '8h'): number {
+    const rate = parseFloat(fundingRate);
+
+    // Normalization multipliers to convert to 8h interval
+    const multipliers: Record<string, number> = {
+      '1h': 8,   // 8 hourly payments = 1 eight-hour period
+      '4h': 2,   // 2 four-hour payments = 1 eight-hour period
+      '8h': 1,   // Already 8h interval
+    };
+
+    const multiplier = multipliers[fundingInterval] || 1;
+    return rate * multiplier;
+  }
+
+  /**
    * Calculate arbitrage opportunities from exchange data
    * Groups by symbol and calculates spreads
+   * IMPORTANT: Normalizes all funding rates to 8h intervals for fair comparison
    */
   private calculateOpportunities(rates: ExchangeFundingRate[]): FundingRateOpportunity[] {
     // Group by normalized symbol
     const symbolMap = new Map<string, ExchangeFundingRate[]>();
 
+    // Add normalized funding rates and calculate intervals based on real data
     rates.forEach(rate => {
       if (!symbolMap.has(rate.symbol)) {
         symbolMap.set(rate.symbol, []);
       }
+
+      // Calculate funding interval from actual nextFundingTime (not hardcoded!)
+      if (!rate.fundingInterval && rate.nextFundingTime) {
+        rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
+      }
+
+      // Normalize funding rate to 8h interval using calculated interval
+      rate.fundingRateNormalized = this.normalizeFundingRateTo8h(
+        rate.fundingRate,
+        rate.fundingInterval || '8h'
+      );
+
+      console.log(`[FundingInterval] ${rate.exchange} ${rate.symbol}: interval=${rate.fundingInterval}, nextFunding=${new Date(rate.nextFundingTime).toLocaleTimeString()}, rate=${rate.fundingRate}, normalized=${rate.fundingRateNormalized.toFixed(6)}`);
+
       symbolMap.get(rate.symbol)!.push(rate);
     });
 
@@ -383,16 +488,16 @@ export class PublicFundingRatesService {
       // Skip symbols with only one exchange
       if (exchanges.length < 2) return;
 
-      // Sort by funding rate (lowest to highest)
+      // Sort by NORMALIZED funding rate (lowest to highest) - CRITICAL for fair comparison!
       const sortedExchanges = [...exchanges].sort(
-        (a, b) => parseFloat(a.fundingRate) - parseFloat(b.fundingRate)
+        (a, b) => (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
       );
 
-      const bestLong = sortedExchanges[0]; // Lowest (most negative) funding rate
-      const bestShort = sortedExchanges[sortedExchanges.length - 1]; // Highest funding rate
+      const bestLong = sortedExchanges[0]; // Lowest (most negative) normalized funding rate
+      const bestShort = sortedExchanges[sortedExchanges.length - 1]; // Highest normalized funding rate
 
-      // Calculate funding spread
-      const fundingSpread = parseFloat(bestShort.fundingRate) - parseFloat(bestLong.fundingRate);
+      // Calculate funding spread using NORMALIZED rates
+      const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
       const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
 
       // Calculate price spread
@@ -454,20 +559,20 @@ export class PublicFundingRatesService {
       let recommendedStrategy: 'cross-exchange' | 'spot-futures' = 'cross-exchange';
       let spotFuturesBestExchange: ExchangeFundingRate | undefined;
 
-      const bestLongFunding = parseFloat(bestLong.fundingRate);
-      const bestShortFunding = parseFloat(bestShort.fundingRate);
+      const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
+      const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
 
       // If BOTH funding rates are positive, spot-futures is more profitable
       // Spot-futures: Buy spot + Short futures on same exchange = earn full funding rate
       // Cross-exchange: Short on high funding - Long on low funding = earn only the spread
-      if (bestLongFunding > 0 && bestShortFunding > 0) {
+      if (bestLongFundingNormalized > 0 && bestShortFundingNormalized > 0) {
         recommendedStrategy = 'spot-futures';
         // Choose exchange with highest funding rate for spot-futures
         spotFuturesBestExchange = bestShort; // Highest funding rate
-        console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both fundings positive: ${bestLongFunding.toFixed(4)}%, ${bestShortFunding.toFixed(4)}%)`);
+        console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both normalized fundings positive: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
       } else {
         recommendedStrategy = 'cross-exchange';
-        console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (fundings: ${bestLongFunding.toFixed(4)}%, ${bestShortFunding.toFixed(4)}%)`);
+        console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
       }
 
       // 9. Combined Strategy Metrics (price spread + funding differential)
@@ -517,8 +622,10 @@ export class PublicFundingRatesService {
       opportunities.push({
         symbol,
         exchanges: sortedExchanges,
-        maxFundingSpread: fundingSpread,
-        maxFundingSpreadPercent: fundingSpreadPercent + '%',
+        maxFundingSpread: fundingSpread, // LEGACY - kept for backward compatibility
+        maxFundingSpreadPercent: fundingSpreadPercent + '%', // LEGACY
+        fundingSpread: fundingSpread, // Normalized funding spread (8h basis)
+        fundingSpreadPercent: fundingSpreadPercent + '%', // Normalized funding spread percentage
         bestLong,
         bestShort,
         priceSpread,
@@ -551,8 +658,8 @@ export class PublicFundingRatesService {
       });
     });
 
-    // Sort by funding spread (highest first)
-    opportunities.sort((a, b) => Math.abs(b.maxFundingSpread) - Math.abs(a.maxFundingSpread));
+    // Sort by NORMALIZED funding spread (highest first) - uses fundingSpread which is now normalized
+    opportunities.sort((a, b) => Math.abs((b.fundingSpread || 0)) - Math.abs((a.fundingSpread || 0)));
 
     console.log(`[PublicFundingRates] Calculated ${opportunities.length} opportunities`);
 

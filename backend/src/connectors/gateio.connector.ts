@@ -12,6 +12,7 @@ export class GateIOConnector extends BaseExchangeConnector {
   private apiKey: string;
   private apiSecret: string;
   private leverageCache: Map<string, number> = new Map(); // Cache leverage per symbol
+  public expectedPositionSize?: number; // Optional: expected position size from database (for fallback when API fails)
 
   constructor(apiKey: string, apiSecret: string) {
     super();
@@ -103,6 +104,37 @@ export class GateIOConnector extends BaseExchangeConnector {
       return contractQuantity;
     } catch (error: any) {
       console.error(`[GateIOConnector] Error converting quantity for ${contract}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Round price to contract's tick size
+   * SINGLE RESPONSIBILITY: Price formatting only, NO business logic
+   *
+   * @param contract - Contract name (e.g., "BTC_USDT")
+   * @param price - Price to round
+   * @returns Price rounded to the contract's tick size
+   */
+  private async roundPriceToTickSize(contract: string, price: number): Promise<number> {
+    try {
+      // Fetch contract details to get order_price_round
+      const contractDetails = await this.gateioService.getContractDetails(contract);
+      const tickSize = parseFloat(contractDetails.order_price_round);
+
+      console.log(`[GateIOConnector] Rounding price ${price} to tick size ${tickSize}`);
+
+      // Round to nearest tick size
+      const roundedPrice = Math.round(price / tickSize) * tickSize;
+
+      // Ensure the rounded price has the correct precision
+      const decimalPlaces = tickSize.toString().split('.')[1]?.length || 0;
+      const finalPrice = parseFloat(roundedPrice.toFixed(decimalPlaces));
+
+      console.log(`[GateIOConnector] Price ${price} rounded to ${finalPrice} (tick size: ${tickSize})`);
+      return finalPrice;
+    } catch (error: any) {
+      console.error(`[GateIOConnector] Error rounding price for ${contract}:`, error.message);
       throw error;
     }
   }
@@ -420,6 +452,9 @@ export class GateIOConnector extends BaseExchangeConnector {
    * Set take-profit and stop-loss for an existing position
    * Gate.io doesn't have a direct setTradingStop endpoint like Bybit
    * Instead, we need to place price-triggered conditional orders
+   *
+   * IMPORTANT: This method now checks for existing TP/SL orders and cancels them
+   * before placing new ones to avoid duplicate orders or API errors.
    */
   async setTradingStop(params: {
     symbol: string;
@@ -462,27 +497,118 @@ export class GateIOConnector extends BaseExchangeConnector {
 
     try {
       // First, check if there's an open position
-      const position = await this.getPosition(params.symbol);
+      // If the position check fails due to network issues, we'll continue anyway
+      // (graduated entry system may have already created the position)
+      let positionSize = 0;
+      let isLongPosition = false;
+      let isShortPosition = false;
+      let absoluteSize = 0;
 
-      if (!position || position.size === 0) {
-        throw new Error(
-          `No open position found for ${contract}. ` +
-          `Please open a position first before setting take-profit or stop-loss.`
-        );
+      try {
+        const position = await this.getPosition(params.symbol);
+
+        console.log(`[GateIOConnector] getPosition returned:`, {
+          contract,
+          position,
+          size: position?.size,
+          hasPosition: !!position,
+        });
+
+        if (!position || position.size === 0) {
+          console.warn(`[GateIOConnector] Position not found or size is 0 for ${contract}`);
+          console.warn(`[GateIOConnector] Expected position size from DB: ${this.expectedPositionSize}`);
+
+          // If we have expectedPositionSize, use it as fallback
+          if (this.expectedPositionSize && this.expectedPositionSize > 0) {
+            console.log(`[GateIOConnector] Using expectedPositionSize as fallback: ${this.expectedPositionSize}`);
+            absoluteSize = this.expectedPositionSize;
+            isLongPosition = params.side === 'long' || params.side === 'Buy';
+            isShortPosition = params.side === 'short' || params.side === 'Sell';
+            // Skip the throw, continue with TP/SL setup
+          } else {
+            throw new Error(
+              `No open position found for ${contract}. ` +
+              `Please open a position first before setting take-profit or stop-loss.`
+            );
+          }
+        } else {
+          positionSize = position.size;
+          isLongPosition = positionSize > 0;
+          isShortPosition = positionSize < 0;
+          absoluteSize = Math.abs(positionSize);
+
+          console.log(`[GateIOConnector] Current position for ${contract}:`, {
+            size: positionSize,
+            absoluteSize,
+            isLong: isLongPosition,
+            isShort: isShortPosition,
+            entryPrice: position.entry_price,
+          });
+        }
+      } catch (positionError: any) {
+        // If position check fails due to network error, log warning but continue
+        // This allows setting TP/SL even if GateIO API is temporarily unavailable
+        if (positionError.message?.includes('fetch failed') ||
+            positionError.message?.includes('timeout') ||
+            positionError.message?.includes('ECONNREFUSED')) {
+          console.warn(`[GateIOConnector] Position check failed due to network error: ${positionError.message}`);
+          console.warn(`[GateIOConnector] Continuing with TP/SL setup anyway (assuming position exists from graduated entry)`);
+
+          // Use params.side to determine position direction
+          isLongPosition = params.side === 'long' || params.side === 'Buy';
+          isShortPosition = params.side === 'short' || params.side === 'Sell';
+          // Try to use expectedPositionSize if provided, otherwise use a fallback
+          if (this.expectedPositionSize && this.expectedPositionSize > 0) {
+            absoluteSize = this.expectedPositionSize;
+            console.log(`[GateIOConnector] Using expectedPositionSize from database: ${absoluteSize}`);
+          } else {
+            // Fallback: use a large number that will be auto-capped by reduce_only
+            absoluteSize = 999999999;
+            console.warn(`[GateIOConnector] No expectedPositionSize provided, using fallback value: ${absoluteSize}`);
+          }
+        } else {
+          // Re-throw if it's not a network error
+          throw positionError;
+        }
       }
 
-      const positionSize = position.size;
-      const isLongPosition = positionSize > 0;
-      const isShortPosition = positionSize < 0;
-      const absoluteSize = Math.abs(positionSize);
+      // IMPORTANT FIX: Check for existing TP/SL orders and cancel them first
+      // This prevents duplicate orders or API errors when setting TP/SL multiple times
+      console.log(`[GateIOConnector] Checking for existing TP/SL orders for ${contract}...`);
 
-      console.log(`[GateIOConnector] Current position for ${contract}:`, {
-        size: positionSize,
-        absoluteSize,
-        isLong: isLongPosition,
-        isShort: isShortPosition,
-        entryPrice: position.entry_price,
-      });
+      try {
+        const existingOrders = await this.gateioService.getPriceOrders(contract, 'open');
+        const tpOrders = existingOrders.filter(o => o.initial?.text === 'TP');
+        const slOrders = existingOrders.filter(o => o.initial?.text === 'SL');
+
+        if (tpOrders.length > 0 || slOrders.length > 0) {
+          console.log(`[GateIOConnector] Found ${tpOrders.length} TP and ${slOrders.length} SL orders - cancelling them first`);
+
+          // Cancel existing TP orders
+          for (const order of tpOrders) {
+            try {
+              await this.gateioService.cancelPriceOrder(order.id.toString());
+              console.log(`[GateIOConnector] Cancelled existing TP order: ${order.id}`);
+            } catch (cancelError: any) {
+              console.warn(`[GateIOConnector] Failed to cancel TP order ${order.id}:`, cancelError.message);
+            }
+          }
+
+          // Cancel existing SL orders
+          for (const order of slOrders) {
+            try {
+              await this.gateioService.cancelPriceOrder(order.id.toString());
+              console.log(`[GateIOConnector] Cancelled existing SL order: ${order.id}`);
+            } catch (cancelError: any) {
+              console.warn(`[GateIOConnector] Failed to cancel SL order ${order.id}:`, cancelError.message);
+            }
+          }
+        } else {
+          console.log(`[GateIOConnector] No existing TP/SL orders found for ${contract}`);
+        }
+      } catch (listError: any) {
+        console.warn(`[GateIOConnector] Failed to check existing orders (continuing anyway):`, listError.message);
+      }
 
       // Determine the closing side based on position
       // For LONG positions (size > 0), we need to SELL (ask) to exit
@@ -497,6 +623,10 @@ export class GateIOConnector extends BaseExchangeConnector {
       if (params.takeProfit) {
         console.log(`[GateIOConnector] Placing take-profit order at $${params.takeProfit}`);
 
+        // Round TP price to contract's tick size to avoid precision errors
+        const roundedTakeProfit = await this.roundPriceToTickSize(contract, params.takeProfit);
+        console.log(`[GateIOConnector] Rounded take-profit: ${params.takeProfit} → ${roundedTakeProfit}`);
+
         // For LONG: TP triggers when price >= takeProfit (price goes up)
         // For SHORT: TP triggers when price <= takeProfit (price goes down)
         // Gate.io uses strategy_type 0 (by price) and price_type 0 (last price)
@@ -509,7 +639,7 @@ export class GateIOConnector extends BaseExchangeConnector {
           trigger: {
             strategy_type: 0, // 0 = by price
             price_type: 0, // 0 = last price
-            price: params.takeProfit.toString(),
+            price: roundedTakeProfit.toString(),
             rule: isLongPosition ? 1 : 2, // LONG: price >= TP (rule=1), SHORT: price <= TP (rule=2)
           },
           put: {
@@ -527,6 +657,10 @@ export class GateIOConnector extends BaseExchangeConnector {
       if (params.stopLoss) {
         console.log(`[GateIOConnector] Placing stop-loss order at $${params.stopLoss}`);
 
+        // Round SL price to contract's tick size to avoid precision errors
+        const roundedStopLoss = await this.roundPriceToTickSize(contract, params.stopLoss);
+        console.log(`[GateIOConnector] Rounded stop-loss: ${params.stopLoss} → ${roundedStopLoss}`);
+
         // For LONG: SL triggers when price <= stopLoss (price goes down)
         // For SHORT: SL triggers when price >= stopLoss (price goes up)
         // Note: In dual mode, cannot use close:true, must specify size + reduce_only
@@ -538,7 +672,7 @@ export class GateIOConnector extends BaseExchangeConnector {
           trigger: {
             strategy_type: 0, // 0 = by price
             price_type: 0, // 0 = last price
-            price: params.stopLoss.toString(),
+            price: roundedStopLoss.toString(),
             rule: isLongPosition ? 2 : 1, // LONG: price <= SL (rule=2), SHORT: price >= SL (rule=1)
           },
           put: {

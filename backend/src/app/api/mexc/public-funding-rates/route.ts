@@ -1,9 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * MEXC Public Funding Rates Proxy
+ * Known MEXC funding intervals (updated from official announcements)
+ * MEXC API doesn't provide intervals in ticker endpoint, so we maintain this list
+ * based on official announcements
+ *
+ * Source: https://www.mexc.com/support/ (funding rate adjustment announcements)
+ * Last updated: 2025-10
+ *
+ * Note: MEXC uses collectCycle field in funding rate history API,
+ * but requires individual requests per symbol (too slow for 800+ symbols)
+ */
+const MEXC_FUNDING_INTERVALS: Record<string, string> = {
+  // 4-hour intervals (announced July 18, 2025)
+  'LAYER_USDT': '4h',
+  'LPT_USDT': '4h',
+  'RVN_USDT': '4h',
+  'DRIFT_USDT': '4h',
+  'ZETA_USDT': '4h',
+  'RDNT_USDT': '4h',
+  'NTRN_USDT': '4h',
+  'AUDIO_USDT': '4h',
+  'BAL_USDT': '4h',
+  'STORJ_USDT': '4h',
+  'ANKR_USDT': '4h',
+  'ALPACA_USDT': '4h',
+  'GTC_USDT': '4h',
+  'OGN_USDT': '4h',
+
+  // Default: 8h for all others (MEXC standard)
+};
+
+/**
+ * MEXC Public Funding Rates Proxy with Funding Intervals
  *
  * Proxies requests to MEXC public API to bypass CORS restrictions
+ * Enriches data with funding intervals based on official MEXC announcements.
  * NO AUTHENTICATION REQUIRED - public endpoint
  *
  * Endpoint: GET /api/mexc/public-funding-rates
@@ -36,20 +68,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = await response.json();
+    const rawData = await response.json();
 
-    if (!data.success || data.code !== 0) {
+    if (!rawData.success || rawData.code !== 0) {
       console.error('[MEXC Public Proxy] API returned error:', {
-        code: data.code,
-        success: data.success,
+        code: rawData.code,
+        success: rawData.success,
       });
-    } else {
-      const tickerCount = Array.isArray(data.data) ? data.data.length : 0;
-      console.log(`[MEXC Public Proxy] Successfully fetched ${tickerCount} tickers`);
     }
 
+    // Enrich data with funding intervals
+    const enrichedData = {
+      ...rawData,
+      data: Array.isArray(rawData.data)
+        ? rawData.data.map((ticker: any) => ({
+            ...ticker,
+            fundingInterval: MEXC_FUNDING_INTERVALS[ticker.symbol] || '8h',
+          }))
+        : []
+    };
+
+    const customIntervals = enrichedData.data.filter((t: any) => t.fundingInterval !== '8h').length;
+    console.log(`[MEXC Public Proxy] Successfully fetched ${enrichedData.data.length} tickers (${customIntervals} with non-8h intervals)`);
+
     // Return with cache headers (30 seconds)
-    return NextResponse.json(data, {
+    return NextResponse.json(enrichedData, {
       headers: {
         'Cache-Control': 'public, max-age=30, s-maxage=30',
       },
