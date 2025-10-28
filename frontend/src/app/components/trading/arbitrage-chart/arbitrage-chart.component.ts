@@ -2840,10 +2840,25 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         'Content-Type': 'application/json'
       });
 
-      // Use the standard close position endpoint
-      const url = getEndpointUrl('arbitrage', 'closePosition').replace(':id', positionId);
+      // Determine position type by ID pattern and use appropriate endpoint
+      // Graduated entry positions: arb_1_TIMESTAMP or similar pattern
+      // Price arbitrage positions: use different pattern
+      let url: string;
+      let requestBody: any;
 
-      const response = await this.http.post<any>(url, {}, { headers }).toPromise();
+      if (positionId.startsWith('arb_')) {
+        // Graduated entry position - use graduated-entry/stop endpoint
+        url = getEndpointUrl('arbitrage', 'graduatedEntry') + '/stop';
+        requestBody = { positionId };
+        console.log('[ArbitrageChart] Using graduated-entry stop endpoint');
+      } else {
+        // Price arbitrage position - use positions/:id/close endpoint
+        url = getEndpointUrl('arbitrage', 'closePosition').replace(':id', positionId);
+        requestBody = {};
+        console.log('[ArbitrageChart] Using price arbitrage close endpoint');
+      }
+
+      const response = await this.http.post<any>(url, requestBody, { headers }).toPromise();
 
       if (response?.success) {
         console.log('[ArbitrageChart] Position stopped successfully:', response.data);
