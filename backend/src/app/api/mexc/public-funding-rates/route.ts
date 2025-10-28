@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+
+const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 
 /**
  * Known MEXC funding intervals (updated from official announcements)
@@ -71,7 +74,60 @@ function calculateNextFundingTime(): number {
  */
 export async function GET(request: NextRequest) {
   try {
-    console.log('[MEXC Public Proxy] Fetching funding rates from MEXC public API...');
+    const now = new Date();
+    const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);
+
+    // Step 1: Check if we have fresh data in DB
+    const cachedCount = await prisma.publicFundingRate.count({
+      where: {
+        exchange: 'MEXC',
+        timestamp: {
+          gte: cacheThreshold,
+        },
+      },
+    });
+
+    console.log(`[MEXC Public] Cache check: ${cachedCount} fresh records (threshold: ${cacheThreshold.toISOString()})`);
+
+    // Step 2: If fresh data exists, return from DB
+    if (cachedCount > 0) {
+      const cachedRates = await prisma.publicFundingRate.findMany({
+        where: {
+          exchange: 'MEXC',
+          timestamp: {
+            gte: cacheThreshold,
+          },
+        },
+        orderBy: {
+          symbol: 'asc',
+        },
+        distinct: ['symbol'], // Get latest record per symbol
+      });
+
+      console.log(`[MEXC Public] Returning ${cachedRates.length} rates from cache`);
+
+      // Transform DB format to MEXC API format
+      const transformedData = {
+        success: true,
+        code: 0,
+        data: cachedRates.map(rate => ({
+          symbol: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
+          fundingRate: rate.fundingRate,
+          fundingInterval: `${rate.fundingInterval}h`,
+          nextFundingTime: rate.nextFundingTime.getTime(),
+        })),
+      };
+
+      return NextResponse.json(transformedData, {
+        headers: {
+          'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+          'X-Data-Source': 'database-cache',
+        },
+      });
+    }
+
+    // Step 3: No fresh data - fetch from MEXC API
+    console.log('[MEXC Public] Cache miss - fetching from API...');
 
     const mexcUrl = 'https://futures.mexc.com/api/v1/contract/ticker';
 
@@ -124,12 +180,47 @@ export async function GET(request: NextRequest) {
     };
 
     const customIntervals = enrichedData.data.filter((t: any) => t.fundingInterval !== '8h').length;
-    console.log(`[MEXC Public Proxy] Successfully fetched ${enrichedData.data.length} tickers (${customIntervals} with non-8h intervals)`);
+    console.log(`[MEXC Public] Successfully fetched ${enrichedData.data.length} tickers (${customIntervals} with non-8h intervals)`);
 
-    // Return with cache headers (30 seconds)
+    // Step 4: Delete old MEXC records and insert new ones (atomic transaction)
+    await prisma.$transaction(async (tx) => {
+      // Delete old records for this exchange
+      const deleted = await tx.publicFundingRate.deleteMany({
+        where: {
+          exchange: 'MEXC',
+        },
+      });
+      console.log(`[MEXC Public] Deleted ${deleted.count} old MEXC records`);
+
+      // Insert new records
+      const createPromises = enrichedData.data.map((ticker: any) => {
+        const symbol = ticker.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
+        const fundingIntervalHours = 1; // MEXC is always 1h
+
+        return tx.publicFundingRate.create({
+          data: {
+            symbol,
+            exchange: 'MEXC',
+            fundingRate: parseFloat(ticker.fundingRate || '0'),
+            nextFundingTime: new Date(ticker.nextFundingTime),
+            fundingInterval: fundingIntervalHours,
+            markPrice: parseFloat(ticker.fairPrice || '0'),
+            indexPrice: parseFloat(ticker.indexPrice || '0'),
+            timestamp: now,
+          },
+        });
+      });
+
+      await Promise.all(createPromises);
+    });
+
+    console.log(`[MEXC Public] Saved ${enrichedData.data.length} rates to database`);
+
+    // Step 5: Return with cache headers
     return NextResponse.json(enrichedData, {
       headers: {
-        'Cache-Control': 'public, max-age=30, s-maxage=30',
+        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+        'X-Data-Source': 'api-fresh',
       },
     });
   } catch (error: any) {
