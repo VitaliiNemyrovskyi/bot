@@ -104,37 +104,44 @@ export async function GET(request: NextRequest) {
     const data = rawData.result?.list || [];
     console.log(`[Bybit Public] Fetched ${data.length} rates from API`);
 
-    // Step 4: Save to database for future requests
-    const savePromises = data.map((item: any) => {
-      const symbol = item.symbol; // BTCUSDT (no separator)
-
-      // Parse funding interval from API
-      // fundingIntervalHour can be a number or string like "8", "1", "4"
-      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
-
-      // Convert symbol format: BTCUSDT → BTC/USDT
-      const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
-
-      return prisma.publicFundingRate.create({
-        data: {
-          symbol: normalizedSymbol,
+    // Step 4: Delete old BYBIT records and insert new ones (atomic transaction)
+    await prisma.$transaction(async (tx) => {
+      // Delete old records for this exchange
+      const deleted = await tx.publicFundingRate.deleteMany({
+        where: {
           exchange: 'BYBIT',
-          fundingRate: parseFloat(item.fundingRate || '0'),
-          nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
-          fundingInterval: fundingIntervalHour,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
         },
-      }).catch(err => {
-        // Ignore duplicate errors (race condition)
-        if (!err.message.includes('Unique constraint')) {
-          console.error(`[Bybit Public] Error saving ${symbol}:`, err.message);
-        }
       });
+      console.log(`[Bybit Public] Deleted ${deleted.count} old BYBIT records`);
+
+      // Insert new records
+      const createPromises = data.map((item: any) => {
+        const symbol = item.symbol; // BTCUSDT (no separator)
+
+        // Parse funding interval from API
+        // fundingIntervalHour can be a number or string like "8", "1", "4"
+        const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
+
+        // Convert symbol format: BTCUSDT → BTC/USDT
+        const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
+
+        return tx.publicFundingRate.create({
+          data: {
+            symbol: normalizedSymbol,
+            exchange: 'BYBIT',
+            fundingRate: parseFloat(item.fundingRate || '0'),
+            nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
+            fundingInterval: fundingIntervalHour,
+            markPrice: parseFloat(item.markPrice || '0'),
+            indexPrice: parseFloat(item.indexPrice || '0'),
+            timestamp: now,
+          },
+        });
+      });
+
+      await Promise.all(createPromises);
     });
 
-    await Promise.all(savePromises);
     console.log(`[Bybit Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return data with funding intervals from API

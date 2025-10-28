@@ -97,28 +97,35 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     console.log(`[Gate.io Public] Fetched ${data?.length || 0} rates from API`);
 
-    // Step 4: Save to database for future requests
-    const savePromises = data.map((contract: any) =>
-      prisma.publicFundingRate.create({
-        data: {
-          symbol: contract.name.replace('_', '/'), // BTC_USDT → BTC/USDT
+    // Step 4: Delete old GATEIO records and insert new ones (atomic transaction)
+    await prisma.$transaction(async (tx) => {
+      // Delete old records for this exchange
+      const deleted = await tx.publicFundingRate.deleteMany({
+        where: {
           exchange: 'GATEIO',
-          fundingRate: parseFloat(contract.funding_rate || '0'),
-          nextFundingTime: new Date(contract.funding_next_apply * 1000),
-          fundingInterval: (contract.funding_interval || 28800) / 3600, // Seconds → hours
-          markPrice: parseFloat(contract.mark_price || '0'),
-          indexPrice: parseFloat(contract.index_price || '0'),
-          timestamp: now,
         },
-      }).catch(err => {
-        // Ignore duplicate errors (race condition)
-        if (!err.message.includes('Unique constraint')) {
-          console.error(`[Gate.io Public] Error saving ${contract.name}:`, err.message);
-        }
-      })
-    );
+      });
+      console.log(`[Gate.io Public] Deleted ${deleted.count} old GATEIO records`);
 
-    await Promise.all(savePromises);
+      // Insert new records
+      const createPromises = data.map((contract: any) =>
+        tx.publicFundingRate.create({
+          data: {
+            symbol: contract.name.replace('_', '/'), // BTC_USDT → BTC/USDT
+            exchange: 'GATEIO',
+            fundingRate: parseFloat(contract.funding_rate || '0'),
+            nextFundingTime: new Date(contract.funding_next_apply * 1000),
+            fundingInterval: (contract.funding_interval || 28800) / 3600, // Seconds → hours
+            markPrice: parseFloat(contract.mark_price || '0'),
+            indexPrice: parseFloat(contract.index_price || '0'),
+            timestamp: now,
+          },
+        })
+      );
+
+      await Promise.all(createPromises);
+    });
+
     console.log(`[Gate.io Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return transformed data with unified format

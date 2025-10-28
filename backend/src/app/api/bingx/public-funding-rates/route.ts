@@ -124,31 +124,38 @@ export async function GET(request: NextRequest) {
     const data = rawData.data || [];
     console.log(`[BingX Public] Fetched ${data.length} rates from API`);
 
-    // Step 4: Save to database for future requests
-    const savePromises = data.map((item: any) => {
-      const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
-      const fundingInterval = BINGX_FUNDING_INTERVALS[item.symbol] || 8; // Hours
-
-      return prisma.publicFundingRate.create({
-        data: {
-          symbol,
+    // Step 4: Delete old BINGX records and insert new ones (atomic transaction)
+    await prisma.$transaction(async (tx) => {
+      // Delete old records for this exchange
+      const deleted = await tx.publicFundingRate.deleteMany({
+        where: {
           exchange: 'BINGX',
-          fundingRate: parseFloat(item.lastFundingRate || '0'),
-          nextFundingTime: new Date(item.nextFundingTime || Date.now()),
-          fundingInterval,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
         },
-      }).catch(err => {
-        // Ignore duplicate errors (race condition)
-        if (!err.message.includes('Unique constraint')) {
-          console.error(`[BingX Public] Error saving ${item.symbol}:`, err.message);
-        }
       });
+      console.log(`[BingX Public] Deleted ${deleted.count} old BINGX records`);
+
+      // Insert new records
+      const createPromises = data.map((item: any) => {
+        const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
+        const fundingInterval = BINGX_FUNDING_INTERVALS[item.symbol] || 8; // Hours
+
+        return tx.publicFundingRate.create({
+          data: {
+            symbol,
+            exchange: 'BINGX',
+            fundingRate: parseFloat(item.lastFundingRate || '0'),
+            nextFundingTime: new Date(item.nextFundingTime || Date.now()),
+            fundingInterval,
+            markPrice: parseFloat(item.markPrice || '0'),
+            indexPrice: parseFloat(item.indexPrice || '0'),
+            timestamp: now,
+          },
+        });
+      });
+
+      await Promise.all(createPromises);
     });
 
-    await Promise.all(savePromises);
     console.log(`[BingX Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return transformed data with funding intervals
