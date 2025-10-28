@@ -33,44 +33,27 @@ const MEXC_FUNDING_INTERVALS: Record<string, string> = {
 
 /**
  * Calculate next funding time for MEXC
- * MEXC funding times (UTC):
- * - 8h interval: 00:00, 08:00, 16:00
- * - 4h interval: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+ * MEXC funding happens EVERY HOUR at :00 (e.g., 19:00, 20:00, 21:00, etc.)
+ * Despite API returning "8h" interval string, actual funding happens hourly
  */
-function calculateNextFundingTime(intervalHours: number): number {
+function calculateNextFundingTime(): number {
   const now = Date.now();
   const nowDate = new Date(now);
 
-  // Get current UTC time components
-  const currentHour = nowDate.getUTCHours();
+  // Get current UTC time
   const currentMinute = nowDate.getUTCMinutes();
   const currentSecond = nowDate.getUTCSeconds();
 
-  // Calculate funding hours based on interval
-  let fundingHours: number[];
-  if (intervalHours === 4) {
-    fundingHours = [0, 4, 8, 12, 16, 20];
-  } else {
-    // Default 8h: 00:00, 08:00, 16:00
-    fundingHours = [0, 8, 16];
-  }
-
-  // Find next funding hour
-  let nextFundingHour = fundingHours.find(hour => hour > currentHour);
-
-  // If no funding hour found today, use first hour tomorrow
-  if (nextFundingHour === undefined) {
-    nextFundingHour = fundingHours[0];
-    // Set to tomorrow
-    const tomorrow = new Date(nowDate);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    tomorrow.setUTCHours(nextFundingHour, 0, 0, 0);
-    return tomorrow.getTime();
-  }
-
-  // Set to today at next funding hour
+  // Calculate next funding time (next hour at :00)
   const nextFunding = new Date(nowDate);
-  nextFunding.setUTCHours(nextFundingHour, 0, 0, 0);
+
+  // If we're past the hour mark (even by 1 second), move to next hour
+  if (currentMinute > 0 || currentSecond > 0) {
+    nextFunding.setUTCHours(nextFunding.getUTCHours() + 1);
+  }
+
+  // Set to :00:00.000
+  nextFunding.setUTCMinutes(0, 0, 0);
 
   return nextFunding.getTime();
 }
@@ -122,13 +105,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Enrich data with funding intervals and next funding time
+    const nextFundingTime = calculateNextFundingTime();
+
     const enrichedData = {
       ...rawData,
       data: Array.isArray(rawData.data)
         ? rawData.data.map((ticker: any) => {
-            const fundingInterval = MEXC_FUNDING_INTERVALS[ticker.symbol] || '8h';
-            const intervalHours = parseInt(fundingInterval.replace('h', ''));
-            const nextFundingTime = calculateNextFundingTime(intervalHours);
+            // MEXC actual funding interval is 1h despite what their API says
+            const fundingInterval = '1h';
 
             return {
               ...ticker,
