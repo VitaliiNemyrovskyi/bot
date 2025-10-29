@@ -133,14 +133,14 @@ export class ContractCalculator {
     // Use the minimum effective quantity to ensure we don't exceed desired amount
     const effectiveQuantity = Math.min(primaryCalc.effectiveQuantity, hedgeCalc.effectiveQuantity);
 
-    console.log('[ContractCalculator] Balanced quantity calculation:', {
-      desiredQuantity,
-      maxMultiplier,
-      balancedQuantity,
-      primaryEffective: primaryCalc.effectiveQuantity,
-      hedgeEffective: hedgeCalc.effectiveQuantity,
-      finalEffective: effectiveQuantity,
-    });
+    // console.log('[ContractCalculator] Balanced quantity calculation:', {
+    //   desiredQuantity,
+    //   maxMultiplier,
+    //   balancedQuantity,
+    //   primaryEffective: primaryCalc.effectiveQuantity,
+    //   hedgeEffective: hedgeCalc.effectiveQuantity,
+    //   finalEffective: effectiveQuantity,
+    // });
 
     return {
       primaryQuantity: balancedQuantity,
@@ -189,16 +189,16 @@ export class ContractCalculator {
     const totalEffectiveQuantity = effectiveQuantityPerPart * parts;
     const adjustedTotal = quantityPerPart * parts;
 
-    console.log('[ContractCalculator] Graduated entry calculation:', {
-      requestedTotal: totalQuantity,
-      parts,
-      baseQuantityPerPart,
-      adjustedQuantityPerPart: quantityPerPart,
-      effectiveQuantityPerPart,
-      totalEffectiveQuantity,
-      adjustedTotal,
-      difference: totalQuantity - totalEffectiveQuantity,
-    });
+    // console.log('[ContractCalculator] Graduated entry calculation:', {
+    //   requestedTotal: totalQuantity,
+    //   parts,
+    //   baseQuantityPerPart,
+    //   adjustedQuantityPerPart: quantityPerPart,
+    //   effectiveQuantityPerPart,
+    //   totalEffectiveQuantity,
+    //   adjustedTotal,
+    //   difference: totalQuantity - totalEffectiveQuantity,
+    // });
 
     return {
       quantityPerPart,

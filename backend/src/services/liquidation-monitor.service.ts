@@ -61,12 +61,12 @@ export class LiquidationMonitorService extends EventEmitter {
    * Start monitoring all active positions
    */
   startMonitoring(): void {
-    console.log('[LiquidationMonitor] Starting liquidation monitoring...', {
-      checkInterval: `${this.config.checkIntervalMs}ms`,
-      dangerThreshold: `${this.config.dangerThreshold * 100}%`,
-      criticalThreshold: `${this.config.criticalThreshold * 100}%`,
-      autoCloseEnabled: this.config.autoCloseEnabled,
-    });
+    // console.log('[LiquidationMonitor] Starting liquidation monitoring...', {
+    //   checkInterval: `${this.config.checkIntervalMs}ms`,
+    //   dangerThreshold: `${this.config.dangerThreshold * 100}%`,
+    //   criticalThreshold: `${this.config.criticalThreshold * 100}%`,
+    //   autoCloseEnabled: this.config.autoCloseEnabled,
+    // });
 
     // Run immediately
     this.checkAllPositions();
@@ -84,7 +84,7 @@ export class LiquidationMonitorService extends EventEmitter {
     if (this.monitorInterval) {
       clearInterval(this.monitorInterval);
       this.monitorInterval = null;
-      console.log('[LiquidationMonitor] Stopped liquidation monitoring');
+      // console.log('[LiquidationMonitor] Stopped liquidation monitoring');
     }
   }
 
@@ -104,7 +104,7 @@ export class LiquidationMonitorService extends EventEmitter {
         return; // No active positions
       }
 
-      console.log(`[LiquidationMonitor] Checking ${positions.length} active position(s)...`);
+      // console.log(`[LiquidationMonitor] Checking ${positions.length} active position(s)...`);
 
       for (const position of positions) {
         try {

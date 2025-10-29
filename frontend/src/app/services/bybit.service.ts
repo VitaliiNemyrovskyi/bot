@@ -100,7 +100,7 @@ export class BybitService {
     interval: string = '60',
     limit: number = 24*30
   ): Observable<CandlestickData[]> {
-    console.log(`Fetching Bybit data for ${symbol}, interval: ${interval}, limit: ${limit}`);
+    // console.log(`Fetching Bybit data for ${symbol}, interval: ${interval}, limit: ${limit}`);
 
     const params = {
       category: 'spot',
@@ -150,7 +150,7 @@ export class BybitService {
    * Transform Bybit API response to our CandlestickData format
    */
   private transformBybitData(response: BybitKlineResponse): CandlestickData[] {
-    console.log('Bybit API response:', response);
+    // console.log('Bybit API response:', response);
 
     if (response.retCode !== 0 || !response.result?.list) {
       throw new Error(`Bybit API error: ${response.retMsg || 'Invalid response'}`);
@@ -187,9 +187,9 @@ export class BybitService {
     // Remove the temporary originalTimestamp property
     const finalData = uniqueData.map(({ originalTimestamp, ...rest }) => rest);
 
-    console.log(`Transformed ${finalData.length} data points from Bybit (removed ${data.length - finalData.length} duplicates)`);
-    console.log('First data point:', finalData[0]);
-    console.log('Last data point:', finalData[finalData.length - 1]);
+    // console.log(`Transformed ${finalData.length} data points from Bybit (removed ${data.length - finalData.length} duplicates)`);
+    // console.log('First data point:', finalData[0]);
+    // console.log('Last data point:', finalData[finalData.length - 1]);
 
     // Validate data order
     for (let i = 1; i < finalData.length; i++) {
@@ -213,7 +213,7 @@ export class BybitService {
     console.error('Bybit API Error:', error);
 
     // Return fallback data when API fails
-    console.log('Returning fallback data due to API error');
+    // console.log('Returning fallback data due to API error');
     return of(this.generateFallbackData(symbol));
   }
 
@@ -221,7 +221,7 @@ export class BybitService {
    * Generate fallback data when Bybit API is unavailable
    */
   private generateFallbackData(symbol: string): CandlestickData[] {
-    console.log(`Generating fallback data for ${symbol}`);
+    // console.log(`Generating fallback data for ${symbol}`);
 
     const data: CandlestickData[] = [];
     let currentPrice = this.getBasePrice(symbol);
@@ -301,7 +301,7 @@ export class BybitService {
     symbol: string = 'BTCUSDT',
     interval: string = '1'
   ): Observable<CandlestickData[]> {
-    console.log(`[BYBIT SERVICE] Starting real-time kline data for ${symbol}, interval: ${interval}`);
+    // console.log(`[BYBIT SERVICE] Starting real-time kline data for ${symbol}, interval: ${interval}`);
 
     // First get initial historical data via REST API
     const initialData$ = this.getKlineData(symbol, interval, 100).pipe(
@@ -318,31 +318,31 @@ export class BybitService {
     // Combine initial data with real-time updates using merge strategy
     return initialData$.pipe(
       switchMap(initialData => {
-        console.log(`[BYBIT SERVICE] Initial data loaded: ${initialData.length} candles`);
-        console.log('[BYBIT SERVICE] Setting up real-time update stream...');
+        // console.log(`[BYBIT SERVICE] Initial data loaded: ${initialData.length} candles`);
+        // console.log('[BYBIT SERVICE] Setting up real-time update stream...');
 
         const dataSubject = new BehaviorSubject<CandlestickData[]>(initialData);
 
         // Subscribe to real-time updates and emit through the subject
         const subscription = realtimeUpdates$.subscribe({
           next: (newCandle) => {
-            console.log('[BYBIT SERVICE] Received WebSocket candle update:', {
-              time: new Date(newCandle.time * 1000).toISOString(),
-              close: newCandle.close,
-              volume: newCandle.volume
-            });
+            // console.log('[BYBIT SERVICE] Received WebSocket candle update:', {
+            //   time: new Date(newCandle.time * 1000).toISOString(),
+            //   close: newCandle.close,
+            //   volume: newCandle.volume
+            // });
 
             const currentData = dataSubject.value;
             const updatedData = this.updateCandlestickData(currentData, newCandle);
 
-            console.log(`[BYBIT SERVICE] Emitting updated data array with ${updatedData.length} candles`);
+            // console.log(`[BYBIT SERVICE] Emitting updated data array with ${updatedData.length} candles`);
             dataSubject.next(updatedData);
           },
           error: (error) => {
-            console.error('[BYBIT SERVICE] WebSocket error:', error);
+            // console.error('[BYBIT SERVICE] WebSocket error:', error);
           },
           complete: () => {
-            console.log('[BYBIT SERVICE] WebSocket stream completed');
+            // console.log('[BYBIT SERVICE] WebSocket stream completed');
           }
         });
 
@@ -351,7 +351,7 @@ export class BybitService {
           const subjectSubscription = dataSubject.subscribe(observer);
 
           return () => {
-            console.log('[BYBIT SERVICE] Cleaning up real-time kline subscription');
+            // console.log('[BYBIT SERVICE] Cleaning up real-time kline subscription');
             subscription.unsubscribe();
             subjectSubscription.unsubscribe();
           };
@@ -370,7 +370,7 @@ export class BybitService {
     symbol: string = 'BTCUSDT',
     interval: string = '1'
   ): Observable<CandlestickData> {
-    console.log(`Subscribing to real-time updates for ${symbol}, interval: ${interval}`);
+    // console.log(`Subscribing to real-time updates for ${symbol}, interval: ${interval}`);
     return this.webSocketService.subscribeToKline(symbol, interval);
   }
 
@@ -380,7 +380,7 @@ export class BybitService {
    * @param interval Time interval
    */
   unsubscribeFromRealtimeKline(symbol: string, interval: string = '1'): void {
-    console.log(`Unsubscribing from real-time updates for ${symbol}, interval: ${interval}`);
+    // console.log(`Unsubscribing from real-time updates for ${symbol}, interval: ${interval}`);
     this.webSocketService.unsubscribeFromKline(symbol, interval);
   }
 
@@ -428,7 +428,7 @@ export class BybitService {
     if (lastCandleTime === newCandleTime) {
       // Update the current candle
       updatedData[updatedData.length - 1] = newCandle;
-      console.log(`📊 Updated current candle at ${new Date(newCandleTime * 1000).toISOString()}`);
+      // console.log(`📊 Updated current candle at ${new Date(newCandleTime * 1000).toISOString()}`);
     } else if (newCandleTime > lastCandleTime) {
       // Add new candle and limit the array size
       updatedData.push(newCandle);
@@ -438,9 +438,9 @@ export class BybitService {
         updatedData.shift();
       }
 
-      console.log(`📊 Added new candle at ${new Date(newCandleTime * 1000).toISOString()}`);
+      // console.log(`📊 Added new candle at ${new Date(newCandleTime * 1000).toISOString()}`);
     } else {
-      console.warn('Received candle with older timestamp, ignoring:', newCandle);
+      // console.warn('Received candle with older timestamp, ignoring:', newCandle);
     }
 
     return updatedData;
@@ -471,7 +471,7 @@ export class BybitService {
    * @returns Observable<TickerData> - Emits ticker updates
    */
   subscribeToRealtimeTicker(symbol: string = 'BTCUSDT'): Observable<any> {
-    console.log(`Subscribing to real-time ticker for ${symbol}`);
+    // console.log(`Subscribing to real-time ticker for ${symbol}`);
     return this.webSocketService.subscribeToTicker(symbol);
   }
 
@@ -482,7 +482,7 @@ export class BybitService {
    * @returns Observable<OrderbookData> - Emits orderbook updates
    */
   subscribeToRealtimeOrderbook(symbol: string = 'BTCUSDT', depth: number = 50): Observable<any> {
-    console.log(`Subscribing to real-time orderbook for ${symbol}, depth: ${depth}`);
+    // console.log(`Subscribing to real-time orderbook for ${symbol}, depth: ${depth}`);
     return this.webSocketService.subscribeToOrderbook(symbol, depth);
   }
 
@@ -492,7 +492,7 @@ export class BybitService {
    * @returns Observable<TradeData> - Emits individual trades
    */
   subscribeToRealtimeTrades(symbol: string = 'BTCUSDT'): Observable<any> {
-    console.log(`Subscribing to real-time trades for ${symbol}`);
+    // console.log(`Subscribing to real-time trades for ${symbol}`);
     return this.webSocketService.subscribeToTrades(symbol);
   }
 
@@ -500,7 +500,7 @@ export class BybitService {
    * Unsubscribe from real-time ticker data
    */
   unsubscribeFromRealtimeTicker(symbol: string): void {
-    console.log(`Unsubscribing from real-time ticker for ${symbol}`);
+    // console.log(`Unsubscribing from real-time ticker for ${symbol}`);
     this.webSocketService.unsubscribeFromTicker(symbol);
   }
 
@@ -508,7 +508,7 @@ export class BybitService {
    * Unsubscribe from real-time orderbook data
    */
   unsubscribeFromRealtimeOrderbook(symbol: string, depth: number = 50): void {
-    console.log(`Unsubscribing from real-time orderbook for ${symbol}`);
+    // console.log(`Unsubscribing from real-time orderbook for ${symbol}`);
     this.webSocketService.unsubscribeFromOrderbook(symbol, depth);
   }
 
@@ -516,7 +516,7 @@ export class BybitService {
    * Unsubscribe from real-time trade data
    */
   unsubscribeFromRealtimeTrades(symbol: string): void {
-    console.log(`Unsubscribing from real-time trades for ${symbol}`);
+    // console.log(`Unsubscribing from real-time trades for ${symbol}`);
     this.webSocketService.unsubscribeFromTrades(symbol);
   }
 
@@ -543,7 +543,7 @@ export class BybitService {
    * @returns Observable with combined market data
    */
   getComprehensiveMarketStream(symbol: string = 'BTCUSDT'): Observable<any> {
-    console.log(`Starting comprehensive market stream for ${symbol}`);
+    // console.log(`Starting comprehensive market stream for ${symbol}`);
 
     return combineLatest([
       this.subscribeToRealtimeKline(symbol, '1'),

@@ -53,12 +53,12 @@ class RedisService {
       });
 
       this.client.on('connect', () => {
-        console.log('[Redis] Connected successfully');
+        // console.log('[Redis] Connected successfully');
         this.isConnected = true;
       });
 
       this.client.on('ready', () => {
-        console.log('[Redis] Client ready');
+        // console.log('[Redis] Client ready');
         this.isConnected = true;
       });
 
@@ -266,7 +266,7 @@ class RedisService {
 
     try {
       await this.client!.flushall();
-      console.log('[Redis] Cache cleared');
+      // console.log('[Redis] Cache cleared');
     } catch (error: any) {
       console.error('[Redis] Error flushing cache:', error.message);
     }
@@ -279,7 +279,7 @@ class RedisService {
     if (this.client) {
       await this.client.quit();
       this.isConnected = false;
-      console.log('[Redis] Disconnected');
+      // console.log('[Redis] Disconnected');
     }
   }
 }

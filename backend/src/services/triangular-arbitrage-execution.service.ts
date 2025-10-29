@@ -157,11 +157,11 @@ export class TriangularArbitrageExecutionService {
   private async getConnector(config: ExecutionConfig): Promise<BaseExchangeConnector> {
     // Use existing connector from scanner if provided
     if (config.connector) {
-      console.log('[TriArb Execution] Using existing connector from scanner');
+      // console.log('[TriArb Execution] Using existing connector from scanner');
       return config.connector;
     }
 
-    console.log('[TriArb Execution] Creating new connector (no scanner connector provided)');
+    // console.log('[TriArb Execution] Creating new connector (no scanner connector provided)');
 
     // Get credentials from database
     const credentials = await ExchangeCredentialsService.getCredentialsById(config.credentialId);

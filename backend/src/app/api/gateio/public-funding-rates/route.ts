@@ -75,13 +75,23 @@ export async function GET(request: NextRequest) {
     // Step 3: No fresh data - fetch from Gate.io API
 
     const gateioUrl = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
-    const response = await fetch(gateioUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    });
+
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    try {
+      var response = await fetch(gateioUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       return NextResponse.json(
@@ -118,6 +128,8 @@ export async function GET(request: NextRequest) {
       );
 
       await Promise.all(createPromises);
+    }, {
+      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
 
 

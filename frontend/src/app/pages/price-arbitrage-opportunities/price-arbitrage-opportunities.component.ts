@@ -687,10 +687,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
    * Get spot price for an opportunity
    */
   getSpotPrice(opp: UnifiedOpportunity): number | null {
+    if (!opp.bestLong || !opp.bestLong.lastPrice) {
+      return null;
+    }
+
     if (this.isSpotFuturesStrategy(opp)) {
       // For spot_futures strategy: return bestLong price (lowest spot price)
       // TODO: Implement actual spot prices when available
-      return opp.bestLong ? parseFloat(opp.bestLong.lastPrice) : null;
+      return parseFloat(opp.bestLong.lastPrice);
     } else if (!this.isSpotFuturesStrategy(opp)) {
       // For cross-exchange, the lower price is considered "spot"
       return parseFloat(opp.bestLong.lastPrice);
@@ -702,9 +706,13 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
    * Get futures price for an opportunity
    */
   getFuturesPrice(opp: UnifiedOpportunity): number | null {
+    if (!opp.bestShort || !opp.bestShort.lastPrice) {
+      return null;
+    }
+
     if (this.isSpotFuturesStrategy(opp)) {
       // For spot_futures strategy: return bestShort price (futures with highest funding)
-      return opp.bestShort ? parseFloat(opp.bestShort.lastPrice) : null;
+      return parseFloat(opp.bestShort.lastPrice);
     } else if (!this.isSpotFuturesStrategy(opp)) {
       // For cross-exchange, the higher price is considered "futures"
       return parseFloat(opp.bestShort.lastPrice);
@@ -740,7 +748,11 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     const spreadUsdt = futuresPrice - spotPrice;
     const spreadPercent = (spreadUsdt / spotPrice) * 100;
-    const isFavorable = spreadUsdt > 0; // Futures > Spot is favorable
+
+    // For funding arbitrage: LONG price > SHORT price is favorable (inverted from price arbitrage)
+    // spotPrice = bestLong (LONG position), futuresPrice = bestShort (SHORT position)
+    // We want LONG price > SHORT price for entry spread profit
+    const isFavorable = spotPrice > futuresPrice; // LONG > SHORT is favorable
 
     return {
       spread: opp.priceSpread || 0,

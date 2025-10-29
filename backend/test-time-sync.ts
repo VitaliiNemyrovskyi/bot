@@ -11,26 +11,25 @@ import { BingXService } from './src/lib/bingx';
 import { BybitService } from './src/lib/bybit';
 
 async function testBingXTimeSync() {
-  console.log('\n========================================');
-  console.log('Testing BingX Time Synchronization');
-  console.log('========================================\n');
+  // console.log('\n========================================');
+  // console.log('Testing BingX Time Synchronization');
+  // console.log('========================================\n');
 
   try {
     // Create a BingX service instance (no credentials needed for server time)
     const bingxService = new BingXService({
       apiKey: process.env.BINGX_API_KEY || 'test-key',
       apiSecret: process.env.BINGX_API_SECRET || 'test-secret',
-      testnet: true,
       enableRateLimit: true
     });
 
     // Test 1: Get server time
-    console.log('Test 1: Getting BingX server time...');
+    // console.log('Test 1: Getting BingX server time...');
     const serverTime = await bingxService.getServerTime();
     const localTime = Date.now();
-    console.log(`  Server time: ${serverTime} (${new Date(serverTime).toISOString()})`);
-    console.log(`  Local time:  ${localTime} (${new Date(localTime).toISOString()})`);
-    console.log(`  Difference:  ${serverTime - localTime}ms`);
+    // console.log(`  Server time: ${serverTime} (${new Date(serverTime).toISOString()})`);
+    // console.log(`  Local time:  ${localTime} (${new Date(localTime).toISOString()})`);
+    // console.log(`  Difference:  ${serverTime - localTime}ms`);
 
     // Test 2: Sync time
     console.log('\nTest 2: Synchronizing time...');

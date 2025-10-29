@@ -96,7 +96,7 @@ export class MEXCConnector extends BaseExchangeConnector {
       // Test connection by fetching account info
       await this.mexcService.getAccountInfo();
       this.isInitialized = true;
-      console.log('[MEXCConnector] MEXC connector initialized successfully');
+      // console.log('[MEXCConnector] MEXC connector initialized successfully');
     } catch (error: any) {
       console.error('[MEXCConnector] Failed to initialize:', error.message);
       throw new Error(`Failed to initialize MEXC connector: ${error.message}`);
@@ -152,7 +152,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         openType: 2, // Cross margin (default)
       });
 
-      console.log('[MEXCConnector] Market order placed:', result);
+      // console.log('[MEXCConnector] Market order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing market order:', error.message);
@@ -211,7 +211,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         openType: 2, // Cross margin (default)
       });
 
-      console.log('[MEXCConnector] Limit order placed:', result);
+      // console.log('[MEXCConnector] Limit order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing limit order:', error.message);
@@ -232,7 +232,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.cancelOrder(normalizedSymbol, orderId);
-      console.log('[MEXCConnector] Order canceled:', result);
+      // console.log('[MEXCConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error canceling order:', error.message);
@@ -250,7 +250,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.getBalance();
-      console.log('[MEXCConnector] Balance retrieved');
+      // console.log('[MEXCConnector] Balance retrieved');
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting balance:', error.message);
@@ -282,7 +282,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         };
       }
 
-      console.log('[MEXCConnector] Position retrieved:', position);
+      // console.log('[MEXCConnector] Position retrieved:', position);
       return position;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting position:', error.message);
@@ -303,7 +303,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const positions = await this.mexcService.getPositions(normalizedSymbol);
-      console.log('[MEXCConnector] Positions retrieved:', positions.length);
+      // console.log('[MEXCConnector] Positions retrieved:', positions.length);
       return positions;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting positions:', error.message);
@@ -353,7 +353,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         position.positionType
       );
 
-      console.log('[MEXCConnector] Position closed:', result);
+      // console.log('[MEXCConnector] Position closed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error closing position:', error.message);
@@ -412,7 +412,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         positionId: position.positionId,
       });
 
-      console.log('[MEXCConnector] Reduce-only order placed:', result);
+      // console.log('[MEXCConnector] Reduce-only order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing reduce-only order:', error.message);
@@ -459,7 +459,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.setLeverage(normalizedSymbol, leverage, openType);
-      console.log('[MEXCConnector] ✓ Leverage set successfully via API:', result);
+      // console.log('[MEXCConnector] ✓ Leverage set successfully via API:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error setting leverage via API:', error.message);
@@ -776,12 +776,12 @@ export class MEXCConnector extends BaseExchangeConnector {
         }
       }
 
-      console.log('[MEXCConnector] Trading stop set successfully:', {
-        symbol: normalizedSymbol,
-        positionSide: isLongPosition ? 'LONG' : 'SHORT',
-        takeProfitOrderId,
-        stopLossOrderId,
-      });
+      // console.log('[MEXCConnector] Trading stop set successfully:', {
+      //   symbol: normalizedSymbol,
+      //   positionSide: isLongPosition ? 'LONG' : 'SHORT',
+      //   takeProfitOrderId,
+      //   stopLossOrderId,
+      // });
 
       return {
         success: true,

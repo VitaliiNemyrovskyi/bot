@@ -40,11 +40,11 @@ export class BybitConnector extends BaseExchangeConnector {
    * Initialize Bybit connection
    */
   async initialize(): Promise<void> {
-    console.log('[BybitConnector] Initializing Bybit connector...');
+    // // console.log('[BybitConnector] Initializing Bybit connector...');
 
     try {
       // Synchronize time with Bybit server
-      console.log('[BybitConnector] Synchronizing time with Bybit server...');
+      // // console.log('[BybitConnector] Synchronizing time with Bybit server...');
       await this.bybitService.syncTime();
 
       // Start periodic time sync
@@ -52,12 +52,12 @@ export class BybitConnector extends BaseExchangeConnector {
 
       // Log time sync status
       const syncStatus = this.bybitService.getTimeSyncStatus();
-      console.log('[BybitConnector] Time sync status:', syncStatus);
+      // // console.log('[BybitConnector] Time sync status:', syncStatus);
 
       // Test connection by fetching account info
       await this.bybitService.getAccountInfo();
       this.isInitialized = true;
-      console.log('[BybitConnector] Bybit connector initialized successfully');
+      // // console.log('[BybitConnector] Bybit connector initialized successfully');
     } catch (error: any) {
       console.error('[BybitConnector] Failed to initialize:', error.message);
       throw new Error(`Failed to initialize Bybit connector: ${error.message}`);
@@ -149,7 +149,7 @@ export class BybitConnector extends BaseExchangeConnector {
         qty: validatedQty,
       });
 
-      console.log('[BybitConnector] Market order placed:', result);
+      // // console.log('[BybitConnector] Market order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error placing market order:', error.message);
@@ -215,11 +215,11 @@ export class BybitConnector extends BaseExchangeConnector {
 
       const result = await this.bybitService.placeOrder(orderRequest);
 
-      console.log('[BybitConnector] ✓ ATOMIC order placed with TP/SL protection:', {
-        orderId: result.orderId,
-        takeProfit,
-        stopLoss,
-      });
+      // // console.log('[BybitConnector] ✓ ATOMIC order placed with TP/SL protection:', {
+      //   orderId: result.orderId,
+      //   takeProfit,
+      //   stopLoss,
+      // });
 
       return result;
     } catch (error: any) {
@@ -261,7 +261,7 @@ export class BybitConnector extends BaseExchangeConnector {
         timeInForce: 'GTC',
       });
 
-      console.log('[BybitConnector] Limit order placed:', result);
+      // // console.log('[BybitConnector] Limit order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error placing limit order:', error.message);
@@ -286,7 +286,7 @@ export class BybitConnector extends BaseExchangeConnector {
         orderId
       );
 
-      console.log('[BybitConnector] Order canceled:', result);
+      // // console.log('[BybitConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error canceling order:', error.message);
@@ -304,7 +304,7 @@ export class BybitConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.bybitService.getWalletBalance('UNIFIED');
-      console.log('[BybitConnector] Balance retrieved');
+      // // console.log('[BybitConnector] Balance retrieved');
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error getting balance:', error.message);
@@ -335,7 +335,7 @@ export class BybitConnector extends BaseExchangeConnector {
         };
       }
 
-      console.log('[BybitConnector] Position retrieved:', position);
+      // // console.log('[BybitConnector] Position retrieved:', position);
       return position;
     } catch (error: any) {
       console.error('[BybitConnector] Error getting position:', error.message);
@@ -353,7 +353,7 @@ export class BybitConnector extends BaseExchangeConnector {
 
     try {
       const positions = await this.bybitService.getPositions('linear', symbol);
-      console.log('[BybitConnector] Positions retrieved:', positions.length);
+      // // console.log('[BybitConnector] Positions retrieved:', positions.length);
       return positions;
     } catch (error: any) {
       console.error('[BybitConnector] Error getting positions:', error.message);
@@ -378,7 +378,7 @@ export class BybitConnector extends BaseExchangeConnector {
         throw new Error(`Order ${orderId} not found`);
       }
 
-      console.log('[BybitConnector] Order status retrieved:', order);
+      // // console.log('[BybitConnector] Order status retrieved:', order);
       return order;
     } catch (error: any) {
       console.error('[BybitConnector] Error getting order status:', error.message);
@@ -465,7 +465,7 @@ export class BybitConnector extends BaseExchangeConnector {
         reduceOnly: true,
       });
 
-      console.log('[BybitConnector] Reduce-only order placed:', result);
+      // // console.log('[BybitConnector] Reduce-only order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error placing reduce-only order:', error.message);
@@ -529,11 +529,11 @@ export class BybitConnector extends BaseExchangeConnector {
       // Call Bybit API
       const result = await this.bybitService.setTradingStop(request);
 
-      console.log('[BybitConnector] Trading stop set successfully:', {
-        takeProfit: params.takeProfit,
-        stopLoss: params.stopLoss,
-        result
-      });
+      // // console.log('[BybitConnector] Trading stop set successfully:', {
+      //   takeProfit: params.takeProfit,
+      //   stopLoss: params.stopLoss,
+      //   result
+      // });
 
       return {
         success: true,
@@ -542,7 +542,7 @@ export class BybitConnector extends BaseExchangeConnector {
         stopLossOrderId: params.stopLoss ? 'SL-' + Date.now() : undefined,
       };
     } catch (error: any) {
-      console.error('[BybitConnector] Error setting trading stop:', error.message);
+      // console.error('[BybitConnector] Error setting trading stop:', error.message);
 
       // Provide helpful error messages
       if (error.message.includes('position')) {
@@ -566,7 +566,7 @@ export class BybitConnector extends BaseExchangeConnector {
     endTime?: number;
     limit?: number;
   }): Promise<any[]> {
-    console.log('[BybitConnector] Fetching transaction log:', params);
+    // // console.log('[BybitConnector] Fetching transaction log:', params);
 
     if (!this.isInitialized) {
       throw new Error('Bybit connector not initialized');
@@ -627,7 +627,7 @@ export class BybitConnector extends BaseExchangeConnector {
         leverage   // sellLeverage
       );
 
-      console.log('[BybitConnector] Leverage set successfully:', result);
+      // // console.log('[BybitConnector] Leverage set successfully:', result);
       return result;
     } catch (error: any) {
       console.error('[BybitConnector] Error setting leverage:', error.message);

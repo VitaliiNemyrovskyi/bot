@@ -48,7 +48,7 @@ export class BingXServiceWithCache extends BingXService {
     }
 
     // Cache miss - perform full time sync
-    console.log('[BingXServiceWithCache] Cache miss - performing full time sync...');
+    // console.log('[BingXServiceWithCache] Cache miss - performing full time sync...');
     const startTime = Date.now();
     await this.syncTime();
     const syncDuration = Date.now() - startTime;

@@ -109,6 +109,8 @@ export async function GET(request: NextRequest) {
       });
 
       await Promise.all(createPromises);
+    }, {
+      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
 
 

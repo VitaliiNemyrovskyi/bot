@@ -908,9 +908,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log(`[ArbitrageChart] ${exchange} WebSocket connected`);
+      // console.log(`[ArbitrageChart] ${exchange} WebSocket connected`);
       if (ws && subscribeMessage) {
-        console.log(`[ArbitrageChart] ${exchange} subscribing with:`, subscribeMessage);
+        // console.log(`[ArbitrageChart] ${exchange} subscribing with:`, subscribeMessage);
         ws.send(JSON.stringify(subscribeMessage));
       }
 
@@ -920,12 +920,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         const pingInterval = setInterval(() => {
           if (!this.isDestroyed && ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ method: 'ping' }));
-            console.log(`[ArbitrageChart] MEXC Ping sent`);
+            // console.log(`[ArbitrageChart] MEXC Ping sent`);
           }
         }, 15000); // Send ping every 15 seconds
 
         this.mexcPingIntervals.set(exchange, pingInterval);
-        console.log(`[ArbitrageChart] MEXC ping interval started (15s)`);
+        // console.log(`[ArbitrageChart] MEXC ping interval started (15s)`);
       }
     };
 
@@ -955,7 +955,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         if (exchange === 'BINGX' && messageData === 'Ping') {
           if (ws) {
             ws.send('Pong');
-            console.log(`[ArbitrageChart] BingX Pong sent`);
+            // console.log(`[ArbitrageChart] BingX Pong sent`);
           }
           return;
         }
@@ -964,14 +964,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
         // Handle MEXC Pong response (server responds to our ping)
         if (exchange === 'MEXC' && data.channel === 'pong') {
-          console.log(`[ArbitrageChart] MEXC Pong received:`, data.data);
+          // console.log(`[ArbitrageChart] MEXC Pong received:`, data.data);
           return;
         }
 
         // Debug logging for BingX
-        if (exchange === 'BINGX') {
-          console.log(`[ArbitrageChart] BingX WebSocket message:`, data);
-        }
+        // if (exchange === 'BINGX') {
+        //   console.log(`[ArbitrageChart] BingX WebSocket message:`, data);
+        // }
 
         this.handleExchangeMessage(exchange, data, onUpdate);
       } catch (error) {
@@ -1064,14 +1064,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             fundingInterval = data.data.fundingInterval;
           }
 
-          console.log(`[ArbitrageChart] BYBIT ticker parsed (${data.type || 'unknown'}):`, {
-            rawLastPrice: data.data.lastPrice,
-            parsedPrice: price,
-            rawNextFundingTime: data.data.nextFundingTime,
-            nextFundingTime: nextFundingTime,
-            fundingRate: fundingRate,
-            fundingInterval: fundingInterval
-          });
+          // console.log(`[ArbitrageChart] BYBIT ticker parsed (${data.type || 'unknown'}):`, {
+          //   rawLastPrice: data.data.lastPrice,
+          //   parsedPrice: price,
+          //   rawNextFundingTime: data.data.nextFundingTime,
+          //   nextFundingTime: nextFundingTime,
+          //   fundingRate: fundingRate,
+          //   fundingInterval: fundingInterval
+          // });
         } else {
           console.warn(`[ArbitrageChart] BYBIT message format not recognized:`, data);
         }
@@ -1084,11 +1084,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           price = parseFloat(tickerData.c); // 'c' = close/last price
 
           // Debug logging
-          console.log(`[ArbitrageChart] BingX price parsed:`, {
-            rawC: tickerData.c,
-            parsedPrice: price,
-            isValid: !isNaN(price) && price > 0
-          });
+          // console.log(`[ArbitrageChart] BingX price parsed:`, {
+          //   rawC: tickerData.c,
+          //   parsedPrice: price,
+          //   isValid: !isNaN(price) && price > 0
+          // });
 
           // Get funding rate from stored map (BingX ticker doesn't include funding rates)
           const symbolForLookup = data.dataType.split('@')[0]; // Extract symbol from dataType
@@ -1096,10 +1096,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           fundingRate = fundingData.fundingRate;
           nextFundingTime = fundingData.nextFundingTime;
 
-          console.log(`[ArbitrageChart] BingX funding data for ${symbolForLookup}:`, {
-            fundingRate,
-            nextFundingTime
-          });
+          // console.log(`[ArbitrageChart] BingX funding data for ${symbolForLookup}:`, {
+          //   fundingRate,
+          //   nextFundingTime
+          // });
         } else {
           console.warn(`[ArbitrageChart] BingX message format not recognized:`, data);
         }
@@ -1132,7 +1132,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     if (price !== null && price > 0) {
-      console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime, fundingInterval });
+      // console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime, fundingInterval });
       onUpdate(price, fundingRate, nextFundingTime, fundingInterval);
     } else {
       console.warn(`[ArbitrageChart] ${exchange} price invalid or zero:`, price);
@@ -1454,12 +1454,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const fundingData = this.getFundingRate(this.primaryExchange().toUpperCase(), this.symbol());
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
-        console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.primaryExchange()}: ${fundingIntervalStr}`);
+        // console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.primaryExchange()}: ${fundingIntervalStr}`);
       } else {
         console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.primaryExchange()} ${this.symbol()}`);
       }
     } else if (fundingIntervalFromWS) {
-      console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.primaryExchange()}: ${fundingIntervalFromWS}`);
+      // console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.primaryExchange()}: ${fundingIntervalFromWS}`);
     }
 
     const updatedData = {
@@ -1472,7 +1472,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       lastUpdate: new Date()
     };
 
-    console.log('[ArbitrageChart] Updating primary data:', updatedData);
+    // console.log('[ArbitrageChart] Updating primary data:', updatedData);
 
     this.primaryData.set(updatedData);
 
@@ -1488,7 +1488,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (this.primarySeries) {
         const time = roundedTime as Time;
         this.primarySeries.update({ time, value: price } as LineData);
-        console.log(`[ArbitrageChart] Primary new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
+        // console.log(`[ArbitrageChart] Primary new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
       }
 
       // Update last candle tracker
@@ -1552,12 +1552,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const fundingData = this.getFundingRate(this.hedgeExchange().toUpperCase(), this.symbol());
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
-        console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.hedgeExchange()}: ${fundingIntervalStr}`);
+        // console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.hedgeExchange()}: ${fundingIntervalStr}`);
       } else {
         console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.hedgeExchange()} ${this.symbol()}`);
       }
     } else if (fundingIntervalFromWS) {
-      console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.hedgeExchange()}: ${fundingIntervalFromWS}`);
+      // console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.hedgeExchange()}: ${fundingIntervalFromWS}`);
     }
 
     const updatedData = {
@@ -1570,7 +1570,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       lastUpdate: new Date()
     };
 
-    console.log('[ArbitrageChart] Updating hedge data:', updatedData);
+    // console.log('[ArbitrageChart] Updating hedge data:', updatedData);
 
     this.hedgeData.set(updatedData);
 
@@ -1586,7 +1586,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (this.hedgeSeries) {
         const time = roundedTime as Time;
         this.hedgeSeries.update({ time, value: price } as LineData);
-        console.log(`[ArbitrageChart] Hedge new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
+        // console.log(`[ArbitrageChart] Hedge new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
       }
 
       // Update last candle tracker

@@ -328,7 +328,7 @@ export async function logTradingOperation(params: {
     };
 
     // Log to console (in production, send to logging service)
-    console.log('[Trading Operation]', JSON.stringify(logEntry, null, 2));
+    // console.log('[Trading Operation]', JSON.stringify(logEntry, null, 2));
 
     // TODO: In production, store in database or send to logging service
     // await prisma.tradingLog.create({ data: logEntry });

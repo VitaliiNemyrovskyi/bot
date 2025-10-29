@@ -532,21 +532,54 @@ export async function GET(request: NextRequest) {
       if (exchanges.length < 2) return;
 
       // Debug: Show all funding rates and prices before sorting
-      console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
-        exchanges.map(e => `${e.exchange}=${e.fundingRate} (${e.fundingInterval}) [normalized: ${e.fundingRateNormalized.toFixed(6)}] ($${e.lastPrice})`).join(', '));
+      // console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
+      //   exchanges.map(e => `${e.exchange}=${e.fundingRate} (${e.fundingInterval}) [normalized: ${e.fundingRateNormalized.toFixed(6)}] ($${e.lastPrice})`).join(', '));
 
-      // Sort by NORMALIZED FUNDING RATE for funding arbitrage (critical for fair comparison!)
-      // Primary (Long): lowest normalized funding rate (most negative) - we receive more funding per 8h
-      // Hedge (Short): highest normalized funding rate (most positive/least negative) - we pay less funding per 8h
-      const sortedExchanges = [...exchanges].sort((a, b) =>
-        a.fundingRateNormalized - b.fundingRateNormalized
+      // Calculate average price for normalization
+      const avgPrice = exchanges.reduce((sum, e) => sum + parseFloat(e.lastPrice), 0) / exchanges.length;
+
+      // Score each exchange for LONG and SHORT positions
+      // LONG score: lower funding rate (more negative) + higher price = better
+      // SHORT score: higher funding rate (more positive) + lower price = better
+      const exchangesWithScores = exchanges.map(e => {
+        const price = parseFloat(e.lastPrice);
+        const priceDeviationPercent = ((price - avgPrice) / avgPrice) * 100;
+
+        // LONG score: Funding rate weight 70%, price deviation weight 30%
+        // Lower (more negative) funding = better for LONG
+        // Higher price = better for LONG (entry spread profit)
+        const longScore = (e.fundingRateNormalized * 0.7) + (-priceDeviationPercent * 0.003);
+
+        // SHORT score: Funding rate weight 70%, price deviation weight 30%
+        // Higher (more positive) funding = better for SHORT
+        // Lower price = better for SHORT (entry spread profit)
+        const shortScore = (-e.fundingRateNormalized * 0.7) + (-priceDeviationPercent * 0.003);
+
+        return {
+          ...e,
+          longScore,
+          shortScore,
+          priceDeviationPercent,
+        };
+      });
+
+      // Select bestLong: most negative funding + highest price
+      const primaryExchange = exchangesWithScores.reduce((best, current) =>
+        current.longScore < best.longScore ? current : best
       );
 
-      // Calculate funding spread between primary (bestLong) and hedge (bestShort) exchanges
-      // bestLong = lowest funding rate (primary exchange - LONG position receives funding)
-      // bestShort = highest funding rate (hedge exchange - SHORT position pays less)
-      const primaryExchange = sortedExchanges[0]; // Lowest (most negative) funding rate
-      const hedgeExchange = sortedExchanges[sortedExchanges.length - 1]; // Highest (least negative/most positive) funding rate
+      // Select bestShort: most positive funding + lowest price
+      const hedgeExchange = exchangesWithScores.reduce((best, current) =>
+        current.shortScore < best.shortScore ? current : best
+      );
+
+      // console.log(`[Arbitrage] Exchange scoring for "${symbol}":`,
+      //   exchangesWithScores.map(e =>
+      //     `${e.exchange}: price=$${e.lastPrice} (${e.priceDeviationPercent.toFixed(2)}%), ` +
+      //     `funding=${e.fundingRateNormalized.toFixed(6)}, ` +
+      //     `longScore=${e.longScore.toFixed(6)}, shortScore=${e.shortScore.toFixed(6)}`
+      //   ).join(' | '));
+      // console.log(`[Arbitrage] Selected for "${symbol}": bestLong=${primaryExchange.exchange}, bestShort=${hedgeExchange.exchange}`);
 
       const primaryPrice = parseFloat(primaryExchange.lastPrice);
       const hedgePrice = parseFloat(hedgeExchange.lastPrice);
@@ -566,13 +599,13 @@ export async function GET(request: NextRequest) {
       const fundingSpreadPercent = fundingSpread * 100;
 
       // Log detailed spread calculation
-      console.log(`[Arbitrage] ${symbol} spread calculation:`);
-      console.log(`  - Primary exchange (${primaryExchange.exchange}): $${primaryPrice}, funding: ${primaryExchange.fundingRate} (${primaryExchange.fundingInterval}) [normalized: ${primaryExchange.fundingRateNormalized.toFixed(6)}]`);
-      console.log(`  - Hedge exchange (${hedgeExchange.exchange}): $${hedgePrice}, funding: ${hedgeExchange.fundingRate} (${hedgeExchange.fundingInterval}) [normalized: ${hedgeExchange.fundingRateNormalized.toFixed(6)}]`);
-      console.log(`  - Price spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(4)}%)`);
-      console.log(`  - Price spread USDT: $${priceSpreadUsdt.toFixed(3)}`);
-      console.log(`  - Funding spread (normalized): ${fundingSpread.toFixed(6)} (${fundingSpreadPercent.toFixed(4)}% per 8h)`);
-      console.log(`  - Is opportunity: ${Math.abs(spread) > 0.0001}`);
+      // console.log(`[Arbitrage] ${symbol} spread calculation:`);
+      // console.log(`  - Primary exchange (${primaryExchange.exchange}): $${primaryPrice}, funding: ${primaryExchange.fundingRate} (${primaryExchange.fundingInterval}) [normalized: ${primaryExchange.fundingRateNormalized.toFixed(6)}]`);
+      // console.log(`  - Hedge exchange (${hedgeExchange.exchange}): $${hedgePrice}, funding: ${hedgeExchange.fundingRate} (${hedgeExchange.fundingInterval}) [normalized: ${hedgeExchange.fundingRateNormalized.toFixed(6)}]`);
+      // console.log(`  - Price spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(4)}%)`);
+      // console.log(`  - Price spread USDT: $${priceSpreadUsdt.toFixed(3)}`);
+      // console.log(`  - Funding spread (normalized): ${fundingSpread.toFixed(6)} (${fundingSpreadPercent.toFixed(4)}% per 8h)`);
+      // console.log(`  - Is opportunity: ${Math.abs(spread) > 0.0001}`);
 
       // Filter out unrealistic spreads (likely symbol mismatch or data errors)
       // Maximum realistic spread: 100% (1.0 in decimal)
@@ -596,7 +629,7 @@ export async function GET(request: NextRequest) {
 
       arbitrageOpportunities.push({
         symbol,
-        exchanges: sortedExchanges,
+        exchanges: exchangesWithScores,
         spread: spread.toFixed(6),
         spreadPercent: spreadPercent.toFixed(2),
         priceSpreadUsdt: priceSpreadUsdt.toFixed(3),
@@ -604,20 +637,38 @@ export async function GET(request: NextRequest) {
         fundingSpread: fundingSpread.toFixed(6),
         fundingSpreadPercent: fundingSpreadPercent.toFixed(4),
         bestLong: {
-          exchange: sortedExchanges[0].exchange,
-          credentialId: sortedExchanges[0].credentialId,
-          fundingRate: sortedExchanges[0].fundingRate, // Original rate
-          fundingRateNormalized: sortedExchanges[0].fundingRateNormalized, // Normalized to 8h
-          fundingInterval: sortedExchanges[0].fundingInterval,
-          environment: sortedExchanges[0].environment,
+          exchange: primaryExchange.exchange,
+          symbol: primaryExchange.symbol,
+          originalSymbol: primaryExchange.originalSymbol,
+          fundingRate: primaryExchange.fundingRate, // Original rate
+          fundingRateNormalized: primaryExchange.fundingRateNormalized, // Normalized to 8h
+          nextFundingTime: primaryExchange.nextFundingTime,
+          lastPrice: primaryExchange.lastPrice,
+          fundingInterval: primaryExchange.fundingInterval,
+          credentialId: primaryExchange.credentialId,
+          environment: primaryExchange.environment,
+          // Optional fields
+          volume24h: primaryExchange.volume24h,
+          openInterest: primaryExchange.openInterest,
+          high24h: primaryExchange.high24h,
+          low24h: primaryExchange.low24h,
         },
         bestShort: {
-          exchange: sortedExchanges[sortedExchanges.length - 1].exchange,
-          credentialId: sortedExchanges[sortedExchanges.length - 1].credentialId,
-          fundingRate: sortedExchanges[sortedExchanges.length - 1].fundingRate, // Original rate
-          fundingRateNormalized: sortedExchanges[sortedExchanges.length - 1].fundingRateNormalized, // Normalized to 8h
-          fundingInterval: sortedExchanges[sortedExchanges.length - 1].fundingInterval,
-          environment: sortedExchanges[sortedExchanges.length - 1].environment,
+          exchange: hedgeExchange.exchange,
+          symbol: hedgeExchange.symbol,
+          originalSymbol: hedgeExchange.originalSymbol,
+          fundingRate: hedgeExchange.fundingRate, // Original rate
+          fundingRateNormalized: hedgeExchange.fundingRateNormalized, // Normalized to 8h
+          nextFundingTime: hedgeExchange.nextFundingTime,
+          lastPrice: hedgeExchange.lastPrice,
+          fundingInterval: hedgeExchange.fundingInterval,
+          credentialId: hedgeExchange.credentialId,
+          environment: hedgeExchange.environment,
+          // Optional fields
+          volume24h: hedgeExchange.volume24h,
+          openInterest: hedgeExchange.openInterest,
+          high24h: hedgeExchange.high24h,
+          low24h: hedgeExchange.low24h,
         },
         arbitrageOpportunity,
       });
@@ -634,11 +685,11 @@ export async function GET(request: NextRequest) {
       return Math.abs(parseFloat(b.spread)) - Math.abs(parseFloat(a.spread));
     });
 
-    console.log(`[Arbitrage] Found ${arbitrageOpportunities.length} symbols with cross-exchange data`);
-    console.log(`[Arbitrage] Arbitrage opportunities: ${arbitrageOpportunities.filter(o => o.arbitrageOpportunity).length}`);
+    // console.log(`[Arbitrage] Found ${arbitrageOpportunities.length} symbols with cross-exchange data`);
+    // console.log(`[Arbitrage] Arbitrage opportunities: ${arbitrageOpportunities.filter(o => o.arbitrageOpportunity).length}`);
 
     // 6. Fetch market cap data from CoinGecko
-    console.log('[Arbitrage] Fetching market cap data from CoinGecko...');
+    // console.log('[Arbitrage] Fetching market cap data from CoinGecko...');
     const symbols = arbitrageOpportunities.map(o => o.symbol);
     const marketCaps = await CoinGeckoService.getMarketCaps(symbols);
 

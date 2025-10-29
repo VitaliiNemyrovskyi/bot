@@ -53,6 +53,7 @@ export interface MEXCOrderRequest {
   stopLossPrice?: number;
   takeProfitPrice?: number;
   positionMode?: 1 | 2; // 1: hedge, 2: one-way
+  reduceOnly?: boolean;
 }
 
 export interface MEXCOrder {

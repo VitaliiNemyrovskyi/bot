@@ -45,7 +45,7 @@ export class FundingRateCollectorService {
    * Start periodic funding rate collection
    */
   start(): void {
-    console.log('[FundingRateCollector] Starting periodic funding rate collection...');
+    // console.log('[FundingRateCollector] Starting periodic funding rate collection...');
 
     // Collect immediately on start
     this.collectAllFundingRates();
@@ -65,7 +65,7 @@ export class FundingRateCollectorService {
     if (this.collectionInterval) {
       clearInterval(this.collectionInterval);
       this.collectionInterval = null;
-      console.log('[FundingRateCollector] Stopped periodic collection');
+      // console.log('[FundingRateCollector] Stopped periodic collection');
     }
   }
 
@@ -74,7 +74,7 @@ export class FundingRateCollectorService {
    */
   private async collectAllFundingRates(): Promise<void> {
     const startTime = Date.now();
-    console.log('[FundingRateCollector] Starting collection cycle...');
+    // console.log('[FundingRateCollector] Starting collection cycle...');
 
     let totalCollected = 0;
     let totalErrors = 0;

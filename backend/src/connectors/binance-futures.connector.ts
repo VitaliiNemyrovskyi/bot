@@ -43,7 +43,7 @@ export class BinanceFuturesConnector extends BaseExchangeConnector {
     try {
       // Load markets to cache symbol information
       await this.client.loadMarkets();
-      console.log('[BinanceFutures] Markets loaded successfully');
+      // console.log('[BinanceFutures] Markets loaded successfully');
     } catch (error: any) {
       console.error('[BinanceFutures] Failed to load markets:', error.message);
       throw error;

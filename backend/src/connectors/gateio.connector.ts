@@ -37,7 +37,7 @@ export class GateIOConnector extends BaseExchangeConnector {
       // Test connection by fetching account info
       await this.gateioService.getAccountInfo();
       this.isInitialized = true;
-      console.log('[GateIOConnector] Gate.io connector initialized successfully');
+      // console.log('[GateIOConnector] Gate.io connector initialized successfully');
     } catch (error: any) {
       console.error('[GateIOConnector] Failed to initialize:', error.message);
 
@@ -172,12 +172,12 @@ export class GateIOConnector extends BaseExchangeConnector {
         tif: 'ioc', // Immediate or cancel (market order behavior)
       });
 
-      console.log('[GateIOConnector] Market order placed:', {
-        orderId: result.id,
-        size: result.size,
-        finish_as: result.finish_as,
-        left: result.left
-      });
+      // console.log('[GateIOConnector] Market order placed:', {
+      //   orderId: result.id,
+      //   size: result.size,
+      //   finish_as: result.finish_as,
+      //   left: result.left
+      // });
 
       // Calculate actual filled quantity in base currency
       // Gate.io returns size in contracts, need to convert to base currency
@@ -186,12 +186,12 @@ export class GateIOConnector extends BaseExchangeConnector {
       const filledContracts = Math.abs(result.size); // size can be negative for short
       const filledQuantity = filledContracts * quantoMultiplier;
 
-      console.log('[GateIOConnector] Filled quantity calculation:', {
-        sizeInContracts: result.size,
-        filledContracts,
-        quantoMultiplier,
-        filledQuantityInBaseCurrency: filledQuantity
-      });
+      // console.log('[GateIOConnector] Filled quantity calculation:', {
+      //   sizeInContracts: result.size,
+      //   filledContracts,
+      //   quantoMultiplier,
+      //   filledQuantityInBaseCurrency: filledQuantity
+      // });
 
       // Leverage should have been set BEFORE this order via setLeverage()
       const cachedLeverage = this.leverageCache.get(contract);
@@ -249,7 +249,7 @@ export class GateIOConnector extends BaseExchangeConnector {
         tif: 'gtc', // Good till cancel (limit order default)
       });
 
-      console.log('[GateIOConnector] Limit order placed:', result);
+      // console.log('[GateIOConnector] Limit order placed:', result);
 
       // Convert Gate.io order format to common format with orderId field
       return {
@@ -274,7 +274,7 @@ export class GateIOConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.gateioService.cancelOrder(orderId);
-      console.log('[GateIOConnector] Order canceled:', result);
+      // console.log('[GateIOConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
       console.error('[GateIOConnector] Error canceling order:', error.message);
@@ -292,7 +292,7 @@ export class GateIOConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.gateioService.getBalance();
-      console.log('[GateIOConnector] Balance retrieved');
+      // console.log('[GateIOConnector] Balance retrieved');
       return result;
     } catch (error: any) {
       console.error('[GateIOConnector] Error getting balance:', error.message);
@@ -325,7 +325,7 @@ export class GateIOConnector extends BaseExchangeConnector {
         };
       }
 
-      console.log('[GateIOConnector] Position retrieved:', position);
+      // console.log('[GateIOConnector] Position retrieved:', position);
       return position;
     } catch (error: any) {
       console.error('[GateIOConnector] Error getting position:', error.message);
@@ -344,7 +344,7 @@ export class GateIOConnector extends BaseExchangeConnector {
     try {
       const contract = symbol ? this.normalizeSymbol(symbol) : undefined;
       const positions = await this.gateioService.getPositions(contract);
-      console.log('[GateIOConnector] Positions retrieved:', positions.length);
+      // console.log('[GateIOConnector] Positions retrieved:', positions.length);
       return positions;
     } catch (error: any) {
       console.error('[GateIOConnector] Error getting positions:', error.message);
@@ -393,7 +393,7 @@ export class GateIOConnector extends BaseExchangeConnector {
 
       const result = await this.gateioService.closePosition(contract);
 
-      console.log('[GateIOConnector] Position closed:', result);
+      // console.log('[GateIOConnector] Position closed:', result);
       return result;
     } catch (error: any) {
       console.error('[GateIOConnector] Error closing position:', error.message);
@@ -435,7 +435,7 @@ export class GateIOConnector extends BaseExchangeConnector {
         reduce_only: true, // Reduce-only flag
       });
 
-      console.log('[GateIOConnector] Reduce-only order placed:', result);
+      // console.log('[GateIOConnector] Reduce-only order placed:', result);
 
       // Convert Gate.io order format to common format with orderId field
       return {
@@ -468,7 +468,7 @@ export class GateIOConnector extends BaseExchangeConnector {
     message?: string;
   }> {
     // DEBUG: Log raw params to understand what's being passed
-    console.log('[GateIOConnector] setTradingStop called with params:', JSON.stringify(params));
+    // console.log('[GateIOConnector] setTradingStop called with params:', JSON.stringify(params));
 
     if (!params) {
       throw new Error('[GateIOConnector] setTradingStop: params is undefined or null');
@@ -507,20 +507,20 @@ export class GateIOConnector extends BaseExchangeConnector {
       try {
         const position = await this.getPosition(params.symbol);
 
-        console.log(`[GateIOConnector] getPosition returned:`, {
-          contract,
-          position,
-          size: position?.size,
-          hasPosition: !!position,
-        });
+        // console.log(`[GateIOConnector] getPosition returned:`, {
+        //   contract,
+        //   position,
+        //   size: position?.size,
+        //   hasPosition: !!position,
+        // });
 
         if (!position || position.size === 0) {
-          console.warn(`[GateIOConnector] Position not found or size is 0 for ${contract}`);
-          console.warn(`[GateIOConnector] Expected position size from DB: ${this.expectedPositionSize}`);
+          // console.warn(`[GateIOConnector] Position not found or size is 0 for ${contract}`);
+          // console.warn(`[GateIOConnector] Expected position size from DB: ${this.expectedPositionSize}`);
 
           // If we have expectedPositionSize, use it as fallback
           if (this.expectedPositionSize && this.expectedPositionSize > 0) {
-            console.log(`[GateIOConnector] Using expectedPositionSize as fallback: ${this.expectedPositionSize}`);
+            // console.log(`[GateIOConnector] Using expectedPositionSize as fallback: ${this.expectedPositionSize}`);
             absoluteSize = this.expectedPositionSize;
             isLongPosition = params.side === 'long' || params.side === 'Buy';
             isShortPosition = params.side === 'short' || params.side === 'Sell';
@@ -686,12 +686,12 @@ export class GateIOConnector extends BaseExchangeConnector {
         console.log(`[GateIOConnector] Stop-loss order placed: ${stopLossOrderId}`);
       }
 
-      console.log('[GateIOConnector] Trading stop set successfully:', {
-        contract,
-        positionSide: isLongPosition ? 'LONG' : 'SHORT',
-        takeProfitOrderId,
-        stopLossOrderId,
-      });
+      // console.log('[GateIOConnector] Trading stop set successfully:', {
+      //   contract,
+      //   positionSide: isLongPosition ? 'LONG' : 'SHORT',
+      //   takeProfitOrderId,
+      //   stopLossOrderId,
+      // });
 
       return {
         success: true,

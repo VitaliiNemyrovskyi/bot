@@ -41,11 +41,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { credentialId } = body;
 
-    console.log('[API] Syncing fee rates for user:', user.id);
+    // console.log('[API] Syncing fee rates for user:', user.id);
 
     if (credentialId) {
       // Sync specific credential
-      console.log('[API] Syncing single credential:', credentialId);
+      // console.log('[API] Syncing single credential:', credentialId);
 
       const feeRates = await ExchangeFeeSyncService.syncFeeRates(credentialId);
 
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Sync all user's credentials
-      console.log('[API] Syncing all credentials for user:', user.id);
+      // console.log('[API] Syncing all credentials for user:', user.id);
 
       await ExchangeFeeSyncService.syncAllUserFeeRates(user.id);
 
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[API] Getting fee rates for credential:', credentialId, { forceRefresh });
+    // console.log('[API] Getting fee rates for credential:', credentialId, { forceRefresh });
 
     const feeRates = await ExchangeFeeSyncService.getFeeRates(credentialId, forceRefresh);
 

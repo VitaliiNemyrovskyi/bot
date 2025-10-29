@@ -78,13 +78,13 @@ export class BingXConnector extends BaseExchangeConnector {
 
     try {
       // Synchronize time with BingX server - CRITICAL for authentication
-      console.log('[BingXConnector] Synchronizing time with BingX server...');
+      // console.log('[BingXConnector] Synchronizing time with BingX server...');
       try {
         await this.bingxService.syncTime();
 
         // Log time sync status
         const syncStatus = this.bingxService.getTimeSyncStatus();
-        console.log('[BingXConnector] Time sync status:', syncStatus);
+        // console.log('[BingXConnector] Time sync status:', syncStatus);
 
         // Verify time sync was successful
         if (syncStatus.lastSyncTime === 0) {
@@ -104,7 +104,7 @@ export class BingXConnector extends BaseExchangeConnector {
       this.bingxService.startPeriodicSync();
 
       // Test connection by fetching account info (with retry on timestamp errors)
-      console.log('[BingXConnector] Testing authenticated connection...');
+      // console.log('[BingXConnector] Testing authenticated connection...');
       let retryCount = 0;
       const MAX_RETRIES = 1;
 
@@ -135,7 +135,7 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       this.isInitialized = true;
-      console.log('[BingXConnector] BingX connector initialized successfully');
+      // console.log('[BingXConnector] BingX connector initialized successfully');
     } catch (error: any) {
       console.error('[BingXConnector] Failed to initialize:', error.message);
 
@@ -209,7 +209,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] Market order placed:', result);
+      // console.log('[BingXConnector] Market order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing market order:', error.message);
@@ -362,7 +362,7 @@ export class BingXConnector extends BaseExchangeConnector {
       // Place ATOMIC order with TP/SL
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] ✓ ATOMIC market order with TP/SL placed successfully');
+      // console.log('[BingXConnector] ✓ ATOMIC market order with TP/SL placed successfully');
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing ATOMIC market order with TP/SL:', error.message);
@@ -478,7 +478,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] Limit order placed:', result);
+      // console.log('[BingXConnector] Limit order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing limit order:', error.message);
@@ -501,7 +501,7 @@ export class BingXConnector extends BaseExchangeConnector {
       const bingxSymbol = this.normalizeSymbolForBingX(symbol);
 
       const result = await this.bingxService.cancelOrder(bingxSymbol, orderId);
-      console.log('[BingXConnector] Order canceled:', result);
+      // console.log('[BingXConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error canceling order:', error.message);
@@ -519,7 +519,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.bingxService.getWalletBalance();
-      console.log('[BingXConnector] Balance retrieved');
+      // console.log('[BingXConnector] Balance retrieved');
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error getting balance:', error.message);
@@ -552,7 +552,7 @@ export class BingXConnector extends BaseExchangeConnector {
         };
       }
 
-      console.log('[BingXConnector] Position retrieved:', position);
+      // console.log('[BingXConnector] Position retrieved:', position);
       return position;
     } catch (error: any) {
       console.error('[BingXConnector] Error getting position:', error.message);
@@ -576,7 +576,7 @@ export class BingXConnector extends BaseExchangeConnector {
       }
 
       const positions = await this.bingxService.getPositions(querySymbol);
-      console.log('[BingXConnector] Positions retrieved:', positions.length);
+      // console.log('[BingXConnector] Positions retrieved:', positions.length);
       return positions;
     } catch (error: any) {
       console.error('[BingXConnector] Error getting positions:', error.message);
@@ -704,7 +704,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] Reduce-only order placed:', result);
+      // console.log('[BingXConnector] Reduce-only order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing reduce-only order:', error.message);
@@ -745,7 +745,7 @@ export class BingXConnector extends BaseExchangeConnector {
       console.log(`[BingXConnector] Symbol normalized: ${symbol} -> ${bingxSymbol}`);
 
       const result = await this.bingxService.setLeverage(bingxSymbol, leverage, side);
-      console.log('[BingXConnector] Leverage set successfully:', result);
+      // console.log('[BingXConnector] Leverage set successfully:', result);
 
       // Verify leverage was actually applied by querying position
       try {
@@ -846,7 +846,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] Take Profit order placed:', result);
+      // console.log('[BingXConnector] Take Profit order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing Take Profit order:', error.message);
@@ -913,7 +913,7 @@ export class BingXConnector extends BaseExchangeConnector {
 
       const result = await this.bingxService.placeOrder(orderParams);
 
-      console.log('[BingXConnector] Stop Loss order placed:', result);
+      // console.log('[BingXConnector] Stop Loss order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[BingXConnector] Error placing Stop Loss order:', error.message);

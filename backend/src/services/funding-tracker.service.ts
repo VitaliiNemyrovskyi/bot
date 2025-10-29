@@ -54,7 +54,7 @@ export class FundingTrackerService {
    * Start periodic funding tracking for all active positions
    */
   startTracking(): void {
-    console.log('[FundingTracker] Starting periodic funding tracking...');
+    // console.log('[FundingTracker] Starting periodic funding tracking...');
 
     // Run immediately
     this.updateAllPositions();
@@ -72,7 +72,7 @@ export class FundingTrackerService {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
-      console.log('[FundingTracker] Stopped periodic funding tracking');
+      // console.log('[FundingTracker] Stopped periodic funding tracking');
     }
   }
 
@@ -81,7 +81,7 @@ export class FundingTrackerService {
    */
   async updateAllPositions(): Promise<void> {
     try {
-      console.log('[FundingTracker] Updating funding data for all active positions...');
+      // console.log('[FundingTracker] Updating funding data for all active positions...');
 
       // Get all active positions (ACTIVE status)
       const positions = await this.prisma.graduatedEntryPosition.findMany({
@@ -102,7 +102,7 @@ export class FundingTrackerService {
         }
       }
 
-      console.log('[FundingTracker] Funding update completed');
+      // console.log('[FundingTracker] Funding update completed');
     } catch (error: any) {
       console.error('[FundingTracker] Error in updateAllPositions:', error.message);
     }
