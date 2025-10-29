@@ -32,11 +32,8 @@ export class SymbolInfoService {
 
     // Check cache first
     if (this.cache.has(cacheKey)) {
-      console.log(`[SymbolInfoService] Cache hit for ${cacheKey}`);
       return of(this.cache.get(cacheKey)!);
     }
-
-    console.log(`[SymbolInfoService] Fetching symbol info for ${exchange}:${symbol}`);
 
     const url = `${getEndpointUrl('exchange', 'symbolInfo')}?exchange=${exchange}&symbol=${symbol}`;
 
@@ -46,13 +43,11 @@ export class SymbolInfoService {
           const symbolInfo = response.data as SymbolInfo;
           // Store in cache
           this.cache.set(cacheKey, symbolInfo);
-          console.log(`[SymbolInfoService] Symbol info received:`, symbolInfo);
           return symbolInfo;
         }
         return null;
       }),
-      catchError(error => {
-        console.error(`[SymbolInfoService] Error fetching symbol info:`, error);
+      catchError(() => {
         return of(null);
       })
     );
