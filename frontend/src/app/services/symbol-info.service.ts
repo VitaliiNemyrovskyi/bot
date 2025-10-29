@@ -1,9 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
 import { getEndpointUrl } from '../config/app.config';
-import { AuthService } from './auth.service';
 
 export interface SymbolInfo {
   symbol: string;
@@ -22,7 +21,6 @@ export interface SymbolInfo {
 })
 export class SymbolInfoService {
   private http = inject(HttpClient);
-  private authService = inject(AuthService);
   private cache = new Map<string, SymbolInfo>();
 
   /**
@@ -40,19 +38,9 @@ export class SymbolInfoService {
 
     console.log(`[SymbolInfoService] Fetching symbol info for ${exchange}:${symbol}`);
 
-    const token = this.authService.authState().token;
-    if (!token) {
-      console.warn('[SymbolInfoService] No auth token available');
-      return of(null);
-    }
-
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
-
     const url = `${getEndpointUrl('exchange', 'symbolInfo')}?exchange=${exchange}&symbol=${symbol}`;
 
-    return this.http.get<any>(url, { headers }).pipe(
+    return this.http.get<any>(url).pipe(
       map(response => {
         if (response?.success && response?.data) {
           const symbolInfo = response.data as SymbolInfo;
