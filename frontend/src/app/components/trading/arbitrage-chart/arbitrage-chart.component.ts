@@ -837,7 +837,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private connectExchangeWebSocket(
     exchange: string,
     symbol: string,
-    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number) => void
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
   ): void {
     let ws: WebSocket | null = null;
 
@@ -1010,11 +1010,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private handleExchangeMessage(
     exchange: string,
     data: any,
-    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number) => void
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
   ): void {
     let price: number | null = null;
     let fundingRate: string | undefined;
     let nextFundingTime: number | undefined;
+    let fundingInterval: string | undefined;
 
     switch (exchange) {
       case 'BYBIT':
@@ -1058,12 +1059,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             }
           }
 
+          // Extract fundingInterval from BYBIT ticker (e.g., "4h", "8h", "1h")
+          if (data.data.fundingInterval) {
+            fundingInterval = data.data.fundingInterval;
+          }
+
           console.log(`[ArbitrageChart] BYBIT ticker parsed (${data.type || 'unknown'}):`, {
             rawLastPrice: data.data.lastPrice,
             parsedPrice: price,
             rawNextFundingTime: data.data.nextFundingTime,
             nextFundingTime: nextFundingTime,
-            fundingRate: fundingRate
+            fundingRate: fundingRate,
+            fundingInterval: fundingInterval
           });
         } else {
           console.warn(`[ArbitrageChart] BYBIT message format not recognized:`, data);
@@ -1125,8 +1132,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     if (price !== null && price > 0) {
-      console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime });
-      onUpdate(price, fundingRate, nextFundingTime);
+      console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime, fundingInterval });
+      onUpdate(price, fundingRate, nextFundingTime, fundingInterval);
     } else {
       console.warn(`[ArbitrageChart] ${exchange} price invalid or zero:`, price);
     }
@@ -1137,7 +1144,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    */
   private async connectGateIOViaAPI(
     symbol: string,
-    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number) => void
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
   ): Promise<void> {
     const fetchGateIOData = async () => {
       try {
@@ -1196,7 +1203,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private simulateExchangeData(
     exchange: string,
     symbol: string,
-    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number) => void
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
   ): void {
     let basePrice = 50000 + Math.random() * 1000;
 
@@ -1411,7 +1418,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Update primary exchange data
    */
-  private updatePrimaryData(price: number, fundingRate?: string, nextFundingTime?: number): void {
+  private updatePrimaryData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string): void {
     // Guard against updates after component destruction
     if (this.isDestroyed || !this.chart || !this.primarySeries) {
       return;
@@ -1439,13 +1446,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousPrimaryFundingTime = nextFundingTime;
     }
 
-    // Get fundingInterval from Map (from DB/API) for any exchange
-    let fundingIntervalStr = this.primaryData().fundingIntervalStr;
-    if (this.primaryExchange() && this.symbol()) {
+    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing
+    let fundingIntervalStr = fundingIntervalFromWS || this.primaryData().fundingIntervalStr;
+
+    // If not from WebSocket, try to get from Map (from DB/API)
+    if (!fundingIntervalFromWS && this.primaryExchange() && this.symbol()) {
       const fundingData = this.getFundingRate(this.primaryExchange().toUpperCase(), this.symbol());
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
+        console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.primaryExchange()}: ${fundingIntervalStr}`);
+      } else {
+        console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.primaryExchange()} ${this.symbol()}`);
       }
+    } else if (fundingIntervalFromWS) {
+      console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.primaryExchange()}: ${fundingIntervalFromWS}`);
     }
 
     const updatedData = {
@@ -1502,7 +1516,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Update hedge exchange data
    */
-  private updateHedgeData(price: number, fundingRate?: string, nextFundingTime?: number): void {
+  private updateHedgeData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string): void {
     // Guard against updates after component destruction
     if (this.isDestroyed || !this.chart || !this.hedgeSeries) {
       return;
@@ -1530,13 +1544,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousHedgeFundingTime = nextFundingTime;
     }
 
-    // Get fundingInterval from Map (from DB/API) for any exchange
-    let fundingIntervalStr = this.hedgeData().fundingIntervalStr;
-    if (this.hedgeExchange() && this.symbol()) {
+    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing
+    let fundingIntervalStr = fundingIntervalFromWS || this.hedgeData().fundingIntervalStr;
+
+    // If not from WebSocket, try to get from Map (from DB/API)
+    if (!fundingIntervalFromWS && this.hedgeExchange() && this.symbol()) {
       const fundingData = this.getFundingRate(this.hedgeExchange().toUpperCase(), this.symbol());
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
+        console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.hedgeExchange()}: ${fundingIntervalStr}`);
+      } else {
+        console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.hedgeExchange()} ${this.symbol()}`);
       }
+    } else if (fundingIntervalFromWS) {
+      console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.hedgeExchange()}: ${fundingIntervalFromWS}`);
     }
 
     const updatedData = {
@@ -1780,9 +1801,16 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Get CSS class for price spread badge based on whether it's favorable
    *
-   * Logic:
-   * - If Primary = LONG (buying): favorable when primaryPrice < hedgePrice (buy cheap, sell expensive)
-   * - If Primary = SHORT (selling): favorable when primaryPrice > hedgePrice (sell expensive, buy cheap)
+   * Logic for FUNDING ARBITRAGE (holding position long-term for funding payments):
+   * - If Primary = LONG / Hedge = SHORT: favorable when primaryPrice > hedgePrice
+   *   (higher entry spread = more profit potential when closing)
+   * - If Primary = SHORT / Hedge = LONG: favorable when primaryPrice < hedgePrice
+   *   (lower entry spread = more profit potential when closing)
+   *
+   * This is OPPOSITE of price arbitrage convergence trading!
+   * In funding arbitrage, we WANT a larger entry spread because:
+   * 1. It gives immediate entry profit (notional value difference)
+   * 2. We hold long-term to collect funding, not to profit from convergence
    */
   getPriceSpreadClass(): string {
     const primaryPrice = this.primaryData().price;
@@ -1793,9 +1821,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       return ''; // No color if no data
     }
 
+    // For funding arbitrage: INVERTED logic compared to price arbitrage
     const isFavorable = side === 'long'
-      ? primaryPrice < hedgePrice  // LONG: want to buy cheap (primary) and sell expensive (hedge)
-      : primaryPrice > hedgePrice; // SHORT: want to sell expensive (primary) and buy cheap (hedge)
+      ? primaryPrice > hedgePrice  // LONG/SHORT: want higher primary (larger entry spread profit)
+      : primaryPrice < hedgePrice; // SHORT/LONG: want lower primary (larger entry spread profit)
 
     return isFavorable ? 'favorable' : 'unfavorable';
   }
@@ -1834,25 +1863,37 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Detect funding interval based on the nextFundingTime hour
    * Returns interval in milliseconds
+   *
+   * NOTE: This is a fallback heuristic and may not be accurate!
+   * Always prefer fundingInterval from API/DB/WebSocket when available.
+   *
+   * Since 8h times (0, 8, 16) are also valid for 4h intervals,
+   * we default to 4h as it's more common on modern exchanges.
    */
   private detectFundingInterval(nextFundingTime: number): number {
     const fundingDate = new Date(nextFundingTime);
     const hour = fundingDate.getUTCHours();
+    const minutes = fundingDate.getUTCMinutes();
 
     // Check for common funding schedules:
     // 8h intervals: 00:00, 08:00, 16:00 UTC
     // 4h intervals: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
     // 1h intervals: every hour
 
-    if (hour % 8 === 0) {
-      // Likely 8h interval
-      return 8 * 60 * 60 * 1000; // 8 hours
-    } else if (hour % 4 === 0) {
-      // Likely 4h interval
+    // Only try to detect if time is on the hour (minutes === 0)
+    if (minutes !== 0) {
+      // Default to 4h if not on the hour (most common for non-hourly schedules)
+      return 4 * 60 * 60 * 1000;
+    }
+
+    // Check for 4h pattern (every 4 hours)
+    // Since 8h times are also divisible by 4, we can't distinguish between them
+    // Default to 4h as it's more common on modern exchanges
+    if (hour % 4 === 0) {
       return 4 * 60 * 60 * 1000; // 4 hours
     } else {
-      // Default to 8h (most common)
-      return 8 * 60 * 60 * 1000;
+      // Odd hours that aren't divisible by 4 - default to 4h
+      return 4 * 60 * 60 * 1000;
     }
   }
 

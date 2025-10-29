@@ -150,8 +150,38 @@ export class FundingTrackerService {
         return null;
       }
 
-      // Calculate totals
-      const grossProfit = (primaryData?.totalFunding || 0) + (hedgeData?.totalFunding || 0);
+      // Calculate entry price spread profit
+      // For arbitrage: Long on one exchange, Short on another
+      // Entry spread profit = (Primary notional value) - (Hedge notional value)
+      // where notional value = entry_price × leverage × quantity
+      let entrySpreadProfit = 0;
+      if (position.primaryEntryPrice && position.hedgeEntryPrice) {
+        const primaryNotional = position.primaryEntryPrice * position.primaryLeverage * position.primaryQuantity;
+        const hedgeNotional = position.hedgeEntryPrice * position.hedgeLeverage * position.hedgeQuantity;
+
+        // The spread profit depends on which side is long vs short
+        // If primary is LONG and hedge is SHORT: profit when primary entry > hedge entry
+        // If primary is SHORT and hedge is LONG: profit when hedge entry > primary entry
+        if (position.primarySide === 'long') {
+          entrySpreadProfit = primaryNotional - hedgeNotional;
+        } else {
+          entrySpreadProfit = hedgeNotional - primaryNotional;
+        }
+
+        console.log(`[FundingTracker] Entry spread calculation for ${positionId}:`, {
+          primaryEntry: position.primaryEntryPrice,
+          hedgeEntry: position.hedgeEntryPrice,
+          primaryNotional,
+          hedgeNotional,
+          primarySide: position.primarySide,
+          hedgeSide: position.hedgeSide,
+          entrySpreadProfit,
+        });
+      }
+
+      // Calculate totals including entry spread
+      const fundingProfit = (primaryData?.totalFunding || 0) + (hedgeData?.totalFunding || 0);
+      const grossProfit = fundingProfit + entrySpreadProfit;  // Include entry spread in gross profit
       const totalFees = (primaryData?.fees || 0) + (hedgeData?.fees || 0);
       const netProfit = grossProfit - totalFees;
 
