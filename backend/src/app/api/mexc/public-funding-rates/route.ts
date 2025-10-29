@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`[MEXC Public] Cache check: ${cachedCount} fresh records (threshold: ${cacheThreshold.toISOString()})`);
 
     // Step 2: If fresh data exists, return from DB
     if (cachedCount > 0) {
@@ -47,7 +46,6 @@ export async function GET(request: NextRequest) {
         distinct: ['symbol'], // Get latest record per symbol
       });
 
-      console.log(`[MEXC Public] Returning ${cachedRates.length} rates from cache`);
 
       // Transform DB format to API format
       const transformedData = {
@@ -70,7 +68,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: No fresh data - fetch from MEXC API with REAL intervals
-    console.log('[MEXC Public] Cache miss - fetching from API with collectCycle data...');
 
     // Use a dummy credential to access public endpoints (no auth needed)
     const mexcService = new MEXCService({
@@ -82,7 +79,6 @@ export async function GET(request: NextRequest) {
     // Get all funding rates - this uses getFundingRatesForSymbols which returns collectCycle
     const fundingRates = await mexcService.getAllFundingRates();
 
-    console.log(`[MEXC Public] Fetched ${fundingRates.length} funding rates with collectCycle data`);
 
     // Step 4: Delete old MEXC records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -92,7 +88,6 @@ export async function GET(request: NextRequest) {
           exchange: 'MEXC',
         },
       });
-      console.log(`[MEXC Public] Deleted ${deleted.count} old MEXC records`);
 
       // Insert new records with actual collectCycle data
       const createPromises = fundingRates.map((rate: any) => {
@@ -116,7 +111,6 @@ export async function GET(request: NextRequest) {
       await Promise.all(createPromises);
     });
 
-    console.log(`[MEXC Public] Saved ${fundingRates.length} rates to database`);
 
     // Step 5: Return with actual intervals
     const responseData = {
@@ -137,7 +131,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[MEXC Public Proxy] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

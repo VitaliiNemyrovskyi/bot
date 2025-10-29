@@ -15,7 +15,6 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(request: NextRequest) {
   try {
-    console.log('[Binance Public Proxy] Fetching funding rates and intervals...');
 
     // Fetch both endpoints in parallel
     const [premiumResponse, fundingInfoResponse] = await Promise.all([
@@ -30,7 +29,6 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (!premiumResponse.ok) {
-      console.error('[Binance Public Proxy] premiumIndex API error:', premiumResponse.status);
       return NextResponse.json(
         { error: 'Failed to fetch Binance funding rates', details: premiumResponse.statusText },
         { status: premiumResponse.status }
@@ -38,7 +36,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (!fundingInfoResponse.ok) {
-      console.error('[Binance Public Proxy] fundingInfo API error:', fundingInfoResponse.status);
       // Continue without intervals if fundingInfo fails
     }
 
@@ -61,7 +58,6 @@ export async function GET(request: NextRequest) {
         : '8h', // Default to 8h
     }));
 
-    console.log(`[Binance Public Proxy] Successfully fetched ${enrichedData.length} rates with intervals (${intervalMap.size} custom intervals)`);
 
     return NextResponse.json(enrichedData, {
       headers: {
@@ -69,7 +65,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[Binance Public Proxy] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

@@ -72,7 +72,6 @@ export async function GET(request: NextRequest) {
       normalizedSymbol.replace(/USDT$/, '-USDT'),     // AVNTUSDT -> AVNT-USDT
     ];
 
-    console.log(`[Arbitrage Public Funding] Fetching for exchanges: ${exchanges.join(', ')}, symbol variations:`, symbolVariations);
 
     // Fetch latest funding rates from DB (data should be fresh, populated by public endpoints)
     const now = new Date();
@@ -97,11 +96,9 @@ export async function GET(request: NextRequest) {
       distinct: ['exchange', 'symbol'],
     });
 
-    console.log(`[Arbitrage Public Funding] Found ${fundingRates.length} rates in database`);
 
     // If no data found, fetch directly from exchange APIs
     if (fundingRates.length === 0 || fundingRates.length < exchanges.length) {
-      console.log(`[Arbitrage Public Funding] Missing data (found ${fundingRates.length}/${exchanges.length}), fetching directly...`);
 
       const directFetchPromises = exchanges.map(async (exchange) => {
         try {
@@ -114,7 +111,6 @@ export async function GET(request: NextRequest) {
 
             if (response.ok) {
               const data = await response.json();
-              console.log(`[Arbitrage Public Funding] MEXC direct fetch:`, data);
               return {
                 exchange: 'MEXC',
                 symbol: symbolParam,
@@ -129,14 +125,11 @@ export async function GET(request: NextRequest) {
             const response = await fetch(publicUrl.toString());
 
             if (!response.ok) {
-              console.warn(`[Arbitrage Public Funding] Failed to fetch ${exchange}: ${response.status}`);
               return null;
             }
 
-            console.log(`[Arbitrage Public Funding] Successfully fetched ${exchange} data`);
           }
         } catch (error: any) {
-          console.warn(`[Arbitrage Public Funding] Error fetching ${exchange}:`, error.message);
         }
         return null;
       });
@@ -145,7 +138,6 @@ export async function GET(request: NextRequest) {
       const directResults = await Promise.all(directFetchPromises);
       const validResults = directResults.filter(r => r !== null);
 
-      console.log(`[Arbitrage Public Funding] Direct fetch results: ${validResults.length} rates`);
 
       // If we got MEXC data directly, combine with DB data for other exchanges
       if (validResults.length > 0) {
@@ -181,7 +173,6 @@ export async function GET(request: NextRequest) {
         // Combine direct results with DB data
         const combinedData = [...validResults, ...dbData];
 
-        console.log(`[Arbitrage Public Funding] Returning ${combinedData.length} rates (${validResults.length} direct + ${dbData.length} from DB)`);
 
         return NextResponse.json(
           {
@@ -203,7 +194,6 @@ export async function GET(request: NextRequest) {
       fundingInterval: `${rate.fundingInterval}h`,
     }));
 
-    console.log(`[Arbitrage Public Funding] Returning ${data.length} rates:`, data);
 
     return NextResponse.json(
       {
@@ -214,11 +204,6 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error('[Arbitrage Public Funding] Error:', {
-      error: error.message,
-      stack: error.stack,
-    });
-
     return NextResponse.json(
       {
         success: false,

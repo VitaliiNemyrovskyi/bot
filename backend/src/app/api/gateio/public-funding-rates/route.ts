@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`[Gate.io Public] Cache check: ${cachedCount} fresh records (threshold: ${cacheThreshold.toISOString()})`);
 
     // Step 2: If fresh data exists, return from DB
     if (cachedCount > 0) {
@@ -53,7 +52,6 @@ export async function GET(request: NextRequest) {
         distinct: ['symbol'], // Get latest record per symbol
       });
 
-      console.log(`[Gate.io Public] Returning ${cachedRates.length} rates from cache`);
 
       // Transform DB format to API format with unified fundingInterval
       const transformedData = cachedRates.map(rate => ({
@@ -75,7 +73,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: No fresh data - fetch from Gate.io API
-    console.log('[Gate.io Public] Cache miss - fetching from API...');
 
     const gateioUrl = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
     const response = await fetch(gateioUrl, {
@@ -87,7 +84,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[Gate.io Public] API error:', response.status, response.statusText);
       return NextResponse.json(
         { error: 'Failed to fetch Gate.io funding rates', details: response.statusText },
         { status: response.status }
@@ -95,7 +91,6 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log(`[Gate.io Public] Fetched ${data?.length || 0} rates from API`);
 
     // Step 4: Delete old GATEIO records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -105,7 +100,6 @@ export async function GET(request: NextRequest) {
           exchange: 'GATEIO',
         },
       });
-      console.log(`[Gate.io Public] Deleted ${deleted.count} old GATEIO records`);
 
       // Insert new records
       const createPromises = data.map((contract: any) =>
@@ -126,7 +120,6 @@ export async function GET(request: NextRequest) {
       await Promise.all(createPromises);
     });
 
-    console.log(`[Gate.io Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return transformed data with unified format
     const transformedData = data.map((contract: any) => ({
@@ -143,7 +136,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[Gate.io Public] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

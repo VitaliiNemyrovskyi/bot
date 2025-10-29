@@ -62,7 +62,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`[BingX Public] Cache check: ${cachedCount} fresh records (threshold: ${cacheThreshold.toISOString()})`);
 
     // Step 2: If fresh data exists, return from DB
     if (cachedCount > 0) {
@@ -79,7 +78,6 @@ export async function GET(request: NextRequest) {
         distinct: ['symbol'], // Get latest record per symbol
       });
 
-      console.log(`[BingX Public] Returning ${cachedRates.length} rates from cache`);
 
       // Transform DB format to BingX API format
       const transformedData = {
@@ -104,7 +102,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: No fresh data - fetch from BingX API
-    console.log('[BingX Public] Cache miss - fetching from API...');
 
     const bingxUrl = 'https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex';
     const response = await fetch(bingxUrl, {
@@ -115,7 +112,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[BingX Public] API error:', response.status, response.statusText);
       return NextResponse.json(
         { error: 'Failed to fetch BingX funding rates', details: response.statusText },
         { status: response.status }
@@ -124,7 +120,6 @@ export async function GET(request: NextRequest) {
 
     const rawData = await response.json();
     const data = rawData.data || [];
-    console.log(`[BingX Public] Fetched ${data.length} rates from API`);
 
     // Step 4: Delete old BINGX records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -134,7 +129,6 @@ export async function GET(request: NextRequest) {
           exchange: 'BINGX',
         },
       });
-      console.log(`[BingX Public] Deleted ${deleted.count} old BINGX records`);
 
       // Insert new records
       const createPromises = data.map((item: any) => {
@@ -158,7 +152,6 @@ export async function GET(request: NextRequest) {
       await Promise.all(createPromises);
     });
 
-    console.log(`[BingX Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return transformed data with funding intervals
     const enrichedData = {
@@ -179,7 +172,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[BingX Public] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

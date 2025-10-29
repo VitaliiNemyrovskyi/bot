@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     // Bitget requires productType parameter - we'll fetch USDT perpetuals
     const bitgetUrl = 'https://api.bitget.com/api/v2/mix/market/current-fund-rate?productType=USDT-FUTURES';
 
-    console.log('[Bitget Public Proxy] Fetching funding rates...');
 
     const response = await fetch(bitgetUrl, {
       method: 'GET',
@@ -24,7 +23,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[Bitget Public Proxy] API error:', response.status, response.statusText);
       return NextResponse.json(
         { error: 'Failed to fetch Bitget funding rates', details: response.statusText },
         { status: response.status }
@@ -33,7 +31,6 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    console.log(`[Bitget Public Proxy] Successfully fetched ${data?.data?.length || 0} funding rates`);
 
     return NextResponse.json(data, {
       headers: {
@@ -41,7 +38,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[Bitget Public Proxy] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

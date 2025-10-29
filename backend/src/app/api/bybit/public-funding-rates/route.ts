@@ -37,7 +37,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`[Bybit Public] Cache check: ${cachedCount} fresh records (threshold: ${cacheThreshold.toISOString()})`);
 
     // Step 2: If fresh data exists, return from DB
     if (cachedCount > 0) {
@@ -54,7 +53,6 @@ export async function GET(request: NextRequest) {
         distinct: ['symbol'], // Get latest record per symbol
       });
 
-      console.log(`[Bybit Public] Returning ${cachedRates.length} rates from cache`);
 
       // Transform DB format to Bybit API format
       const transformedData = {
@@ -82,7 +80,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: No fresh data - fetch from Bybit API
-    console.log('[Bybit Public] Cache miss - fetching from API...');
 
     const bybitUrl = 'https://api.bybit.com/v5/market/tickers?category=linear';
     const response = await fetch(bybitUrl, {
@@ -93,7 +90,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[Bybit Public] API error:', response.status, response.statusText);
       return NextResponse.json(
         { error: 'Failed to fetch Bybit funding rates', details: response.statusText },
         { status: response.status }
@@ -102,7 +98,6 @@ export async function GET(request: NextRequest) {
 
     const rawData = await response.json();
     const data = rawData.result?.list || [];
-    console.log(`[Bybit Public] Fetched ${data.length} rates from API`);
 
     // Step 4: Delete old BYBIT records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -112,7 +107,6 @@ export async function GET(request: NextRequest) {
           exchange: 'BYBIT',
         },
       });
-      console.log(`[Bybit Public] Deleted ${deleted.count} old BYBIT records`);
 
       // Insert new records
       const createPromises = data.map((item: any) => {
@@ -142,7 +136,6 @@ export async function GET(request: NextRequest) {
       await Promise.all(createPromises);
     });
 
-    console.log(`[Bybit Public] Saved ${data.length} rates to database`);
 
     // Step 5: Return data with funding intervals from API
     const enrichedData = {
@@ -163,7 +156,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[Bybit Public] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
