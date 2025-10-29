@@ -1,26 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BybitService } from '@/lib/bybit';
-import { BingXService } from '@/lib/bingx';
-import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
 import { calculateRealisticROI, calculateOpportunityConfidence, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
-
-/**
- * Get default funding interval for an exchange
- * Most exchanges use 8h intervals (3 times per day)
- */
-function getDefaultFundingInterval(exchange: string): string {
-  const intervals: Record<string, string> = {
-    'BINANCE': '8h',
-    'BYBIT': '8h',
-    'BINGX': '8h',
-    'OKX': '8h',
-    'GATEIO': '8h',
-    'MEXC': '8h',
-  };
-  return intervals[exchange.toUpperCase()] || '8h';
-}
 
 /**
  * Normalize funding rate to 8-hour interval for fair comparison
@@ -310,145 +291,47 @@ export async function GET(request: NextRequest) {
       if (!result) continue;
 
       try {
-        if (result.exchange === 'BYBIT') {
-          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
-          if (!credential) continue;
+        // For ALL exchanges, use public funding rates endpoint (unified approach)
+        const publicUrl = new URL(`/api/${result.exchange.toLowerCase()}/public-funding-rates`, request.url);
+        const response = await fetch(publicUrl.toString());
 
-          const bybitService = new BybitService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-            userId,
-          });
-
-          const tickers = await bybitService.getTicker('linear');
-          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
-          const fundingInterval = getDefaultFundingInterval(result.exchange);
-
-          tickers.forEach((t) => {
-            if (t.fundingRate) {
-              const fundingRateDecimal = parseFloat(t.fundingRate); // Keep as decimal for normalization
-              const fundingRatePercent = fundingRateDecimal * 100; // Convert to percentage
-              symbolFundingMap.set(t.symbol, { rate: fundingRatePercent, interval: fundingInterval });
-            }
-          });
-
-          fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BYBIT (${fundingInterval})`);
-
-        } else if (result.exchange === 'BINGX') {
-          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
-          if (!credential) continue;
-
-          const bingxService = new BingXService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-          });
-
-          await bingxService.syncTime();
-          const rates = await bingxService.getAllFundingRates();
-          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
-          const fundingInterval = getDefaultFundingInterval(result.exchange);
-
-          rates.forEach((r) => {
-            if (r.fundingRate) {
-              const fundingRateDecimal = parseFloat(r.fundingRate); // Keep as decimal for normalization
-              const fundingRatePercent = fundingRateDecimal * 100; // Convert to percentage
-              const normalizedSymbol = r.symbol.replace(/-/g, ''); // BTC-USDT -> BTCUSDT
-              symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval: fundingInterval });
-            }
-          });
-
-          fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX (${fundingInterval})`);
-
-        } else if (result.exchange === 'MEXC') {
-          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
-          if (!credential) {
-            console.warn(`[PriceOpportunities] Credential not found for MEXC: ${result.credentialId}`);
-            continue;
-          }
-
-          const mexcService = new MEXCService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            authToken: credential.authToken,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-          });
-
-          // Get funding rates for all symbols - MEXC returns rate + collectCycle
-          const mexcSymbols = Array.from(uniqueSymbols).map(sym =>
-            sym.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2')
-          );
-          const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
+        if (response.ok) {
+          const data = await response.json();
           const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
 
-          rates.forEach((r) => {
-            if (r.fundingRate !== undefined) {
-              const fundingRateDecimal = parseFloat(r.fundingRate.toString());
-              const fundingRatePercent = fundingRateDecimal * 100;
-              const normalizedSymbol = r.symbol.replace(/_/g, ''); // BTC_USDT -> BTCUSDT
-              const interval = r.collectCycle ? `${r.collectCycle}h` : '8h';
-              symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
-            }
-          });
+          // Different exchanges have different response formats
+          const rates = data.data || data.rates || data.result?.list || data;
 
-          fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from MEXC with dynamic intervals`);
+          if (Array.isArray(rates)) {
+            rates.forEach((r: any) => {
+              // Get funding rate from various field names
+              const fundingRateRaw = r.fundingRate || r.lastFundingRate || r.funding_rate;
 
-        } else {
-          // For all other exchanges (Gate.io, Bitget, OKX, etc.), use public funding rates endpoint
-          try {
-            const publicUrl = new URL(`/api/${result.exchange.toLowerCase()}/public-funding-rates`, request.url);
-            const response = await fetch(publicUrl.toString());
+              if (fundingRateRaw !== undefined) {
+                const fundingRateDecimal = parseFloat(fundingRateRaw.toString());
+                const fundingRatePercent = fundingRateDecimal * 100;
 
-            if (response.ok) {
-              const data = await response.json();
-              const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
+                // Get symbol and normalize it (remove all separators)
+                const symbolRaw = r.symbol || r.name;
+                if (!symbolRaw) return;
 
-              // Different exchanges have different response formats
-              const rates = data.data || data.rates || data;
+                const normalizedSymbol = symbolRaw.replace(/-/g, '').replace(/_/g, '');
 
-              if (Array.isArray(rates)) {
-                rates.forEach((r: any) => {
-                  if (r.fundingRate !== undefined && r.symbol) {
-                    const fundingRateDecimal = parseFloat(r.fundingRate.toString());
-                    const fundingRatePercent = fundingRateDecimal * 100;
-                    const normalizedSymbol = r.symbol.replace(/-/g, '').replace(/_/g, '');
+                // Get interval from fundingInterval field (all endpoints now provide this)
+                const interval = r.fundingInterval || '8h'; // Default to 8h if not provided
 
-                    // Try to get interval from various fields
-                    let interval = '8h'; // default
-                    if (r.fundingRateInterval) {
-                      interval = `${r.fundingRateInterval}h`;
-                    } else if (r.fundingInterval) {
-                      // Already in "Xh" format or needs conversion
-                      interval = typeof r.fundingInterval === 'number' ? `${r.fundingInterval}h` : r.fundingInterval;
-                    } else if (r.funding_interval) {
-                      // Gate.io uses seconds
-                      const hours = Math.floor(r.funding_interval / 3600);
-                      interval = `${hours}h`;
-                    }
-
-                    symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
-                  }
-                });
-
-                fundingRateMap.set(result.exchange, symbolFundingMap);
-                console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from ${result.exchange} via public endpoint`);
+                symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
               }
-            } else {
-              console.warn(`[PriceOpportunities] Public endpoint failed for ${result.exchange}: ${response.status}`);
-            }
-          } catch (fetchError: any) {
-            console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, fetchError.message);
+            });
+
+            fundingRateMap.set(result.exchange, symbolFundingMap);
+            console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from ${result.exchange} via public endpoint`);
           }
+        } else {
+          console.warn(`[PriceOpportunities] Public endpoint failed for ${result.exchange}: ${response.status}`);
         }
       } catch (error: any) {
-        console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
+        console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, error.message);
       }
     }
 

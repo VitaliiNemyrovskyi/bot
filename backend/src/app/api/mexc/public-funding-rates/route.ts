@@ -1,64 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { MEXCService } from '@/lib/mexc';
 
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 
 /**
- * Known MEXC funding intervals (updated from official announcements)
- * MEXC API doesn't provide intervals in ticker endpoint, so we maintain this list
- * based on official announcements
+ * MEXC Public Funding Rates with Dynamic Intervals
  *
- * Source: https://www.mexc.com/support/ (funding rate adjustment announcements)
- * Last updated: 2025-10
- *
- * Note: MEXC uses collectCycle field in funding rate history API,
- * but requires individual requests per symbol (too slow for 800+ symbols)
- */
-const MEXC_FUNDING_INTERVALS: Record<string, string> = {
-  // 4-hour intervals (announced July 18, 2025)
-  'LAYER_USDT': '4h',
-  'LPT_USDT': '4h',
-  'RVN_USDT': '4h',
-  'DRIFT_USDT': '4h',
-  'ZETA_USDT': '4h',
-  'RDNT_USDT': '4h',
-  'NTRN_USDT': '4h',
-  'AUDIO_USDT': '4h',
-  'BAL_USDT': '4h',
-  'STORJ_USDT': '4h',
-  'ANKR_USDT': '4h',
-  'ALPACA_USDT': '4h',
-  'GTC_USDT': '4h',
-  'OGN_USDT': '4h',
-
-  // Default: 8h for all others (MEXC standard)
-};
-
-/**
- * DEPRECATED: Do NOT use this function!
- *
- * MEXC funding intervals vary by SYMBOL and can change over time:
- * - Some symbols: 1h (every hour)
- * - Some symbols: 4h (every 4 hours)
- * - Some symbols: 8h (every 8 hours)
- *
- * Always get nextSettleTime and collectCycle from MEXC API per symbol.
- * This function is kept only for backward compatibility but should NOT be used.
- */
-function calculateNextFundingTime_DEPRECATED_DO_NOT_USE(): number {
-  throw new Error('calculateNextFundingTime is deprecated - use MEXC API nextSettleTime instead');
-}
-
-/**
- * MEXC Public Funding Rates Proxy with Funding Intervals
- *
- * Proxies requests to MEXC public API to bypass CORS restrictions
- * Enriches data with funding intervals based on official MEXC announcements.
+ * Returns MEXC funding rates with ACTUAL funding intervals from API (collectCycle field).
+ * Uses individual symbol API to get accurate nextSettleTime and collectCycle.
  * NO AUTHENTICATION REQUIRED - public endpoint
  *
  * Endpoint: GET /api/mexc/public-funding-rates
- * MEXC API: GET https://futures.mexc.com/api/v1/contract/ticker
- * Documentation: https://mexcdevelop.github.io/apidocs/contract_v1_en/#k-line-data
+ * MEXC API: GET https://futures.mexc.com/api/v1/contract/funding_rate/{symbol}
+ * Documentation: https://mexcdevelop.github.io/apidocs/contract_v1_en/#get-funding-rate
  */
 export async function GET(request: NextRequest) {
   try {
@@ -94,14 +49,14 @@ export async function GET(request: NextRequest) {
 
       console.log(`[MEXC Public] Returning ${cachedRates.length} rates from cache`);
 
-      // Transform DB format to MEXC API format
+      // Transform DB format to API format
       const transformedData = {
         success: true,
         code: 0,
         data: cachedRates.map(rate => ({
           symbol: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
           fundingRate: rate.fundingRate,
-          fundingInterval: `${rate.fundingInterval}h`,
+          fundingInterval: rate.fundingInterval > 0 ? `${rate.fundingInterval}h` : 'unknown',
           nextFundingTime: rate.nextFundingTime.getTime(),
         })),
       };
@@ -114,68 +69,20 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Step 3: No fresh data - fetch from MEXC API
-    console.log('[MEXC Public] Cache miss - fetching from API...');
+    // Step 3: No fresh data - fetch from MEXC API with REAL intervals
+    console.log('[MEXC Public] Cache miss - fetching from API with collectCycle data...');
 
-    const mexcUrl = 'https://futures.mexc.com/api/v1/contract/ticker';
-
-    const response = await fetch(mexcUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    // Use a dummy credential to access public endpoints (no auth needed)
+    const mexcService = new MEXCService({
+      apiKey: 'dummy',
+      apiSecret: 'dummy',
+      enableRateLimit: true,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[MEXC Public Proxy] HTTP error:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText,
-      });
-      return NextResponse.json(
-        { error: 'Failed to fetch from MEXC', details: errorText },
-        { status: response.status }
-      );
-    }
+    // Get all funding rates - this uses getFundingRatesForSymbols which returns collectCycle
+    const fundingRates = await mexcService.getAllFundingRates();
 
-    const rawData = await response.json();
-
-    if (!rawData.success || rawData.code !== 0) {
-      console.error('[MEXC Public Proxy] API returned error:', {
-        code: rawData.code,
-        success: rawData.success,
-      });
-    }
-
-    // IMPORTANT: MEXC ticker API does NOT provide nextSettleTime or collectCycle
-    // We need to fetch individual funding rates to get accurate data
-    // For now, use ticker data but mark interval as unknown
-
-    console.log(`[MEXC Public] WARNING: Using ticker data without accurate nextFundingTime and collectCycle`);
-    console.log(`[MEXC Public] For accurate data, use individual symbol API: /api/v1/contract/funding_rate/{symbol}`);
-
-    const enrichedData = {
-      ...rawData,
-      data: Array.isArray(rawData.data)
-        ? rawData.data.map((ticker: any) => {
-            // We DON'T know the actual interval from ticker API
-            // Mark as unknown so consumers know this is unreliable
-            const fundingInterval = 'unknown';
-
-            // Set nextFundingTime to 0 to indicate it's not available from this endpoint
-            const nextFundingTime = 0;
-
-            return {
-              ...ticker,
-              fundingInterval,
-              nextFundingTime,
-            };
-          })
-        : []
-    };
-
-    console.log(`[MEXC Public] Successfully fetched ${enrichedData.data.length} tickers (intervals UNKNOWN - use individual API for accuracy)`);
+    console.log(`[MEXC Public] Fetched ${fundingRates.length} funding rates with collectCycle data`);
 
     // Step 4: Delete old MEXC records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -187,21 +94,20 @@ export async function GET(request: NextRequest) {
       });
       console.log(`[MEXC Public] Deleted ${deleted.count} old MEXC records`);
 
-      // Insert new records
-      const createPromises = enrichedData.data.map((ticker: any) => {
-        const symbol = ticker.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
-        // Set interval to 0 to indicate unknown (will be updated by individual API calls)
-        const fundingIntervalHours = 0;
+      // Insert new records with actual collectCycle data
+      const createPromises = fundingRates.map((rate: any) => {
+        const symbol = rate.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
+        const fundingIntervalHours = rate.collectCycle || 8; // Use actual collectCycle or default to 8h
 
         return tx.publicFundingRate.create({
           data: {
             symbol,
             exchange: 'MEXC',
-            fundingRate: parseFloat(ticker.fundingRate || '0'),
-            nextFundingTime: new Date(0), // Set to epoch to indicate unknown
+            fundingRate: parseFloat(rate.fundingRate?.toString() || '0'),
+            nextFundingTime: new Date(rate.nextSettleTime || 0),
             fundingInterval: fundingIntervalHours,
-            markPrice: parseFloat(ticker.fairPrice || '0'),
-            indexPrice: parseFloat(ticker.indexPrice || '0'),
+            markPrice: parseFloat(rate.lastPrice?.toString() || '0'),
+            indexPrice: parseFloat(rate.lastPrice?.toString() || '0'),
             timestamp: now,
           },
         });
@@ -210,10 +116,21 @@ export async function GET(request: NextRequest) {
       await Promise.all(createPromises);
     });
 
-    console.log(`[MEXC Public] Saved ${enrichedData.data.length} rates to database`);
+    console.log(`[MEXC Public] Saved ${fundingRates.length} rates to database`);
 
-    // Step 5: Return with cache headers
-    return NextResponse.json(enrichedData, {
+    // Step 5: Return with actual intervals
+    const responseData = {
+      success: true,
+      code: 0,
+      data: fundingRates.map((rate: any) => ({
+        symbol: rate.symbol, // BTC_USDT format
+        fundingRate: rate.fundingRate,
+        fundingInterval: rate.collectCycle ? `${rate.collectCycle}h` : '8h',
+        nextFundingTime: rate.nextSettleTime || 0,
+      })),
+    };
+
+    return NextResponse.json(responseData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',
