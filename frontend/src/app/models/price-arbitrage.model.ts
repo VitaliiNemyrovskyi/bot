@@ -137,9 +137,11 @@ export interface PriceArbitrageOpportunity {
 
   // NEW FIELDS FOR COMBINED STRATEGY
   // Funding rate data (optional - may not be available for all symbols)
-  primaryFundingRate?: number; // Funding rate on primary exchange (% per 8h)
-  hedgeFundingRate?: number; // Funding rate on hedge exchange (% per 8h)
-  fundingDifferential?: number; // Difference in funding rates (% per 8h)
+  primaryFundingRate?: number; // Funding rate on primary exchange (% per interval)
+  hedgeFundingRate?: number; // Funding rate on hedge exchange (% per interval)
+  primaryFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  hedgeFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  fundingDifferential?: number; // Difference in funding rates (% per 8h - normalized)
 
   // Combined strategy metrics (LEGACY - simple calculations)
   combinedScore?: number; // Combined score (price spread + funding)

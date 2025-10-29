@@ -143,8 +143,15 @@ async function fetchExchangeFundingRates(
 
 /**
  * Get default funding interval for an exchange
- * Most exchanges use 8h intervals (3 times per day)
- * Some exchanges may have different intervals for specific symbols
+ *
+ * IMPORTANT: This is only a FALLBACK when CCXT doesn't provide the interval.
+ * Funding intervals can vary by SYMBOL and can change over time.
+ * Always prefer the interval from CCXT API (fundingIntervalFromApi) when available.
+ *
+ * Common default intervals:
+ * - Most exchanges: 8h (3 times per day)
+ * - Some symbols: 4h (6 times per day)
+ * - Some symbols: 1h (24 times per day)
  */
 function getDefaultFundingInterval(exchange: string): string {
   const intervals: Record<string, string> = {
@@ -153,7 +160,7 @@ function getDefaultFundingInterval(exchange: string): string {
     'BINGX': '8h',
     'OKX': '8h',
     'GATEIO': '8h', // Confirmed via API: funding_interval=28800 seconds
-    'MEXC': '8h', // Most MEXC contracts use 8h
+    'MEXC': '8h', // Confirmed via API: collectCycle=8 hours
   };
 
   return intervals[exchange.toUpperCase()] || '8h';
@@ -426,6 +433,7 @@ export async function GET(request: NextRequest) {
               originalSymbol: r.symbol, // Keep original for reference
               fundingRate: r.fundingRate.toString(),
               nextFundingTime: r.nextSettleTime,
+              fundingIntervalFromApi: r.collectCycle, // Funding interval from MEXC API (1, 4, or 8 hours)
               lastPrice: r.lastPrice?.toString() || '0',
             }))
           };

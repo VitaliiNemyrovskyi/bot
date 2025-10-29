@@ -272,9 +272,11 @@ export interface PriceArbitrageOpportunity {
 
   // НОВЫЕ ПОЛЯ ДЛЯ КОМБИНИРОВАННОЙ СТРАТЕГИИ
   // Funding rate data (optional - may not be available for all symbols)
-  primaryFundingRate?: number; // Funding rate на primary exchange (% per 8h)
-  hedgeFundingRate?: number; // Funding rate на hedge exchange (% per 8h)
-  fundingDifferential?: number; // Разница funding rates (% per 8h)
+  primaryFundingRate?: number; // Funding rate на primary exchange (% per interval)
+  hedgeFundingRate?: number; // Funding rate на hedge exchange (% per interval)
+  primaryFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  hedgeFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  fundingDifferential?: number; // Разница funding rates (% per 8h - normalized)
 
   // Combined strategy metrics (LEGACY - простые расчеты)
   combinedScore?: number; // Комбинированная оценка (price spread + funding)

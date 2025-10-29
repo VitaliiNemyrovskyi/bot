@@ -1087,9 +1087,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         break;
 
       case 'MEXC':
-        // Debug logging for MEXC
-        console.log(`[ArbitrageChart] MEXC WebSocket message:`, data);
-
         if (data.channel === 'push.ticker' && data.data) {
           // MEXC format: { channel: "push.ticker", data: { lastPrice, fundingRate, ... } }
           price = parseFloat(data.data.lastPrice);
@@ -1099,46 +1096,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             fundingRate = data.data.fundingRate.toString();
           }
 
-          // MEXC doesn't provide nextFundingTime in ticker, funding happens every 8 hours
-          // Calculate next funding time (funding times: 00:00, 08:00, 16:00 UTC)
-          const now = new Date();
-          const currentHour = now.getUTCHours();
-          let nextFundingHour: number;
-
-          if (currentHour < 8) {
-            nextFundingHour = 8;
-          } else if (currentHour < 16) {
-            nextFundingHour = 16;
-          } else {
-            nextFundingHour = 24; // Next day 00:00
-          }
-
-          const nextFunding = new Date(Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate(),
-            nextFundingHour % 24,
-            0,
-            0
-          ));
-
-          if (nextFundingHour === 24) {
-            nextFunding.setUTCDate(nextFunding.getUTCDate() + 1);
-          }
-
-          nextFundingTime = nextFunding.getTime();
-
-          console.log(`[ArbitrageChart] MEXC price parsed:`, {
-            rawLastPrice: data.data.lastPrice,
-            parsedPrice: price,
-            rawFundingRate: data.data.fundingRate,
-            fundingRate: fundingRate,
-            nextFundingTime: nextFundingTime,
-            nextFundingTimeFormatted: new Date(nextFundingTime).toISOString(),
-            isValid: !isNaN(price) && price > 0
-          });
-        } else {
-          console.warn(`[ArbitrageChart] MEXC message format not recognized:`, data);
+          // IMPORTANT: MEXC doesn't provide nextFundingTime in WebSocket ticker
+          // DO NOT calculate it locally - funding intervals can vary by symbol and change over time
+          // We rely on the backend API (/api/arbitrage/funding-rates) to provide accurate nextFundingTime
+          // The existing nextFundingTime from fundingRatesMap will be used
         }
         break;
 
@@ -1917,7 +1878,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Use funding interval from API/DB if available, otherwise default to 8h
     const intervalFormatted = fundingIntervalStr || '8h';
 
-    return `${rateFormatted} / ${timeFormatted} / ${intervalFormatted}`;
+    const result = `${rateFormatted} / ${timeFormatted} / ${intervalFormatted}`;
+
+    return result;
   }
 
   /**

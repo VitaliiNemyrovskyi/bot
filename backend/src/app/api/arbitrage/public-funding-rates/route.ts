@@ -99,67 +99,99 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Arbitrage Public Funding] Found ${fundingRates.length} rates in database`);
 
-    // If no data found, try to trigger public endpoints to populate cache
-    if (fundingRates.length === 0) {
-      console.log(`[Arbitrage Public Funding] No data in DB, triggering public endpoints...`);
+    // If no data found, fetch directly from exchange APIs
+    if (fundingRates.length === 0 || fundingRates.length < exchanges.length) {
+      console.log(`[Arbitrage Public Funding] Missing data (found ${fundingRates.length}/${exchanges.length}), fetching directly...`);
 
-      const triggerPromises = exchanges.map(async (exchange) => {
+      const directFetchPromises = exchanges.map(async (exchange) => {
         try {
-          const publicUrl = new URL(`/api/${exchange.toLowerCase()}/public-funding-rates`, request.url);
-          const response = await fetch(publicUrl.toString());
+          // For MEXC, use individual symbol endpoint for accurate data
+          if (exchange === 'MEXC') {
+            // Convert symbol to MEXC format (SHELL/USDT -> SHELL_USDT)
+            const mexcSymbol = normalizedSymbol.replace(/USDT$/, '_USDT');
+            const mexcUrl = new URL(`/api/mexc/funding-rate/${mexcSymbol}`, request.url);
+            const response = await fetch(mexcUrl.toString());
 
-          if (!response.ok) {
-            console.warn(`[Arbitrage Public Funding] Failed to trigger ${exchange} public endpoint: ${response.status}`);
+            if (response.ok) {
+              const data = await response.json();
+              console.log(`[Arbitrage Public Funding] MEXC direct fetch:`, data);
+              return {
+                exchange: 'MEXC',
+                symbol: symbolParam,
+                fundingRate: data.fundingRate.toString(),
+                nextFundingTime: data.nextSettleTime,
+                fundingInterval: data.fundingInterval,
+              };
+            }
           } else {
-            console.log(`[Arbitrage Public Funding] Successfully triggered ${exchange} public endpoint`);
+            // For other exchanges, use public endpoints
+            const publicUrl = new URL(`/api/${exchange.toLowerCase()}/public-funding-rates`, request.url);
+            const response = await fetch(publicUrl.toString());
+
+            if (!response.ok) {
+              console.warn(`[Arbitrage Public Funding] Failed to fetch ${exchange}: ${response.status}`);
+              return null;
+            }
+
+            console.log(`[Arbitrage Public Funding] Successfully fetched ${exchange} data`);
           }
         } catch (error: any) {
-          console.warn(`[Arbitrage Public Funding] Error triggering ${exchange} public endpoint:`, error.message);
+          console.warn(`[Arbitrage Public Funding] Error fetching ${exchange}:`, error.message);
         }
+        return null;
       });
 
-      // Wait for all triggers to complete
-      await Promise.all(triggerPromises);
+      // Wait for all fetches to complete
+      const directResults = await Promise.all(directFetchPromises);
+      const validResults = directResults.filter(r => r !== null);
 
-      // Re-fetch from DB after population
-      const refreshedRates = await prisma.publicFundingRate.findMany({
-        where: {
-          exchange: {
-            in: exchanges,
+      console.log(`[Arbitrage Public Funding] Direct fetch results: ${validResults.length} rates`);
+
+      // If we got MEXC data directly, combine with DB data for other exchanges
+      if (validResults.length > 0) {
+        // Re-fetch from DB for other exchanges
+        const refreshedRates = await prisma.publicFundingRate.findMany({
+          where: {
+            exchange: {
+              in: exchanges.filter(e => e !== 'MEXC'), // Exclude MEXC, we have direct data
+            },
+            symbol: {
+              in: symbolVariations,
+            },
+            timestamp: {
+              gte: twoMinutesAgo,
+            },
           },
-          symbol: {
-            in: symbolVariations,
+          orderBy: [
+            { exchange: 'asc' },
+            { timestamp: 'desc' },
+          ],
+          distinct: ['exchange', 'symbol'],
+        });
+
+        // Transform DB data
+        const dbData = refreshedRates.map(rate => ({
+          exchange: rate.exchange,
+          symbol: rate.symbol,
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
+          fundingInterval: `${rate.fundingInterval}h`,
+        }));
+
+        // Combine direct results with DB data
+        const combinedData = [...validResults, ...dbData];
+
+        console.log(`[Arbitrage Public Funding] Returning ${combinedData.length} rates (${validResults.length} direct + ${dbData.length} from DB)`);
+
+        return NextResponse.json(
+          {
+            success: true,
+            data: combinedData,
+            timestamp: new Date().toISOString(),
           },
-          timestamp: {
-            gte: twoMinutesAgo,
-          },
-        },
-        orderBy: [
-          { exchange: 'asc' },
-          { timestamp: 'desc' },
-        ],
-        distinct: ['exchange', 'symbol'],
-      });
-
-      console.log(`[Arbitrage Public Funding] After refresh: ${refreshedRates.length} rates`);
-
-      // Transform and return
-      const data = refreshedRates.map(rate => ({
-        exchange: rate.exchange,
-        symbol: rate.symbol,
-        fundingRate: rate.fundingRate.toString(),
-        nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-        fundingInterval: `${rate.fundingInterval}h`,
-      }));
-
-      return NextResponse.json(
-        {
-          success: true,
-          data,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 200 }
-      );
+          { status: 200 }
+        );
+      }
     }
 
     // Transform DB data to API format

@@ -35,30 +35,18 @@ const MEXC_FUNDING_INTERVALS: Record<string, string> = {
 };
 
 /**
- * Calculate next funding time for MEXC
- * MEXC funding happens EVERY HOUR at :00 (e.g., 19:00, 20:00, 21:00, etc.)
- * Despite API returning "8h" interval string, actual funding happens hourly
+ * DEPRECATED: Do NOT use this function!
+ *
+ * MEXC funding intervals vary by SYMBOL and can change over time:
+ * - Some symbols: 1h (every hour)
+ * - Some symbols: 4h (every 4 hours)
+ * - Some symbols: 8h (every 8 hours)
+ *
+ * Always get nextSettleTime and collectCycle from MEXC API per symbol.
+ * This function is kept only for backward compatibility but should NOT be used.
  */
-function calculateNextFundingTime(): number {
-  const now = Date.now();
-  const nowDate = new Date(now);
-
-  // Get current UTC time
-  const currentMinute = nowDate.getUTCMinutes();
-  const currentSecond = nowDate.getUTCSeconds();
-
-  // Calculate next funding time (next hour at :00)
-  const nextFunding = new Date(nowDate);
-
-  // Set to :00:00.000 of current hour first
-  nextFunding.setUTCMinutes(0, 0, 0);
-
-  // If we're past the hour mark (even by 1 second), move to next hour
-  if (currentMinute > 0 || currentSecond > 0) {
-    nextFunding.setUTCHours(nextFunding.getUTCHours() + 1);
-  }
-
-  return nextFunding.getTime();
+function calculateNextFundingTime_DEPRECATED_DO_NOT_USE(): number {
+  throw new Error('calculateNextFundingTime is deprecated - use MEXC API nextSettleTime instead');
 }
 
 /**
@@ -160,15 +148,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Enrich data with funding intervals and next funding time
-    const nextFundingTime = calculateNextFundingTime();
+    // IMPORTANT: MEXC ticker API does NOT provide nextSettleTime or collectCycle
+    // We need to fetch individual funding rates to get accurate data
+    // For now, use ticker data but mark interval as unknown
+
+    console.log(`[MEXC Public] WARNING: Using ticker data without accurate nextFundingTime and collectCycle`);
+    console.log(`[MEXC Public] For accurate data, use individual symbol API: /api/v1/contract/funding_rate/{symbol}`);
 
     const enrichedData = {
       ...rawData,
       data: Array.isArray(rawData.data)
         ? rawData.data.map((ticker: any) => {
-            // MEXC actual funding interval is 1h despite what their API says
-            const fundingInterval = '1h';
+            // We DON'T know the actual interval from ticker API
+            // Mark as unknown so consumers know this is unreliable
+            const fundingInterval = 'unknown';
+
+            // Set nextFundingTime to 0 to indicate it's not available from this endpoint
+            const nextFundingTime = 0;
 
             return {
               ...ticker,
@@ -179,8 +175,7 @@ export async function GET(request: NextRequest) {
         : []
     };
 
-    const customIntervals = enrichedData.data.filter((t: any) => t.fundingInterval !== '8h').length;
-    console.log(`[MEXC Public] Successfully fetched ${enrichedData.data.length} tickers (${customIntervals} with non-8h intervals)`);
+    console.log(`[MEXC Public] Successfully fetched ${enrichedData.data.length} tickers (intervals UNKNOWN - use individual API for accuracy)`);
 
     // Step 4: Delete old MEXC records and insert new ones (atomic transaction)
     await prisma.$transaction(async (tx) => {
@@ -195,14 +190,15 @@ export async function GET(request: NextRequest) {
       // Insert new records
       const createPromises = enrichedData.data.map((ticker: any) => {
         const symbol = ticker.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
-        const fundingIntervalHours = 1; // MEXC is always 1h
+        // Set interval to 0 to indicate unknown (will be updated by individual API calls)
+        const fundingIntervalHours = 0;
 
         return tx.publicFundingRate.create({
           data: {
             symbol,
             exchange: 'MEXC',
             fundingRate: parseFloat(ticker.fundingRate || '0'),
-            nextFundingTime: new Date(ticker.nextFundingTime),
+            nextFundingTime: new Date(0), // Set to epoch to indicate unknown
             fundingInterval: fundingIntervalHours,
             markPrice: parseFloat(ticker.fairPrice || '0'),
             indexPrice: parseFloat(ticker.indexPrice || '0'),

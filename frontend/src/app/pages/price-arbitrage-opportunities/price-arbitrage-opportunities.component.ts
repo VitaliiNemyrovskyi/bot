@@ -128,6 +128,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   // Current time for time-since-update display
   private currentTime = signal<number>(Date.now());
   private timeUpdateInterval?: any;
+  private _debugLogged = false;
 
   // Modal for detailed spread stability metrics
   showDetailsModal = signal<boolean>(false);
@@ -298,7 +299,16 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     // Start time update interval
     this.timeUpdateInterval = setInterval(() => {
-      this.currentTime.set(Date.now());
+      const now = Date.now();
+      this.currentTime.set(now);
+      // DEBUG: Log every 10 seconds to check if time is correct
+      if (now % 10000 < 1000) {
+        console.error('[DEBUG currentTime]', {
+          now,
+          nowUTC: new Date(now).toISOString(),
+          nowLocal: new Date(now).toString()
+        });
+      }
     }, 1000);
 
     // Initial load
@@ -476,10 +486,28 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Get time to funding for graduated entry opportunity
    */
-  getSpotFuturesTimeToFunding(nextFundingTime: Date): string {
+  getSpotFuturesTimeToFunding(nextFundingTime: Date | number): string {
     const now = this.currentTime();
-    const fundingTime = typeof nextFundingTime === 'string' ? new Date(nextFundingTime).getTime() : nextFundingTime.getTime();
+    // Handle both Date objects and timestamps
+    const fundingTime = typeof nextFundingTime === 'number'
+      ? nextFundingTime
+      : (typeof nextFundingTime === 'string' ? new Date(nextFundingTime).getTime() : nextFundingTime.getTime());
     const diff = fundingTime - now;
+
+    // DEBUG
+    if (!this._debugLogged) {
+      this._debugLogged = true;
+      console.error('[DEBUG getSpotFuturesTimeToFunding]', {
+        nextFundingTime,
+        nextFundingTimeType: typeof nextFundingTime,
+        fundingTime,
+        fundingTimeUTC: new Date(fundingTime).toISOString(),
+        now,
+        nowUTC: new Date(now).toISOString(),
+        diff,
+        diffMinutes: Math.floor(diff / (1000 * 60))
+      });
+    }
 
     if (diff <= 0) return '0m';
 
@@ -495,7 +523,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Format time to funding with interval for graduated entry
    */
-  formatSpotFuturesFundingTime(nextFundingTime: Date, fundingInterval: number): string {
+  formatSpotFuturesFundingTime(nextFundingTime: Date | number, fundingInterval: number): string {
     const timeToFunding = this.getSpotFuturesTimeToFunding(nextFundingTime);
     return `${timeToFunding} / ${fundingInterval}h`;
   }
@@ -533,9 +561,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
    * Convert timestamp to Date and format funding time with interval
    */
   formatFundingTimeFromTimestamp(timestamp: number, intervalStr: string | undefined): string {
-    const date = new Date(timestamp);
     const intervalNum = intervalStr ? parseInt(intervalStr) : 8; // Default to 8h
-    return this.formatSpotFuturesFundingTime(date, intervalNum);
+    return this.formatSpotFuturesFundingTime(timestamp, intervalNum);
   }
 
   /**
@@ -1019,6 +1046,20 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     const now = this.currentTime();
     const diff = nextFundingTime - now;
+
+    // DEBUG: Log first call to see values
+    if (!this._debugLogged) {
+      this._debugLogged = true;
+      console.error('[DEBUG formatTimeToNextFunding]', {
+        nextFundingTime,
+        nextFundingTimeType: typeof nextFundingTime,
+        nextFundingTimeUTC: new Date(nextFundingTime).toISOString(),
+        now,
+        nowUTC: new Date(now).toISOString(),
+        diff,
+        diffMinutes: Math.floor(diff / (1000 * 60))
+      });
+    }
 
     if (diff <= 0) return '0m';
 

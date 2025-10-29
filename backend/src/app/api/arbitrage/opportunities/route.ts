@@ -380,8 +380,15 @@ export async function GET(request: NextRequest) {
       // Apply symbol filter if specified
       if (symbolFilter && symbol !== symbolFilter) continue;
 
-      // Sort by price (lowest to highest)
-      const sortedExchanges = [...exchanges].sort((a, b) => a.price - b.price);
+      // Sort by price (lowest to highest) and add funding intervals
+      const sortedExchanges = [...exchanges].map(ex => {
+        const fundingMap = fundingRateMap.get(ex.exchange);
+        const fundingData = fundingMap?.get(symbol);
+        return {
+          ...ex,
+          fundingInterval: fundingData?.interval
+        };
+      }).sort((a, b) => a.price - b.price);
 
       const lowestPrice = sortedExchanges[0].price;
       const highestPrice = sortedExchanges[sortedExchanges.length - 1].price;
@@ -408,6 +415,8 @@ export async function GET(request: NextRequest) {
       // Extract rates for display (original rates in %)
       const primaryFundingRate = primaryFundingData?.rate;
       const hedgeFundingRate = hedgeFundingData?.rate;
+      const primaryFundingInterval = primaryFundingData?.interval;
+      const hedgeFundingInterval = hedgeFundingData?.interval;
 
       // Calculate funding differential (if both funding rates available)
       let fundingDifferential: number | undefined;
@@ -517,6 +526,8 @@ export async function GET(request: NextRequest) {
         allExchanges: sortedExchanges,
         primaryFundingRate,
         hedgeFundingRate,
+        primaryFundingInterval,
+        hedgeFundingInterval,
         fundingDifferential,
         combinedScore,
         expectedDailyReturn,
