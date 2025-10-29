@@ -399,6 +399,53 @@ export async function GET(request: NextRequest) {
 
           fundingRateMap.set(result.exchange, symbolFundingMap);
           console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from MEXC with dynamic intervals`);
+
+        } else {
+          // For all other exchanges (Gate.io, Bitget, OKX, etc.), use public funding rates endpoint
+          try {
+            const publicUrl = new URL(`/api/${result.exchange.toLowerCase()}/public-funding-rates`, request.url);
+            const response = await fetch(publicUrl.toString());
+
+            if (response.ok) {
+              const data = await response.json();
+              const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
+
+              // Different exchanges have different response formats
+              const rates = data.data || data.rates || data;
+
+              if (Array.isArray(rates)) {
+                rates.forEach((r: any) => {
+                  if (r.fundingRate !== undefined && r.symbol) {
+                    const fundingRateDecimal = parseFloat(r.fundingRate.toString());
+                    const fundingRatePercent = fundingRateDecimal * 100;
+                    const normalizedSymbol = r.symbol.replace(/-/g, '').replace(/_/g, '');
+
+                    // Try to get interval from various fields
+                    let interval = '8h'; // default
+                    if (r.fundingRateInterval) {
+                      interval = `${r.fundingRateInterval}h`;
+                    } else if (r.fundingInterval) {
+                      // Already in "Xh" format or needs conversion
+                      interval = typeof r.fundingInterval === 'number' ? `${r.fundingInterval}h` : r.fundingInterval;
+                    } else if (r.funding_interval) {
+                      // Gate.io uses seconds
+                      const hours = Math.floor(r.funding_interval / 3600);
+                      interval = `${hours}h`;
+                    }
+
+                    symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
+                  }
+                });
+
+                fundingRateMap.set(result.exchange, symbolFundingMap);
+                console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from ${result.exchange} via public endpoint`);
+              }
+            } else {
+              console.warn(`[PriceOpportunities] Public endpoint failed for ${result.exchange}: ${response.status}`);
+            }
+          } catch (fetchError: any) {
+            console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, fetchError.message);
+          }
         }
       } catch (error: any) {
         console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
