@@ -364,6 +364,41 @@ export async function GET(request: NextRequest) {
 
           fundingRateMap.set(result.exchange, symbolFundingMap);
           console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX (${fundingInterval})`);
+
+        } else if (result.exchange === 'MEXC') {
+          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
+          if (!credential) {
+            console.warn(`[PriceOpportunities] Credential not found for MEXC: ${result.credentialId}`);
+            continue;
+          }
+
+          const mexcService = new MEXCService({
+            apiKey: credential.apiKey,
+            apiSecret: credential.apiSecret,
+            authToken: credential.authToken,
+            testnet: credential.environment === 'TESTNET',
+            enableRateLimit: true,
+          });
+
+          // Get funding rates for all symbols - MEXC returns rate + collectCycle
+          const mexcSymbols = Array.from(uniqueSymbols).map(sym =>
+            sym.replace(/^(.+)(USDT|USDC|USD)$/, '$1_$2')
+          );
+          const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
+          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
+
+          rates.forEach((r) => {
+            if (r.fundingRate !== undefined) {
+              const fundingRateDecimal = parseFloat(r.fundingRate.toString());
+              const fundingRatePercent = fundingRateDecimal * 100;
+              const normalizedSymbol = r.symbol.replace(/_/g, ''); // BTC_USDT -> BTCUSDT
+              const interval = r.collectCycle ? `${r.collectCycle}h` : '8h';
+              symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
+            }
+          });
+
+          fundingRateMap.set(result.exchange, symbolFundingMap);
+          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from MEXC with dynamic intervals`);
         }
       } catch (error: any) {
         console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
