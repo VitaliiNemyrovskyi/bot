@@ -498,6 +498,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Then connect WebSockets for real-time updates
     this.connectWebSockets();
+
+    // Start interval to update cached "now" time every 10 seconds
+    // This prevents ExpressionChangedAfterItHasBeenCheckedError in formatTimestamp()
+    this.nowUpdateInterval = setInterval(() => {
+      this.cachedNow = new Date();
+    }, 10000); // Update every 10 seconds
   }
 
   ngOnDestroy(): void {
@@ -512,6 +518,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       clearInterval(interval);
     });
     this.mexcPingIntervals.clear();
+
+    // Clear cached now update interval
+    if (this.nowUpdateInterval) {
+      clearInterval(this.nowUpdateInterval);
+      this.nowUpdateInterval = null;
+    }
 
     // Clear funding rate refresh interval
     if (this.fundingRateRefreshInterval) {
@@ -2483,9 +2495,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Format timestamp for display
+   * Uses cached current time to avoid ExpressionChangedAfterItHasBeenCheckedError
    */
   formatTimestamp(date: Date): string {
-    const now = new Date();
+    // Use a cached "now" time that updates every second via interval
+    // This prevents the value from changing during Angular's change detection cycle
+    const now = this.cachedNow || new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
 
@@ -2498,6 +2513,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}d ago`;
   }
+
+  private cachedNow = new Date();
+  private nowUpdateInterval: any;
 
   /**
    * Get exchange URL for opening in new window
