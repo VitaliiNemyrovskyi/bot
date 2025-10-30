@@ -709,6 +709,18 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       hedge: hedgeQuantityPerPart,
     });
 
+    // Initialize trading fee tracking
+    // Use taker fee rates as conservative estimate (higher than maker fees)
+    // Primary is typically Bybit (0.055% taker), Hedge is typically BingX (0.05% taker)
+    const primaryFeeRate = 0.00055; // Bybit taker fee: 0.055%
+    const hedgeFeeRate = 0.0005;    // BingX taker fee: 0.05%
+    let primaryTradingFees = 0;
+    let hedgeTradingFees = 0;
+
+    // Entry prices will be fetched after first part execution
+    let primaryPartPrice: number | null = null;
+    let hedgePartPrice: number | null = null;
+
     // Execute each part sequentially
     for (let part = 1; part <= graduatedEntryParts; part++) {
       position.currentPart = part;
@@ -1074,6 +1086,40 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
         position.primaryOrderIds.push(primaryOrderId);
         position.hedgeOrderIds.push(hedgeOrderId);
 
+        // Calculate trading fees for this part
+        // Get entry prices from exchange positions if we haven't already
+        if (primaryPartPrice === null || hedgePartPrice === null) {
+          try {
+            const [primaryPos, hedgePos] = await Promise.all([
+              this.getExchangePosition(position.primaryConnector, config.symbol, config.primaryExchange),
+              this.getExchangePosition(position.hedgeConnector, config.symbol, config.hedgeExchange),
+            ]);
+
+            if (primaryPos && primaryPos.entryPrice) {
+              primaryPartPrice = primaryPos.entryPrice;
+            }
+            if (hedgePos && hedgePos.entryPrice) {
+              hedgePartPrice = hedgePos.entryPrice;
+            }
+          } catch (error: any) {
+            console.warn(`[GraduatedEntry] ${position.id} - Could not fetch entry prices for fee calculation:`, error.message);
+          }
+        }
+
+        // Calculate fees for this part (entry only, exit fees will be calculated on close)
+        // Formula: fee = quantity * price * feeRate
+        if (primaryPartPrice) {
+          const partPrimaryFee = primaryFilledQty * primaryPartPrice * primaryFeeRate;
+          primaryTradingFees += partPrimaryFee;
+          console.log(`[GraduatedEntry] ${position.id} - Part ${part} primary fee: ${partPrimaryFee.toFixed(4)} USDT (total: ${primaryTradingFees.toFixed(4)} USDT)`);
+        }
+
+        if (hedgePartPrice) {
+          const partHedgeFee = hedgeFilledQty * hedgePartPrice * hedgeFeeRate;
+          hedgeTradingFees += partHedgeFee;
+          console.log(`[GraduatedEntry] ${position.id} - Part ${part} hedge fee: ${partHedgeFee.toFixed(4)} USDT (total: ${hedgeTradingFees.toFixed(4)} USDT)`);
+        }
+
         // NEW: Verify actual positions after each part (except last)
         if (part < graduatedEntryParts) {
           try {
@@ -1258,19 +1304,61 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     // NEW: Final rebalancing after all parts completed
     await this.finalRebalancing(position, config);
 
-    // Set synchronized TP/SL orders if entry prices are available
+    // Set synchronized TP/SL orders - THIS IS MANDATORY FOR POSITION SAFETY
     if (primaryEntryPrice && hedgeEntryPrice) {
       try {
         await this.setSynchronizedTpSl(position, primaryEntryPrice, hedgeEntryPrice);
+        console.log(`[GraduatedEntry] ${position.id} - ✅ TP/SL protection successfully activated`);
       } catch (error: any) {
-        console.error(`[GraduatedEntry] ${position.id} - Error setting TP/SL:`, error.message);
-        // Continue anyway - liquidation monitor will still protect the position
+        // CRITICAL ERROR: Cannot proceed without TP/SL protection
+        console.error(`[GraduatedEntry] ${position.id} - 🚨 CRITICAL: Failed to set TP/SL protection`);
+        console.error(`[GraduatedEntry] ${position.id} - Error:`, error.message);
+
+        // Update position status to ERROR - DO NOT allow ACTIVE status without TP/SL
+        if (position.dbId) {
+          await prisma.graduatedEntryPosition.update({
+            where: { id: position.dbId },
+            data: {
+              status: 'ERROR',
+              primaryStatus: 'error',
+              hedgeStatus: 'error',
+              primaryErrorMessage: `TP/SL setup failed: ${error.message}`,
+              hedgeErrorMessage: `TP/SL setup failed: ${error.message}`,
+            },
+          });
+        }
+
+        // Remove from active positions map
+        this.positions.delete(position.id);
+
+        throw new Error(`Position setup failed: TP/SL protection could not be activated - ${error.message}`);
       }
     } else {
-      console.warn(`[GraduatedEntry] ${position.id} - Cannot set TP/SL: entry prices not available`);
+      // Entry prices not available - this is also a critical error
+      console.error(`[GraduatedEntry] ${position.id} - 🚨 CRITICAL: Cannot set TP/SL - entry prices not available`);
+      console.error(`[GraduatedEntry] ${position.id} - PRIMARY entry: ${primaryEntryPrice}, HEDGE entry: ${hedgeEntryPrice}`);
+
+      // Update position status to ERROR
+      if (position.dbId) {
+        await prisma.graduatedEntryPosition.update({
+          where: { id: position.dbId },
+          data: {
+            status: 'ERROR',
+            primaryStatus: 'error',
+            hedgeStatus: 'error',
+            primaryErrorMessage: 'Entry prices not available for TP/SL setup',
+            hedgeErrorMessage: 'Entry prices not available for TP/SL setup',
+          },
+        });
+      }
+
+      // Remove from active positions map
+      this.positions.delete(position.id);
+
+      throw new Error('Position setup failed: Entry prices not available for TP/SL setup');
     }
 
-    // Update database with ACTIVE status and entry prices
+    // Update database with ACTIVE status, entry prices, and trading fees
     if (position.dbId) {
       await prisma.graduatedEntryPosition.update({
         where: { id: position.dbId },
@@ -1280,6 +1368,8 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           hedgeStatus: 'completed',
           primaryEntryPrice,
           hedgeEntryPrice,
+          primaryTradingFees,
+          hedgeTradingFees,
         },
       }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
     }
@@ -1291,6 +1381,9 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       hedgeOrders: position.hedgeOrderIds.length,
       primaryEntryPrice,
       hedgeEntryPrice,
+      primaryTradingFees: primaryTradingFees.toFixed(4),
+      hedgeTradingFees: hedgeTradingFees.toFixed(4),
+      totalTradingFees: (primaryTradingFees + hedgeTradingFees).toFixed(4),
     });
 
     this.emit(GraduatedEntryArbitrageService.POSITION_COMPLETED, {
@@ -1877,23 +1970,40 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
     console.log('');
 
-    // Summary
-    if (primarySuccess || hedgeSuccess) {
+    // Summary - CRITICAL: BOTH exchanges MUST have TP/SL set successfully
+    if (primarySuccess && hedgeSuccess) {
+      console.log(`[GraduatedEntry] ${position.id} - ✅ TP/SL set on BOTH exchanges`);
       console.log(`[GraduatedEntry] ${position.id} - 🛡️ SYNCHRONIZED TP/SL PROTECTION ACTIVE`);
       console.log(`[GraduatedEntry] ${position.id} - When PRIMARY hits SL → HEDGE hits TP (both close)`);
       console.log(`[GraduatedEntry] ${position.id} - When HEDGE hits SL → PRIMARY hits TP (both close)`);
 
-      if (primarySuccess && hedgeSuccess) {
-        console.log(`[GraduatedEntry] ${position.id} - ✅ TP/SL set on BOTH exchanges`);
-      } else if (primarySuccess) {
-        console.log(`[GraduatedEntry] ${position.id} - ⚠️ TP/SL set on PRIMARY only (HEDGE: ${hedgeError})`);
-      } else if (hedgeSuccess) {
-        console.log(`[GraduatedEntry] ${position.id} - ⚠️ TP/SL set on HEDGE only (PRIMARY: ${primaryError})`);
+      // Save TP/SL values to database for verification
+      if (position.dbId) {
+        await prisma.graduatedEntryPosition.update({
+          where: { id: position.dbId },
+          data: {
+            primaryStopLoss: sltp.primaryStopLoss,
+            primaryTakeProfit: sltp.primaryTakeProfit,
+            hedgeStopLoss: sltp.hedgeStopLoss,
+            hedgeTakeProfit: sltp.hedgeTakeProfit,
+          },
+        });
+        console.log(`[GraduatedEntry] ${position.id} - ✅ TP/SL values saved to database`);
       }
     } else {
-      // Both failed - this is a real error
-      console.error(`[GraduatedEntry] ${position.id} - ❌ FAILED to set TP/SL on both exchanges`);
-      throw new Error(`Failed to set TP/SL: PRIMARY (${primaryError}), HEDGE (${hedgeError})`);
+      // CRITICAL ERROR: TP/SL MUST be set on BOTH exchanges
+      // Partial protection is NOT acceptable - this creates dangerous naked exposure
+      console.error(`[GraduatedEntry] ${position.id} - ❌ CRITICAL: TP/SL MUST be set on BOTH exchanges`);
+
+      if (primarySuccess && !hedgeSuccess) {
+        console.error(`[GraduatedEntry] ${position.id} - ⚠️ PRIMARY succeeded but HEDGE failed: ${hedgeError}`);
+      } else if (hedgeSuccess && !primarySuccess) {
+        console.error(`[GraduatedEntry] ${position.id} - ⚠️ HEDGE succeeded but PRIMARY failed: ${primaryError}`);
+      } else {
+        console.error(`[GraduatedEntry] ${position.id} - ⚠️ BOTH failed - PRIMARY: ${primaryError}, HEDGE: ${hedgeError}`);
+      }
+
+      throw new Error(`TP/SL setup failed - PRIMARY: ${primarySuccess ? 'OK' : primaryError}, HEDGE: ${hedgeSuccess ? 'OK' : hedgeError}`);
     }
 
     console.log('═'.repeat(80));

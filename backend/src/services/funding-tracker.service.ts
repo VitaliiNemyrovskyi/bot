@@ -185,16 +185,17 @@ export class FundingTrackerService {
       const totalFees = (primaryData?.fees || 0) + (hedgeData?.fees || 0);
       const netProfit = grossProfit - totalFees;
 
-      // IMPORTANT: Trust real fees from exchange API over calculated fees
-      // Graduated entry calculates fees based on fee rates (which may be default 0.055% if not synced)
-      // Exchange API provides ACTUAL fees paid, which is the source of truth
-      // We use exchange fees if available, otherwise keep existing calculated fees
+      // IMPORTANT: Fees calculation strategy
+      // 1. Graduated entry service calculates and saves ENTRY fees when position opens
+      // 2. Exchange API returns CUMULATIVE fees (entry + ongoing + exit)
+      // 3. We take the MAX to ensure we never lose entry fees if exchange API lags
+      // 4. As the position continues, exchange API fees will grow and become the source of truth
       const primaryFeesUpdate = primaryData?.fees !== undefined
-        ? primaryData.fees  // Use real fees from exchange API
+        ? Math.max(primaryData.fees, position.primaryTradingFees || 0)  // Use MAX of API fees vs existing fees
         : (position.primaryTradingFees || 0);  // Keep existing fees if API data unavailable
 
       const hedgeFeesUpdate = hedgeData?.fees !== undefined
-        ? hedgeData.fees  // Use real fees from exchange API
+        ? Math.max(hedgeData.fees, position.hedgeTradingFees || 0)  // Use MAX of API fees vs existing fees
         : (position.hedgeTradingFees || 0);  // Keep existing fees if API data unavailable
 
       const totalFeesUpdate = primaryFeesUpdate + hedgeFeesUpdate;
