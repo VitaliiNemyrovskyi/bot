@@ -99,44 +99,46 @@ export async function GET(request: NextRequest) {
     const rawData = await response.json();
     const data = rawData.result?.list || [];
 
-    // Step 4: Delete old BYBIT records and insert new ones (atomic transaction)
-    await prisma.$transaction(async (tx) => {
-      // Delete old records for this exchange
-      const deleted = await tx.publicFundingRate.deleteMany({
+    // Step 4: Upsert records (update existing or create new)
+    const upsertPromises = data.map((item: any) => {
+      const symbol = item.symbol; // BTCUSDT (no separator)
+
+      // Parse funding interval from API
+      // fundingIntervalHour can be a number or string like "8", "1", "4"
+      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
+
+      // Convert symbol format: BTCUSDT → BTC/USDT
+      const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
+
+      return prisma.publicFundingRate.upsert({
         where: {
-          exchange: 'BYBIT',
-        },
-      });
-
-      // Insert new records
-      const createPromises = data.map((item: any) => {
-        const symbol = item.symbol; // BTCUSDT (no separator)
-
-        // Parse funding interval from API
-        // fundingIntervalHour can be a number or string like "8", "1", "4"
-        const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
-
-        // Convert symbol format: BTCUSDT → BTC/USDT
-        const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
-
-        return tx.publicFundingRate.create({
-          data: {
+          symbol_exchange: {
             symbol: normalizedSymbol,
             exchange: 'BYBIT',
-            fundingRate: parseFloat(item.fundingRate || '0'),
-            nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
-            fundingInterval: fundingIntervalHour,
-            markPrice: parseFloat(item.markPrice || '0'),
-            indexPrice: parseFloat(item.indexPrice || '0'),
-            timestamp: now,
           },
-        });
+        },
+        update: {
+          fundingRate: parseFloat(item.fundingRate || '0'),
+          nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
+          fundingInterval: fundingIntervalHour,
+          markPrice: parseFloat(item.markPrice || '0'),
+          indexPrice: parseFloat(item.indexPrice || '0'),
+          timestamp: now,
+        },
+        create: {
+          symbol: normalizedSymbol,
+          exchange: 'BYBIT',
+          fundingRate: parseFloat(item.fundingRate || '0'),
+          nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
+          fundingInterval: fundingIntervalHour,
+          markPrice: parseFloat(item.markPrice || '0'),
+          indexPrice: parseFloat(item.indexPrice || '0'),
+          timestamp: now,
+        },
       });
-
-      await Promise.all(createPromises);
-    }, {
-      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
+
+    await Promise.all(upsertPromises);
 
 
     // Step 5: Return data with funding intervals from API

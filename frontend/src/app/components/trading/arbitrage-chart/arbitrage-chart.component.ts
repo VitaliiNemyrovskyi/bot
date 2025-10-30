@@ -1313,7 +1313,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    console.warn(`[ArbitrageChart] Funding rate not found for ${exchange} ${symbol} (tried ${symbolVariations.length} variants)`);
+    // console.warn(`[ArbitrageChart] Funding rate not found for ${exchange} ${symbol} (tried ${symbolVariations.length} variants)`);
     return {};
   }
 

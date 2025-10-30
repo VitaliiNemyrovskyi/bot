@@ -102,35 +102,39 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    // Step 4: Delete old GATEIO records and insert new ones (atomic transaction)
-    await prisma.$transaction(async (tx) => {
-      // Delete old records for this exchange
-      const deleted = await tx.publicFundingRate.deleteMany({
+    // Step 4: Upsert records (update existing or create new)
+    const upsertPromises = data.map((contract: any) => {
+      const symbol = contract.name.replace('_', '/'); // BTC_USDT → BTC/USDT
+
+      return prisma.publicFundingRate.upsert({
         where: {
+          symbol_exchange: {
+            symbol,
+            exchange: 'GATEIO',
+          },
+        },
+        update: {
+          fundingRate: parseFloat(contract.funding_rate || '0'),
+          nextFundingTime: new Date(contract.funding_next_apply * 1000),
+          fundingInterval: (contract.funding_interval || 28800) / 3600, // Seconds → hours
+          markPrice: parseFloat(contract.mark_price || '0'),
+          indexPrice: parseFloat(contract.index_price || '0'),
+          timestamp: now,
+        },
+        create: {
+          symbol,
           exchange: 'GATEIO',
+          fundingRate: parseFloat(contract.funding_rate || '0'),
+          nextFundingTime: new Date(contract.funding_next_apply * 1000),
+          fundingInterval: (contract.funding_interval || 28800) / 3600, // Seconds → hours
+          markPrice: parseFloat(contract.mark_price || '0'),
+          indexPrice: parseFloat(contract.index_price || '0'),
+          timestamp: now,
         },
       });
-
-      // Insert new records
-      const createPromises = data.map((contract: any) =>
-        tx.publicFundingRate.create({
-          data: {
-            symbol: contract.name.replace('_', '/'), // BTC_USDT → BTC/USDT
-            exchange: 'GATEIO',
-            fundingRate: parseFloat(contract.funding_rate || '0'),
-            nextFundingTime: new Date(contract.funding_next_apply * 1000),
-            fundingInterval: (contract.funding_interval || 28800) / 3600, // Seconds → hours
-            markPrice: parseFloat(contract.mark_price || '0'),
-            indexPrice: parseFloat(contract.index_price || '0'),
-            timestamp: now,
-          },
-        })
-      );
-
-      await Promise.all(createPromises);
-    }, {
-      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
+
+    await Promise.all(upsertPromises);
 
 
     // Step 5: Return transformed data with unified format

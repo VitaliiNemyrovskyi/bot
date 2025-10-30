@@ -75,76 +75,134 @@ export async function GET(request: NextRequest) {
 
       console.log(`[API] Found ${dbPositions.length} positions for user ${user.userId}`);
 
-      // Transform database positions to safe response format
-      const safePositions = dbPositions.map(position => ({
-        positionId: position.positionId,
-        symbol: position.symbol,
-        primary: {
-          exchange: position.primaryExchange,
-          side: position.primarySide,
-          leverage: position.primaryLeverage,
-          quantity: position.primaryQuantity,
-          filledQuantity: position.primaryFilledQty,
-          orderIds: position.primaryOrderIds,
-          status: position.primaryStatus,
-          errorMessage: position.primaryErrorMessage,
-          // Real funding and profit data from database
-          lastFundingPaid: position.primaryLastFundingPaid || 0,
-          totalFundingEarned: position.primaryTotalFundingEarned || 0,
-          tradingFees: position.primaryTradingFees || 0,
-          entryPrice: position.primaryEntryPrice,
-          currentPrice: position.primaryCurrentPrice,
-          // Liquidation data
-          liquidationPrice: position.primaryLiquidationPrice,
-          proximityRatio: position.primaryProximityRatio,
-          inDanger: position.primaryInDanger,
-          // Stop Loss and Take Profit
-          stopLoss: position.primaryStopLoss,
-          takeProfit: position.primaryTakeProfit,
-        },
-        hedge: {
-          exchange: position.hedgeExchange,
-          side: position.hedgeSide,
-          leverage: position.hedgeLeverage,
-          quantity: position.hedgeQuantity,
-          filledQuantity: position.hedgeFilledQty,
-          orderIds: position.hedgeOrderIds,
-          status: position.hedgeStatus,
-          errorMessage: position.hedgeErrorMessage,
-          // Real funding and profit data from database
-          lastFundingPaid: position.hedgeLastFundingPaid || 0,
-          totalFundingEarned: position.hedgeTotalFundingEarned || 0,
-          tradingFees: position.hedgeTradingFees || 0,
-          entryPrice: position.hedgeEntryPrice,
-          currentPrice: position.hedgeCurrentPrice,
-          // Liquidation data
-          liquidationPrice: position.hedgeLiquidationPrice,
-          proximityRatio: position.hedgeProximityRatio,
-          inDanger: position.hedgeInDanger,
-          // Stop Loss and Take Profit
-          stopLoss: position.hedgeStopLoss,
-          takeProfit: position.hedgeTakeProfit,
-        },
-        graduatedEntry: {
-          parts: position.graduatedParts,
-          delayMs: position.graduatedDelayMs,
-          currentPart: position.currentPart,
-        },
-        status: position.status.toLowerCase(),
-        startedAt: position.startedAt,
-        completedAt: position.completedAt,
-        // Real profit metrics from database
-        grossProfit: position.grossProfit || 0,
-        netProfit: position.netProfit || 0,
-        lastFundingUpdate: position.lastFundingUpdate,
-        fundingUpdateCount: position.fundingUpdateCount || 0,
-        // Liquidation monitoring status
-        monitoring: {
-          enabled: position.isMonitoringEnabled,
-          status: position.monitoringStatus,
-          lastCheck: position.lastMonitoringCheck,
-        },
-      }));
+      // Transform database positions to safe response format with real-time profit calculation
+      const safePositions = dbPositions.map(position => {
+        // Calculate real-time unrealized PnL from current prices
+        const primaryEntryPrice = position.primaryEntryPrice || 0;
+        const primaryCurrentPrice = position.primaryCurrentPrice || primaryEntryPrice;
+        const primaryQuantity = position.primaryFilledQty || 0;
+
+        const hedgeEntryPrice = position.hedgeEntryPrice || 0;
+        const hedgeCurrentPrice = position.hedgeCurrentPrice || hedgeEntryPrice;
+        const hedgeQuantity = position.hedgeFilledQty || 0;
+
+        // Calculate unrealized PnL for each side
+        // Primary side (usually LONG): (currentPrice - entryPrice) * quantity
+        const primaryUnrealizedPnl = position.primarySide === 'LONG'
+          ? (primaryCurrentPrice - primaryEntryPrice) * primaryQuantity
+          : (primaryEntryPrice - primaryCurrentPrice) * primaryQuantity;
+
+        // Hedge side (usually SHORT): (entryPrice - currentPrice) * quantity
+        const hedgeUnrealizedPnl = position.hedgeSide === 'SHORT'
+          ? (hedgeEntryPrice - hedgeCurrentPrice) * hedgeQuantity
+          : (hedgeCurrentPrice - hedgeEntryPrice) * hedgeQuantity;
+
+        // Total unrealized PnL
+        const totalUnrealizedPnl = primaryUnrealizedPnl + hedgeUnrealizedPnl;
+
+        // Calculate entry spread profit (from opening positions at different prices)
+        const primaryNotional = primaryEntryPrice * primaryQuantity;
+        const hedgeNotional = hedgeEntryPrice * hedgeQuantity;
+        const entrySpreadProfit = position.primarySide === 'LONG'
+          ? hedgeNotional - primaryNotional  // Bought low (primary), sold high (hedge)
+          : primaryNotional - hedgeNotional;  // Sold high (primary), bought low (hedge)
+
+        // Only show funding values if at least one actual funding payment occurred
+        // fundingUpdateCount === 0 means no real payments yet (only projected/estimated values)
+        const hasFundingPayments = (position.fundingUpdateCount || 0) > 0;
+        const actualPrimaryFundingPaid = hasFundingPayments ? (position.primaryLastFundingPaid || 0) : 0;
+        const actualPrimaryFundingEarned = hasFundingPayments ? (position.primaryTotalFundingEarned || 0) : 0;
+        const actualHedgeFundingPaid = hasFundingPayments ? (position.hedgeLastFundingPaid || 0) : 0;
+        const actualHedgeFundingEarned = hasFundingPayments ? (position.hedgeTotalFundingEarned || 0) : 0;
+
+        // Total actual funding (0 if no payments occurred yet)
+        const totalActualFunding = actualPrimaryFundingEarned + actualHedgeFundingEarned;
+
+        // Total fees
+        const totalFees = (position.primaryTradingFees || 0) + (position.hedgeTradingFees || 0);
+
+        // Real-time Gross Profit = Entry Spread + Actual Funding + Unrealized PnL
+        const realtimeGrossProfit = entrySpreadProfit + totalActualFunding + totalUnrealizedPnl;
+
+        // Real-time Net Profit = Gross Profit - Fees
+        const realtimeNetProfit = realtimeGrossProfit - totalFees;
+
+        return {
+          positionId: position.positionId,
+          symbol: position.symbol,
+          primary: {
+            exchange: position.primaryExchange,
+            side: position.primarySide,
+            leverage: position.primaryLeverage,
+            quantity: position.primaryQuantity,
+            filledQuantity: position.primaryFilledQty,
+            orderIds: position.primaryOrderIds,
+            status: position.primaryStatus,
+            errorMessage: position.primaryErrorMessage,
+            // Real funding and profit data from database
+            // Only show actual funding if at least one payment occurred
+            lastFundingPaid: actualPrimaryFundingPaid,
+            totalFundingEarned: actualPrimaryFundingEarned,
+            tradingFees: position.primaryTradingFees || 0,
+            entryPrice: position.primaryEntryPrice,
+            currentPrice: position.primaryCurrentPrice,
+            unrealizedPnl: primaryUnrealizedPnl,
+            // Liquidation data
+            liquidationPrice: position.primaryLiquidationPrice,
+            proximityRatio: position.primaryProximityRatio,
+            inDanger: position.primaryInDanger,
+            // Stop Loss and Take Profit
+            stopLoss: position.primaryStopLoss,
+            takeProfit: position.primaryTakeProfit,
+          },
+          hedge: {
+            exchange: position.hedgeExchange,
+            side: position.hedgeSide,
+            leverage: position.hedgeLeverage,
+            quantity: position.hedgeQuantity,
+            filledQuantity: position.hedgeFilledQty,
+            orderIds: position.hedgeOrderIds,
+            status: position.hedgeStatus,
+            errorMessage: position.hedgeErrorMessage,
+            // Real funding and profit data from database
+            // Only show actual funding if at least one payment occurred
+            lastFundingPaid: actualHedgeFundingPaid,
+            totalFundingEarned: actualHedgeFundingEarned,
+            tradingFees: position.hedgeTradingFees || 0,
+            entryPrice: position.hedgeEntryPrice,
+            currentPrice: position.hedgeCurrentPrice,
+            unrealizedPnl: hedgeUnrealizedPnl,
+            // Liquidation data
+            liquidationPrice: position.hedgeLiquidationPrice,
+            proximityRatio: position.hedgeProximityRatio,
+            inDanger: position.hedgeInDanger,
+            // Stop Loss and Take Profit
+            stopLoss: position.hedgeStopLoss,
+            takeProfit: position.hedgeTakeProfit,
+          },
+          graduatedEntry: {
+            parts: position.graduatedParts,
+            delayMs: position.graduatedDelayMs,
+            currentPart: position.currentPart,
+          },
+          status: position.status.toLowerCase(),
+          startedAt: position.startedAt,
+          completedAt: position.completedAt,
+          // Real-time profit metrics (calculated from current prices)
+          entrySpreadProfit,
+          totalUnrealizedPnl,
+          grossProfit: realtimeGrossProfit,
+          netProfit: realtimeNetProfit,
+          lastFundingUpdate: position.lastFundingUpdate,
+          fundingUpdateCount: position.fundingUpdateCount || 0,
+          // Liquidation monitoring status
+          monitoring: {
+            enabled: position.isMonitoringEnabled,
+            status: position.monitoringStatus,
+            lastCheck: position.lastMonitoringCheck,
+          },
+        };
+      });
 
       return NextResponse.json({
         success: true,

@@ -1113,6 +1113,7 @@ model PublicFundingRate {
   timestamp DateTime @default(now())
 
   // Indexes for fast queries
+  @@unique([symbol, exchange])
   @@index([symbol, exchange, timestamp])
   @@index([timestamp])
   @@index([exchange])

@@ -129,9 +129,23 @@ export class FundingRateCollectorService {
         return;
       }
 
-      // Save to database (for historical analysis)
-      await this.prisma.publicFundingRate.create({
-        data: {
+      // Save to database (for historical analysis) - using upsert to avoid duplicates
+      await this.prisma.publicFundingRate.upsert({
+        where: {
+          symbol_exchange: {
+            symbol,
+            exchange,
+          },
+        },
+        update: {
+          fundingRate: fundingData.fundingRate,
+          nextFundingTime: fundingData.nextFundingTime,
+          fundingInterval: fundingData.fundingInterval,
+          markPrice: fundingData.markPrice,
+          indexPrice: fundingData.indexPrice,
+          timestamp: new Date(),
+        },
+        create: {
           symbol,
           exchange,
           fundingRate: fundingData.fundingRate,

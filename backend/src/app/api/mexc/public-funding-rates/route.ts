@@ -80,38 +80,40 @@ export async function GET(request: NextRequest) {
     const fundingRates = await mexcService.getAllFundingRates();
 
 
-    // Step 4: Delete old MEXC records and insert new ones (atomic transaction)
-    await prisma.$transaction(async (tx) => {
-      // Delete old records for this exchange
-      const deleted = await tx.publicFundingRate.deleteMany({
+    // Step 4: Upsert records (update existing or create new)
+    const upsertPromises = fundingRates.map((rate: any) => {
+      const symbol = rate.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
+      const fundingIntervalHours = rate.collectCycle || 8; // Use actual collectCycle or default to 8h
+
+      return prisma.publicFundingRate.upsert({
         where: {
-          exchange: 'MEXC',
-        },
-      });
-
-      // Insert new records with actual collectCycle data
-      const createPromises = fundingRates.map((rate: any) => {
-        const symbol = rate.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
-        const fundingIntervalHours = rate.collectCycle || 8; // Use actual collectCycle or default to 8h
-
-        return tx.publicFundingRate.create({
-          data: {
+          symbol_exchange: {
             symbol,
             exchange: 'MEXC',
-            fundingRate: parseFloat(rate.fundingRate?.toString() || '0'),
-            nextFundingTime: new Date(rate.nextSettleTime || 0),
-            fundingInterval: fundingIntervalHours,
-            markPrice: parseFloat(rate.lastPrice?.toString() || '0'),
-            indexPrice: parseFloat(rate.lastPrice?.toString() || '0'),
-            timestamp: now,
           },
-        });
+        },
+        update: {
+          fundingRate: parseFloat(rate.fundingRate?.toString() || '0'),
+          nextFundingTime: new Date(rate.nextSettleTime || 0),
+          fundingInterval: fundingIntervalHours,
+          markPrice: parseFloat(rate.lastPrice?.toString() || '0'),
+          indexPrice: parseFloat(rate.lastPrice?.toString() || '0'),
+          timestamp: now,
+        },
+        create: {
+          symbol,
+          exchange: 'MEXC',
+          fundingRate: parseFloat(rate.fundingRate?.toString() || '0'),
+          nextFundingTime: new Date(rate.nextSettleTime || 0),
+          fundingInterval: fundingIntervalHours,
+          markPrice: parseFloat(rate.lastPrice?.toString() || '0'),
+          indexPrice: parseFloat(rate.lastPrice?.toString() || '0'),
+          timestamp: now,
+        },
       });
-
-      await Promise.all(createPromises);
-    }, {
-      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
+
+    await Promise.all(upsertPromises);
 
 
     // Step 5: Return with actual intervals

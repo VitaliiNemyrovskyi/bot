@@ -5,7 +5,8 @@ export interface BybitConfig {
   apiKey?: string;
   apiSecret?: string;
   enableRateLimit?: boolean;
-  userId?: string; // For fetching keys from database
+  userId?: string; // For fetching keys from a database
+  credentialId?: string;
 }
 
 export interface AccountInfo {

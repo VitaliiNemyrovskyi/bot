@@ -162,9 +162,12 @@ export class DropdownComponent implements ControlValueAccessor {
   }
 
   close(): void {
-    this.isOpen.set(false);
-    this.searchQuery.set('');
-    this.highlightedIndex.set(-1);
+    // Use setTimeout to avoid ExpressionChangedAfterItHasBeenCheckedError
+    setTimeout(() => {
+      this.isOpen.set(false);
+      this.searchQuery.set('');
+      this.highlightedIndex.set(-1);
+    });
     this.onTouched();
   }
 

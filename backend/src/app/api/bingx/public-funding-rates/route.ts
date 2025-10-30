@@ -121,38 +121,40 @@ export async function GET(request: NextRequest) {
     const rawData = await response.json();
     const data = rawData.data || [];
 
-    // Step 4: Delete old BINGX records and insert new ones (atomic transaction)
-    await prisma.$transaction(async (tx) => {
-      // Delete old records for this exchange
-      const deleted = await tx.publicFundingRate.deleteMany({
+    // Step 4: Upsert records (update existing or create new)
+    const upsertPromises = data.map((item: any) => {
+      const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
+      const fundingInterval = BINGX_FUNDING_INTERVALS[item.symbol] || 8; // Hours
+
+      return prisma.publicFundingRate.upsert({
         where: {
-          exchange: 'BINGX',
-        },
-      });
-
-      // Insert new records
-      const createPromises = data.map((item: any) => {
-        const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
-        const fundingInterval = BINGX_FUNDING_INTERVALS[item.symbol] || 8; // Hours
-
-        return tx.publicFundingRate.create({
-          data: {
+          symbol_exchange: {
             symbol,
             exchange: 'BINGX',
-            fundingRate: parseFloat(item.lastFundingRate || '0'),
-            nextFundingTime: new Date(item.nextFundingTime || Date.now()),
-            fundingInterval,
-            markPrice: parseFloat(item.markPrice || '0'),
-            indexPrice: parseFloat(item.indexPrice || '0'),
-            timestamp: now,
           },
-        });
+        },
+        update: {
+          fundingRate: parseFloat(item.lastFundingRate || '0'),
+          nextFundingTime: new Date(item.nextFundingTime || Date.now()),
+          fundingInterval,
+          markPrice: parseFloat(item.markPrice || '0'),
+          indexPrice: parseFloat(item.indexPrice || '0'),
+          timestamp: now,
+        },
+        create: {
+          symbol,
+          exchange: 'BINGX',
+          fundingRate: parseFloat(item.lastFundingRate || '0'),
+          nextFundingTime: new Date(item.nextFundingTime || Date.now()),
+          fundingInterval,
+          markPrice: parseFloat(item.markPrice || '0'),
+          indexPrice: parseFloat(item.indexPrice || '0'),
+          timestamp: now,
+        },
       });
-
-      await Promise.all(createPromises);
-    }, {
-      timeout: 15000, // Increase timeout to 15 seconds for large batch inserts
     });
+
+    await Promise.all(upsertPromises);
 
 
     // Step 5: Return transformed data with funding intervals
