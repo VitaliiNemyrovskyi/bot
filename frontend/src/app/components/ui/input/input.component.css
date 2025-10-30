@@ -27,17 +27,21 @@
 /* Base input styles */
 .input {
   border: 1px solid var(--border-color, #d1d5db);
-  border-radius: 6px;
   background: var(--input-bg, #ffffff);
   color: var(--text-primary, #111827);
   transition: all 0.2s ease-in-out;
   outline: none;
   font-family: inherit;
+
+  &:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    background: var(--background-tertiary);
+  }
 }
 
 .input:focus {
   border-color: var(--primary-color, #667eea);
-  box-shadow: 0 0 0 3px var(--primary-shadow, rgba(102, 126, 234, 0.1));
+  transition: all 0.2s ease-in-out;
 }
 
 .input:disabled {
@@ -60,7 +64,7 @@
 .input-medium {
   padding: 8px 12px;
   font-size: 16px;
-  min-height: 40px;
+  height: 36px;
 }
 
 .input-large {
@@ -77,11 +81,12 @@
 /* Error state */
 .input-error {
   border-color: var(--error-color, #ef4444);
+  transition: all 0.2s ease-in-out;
 }
 
 .input-error:focus {
   border-color: var(--error-color, #ef4444);
-  box-shadow: 0 0 0 3px var(--error-shadow, rgba(239, 68, 68, 0.1));
+  transition: all 0.2s ease-in-out;
 }
 
 .input-error-text {
@@ -164,7 +169,6 @@
 
 .textarea:focus {
   border-color: var(--primary-color, #667eea);
-  box-shadow: 0 0 0 3px var(--primary-shadow, rgba(102, 126, 234, 0.1));
 }
 
 .textarea:disabled {
@@ -187,7 +191,6 @@
 
 .textarea-error:focus {
   border-color: var(--error-color, #ef4444);
-  box-shadow: 0 0 0 3px var(--error-shadow, rgba(239, 68, 68, 0.1));
 }
 
 /* Icon classes for common icons */
@@ -214,7 +217,6 @@
 
   .input:focus {
     border-color: var(--primary-color, #667eea);
-    box-shadow: 0 0 0 3px var(--primary-shadow, rgba(102, 126, 234, 0.2));
   }
 
   .input:disabled {

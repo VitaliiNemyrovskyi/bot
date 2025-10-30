@@ -1,45 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Public Binance Funding Rates Proxy
+ * Public Binance Funding Rates Proxy with Funding Intervals
  *
  * Proxies requests to Binance public API to bypass CORS restrictions.
+ * Fetches both funding rates AND funding intervals from Binance API.
  * NO AUTHENTICATION REQUIRED - this is public data.
  *
  * GET /api/binance/public-funding-rates
+ *
+ * Binance API endpoints used:
+ * - /fapi/v1/premiumIndex - Mark price and funding rate
+ * - /fapi/v1/fundingInfo - Funding interval hours (1h, 4h, 8h)
  */
 export async function GET(request: NextRequest) {
   try {
-    const binanceUrl = 'https://fapi.binance.com/fapi/v1/premiumIndex';
 
-    console.log('[Binance Public Proxy] Fetching funding rates...');
+    // Fetch both endpoints in parallel
+    const [premiumResponse, fundingInfoResponse] = await Promise.all([
+      fetch('https://fapi.binance.com/fapi/v1/premiumIndex', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      fetch('https://fapi.binance.com/fapi/v1/fundingInfo', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ]);
 
-    const response = await fetch(binanceUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      console.error('[Binance Public Proxy] API error:', response.status, response.statusText);
+    if (!premiumResponse.ok) {
       return NextResponse.json(
-        { error: 'Failed to fetch Binance funding rates', details: response.statusText },
-        { status: response.status }
+        { error: 'Failed to fetch Binance funding rates', details: premiumResponse.statusText },
+        { status: premiumResponse.status }
       );
     }
 
-    const data = await response.json();
+    if (!fundingInfoResponse.ok) {
+      // Continue without intervals if fundingInfo fails
+    }
 
-    console.log(`[Binance Public Proxy] Successfully fetched funding rates`);
+    const premiumData = await premiumResponse.json();
+    const fundingInfoData = fundingInfoResponse.ok ? await fundingInfoResponse.json() : [];
 
-    return NextResponse.json(data, {
+    // Create map: symbol -> fundingIntervalHours
+    const intervalMap = new Map<string, number>();
+    for (const info of fundingInfoData) {
+      if (info.symbol && info.fundingIntervalHours) {
+        intervalMap.set(info.symbol, info.fundingIntervalHours);
+      }
+    }
+
+    // Enrich premium data with funding intervals
+    const enrichedData = premiumData.map((premium: any) => ({
+      ...premium,
+      fundingInterval: intervalMap.has(premium.symbol)
+        ? `${intervalMap.get(premium.symbol)}h`
+        : '8h', // Default to 8h
+    }));
+
+
+    return NextResponse.json(enrichedData, {
       headers: {
         'Cache-Control': 'public, max-age=30',
       },
     });
   } catch (error: any) {
-    console.error('[Binance Public Proxy] Error:', error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

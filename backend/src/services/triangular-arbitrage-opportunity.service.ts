@@ -39,7 +39,7 @@ declare global {
 
 // Initialize global storage
 if (!globalThis.__triangularArbScanners) {
-  console.log('[OpportunityDetection] Initializing global scanner storage on globalThis');
+  // console.log('[OpportunityDetection] Initializing global scanner storage on globalThis');
   globalThis.__triangularArbScanners = new Map();
 }
 
@@ -52,7 +52,7 @@ export class OpportunityDetectionService extends EventEmitter {
   // Direct reference to global storage - ensures all API routes use the same Map
   private static get instances(): Map<string, Map<string, OpportunityDetectionService>> {
     if (!globalThis.__triangularArbScanners) {
-      console.log('[OpportunityDetection] Re-initializing global scanner storage');
+      // console.log('[OpportunityDetection] Re-initializing global scanner storage');
       globalThis.__triangularArbScanners = new Map();
     }
     return globalThis.__triangularArbScanners;
@@ -279,7 +279,7 @@ export class OpportunityDetectionService extends EventEmitter {
    */
   async start(symbols: string[]): Promise<void> {
     if (this.isScanning) {
-      console.log('[OpportunityDetection] Already scanning');
+      // console.log('[OpportunityDetection] Already scanning');
       return;
     }
 
@@ -352,7 +352,7 @@ export class OpportunityDetectionService extends EventEmitter {
       this.startTime = Date.now();
       this.emit('started', { trianglesCount: this.triangles.length });
 
-      console.log('[OpportunityDetection] Scanner started successfully');
+      // console.log('[OpportunityDetection] Scanner started successfully');
     } catch (error) {
       console.error('[OpportunityDetection] Error starting scanner:', error);
       throw error;
@@ -364,11 +364,11 @@ export class OpportunityDetectionService extends EventEmitter {
    */
   async stop(): Promise<void> {
     if (!this.isScanning) {
-      console.log('[OpportunityDetection] Not scanning');
+      // console.log('[OpportunityDetection] Not scanning');
       return;
     }
 
-    console.log('[OpportunityDetection] Stopping scanner');
+    // console.log('[OpportunityDetection] Stopping scanner');
 
     // Clear calculation timer
     if (this.calculationTimer) {
@@ -389,7 +389,7 @@ export class OpportunityDetectionService extends EventEmitter {
     this.isScanning = false;
     this.emit('stopped');
 
-    console.log('[OpportunityDetection] Scanner stopped');
+    // console.log('[OpportunityDetection] Scanner stopped');
   }
 
   /**
@@ -709,7 +709,7 @@ export class OpportunityDetectionService extends EventEmitter {
       // Auto-execute if enabled
       if (this.config.autoExecute) {
         // TODO: Trigger execution service
-        console.log('[OpportunityDetection] Auto-execute enabled - would execute now');
+        // console.log('[OpportunityDetection] Auto-execute enabled - would execute now');
       }
     } catch (error) {
       console.error('[OpportunityDetection] Error handling opportunity:', error);

@@ -356,19 +356,28 @@
                 (click)="openExchange(primaryExchange())"
                 type="button"
                 title="Open {{ primaryExchange() }} in new window">
-              <h3>{{ primaryExchange() }}</h3>
-              <!--<div class="exchange-label">Primary Exchange</div>-->
+              <div class="header-content-wrapper">
+                <h3>{{ primaryExchange() }}</h3>
+                @if (strategy() === 'spot_futures') {
+                  <span class="market-type-badge spot">
+                    <span class="badge-icon">🛒</span>
+                    <span class="badge-text">SPOT</span>
+                  </span>
+                }
+              </div>
             </button>
 
             <div class="info-items">
-              <div class="info-item">
-                <span class="info-label">Funding</span>
-                <span class="info-value text-sm"
-                      [class.positive]="parseFloat(primaryData().fundingRate) > 0"
-                      [class.negative]="parseFloat(primaryData().fundingRate) < 0">
-                  {{ primaryFormattedFunding() }}
-                </span>
-              </div>
+              @if (strategy() === 'combined') {
+                <div class="info-item">
+                  <span class="info-label">Funding</span>
+                  <span class="info-value text-sm"
+                        [class.positive]="parseFloat(primaryData().fundingRate) > 0"
+                        [class.negative]="parseFloat(primaryData().fundingRate) < 0">
+                    {{ primaryFormattedFunding() }}
+                  </span>
+                </div>
+              }
 
               <!-- Account Balance -->
               <div class="info-item balance-item">
@@ -400,8 +409,15 @@
                 (click)="openExchange(hedgeExchange())"
                 type="button"
                 title="Open {{ hedgeExchange() }} in new window">
-              <h3>{{ hedgeExchange() }}</h3>
-              <!--<div class="exchange-label">Hedge Exchange</div>-->
+              <div class="header-content-wrapper">
+                <h3>{{ hedgeExchange() }}</h3>
+                @if (strategy() === 'spot_futures') {
+                  <span class="market-type-badge futures">
+                    <span class="badge-icon">📈</span>
+                    <span class="badge-text">FUTURES</span>
+                  </span>
+                }
+              </div>
             </button>
 
             <div class="info-items">
@@ -450,31 +466,44 @@
                 <h4>Order Parameters</h4>
               </div>-->
 
-              <div class="form-field">
-                <label class="form-label">Side</label>
-                <div class="side-selector">
-                  <label class="side-option">
-                    <input type="radio" formControlName="side" value="long">
-                    <span class="side-label long">Long</span>
-                  </label>
-                  <label class="side-option">
-                    <input type="radio" formControlName="side" value="short">
-                    <span class="side-label short">Short</span>
-                  </label>
+              <!-- SPOT MARKET: No side selector, no leverage -->
+              @if (strategy() === 'spot_futures') {
+                <div class="form-field spot-market-info">
+                  <div class="info-box">
+                    <span class="info-icon">ℹ️</span>
+                    <span class="info-text">Spot market: Buy asset directly (no leverage)</span>
+                  </div>
                 </div>
-              </div>
+              }
 
-              <div class="form-field">
-                <label class="form-label">Leverage (1x - 125x)</label>
-                <input
-                  type="number"
-                  formControlName="leverage"
-                  class="form-input"
-                  placeholder="10"
-                  min="1"
-                  max="125"
-                  step="1">
-              </div>
+              <!-- FUTURES MARKET: Show side selector and leverage -->
+              @if (strategy() === 'combined') {
+                <div class="form-field">
+                  <label class="form-label">Side</label>
+                  <div class="side-selector">
+                    <label class="side-option">
+                      <input type="radio" formControlName="side" value="long">
+                      <span class="side-label long">Long</span>
+                    </label>
+                    <label class="side-option">
+                      <input type="radio" formControlName="side" value="short">
+                      <span class="side-label short">Short</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label class="form-label">Leverage (1x - 125x)</label>
+                  <input
+                    type="number"
+                    formControlName="leverage"
+                    class="form-input"
+                    placeholder="10"
+                    min="1"
+                    max="125"
+                    step="1">
+                </div>
+              }
 
               <div class="form-field">
                 @if (primarySymbolInfo()) {
@@ -526,53 +555,94 @@
                 }
               </div>
 
-              <div class="form-field">
-                <label class="form-label">Parts (1-20)</label>
-                <input
-                  type="number"
-                  formControlName="graduatedParts"
-                  class="form-input"
-                  placeholder="5"
-                  min="1"
-                  max="20"
-                  step="1">
-              </div>
+              @if (strategy() === 'spot_futures') {
+                <!-- Simplified graduated entry for SPOT -->
+                <div class="form-field">
+                  <label class="form-label">Parts (1-5)
+                    <span class="field-hint">Split buy into parts</span>
+                  </label>
+                  <input
+                    type="number"
+                    formControlName="graduatedParts"
+                    class="form-input"
+                    placeholder="3"
+                    min="1"
+                    max="5"
+                    step="1">
+                </div>
 
-              <div class="form-field">
-                <label class="form-label">Delay (0.1s - 60s)</label>
-                <input
-                  type="number"
-                  formControlName="graduatedDelayMs"
-                  class="form-input"
-                  placeholder="2"
-                  min="0.1"
-                  max="60"
-                  step="0.1">
-              </div>
+                <div class="form-field">
+                  <label class="form-label">Delay (0.1s - 10s)
+                    <span class="field-hint">Delay between buys</span>
+                  </label>
+                  <input
+                    type="number"
+                    formControlName="graduatedDelayMs"
+                    class="form-input"
+                    placeholder="1"
+                    min="0.1"
+                    max="10"
+                    step="0.1">
+                </div>
+              } @else {
+                <!-- Full graduated entry for FUTURES -->
+                <div class="form-field">
+                  <label class="form-label">Parts (1-20)</label>
+                  <input
+                    type="number"
+                    formControlName="graduatedParts"
+                    class="form-input"
+                    placeholder="5"
+                    min="1"
+                    max="20"
+                    step="1">
+                </div>
+
+                <div class="form-field">
+                  <label class="form-label">Delay (0.1s - 60s)</label>
+                  <input
+                    type="number"
+                    formControlName="graduatedDelayMs"
+                    class="form-input"
+                    placeholder="2"
+                    min="0.1"
+                    max="60"
+                    step="0.1">
+                </div>
+              }
             </form>
           </div>
 
           <!-- Sync Lock Button -->
           <div class="sync-lock-container">
-            <button
-              type="button"
-              class="sync-lock-button"
-              [class.locked]="orderParamsLocked()"
-              [class.unlocked]="!orderParamsLocked()"
-              (click)="toggleOrderParamsLock()"
-              [title]="orderParamsLocked() ? 'Click to unlock and edit parameters independently' : 'Click to lock and synchronize parameters'">
-              @if (orderParamsLocked()) {
-                <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            @if (strategy() === 'combined') {
+              <button
+                type="button"
+                class="sync-lock-button"
+                [class.locked]="orderParamsLocked()"
+                [class.unlocked]="!orderParamsLocked()"
+                (click)="toggleOrderParamsLock()"
+                [title]="orderParamsLocked() ? 'Click to unlock and edit parameters independently' : 'Click to lock and synchronize parameters'">
+                @if (orderParamsLocked()) {
+                  <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                } @else {
+                  <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                  </svg>
+                }
+              </button>
+            } @else {
+              <div class="sync-lock-disabled" title="Sync lock not available for spot/futures strategy (different parameter sets)">
+                <svg class="lock-icon disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  <line x1="4" y1="4" x2="20" y2="20" stroke-width="2"></line>
                 </svg>
-              } @else {
-                <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
-                </svg>
-              }
-            </button>
+              </div>
+            }
           </div>
 
           <!-- Hedge Exchange Column -->

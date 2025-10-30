@@ -364,7 +364,7 @@ describe('Arbitrage Form Validation Integration Tests', () => {
       const partsControl = new FormControl(5);
 
       // Create validator function
-      const graduatedEntryValidator = () => {
+      const spotFuturesValidator = () => {
         const quantity = quantityControl.value;
         const parts = partsControl.value;
 
@@ -377,7 +377,7 @@ describe('Arbitrage Form Validation Integration Tests', () => {
         );
 
         return result.valid ? null : {
-          graduatedEntry: {
+          spotFutures: {
             message: result.error,
             suggestion: result.suggestion
           }
@@ -385,13 +385,13 @@ describe('Arbitrage Form Validation Integration Tests', () => {
       };
 
       // Test invalid case
-      const invalidResult = graduatedEntryValidator();
+      const invalidResult = spotFuturesValidator();
       expect(invalidResult).not.toBeNull();
-      expect(invalidResult?.graduatedEntry.message).toContain('below minimum');
+      expect(invalidResult?.spotFutures.message).toContain('below minimum');
 
       // Test valid case
       quantityControl.setValue(0.1);
-      const validResult = graduatedEntryValidator();
+      const validResult = spotFuturesValidator();
       expect(validResult).toBeNull();
     });
 

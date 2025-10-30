@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     // Account Info
     if (accountInfo.status === 'fulfilled') {
       response.data.accountInfo = accountInfo.value;
-      console.log('[UserInfo] Account info fetched successfully');
+      // console.log('[UserInfo] Account info fetched successfully');
     } else {
       response.data.accountInfo = { error: 'Failed to fetch account info' };
       console.error('[UserInfo] Account info error:', accountInfo.reason);
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
     // Wallet Balance
     if (walletBalance.status === 'fulfilled') {
       response.data.walletBalance = walletBalance.value;
-      console.log('[UserInfo] Wallet balance fetched successfully');
+      // console.log('[UserInfo] Wallet balance fetched successfully');
     } else {
       response.data.walletBalance = { error: 'Failed to fetch wallet balance' };
       console.error('[UserInfo] Wallet balance error:', walletBalance.reason);
@@ -172,13 +172,13 @@ export async function GET(request: NextRequest) {
     // Market Reference Data
     if (ticker.status === 'fulfilled') {
       response.data.marketReference = ticker.value[0];
-      console.log('[UserInfo] Market reference data fetched successfully');
+      // console.log('[UserInfo] Market reference data fetched successfully');
     } else {
       response.data.marketReference = null;
       console.error('[UserInfo] Market reference error:', ticker.reason);
     }
 
-    console.log('[UserInfo] User info compiled successfully');
+    // console.log('[UserInfo] User info compiled successfully');
 
     return NextResponse.json(response);
 

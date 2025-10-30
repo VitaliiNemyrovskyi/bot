@@ -53,6 +53,7 @@ export interface MEXCOrderRequest {
   stopLossPrice?: number;
   takeProfitPrice?: number;
   positionMode?: 1 | 2; // 1: hedge, 2: one-way
+  reduceOnly?: boolean;
 }
 
 export interface MEXCOrder {
@@ -105,6 +106,7 @@ export interface MEXCFundingRate {
   symbol: string;
   fundingRate: number;
   nextSettleTime: number;
+  collectCycle?: number; // Funding interval in hours (e.g., 1, 4, 8) - from API
   lastPrice?: number; // Last price from ticker data
 }
 

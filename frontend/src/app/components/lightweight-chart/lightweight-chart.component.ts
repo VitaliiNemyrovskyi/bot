@@ -193,19 +193,19 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
   }
 
   private initializeChart(): void {
-    console.log('=== CHART INITIALIZATION START ===');
-    console.log('Chart container:', this.chartContainer?.nativeElement);
+    // console.log('=== CHART INITIALIZATION START ===');
+    // console.log('Chart container:', this.chartContainer?.nativeElement);
 
     if (!this.chartContainer?.nativeElement) {
       this.error = this.translate('chart.containerNotFound');
-      console.error('Chart container not found!');
+      // console.error('Chart container not found!');
       return;
     }
 
     try {
       this.loading = true;
       this.error = null;
-      console.log('Loading state set to true, starting chart creation...');
+      // console.log('Loading state set to true, starting chart creation...');
 
       const isDark = this.isDark();
       const container = this.chartContainer.nativeElement;
@@ -253,7 +253,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
 
       // Add candlestick series using lightweight-charts v5 API
       try {
-        console.log('Creating candlestick series...');
+        // console.log('Creating candlestick series...');
 
         // In v5, use addSeries() with CandlestickSeries type
         this.candlestickSeries = this.chart.addSeries(CandlestickSeries, {
@@ -264,12 +264,12 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
           wickDownColor: '#ef5350',
         });
 
-        console.log('Candlestick series created successfully:', this.candlestickSeries);
+        // console.log('Candlestick series created successfully:', this.candlestickSeries);
 
         // Load real market data from Bybit
         this.loadMarketData();
       } catch (seriesError) {
-        console.error('Failed to add candlestick series:', seriesError);
+        // console.error('Failed to add candlestick series:', seriesError);
         this.error = this.translate('chart.failedToCreateSeries') + ': ' + (seriesError as Error).message;
         return;
       }
@@ -330,7 +330,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
 
     // Get the symbol for the API call
     const symbol = this.getSymbolForApi();
-    console.log(`Loading real-time market data for symbol: ${symbol}`);
+    // console.log(`Loading real-time market data for symbol: ${symbol}`);
 
     // Clean up existing subscription
     if (this.dataSubscription) {
@@ -341,13 +341,13 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
     let isFirstLoad = true;
 
     // Subscribe to real-time Bybit data (REST + WebSocket)
-    console.log('[CHART] Subscribing to real-time kline data...');
+    // console.log('[CHART] Subscribing to real-time kline data...');
     this.dataSubscription = this.bybitService.getRealTimeKlineData(symbol, '1').subscribe({
       next: (data) => {
         try {
-          console.log(`[CHART] Received ${data.length} data points from Bybit (real-time)`);
-          console.log('[CHART] First load:', isFirstLoad);
-          console.log('[CHART] Last 3 candles:', data.slice(-3));
+          // console.log(`[CHART] Received ${data.length} data points from Bybit (real-time)`);
+          // console.log('[CHART] First load:', isFirstLoad);
+          // console.log('[CHART] Last 3 candles:', data.slice(-3));
 
           // Validate data before setting
           if (!data || data.length === 0) {
@@ -363,12 +363,12 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
             close: item.close,
           }));
 
-          console.log('[CHART] Formatted data, last candle:', formattedData[formattedData.length - 1]);
+          // console.log('[CHART] Formatted data, last candle:', formattedData[formattedData.length - 1]);
 
           if (this.candlestickSeries) {
             if (isFirstLoad) {
               // First load: set all data
-              console.log('[CHART] Setting initial chart data with', formattedData.length, 'candles');
+              // console.log('[CHART] Setting initial chart data with', formattedData.length, 'candles');
               this.candlestickSeries.setData(formattedData);
               isFirstLoad = false;
 
@@ -377,35 +377,35 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
                 this.chart.timeScale().fitContent();
               }
 
-              console.log('[CHART] Initial data loaded successfully, waiting for updates...');
+              // console.log('[CHART] Initial data loaded successfully, waiting for updates...');
             } else {
               // Subsequent updates: update the last candle
               const lastCandle = formattedData[formattedData.length - 1];
-              console.log('[CHART] *** UPDATING CHART WITH NEW CANDLE ***:', {
-                time: new Date((lastCandle.time as number) * 1000).toISOString(),
-                open: lastCandle.open,
-                high: lastCandle.high,
-                low: lastCandle.low,
-                close: lastCandle.close
-              });
+              // console.log('[CHART] *** UPDATING CHART WITH NEW CANDLE ***:', {
+              //   time: new Date((lastCandle.time as number) * 1000).toISOString(),
+              //   open: lastCandle.open,
+              //   high: lastCandle.high,
+              //   low: lastCandle.low,
+              //   close: lastCandle.close
+              // });
 
               this.candlestickSeries.update(lastCandle);
-              console.log('[CHART] *** CHART UPDATE COMPLETED ***');
+              // console.log('[CHART] *** CHART UPDATE COMPLETED ***');
             }
           } else {
-            console.error('[CHART] No candlestick series available!');
+            // console.error('[CHART] No candlestick series available!');
           }
 
           // Hide loading state
           this.loading = false;
         } catch (error) {
-          console.error('[CHART] Error processing real-time market data:', error);
+          // console.error('[CHART] Error processing real-time market data:', error);
           this.error = this.translate('chart.failedToProcess') + ': ' + (error as Error).message;
           this.loading = false;
         }
       },
       error: (error) => {
-        console.error('[CHART] Error loading real-time market data from Bybit:', error);
+        // console.error('[CHART] Error loading real-time market data from Bybit:', error);
         this.error = this.translate('chart.failedToLoadData');
         this.loading = false;
 
@@ -414,19 +414,19 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
       }
     });
 
-    console.log('[CHART] Subscription created successfully');
+    // console.log('[CHART] Subscription created successfully');
   }
 
   /**
    * Fallback method to load data using REST API only
    */
   private loadFallbackData(symbol: string): void {
-    console.log('Loading fallback data using REST API only...');
+    // console.log('Loading fallback data using REST API only...');
 
     this.dataSubscription = this.bybitService.getKlineData(symbol).subscribe({
       next: (data) => {
         try {
-          console.log(`Received ${data.length} fallback data points`);
+          // console.log(`Received ${data.length} fallback data points`);
 
           if (!data || data.length === 0) {
             throw new Error('No fallback data received');

@@ -47,23 +47,23 @@ export class MEXCService {
           // Let SDK use its default baseURL (https://futures.mexc.com)
           logLevel: 'info'
         });
-        console.log('[MEXCService] Initialized with mexc-futures-sdk (browser token authentication):', {
-          authTokenLength: this.authToken.length,
-          authTokenPrefix: this.authToken.substring(0, 20) + '...',
-          sdkEnabled: true,
-          note: 'Using mexc-futures-sdk for browser token authentication - supports /api/v1/private/order/submit endpoint with proper encryption'
-        });
+        // console.log('[MEXCService] Initialized with mexc-futures-sdk (browser token authentication):', {
+        //   authTokenLength: this.authToken.length,
+        //   authTokenPrefix: this.authToken.substring(0, 20) + '...',
+        //   sdkEnabled: true,
+        //   note: 'Using mexc-futures-sdk for browser token authentication - supports /api/v1/private/order/submit endpoint with proper encryption'
+        // });
       } catch (error: any) {
         console.error('[MEXCService] Failed to initialize SDK client:', error.message);
-        console.log('[MEXCService] Falling back to API key authentication');
+        // console.log('[MEXCService] Falling back to API key authentication');
       }
     } else {
-      console.log('[MEXCService] Initialized with API key authentication:', {
-        apiKeyLength: this.apiKey.length,
-        apiSecretLength: this.apiSecret.length,
-        apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
-        sdkEnabled: false
-      });
+      // console.log('[MEXCService] Initialized with API key authentication:', {
+      //   apiKeyLength: this.apiKey.length,
+      //   apiSecretLength: this.apiSecret.length,
+      //   apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
+      //   sdkEnabled: false
+      // });
     }
   }
 
@@ -99,14 +99,14 @@ export class MEXCService {
     // MEXC signature format: AccessKey + timestamp + parameter_string
     const signatureString = this.apiKey + timestamp + paramString;
 
-    console.log('[MEXCService] Signature calculation:', {
-      method,
-      apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
-      timestamp,
-      paramString: paramString.substring(0, 100) + '...',
-      signatureStringLength: signatureString.length,
-      secretPrefix: this.apiSecret.substring(0, 8) + '...'
-    });
+    // console.log('[MEXCService] Signature calculation:', {
+    //   method,
+    //   apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
+    //   timestamp,
+    //   paramString: paramString.substring(0, 100) + '...',
+    //   signatureStringLength: signatureString.length,
+    //   secretPrefix: this.apiSecret.substring(0, 8) + '...'
+    // });
 
     // Generate HMAC SHA256 signature
     const signature = crypto
@@ -128,11 +128,11 @@ export class MEXCService {
   ): Promise<MEXCApiResponse<T>> {
     let url = `${this.baseUrl}${endpoint}`;
 
-    console.log('[MEXCService] Making public request:', {
-      endpoint,
-      method,
-      paramsCount: Object.keys(params).length
-    });
+    // console.log('[MEXCService] Making public request:', {
+    //   endpoint,
+    //   method,
+    //   paramsCount: Object.keys(params).length
+    // });
 
     // For GET requests, add parameters to query string
     if (method === 'GET' && Object.keys(params).length > 0) {
@@ -171,18 +171,18 @@ export class MEXCService {
           success: data.success
         });
       } else {
-        console.log('[MEXCService] Public request successful:', {
-          endpoint,
-          code: data.code
-        });
+        // console.log('[MEXCService] Public request successful:', {
+        //   endpoint,
+        //   code: data.code
+        // });
       }
 
       return data as MEXCApiResponse<T>;
     } catch (error: any) {
-      console.error('[MEXCService] Public API request failed:', {
-        error: error.message,
-        endpoint
-      });
+      // console.error('[MEXCService] Public API request failed:', {
+      //   error: error.message,
+      //   endpoint
+      // });
       throw error;
     }
   }
@@ -206,11 +206,11 @@ export class MEXCService {
     // Use session token ONLY if explicitly requested AND token is available
     if (useSessionToken && this.authToken) {
       // Browser session token authentication
-      console.log('[MEXCService] Making request with session token:', {
-        endpoint,
-        method,
-        paramsCount: Object.keys(params).length
-      });
+      // console.log('[MEXCService] Making request with session token:', {
+      //   endpoint,
+      //   method,
+      //   paramsCount: Object.keys(params).length
+      // });
 
       headers = {
         'authorization': this.authToken,
@@ -219,7 +219,7 @@ export class MEXCService {
 
       if (method === 'POST') {
         body = JSON.stringify(params);
-        console.log('[MEXCService] Request body:', body);
+        // console.log('[MEXCService] Request body:', body);
       } else {
         // GET: Parameters in URL query string
         if (Object.keys(params).length > 0) {
@@ -228,18 +228,18 @@ export class MEXCService {
             .join('&');
           url = `${url}?${queryString}`;
         }
-        console.log('[MEXCService] Request URL (truncated):', url.substring(0, 100) + '...');
+        // console.log('[MEXCService] Request URL (truncated):', url.substring(0, 100) + '...');
       }
     } else {
       // Standard API key authentication
       const timestamp = Date.now();
 
-      console.log('[MEXCService] Making request with API key:', {
-        endpoint,
-        method,
-        timestamp,
-        paramsCount: Object.keys(params).length
-      });
+      // console.log('[MEXCService] Making request with API key:', {
+      //   endpoint,
+      //   method,
+      //   timestamp,
+      //   paramsCount: Object.keys(params).length
+      // });
 
       // Generate signature (pass method, timestamp, and params)
       const signature = this.generateSignature(method, timestamp, params);
@@ -254,7 +254,7 @@ export class MEXCService {
       if (method === 'POST') {
         // POST: Parameters in body as JSON (no timestamp in body)
         body = JSON.stringify(params);
-        console.log('[MEXCService] Request body:', body);
+        // console.log('[MEXCService] Request body:', body);
       } else {
         // GET: Parameters in URL query string (no timestamp in query)
         if (Object.keys(params).length > 0) {
@@ -263,7 +263,7 @@ export class MEXCService {
             .join('&');
           url = `${url}?${queryString}`;
         }
-        console.log('[MEXCService] Request URL (truncated):', url.substring(0, 100) + '...');
+        // console.log('[MEXCService] Request URL (truncated):', url.substring(0, 100) + '...');
       }
     }
 
@@ -297,10 +297,10 @@ export class MEXCService {
           authMethod: this.authToken ? 'session-token' : 'api-key'
         });
       } else {
-        console.log('[MEXCService] Request successful:', {
-          endpoint,
-          code: data.code
-        });
+        // console.log('[MEXCService] Request successful:', {
+        //   endpoint,
+        //   code: data.code
+        // });
       }
 
       return data as MEXCApiResponse<T>;
@@ -320,20 +320,20 @@ export class MEXCService {
    * Or uses SDK's getAccountAsset (browser token)
    */
   async getBalance(): Promise<MEXCAccountInfo> {
-    console.log('[MEXCService] Fetching account balance...');
+    // console.log('[MEXCService] Fetching account balance...');
 
     // Use SDK if available (browser token authentication)
     if (this.sdkClient) {
       try {
-        console.log('[MEXCService] Using SDK to get account balance');
+        // console.log('[MEXCService] Using SDK to get account balance');
         const response = await this.sdkClient.getAccountAsset('USDT');
 
-        console.log('[MEXCService] SDK getAccountAsset response:', {
-          success: response.success,
-          code: response.code,
-          hasData: !!response.data,
-          dataKeys: response.data ? Object.keys(response.data) : []
-        });
+        // console.log('[MEXCService] SDK getAccountAsset response:', {
+        //   success: response.success,
+        //   code: response.code,
+        //   hasData: !!response.data,
+        //   dataKeys: response.data ? Object.keys(response.data) : []
+        // });
 
         if (!response.success || response.code !== 0) {
           console.error('[MEXCService] SDK returned error response:', response);
@@ -357,7 +357,7 @@ export class MEXCService {
           name: error.name
         });
         // Fall back to API key authentication instead of throwing
-        console.log('[MEXCService] Falling back to API key authentication...');
+        // console.log('[MEXCService] Falling back to API key authentication...');
       }
     }
 
@@ -395,12 +395,12 @@ export class MEXCService {
    * Or uses SDK's getOpenPositions (browser token)
    */
   async getPositions(symbol?: string): Promise<MEXCPosition[]> {
-    console.log('[MEXCService] Fetching positions...');
+    // console.log('[MEXCService] Fetching positions...');
 
     // Use SDK if available (browser token authentication)
     if (this.sdkClient) {
       try {
-        console.log('[MEXCService] Using SDK to get open positions');
+        // console.log('[MEXCService] Using SDK to get open positions');
         const response = await this.sdkClient.getOpenPositions(symbol);
 
         if (!response.success || response.code !== 0) {
@@ -463,19 +463,19 @@ export class MEXCService {
    * Or POST /api/v1/private/order/create (API key fallback)
    */
   async placeOrder(orderRequest: MEXCOrderRequest): Promise<MEXCOrder> {
-    console.log('[MEXCService] Placing order:', orderRequest);
+    // console.log('[MEXCService] Placing order:', orderRequest);
 
     // Use SDK if available (browser token authentication with proper encryption)
     if (this.sdkClient) {
       try {
-        console.log('[MEXCService] Using SDK to place order (submitOrder endpoint)');
+        // console.log('[MEXCService] Using SDK to place order (submitOrder endpoint)');
 
         // Get contract details to determine proper quantity precision
         const rawVolume = parseFloat(orderRequest.vol.toString());
         let adjustedVolume = rawVolume;
 
         try {
-          console.log('[MEXCService] Fetching contract details for:', orderRequest.symbol);
+          // console.log('[MEXCService] Fetching contract details for:', orderRequest.symbol);
           const contractDetails = await this.sdkClient.getContractDetail(orderRequest.symbol);
 
           if (contractDetails.success && contractDetails.data) {
@@ -483,12 +483,12 @@ export class MEXCService {
             const contract = contracts.find((c: any) => c.symbol === orderRequest.symbol);
 
             if (contract) {
-              console.log('[MEXCService] Contract trading rules:', {
-                symbol: contract.symbol,
-                volPrecision: contract.volPrecision,
-                minVol: contract.minVol,
-                maxVol: contract.maxVol
-              });
+              // console.log('[MEXCService] Contract trading rules:', {
+              //   symbol: contract.symbol,
+              //   volPrecision: contract.volPrecision,
+              //   minVol: contract.minVol,
+              //   maxVol: contract.maxVol
+              // });
 
               // Round according to contract's volume precision
               const precision = contract.volPrecision || 0;
@@ -503,16 +503,16 @@ export class MEXCService {
             }
           }
         } catch (contractError: any) {
-          console.log('[MEXCService] Could not fetch contract details, using default rounding:', contractError.message);
+          // console.log('[MEXCService] Could not fetch contract details, using default rounding:', contractError.message);
           // Fallback: use integer rounding for volumes >= 1
           adjustedVolume = rawVolume >= 1 ? Math.round(rawVolume) : Math.round(rawVolume * 10000) / 10000;
         }
 
-        console.log('[MEXCService] Volume adjustment:', {
-          original: rawVolume,
-          adjusted: adjustedVolume,
-          symbol: orderRequest.symbol
-        });
+        // console.log('[MEXCService] Volume adjustment:', {
+        //   original: rawVolume,
+        //   adjusted: adjustedVolume,
+        //   symbol: orderRequest.symbol
+        // });
 
         // Map our order request to SDK format
         const sdkOrderRequest: SubmitOrderRequest = {
@@ -615,12 +615,12 @@ export class MEXCService {
    * Or uses SDK's cancelOrder (browser token)
    */
   async cancelOrder(symbol: string, orderId: string): Promise<any> {
-    console.log('[MEXCService] Canceling order:', { symbol, orderId });
+    // console.log('[MEXCService] Canceling order:', { symbol, orderId });
 
     // Use SDK if available (browser token authentication)
     if (this.sdkClient) {
       try {
-        console.log('[MEXCService] Using SDK to cancel order');
+        // console.log('[MEXCService] Using SDK to cancel order');
         const orderIdNum = parseInt(orderId, 10);
         const response = await this.sdkClient.cancelOrder([orderIdNum]);
 
@@ -657,7 +657,7 @@ export class MEXCService {
    * Endpoint: GET /api/v1/private/order/list/open_orders/{symbol}
    */
   async getOrders(symbol: string): Promise<MEXCOrder[]> {
-    console.log('[MEXCService] Fetching orders for:', symbol);
+    // console.log('[MEXCService] Fetching orders for:', symbol);
 
     const response = await this.makeRequest<MEXCOrder[]>(
       'GET',
@@ -677,7 +677,7 @@ export class MEXCService {
    * Endpoint: GET /api/v1/contract/ticker
    */
   async getTickers(): Promise<MEXCTicker[]> {
-    console.log('[MEXCService] Fetching all tickers...');
+    // console.log('[MEXCService] Fetching all tickers...');
 
     const response = await this.makePublicRequest<MEXCTicker[]>(
       'GET',
@@ -711,7 +711,7 @@ export class MEXCService {
    * Endpoint: GET /api/v1/contract/funding_rate/{symbol}
    */
   async getFundingRate(symbol: string): Promise<MEXCFundingRate> {
-    console.log('[MEXCService] Fetching funding rate for:', symbol);
+    // console.log('[MEXCService] Fetching funding rate for:', symbol);
 
     const response = await this.makePublicRequest<MEXCFundingRate>(
       'GET',
@@ -732,7 +732,7 @@ export class MEXCService {
    * Then fetches nextSettleTime only for symbols with non-zero funding rates
    */
   async getAllFundingRates(): Promise<MEXCFundingRate[]> {
-    console.log('[MEXCService] Fetching all funding rates from tickers (optimized)...');
+    // console.log('[MEXCService] Fetching all funding rates from tickers (optimized)...');
 
     // Get all tickers - includes fundingRate for all symbols in ONE request
     const tickers = await this.getTickers();
@@ -824,7 +824,7 @@ export class MEXCService {
    * Close a position
    */
   async closePosition(symbol: string, positionId: number, positionType: 1 | 2): Promise<any> {
-    console.log('[MEXCService] Closing position:', { symbol, positionId, positionType });
+    // console.log('[MEXCService] Closing position:', { symbol, positionId, positionType });
 
     // To close a position:
     // - If position is LONG (type 1), we need to CLOSE_LONG (side 4)
@@ -861,12 +861,12 @@ export class MEXCService {
     openType: 1 | 2 = 2, // 1: isolated, 2: cross (default)
     positionType?: 1 | 2 // 1: long, 2: short (optional, for hedge mode)
   ): Promise<any> {
-    console.log('[MEXCService] Setting leverage:', {
-      symbol,
-      leverage,
-      openType,
-      positionType
-    });
+    // console.log('[MEXCService] Setting leverage:', {
+    //   symbol,
+    //   leverage,
+    //   openType,
+    //   positionType
+    // });
 
     // Validate leverage range
     if (leverage < 1 || leverage > 125) {
@@ -890,11 +890,11 @@ export class MEXCService {
     );
 
     if (!response.success || response.code !== 0) {
-      console.error('[MEXCService] Set leverage failed:', {
-        code: response.code,
-        symbol,
-        leverage
-      });
+      // console.error('[MEXCService] Set leverage failed:', {
+      //   code: response.code,
+      //   symbol,
+      //   leverage
+      // });
 
       // Code 600/602 often means:
       // - Symbol doesn't support leverage changes
@@ -910,7 +910,7 @@ export class MEXCService {
       throw new Error(`Failed to set leverage: code ${response.code}`);
     }
 
-    console.log('[MEXCService] Leverage set successfully');
+    // console.log('[MEXCService] Leverage set successfully');
     return response.data;
   }
 
@@ -932,7 +932,7 @@ export class MEXCService {
    * Note: MEXC API doesn't support symbol parameter - fetches all contracts and filters client-side
    */
   async getContractDetails(symbol: string): Promise<any> {
-    console.log('[MEXCService] Fetching contract details for:', symbol);
+    // console.log('[MEXCService] Fetching contract details for:', symbol);
 
     // MEXC API doesn't support symbol parameter - fetch all contracts and filter
     const allContracts = await this.getAllContractDetails();
@@ -953,7 +953,7 @@ export class MEXCService {
    * Returns trading rules and limits for all contracts
    */
   async getAllContractDetails(): Promise<any[]> {
-    console.log('[MEXCService] Fetching all contract details...');
+    // console.log('[MEXCService] Fetching all contract details...');
 
     const response = await this.makePublicRequest<any[]>(
       'GET',

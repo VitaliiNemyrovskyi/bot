@@ -14,6 +14,7 @@ import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbit
 import { BingXService } from '@/lib/bingx';
 import { BybitService } from '@/lib/bybit';
 import { MEXCService } from '@/lib/mexc';
+import prisma from '@/lib/prisma';
 
 interface SymbolInfo {
   symbol: string;
@@ -377,8 +378,107 @@ export async function POST(request: NextRequest) {
       console.log(`[API] Hedge quantity adjusted: ${hedgeQuantity} → ${adjustedHedgeQuantity}`);
     }
 
+    // CRITICAL: Use the SAME quantity for BOTH exchanges (SOLID principle)
+    // Take the minimum of both adjusted quantities to ensure compatibility with BOTH exchanges
+    const finalQuantity = Math.min(adjustedPrimaryQuantity, adjustedHedgeQuantity);
+
+    // Check if quantity was adjusted - if yes, show error to user instead of silently changing
+    if (finalQuantity !== primaryQuantity || finalQuantity !== hedgeQuantity) {
+      const primaryChanged = adjustedPrimaryQuantity !== primaryQuantity;
+      const hedgeChanged = adjustedHedgeQuantity !== hedgeQuantity;
+
+      let errorMessage = `Quantity cannot be evenly divided into ${graduatedEntryParts} parts for both exchanges.\n`;
+
+      if (primaryChanged) {
+        errorMessage += `${primaryExchange}: ${primaryQuantity} → ${adjustedPrimaryQuantity} (adjusted)\n`;
+      }
+      if (hedgeChanged) {
+        errorMessage += `${hedgeExchange}: ${hedgeQuantity} → ${adjustedHedgeQuantity} (adjusted)\n`;
+      }
+
+      // Calculate valid suggestions
+      const qtyPerPart = finalQuantity / graduatedEntryParts;
+      const lowerQty = Math.floor(primaryQuantity / qtyPerPart) * qtyPerPart;
+      const upperQty = Math.ceil(primaryQuantity / qtyPerPart) * qtyPerPart;
+
+      errorMessage += `\nValid quantities for ${graduatedEntryParts} parts:`;
+      if (lowerQty > 0 && lowerQty !== primaryQuantity) {
+        errorMessage += `\n  • ${lowerQty} (${lowerQty / graduatedEntryParts} per part)`;
+      }
+      if (upperQty !== primaryQuantity) {
+        errorMessage += `\n  • ${upperQty} (${upperQty / graduatedEntryParts} per part)`;
+      }
+
+      console.error(`[API] Quantity adjustment required:`, errorMessage);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: errorMessage.trim(),
+        },
+        { status: 400 }
+      );
+    }
+
     console.log(`[API] Order quantity validation passed for both exchanges`);
-    console.log(`[API] Final quantities: Primary=${adjustedPrimaryQuantity}, Hedge=${adjustedHedgeQuantity}`);
+    console.log(`[API] Final quantities: Primary=${finalQuantity}, Hedge=${finalQuantity}`);
+
+    // Check for delisting on exchanges that support this check
+    // Currently only Bybit provides deliveryTime data
+    const exchangesToCheck = [];
+    if (primaryExchange.toUpperCase() === 'BYBIT') {
+      exchangesToCheck.push({ exchange: primaryExchange, role: 'primary' });
+    }
+    if (hedgeExchange.toUpperCase() === 'BYBIT') {
+      exchangesToCheck.push({ exchange: hedgeExchange, role: 'hedge' });
+    }
+
+    if (exchangesToCheck.length > 0) {
+      console.log(`[API] Checking delisting status for ${symbol} on ${exchangesToCheck.map(e => e.exchange).join(', ')}...`);
+
+      try {
+        // Check delisting using Bybit service (no auth required for public data)
+        const bybitService = new BybitService({ enableRateLimit: true });
+        const delistingInfo = await bybitService.checkDelisting(symbol, 'linear', 7); // 7-day threshold
+
+        if (delistingInfo.isDelisting) {
+          const daysRemaining = delistingInfo.daysUntilDelivery?.toFixed(1) || 'unknown';
+          const deliveryDate = delistingInfo.deliveryTime > 0
+            ? new Date(delistingInfo.deliveryTime).toISOString()
+            : 'unknown';
+
+          console.error(`[API] ⚠️ Symbol ${symbol} is being delisted on Bybit:`, {
+            daysUntilDelivery: daysRemaining,
+            deliveryTime: deliveryDate,
+            status: delistingInfo.status,
+          });
+
+          const affectedExchanges = exchangesToCheck.map(e => e.exchange).join(' and ');
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Symbol ${symbol} is being delisted on ${affectedExchanges}`,
+              message: `This symbol will be settled/closed in approximately ${daysRemaining} days (${deliveryDate}). ` +
+                       `New positions cannot be opened. Please choose a different symbol.`,
+              delistingInfo: {
+                symbol: symbol,
+                exchange: 'BYBIT',
+                daysUntilDelivery: parseFloat(daysRemaining),
+                deliveryTime: deliveryDate,
+              }
+            },
+            { status: 400 }
+          );
+        } else {
+          console.log(`[API] ✓ Symbol ${symbol} is not being delisted on Bybit (perpetual contract)`);
+        }
+      } catch (delistingCheckError: any) {
+        // Log error but don't block position creation
+        // (delisting check is a safety feature, not critical)
+        console.warn(`[API] Warning: Failed to check delisting status for ${symbol}:`, delistingCheckError.message);
+      }
+    }
 
     // Start graduated entry arbitrage position
     const testnet = primaryCredentials.environment === 'TESTNET';
@@ -390,11 +490,11 @@ export async function POST(request: NextRequest) {
         primaryExchange,
         primarySide: primarySide.toLowerCase() as 'long' | 'short',
         primaryLeverage,
-        primaryQuantity: adjustedPrimaryQuantity,
+        primaryQuantity: finalQuantity,
         hedgeExchange,
         hedgeSide: hedgeSide.toLowerCase() as 'long' | 'short',
         hedgeLeverage,
-        hedgeQuantity: adjustedHedgeQuantity,
+        hedgeQuantity: finalQuantity,
         graduatedEntryParts,
         graduatedEntryDelayMs,
       },
@@ -416,6 +516,11 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Graduated Entry Arbitrage started successfully: ${positionId}`);
 
+    // Fetch position from database to get entry prices
+    const dbPosition = await prisma.graduatedEntryPosition.findUnique({
+      where: { positionId },
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -427,6 +532,7 @@ export async function POST(request: NextRequest) {
           leverage: primaryLeverage,
           quantity: adjustedPrimaryQuantity,
           environment: primaryCredentials.environment,
+          entryPrice: dbPosition?.primaryEntryPrice || undefined,
         },
         hedge: {
           exchange: hedgeExchange,
@@ -434,6 +540,7 @@ export async function POST(request: NextRequest) {
           leverage: hedgeLeverage,
           quantity: adjustedHedgeQuantity,
           environment: hedgeCredentials.environment,
+          entryPrice: dbPosition?.hedgeEntryPrice || undefined,
         },
         graduatedEntry: {
           parts: graduatedEntryParts,
@@ -665,9 +772,15 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
       return null;
     }
 
+    // CRITICAL: Gate.io uses quanto_multiplier for contract-to-base-currency conversion
+    // Example: AVNT_USDT has quanto_multiplier=10, meaning 1 contract = 10 AVNT
+    // We MUST multiply minOrderQty and qtyStep by quanto_multiplier to get values in base currency
+    const quantoMultiplier = parseFloat(contract.quanto_multiplier || '1');
+
     console.log(`[Gate.io] Found contract for ${symbol}:`, {
       order_size_min: contract.order_size_min,
       order_size_max: contract.order_size_max,
+      quanto_multiplier: contract.quanto_multiplier,
       order_price_round: contract.order_price_round,
       mark_price_round: contract.mark_price_round,
       leverage_max: contract.leverage_max,
@@ -677,15 +790,20 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     const pricePrecision = contract.mark_price_round ? contract.mark_price_round.split('.')[1]?.length || 2 : 2;
     const qtyPrecision = contract.order_size_min ? Math.abs(Math.log10(parseFloat(contract.order_size_min))) : 3;
 
+    // Convert contract sizes to base currency amounts by multiplying with quanto_multiplier
+    const minOrderQtyInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+    const qtyStepInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+    const maxOrderQtyInBaseCurrency = contract.order_size_max ? parseFloat(contract.order_size_max) * quantoMultiplier : undefined;
+
     return {
       symbol: contract.name,
       exchange: 'GATEIO',
-      minOrderQty: parseFloat(contract.order_size_min || '1'),
+      minOrderQty: minOrderQtyInBaseCurrency,
       minOrderValue: undefined,
-      qtyStep: parseFloat(contract.order_size_min || '1'),
+      qtyStep: qtyStepInBaseCurrency,
       pricePrecision: parseInt(pricePrecision.toString()),
       qtyPrecision: Math.ceil(qtyPrecision),
-      maxOrderQty: contract.order_size_max ? parseFloat(contract.order_size_max) : undefined,
+      maxOrderQty: maxOrderQtyInBaseCurrency,
       maxLeverage: contract.leverage_max ? parseInt(contract.leverage_max) : undefined,
     };
   } catch (error: any) {
@@ -757,13 +875,8 @@ function validateOrderQuantity(
 
   // Automatically round quantity per part to meet step requirements
   // This prevents floating point precision issues and ensures valid orders
-  if (symbolInfo.qtyStep >= 1) {
-    // For whole number steps (like 1), round to nearest integer
-    qtyPerPart = Math.round(qtyPerPart);
-  } else {
-    // For decimal steps, round to step precision
-    qtyPerPart = Math.round(qtyPerPart / symbolInfo.qtyStep) * symbolInfo.qtyStep;
-  }
+  // ALWAYS use step-based rounding for consistency (works for both integers and decimals)
+  qtyPerPart = Math.round(qtyPerPart / symbolInfo.qtyStep) * symbolInfo.qtyStep;
 
   // Recalculate total quantity based on rounded parts
   const adjustedQuantity = qtyPerPart * graduatedParts;

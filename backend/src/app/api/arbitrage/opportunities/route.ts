@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BybitService } from '@/lib/bybit';
-import { BingXService } from '@/lib/bingx';
-import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
+import { calculateRealisticROI, calculateOpportunityConfidence, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
+
+/**
+ * Normalize funding rate to 8-hour interval for fair comparison
+ *
+ * @param fundingRate - Original funding rate as decimal (e.g., 0.0001)
+ * @param fundingInterval - Funding interval (e.g., "8h", "4h", "1h")
+ * @returns Normalized funding rate to 8h interval as decimal
+ */
+function normalizeFundingRateTo8h(fundingRate: number, fundingInterval: string): number {
+  // Normalization multipliers to convert to 8h interval
+  const multipliers: Record<string, number> = {
+    '1h': 8,   // 8 hourly payments = 1 eight-hour period
+    '4h': 2,   // 2 four-hour payments = 1 eight-hour period
+    '8h': 1,   // Already 8h interval
+  };
+
+  const multiplier = multipliers[fundingInterval] || 1;
+  return fundingRate * multiplier;
+}
 
 /**
  * GET /api/arbitrage/opportunities
@@ -266,81 +283,77 @@ export async function GET(request: NextRequest) {
     });
 
     // 6. Fetch funding rates for all exchanges and symbols
-    const fundingRateMap: Map<string, Map<string, number>> = new Map(); // Map<exchange, Map<symbol, fundingRate>>
+    // Map<exchange, Map<symbol, {rate: number, interval: string}>>
+    const fundingRateMap: Map<string, Map<string, {rate: number, interval: string}>> = new Map();
     console.log(`[PriceOpportunities] Fetching funding rates...`);
 
     for (const result of validResults) {
       if (!result) continue;
 
       try {
-        if (result.exchange === 'BYBIT') {
-          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
-          if (!credential) continue;
+        // For ALL exchanges, use public funding rates endpoint (unified approach)
+        const publicUrl = new URL(`/api/${result.exchange.toLowerCase()}/public-funding-rates`, request.url);
+        const response = await fetch(publicUrl.toString());
 
-          const bybitService = new BybitService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-            userId,
-          });
+        if (response.ok) {
+          const data = await response.json();
+          const symbolFundingMap = new Map<string, {rate: number, interval: string}>();
 
-          const tickers = await bybitService.getTicker('linear');
-          const symbolFundingMap = new Map<string, number>();
+          // Different exchanges have different response formats
+          const rates = data.data || data.rates || data.result?.list || data;
 
-          tickers.forEach((t) => {
-            if (t.fundingRate) {
-              const fundingRatePercent = parseFloat(t.fundingRate) * 100; // Convert to percentage
-              symbolFundingMap.set(t.symbol, fundingRatePercent);
-            }
-          });
+          if (Array.isArray(rates)) {
+            rates.forEach((r: any) => {
+              // Get funding rate from various field names
+              const fundingRateRaw = r.fundingRate || r.lastFundingRate || r.funding_rate;
 
-          fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BYBIT`);
+              if (fundingRateRaw !== undefined) {
+                const fundingRateDecimal = parseFloat(fundingRateRaw.toString());
+                const fundingRatePercent = fundingRateDecimal * 100;
 
-        } else if (result.exchange === 'BINGX') {
-          const credential = validActiveCredentials.find(c => c.id === result.credentialId);
-          if (!credential) continue;
+                // Get symbol and normalize it (remove all separators)
+                const symbolRaw = r.symbol || r.name;
+                if (!symbolRaw) return;
 
-          const bingxService = new BingXService({
-            apiKey: credential.apiKey,
-            apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
-            enableRateLimit: true,
-          });
+                const normalizedSymbol = symbolRaw.replace(/-/g, '').replace(/_/g, '');
 
-          await bingxService.syncTime();
-          const rates = await bingxService.getAllFundingRates();
-          const symbolFundingMap = new Map<string, number>();
+                // Get interval from fundingInterval field (all endpoints now provide this)
+                const interval = r.fundingInterval || '8h'; // Default to 8h if not provided
 
-          rates.forEach((r) => {
-            if (r.fundingRate) {
-              const fundingRatePercent = parseFloat(r.fundingRate) * 100; // Convert to percentage
-              const normalizedSymbol = r.symbol.replace(/-/g, ''); // BTC-USDT -> BTCUSDT
-              symbolFundingMap.set(normalizedSymbol, fundingRatePercent);
-            }
-          });
+                symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
+              }
+            });
 
-          fundingRateMap.set(result.exchange, symbolFundingMap);
-          console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from BINGX`);
+            fundingRateMap.set(result.exchange, symbolFundingMap);
+            console.log(`[PriceOpportunities] Fetched ${symbolFundingMap.size} funding rates from ${result.exchange} via public endpoint`);
+          }
+        } else {
+          console.warn(`[PriceOpportunities] Public endpoint failed for ${result.exchange}: ${response.status}`);
         }
       } catch (error: any) {
-        console.error(`[PriceOpportunities] Error fetching funding rates from ${result.exchange}:`, error.message);
+        console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, error.message);
       }
     }
 
     // 7. Calculate arbitrage opportunities with combined metrics
     const opportunities: PriceArbitrageOpportunity[] = [];
 
-    symbolMap.forEach((exchanges, symbol) => {
+    for (const [symbol, exchanges] of symbolMap.entries()) {
       // Only analyze symbols with at least 2 exchanges
-      if (exchanges.length < 2) return;
+      if (exchanges.length < 2) continue;
 
       // Apply symbol filter if specified
-      if (symbolFilter && symbol !== symbolFilter) return;
+      if (symbolFilter && symbol !== symbolFilter) continue;
 
-      // Sort by price (lowest to highest)
-      const sortedExchanges = [...exchanges].sort((a, b) => a.price - b.price);
+      // Sort by price (lowest to highest) and add funding intervals
+      const sortedExchanges = [...exchanges].map(ex => {
+        const fundingMap = fundingRateMap.get(ex.exchange);
+        const fundingData = fundingMap?.get(symbol);
+        return {
+          ...ex,
+          fundingInterval: fundingData?.interval
+        };
+      }).sort((a, b) => a.price - b.price);
 
       const lowestPrice = sortedExchanges[0].price;
       const highestPrice = sortedExchanges[sortedExchanges.length - 1].price;
@@ -352,7 +365,7 @@ export async function GET(request: NextRequest) {
       // Check if spread meets minimum threshold
       const arbitrageOpportunity = spreadPercent >= minSpread;
 
-      if (!arbitrageOpportunity) return;
+      if (!arbitrageOpportunity) continue;
 
       // Get funding rates for primary and hedge exchanges
       const primaryExchangeName = sortedExchanges[sortedExchanges.length - 1].exchange;
@@ -361,35 +374,99 @@ export async function GET(request: NextRequest) {
       const primaryFundingMap = fundingRateMap.get(primaryExchangeName);
       const hedgeFundingMap = fundingRateMap.get(hedgeExchangeName);
 
-      const primaryFundingRate = primaryFundingMap?.get(symbol);
-      const hedgeFundingRate = hedgeFundingMap?.get(symbol);
+      const primaryFundingData = primaryFundingMap?.get(symbol);
+      const hedgeFundingData = hedgeFundingMap?.get(symbol);
+
+      // Extract rates for display (original rates in %)
+      const primaryFundingRate = primaryFundingData?.rate;
+      const hedgeFundingRate = hedgeFundingData?.rate;
+      const primaryFundingInterval = primaryFundingData?.interval;
+      const hedgeFundingInterval = hedgeFundingData?.interval;
 
       // Calculate funding differential (if both funding rates available)
       let fundingDifferential: number | undefined;
       let combinedScore: number | undefined;
       let expectedDailyReturn: number | undefined;
       let estimatedMonthlyROI: number | undefined;
+      let realisticMetricsData: any = undefined;
       let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
-      if (primaryFundingRate !== undefined && hedgeFundingRate !== undefined) {
+      if (primaryFundingData && hedgeFundingData) {
         // PRIMARY (higher price) = SHORT = we RECEIVE funding if positive, PAY if negative
         // HEDGE (lower price) = LONG = we PAY funding if positive, RECEIVE if negative
 
-        // Net funding = what we receive on SHORT - what we pay on LONG
+        // CRITICAL: Normalize funding rates to 8h interval before calculating differential
+        // Example: GATEIO -1.587% per 1h → -1.587% × 8 = -12.696% per 8h
+        //          BINGX 0.0152% per 8h → 0.0152% × 1 = 0.0152% per 8h
+        const primaryNormalized = normalizeFundingRateTo8h(
+          primaryFundingData.rate / 100, // Convert % to decimal
+          primaryFundingData.interval
+        ) * 100; // Convert back to %
+
+        const hedgeNormalized = normalizeFundingRateTo8h(
+          hedgeFundingData.rate / 100, // Convert % to decimal
+          hedgeFundingData.interval
+        ) * 100; // Convert back to %
+
+        console.log(`[PriceOpportunities] ${symbol} funding normalization:`);
+        console.log(`  Primary (${primaryExchangeName}): ${primaryFundingData.rate.toFixed(4)}% (${primaryFundingData.interval}) → ${primaryNormalized.toFixed(4)}% (8h)`);
+        console.log(`  Hedge (${hedgeExchangeName}): ${hedgeFundingData.rate.toFixed(4)}% (${hedgeFundingData.interval}) → ${hedgeNormalized.toFixed(4)}% (8h)`);
+
+        // Net funding = what we receive on SHORT - what we pay on LONG (using normalized rates)
         // If PRIMARY funding is +0.01% and HEDGE funding is +0.01%, we pay 0 net (both cancel)
         // If PRIMARY funding is +0.05% and HEDGE funding is +0.01%, we receive +0.04% net
-        fundingDifferential = primaryFundingRate - hedgeFundingRate;
+        fundingDifferential = primaryNormalized - hedgeNormalized;
+        console.log(`  Funding differential (normalized): ${fundingDifferential.toFixed(4)}%`);
 
-        // Expected daily return = price spread (one-time) + funding differential (3x per day)
-        // For price spread, we assume it will converge over some period (e.g., 1 day)
-        const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
-        expectedDailyReturn = spreadPercent + dailyFundingReturn;
+        // Calculate realistic ROI based on historical data
+        const primaryExchangeEnum = primaryExchangeName as any; // Convert string to Exchange enum
+        const hedgeExchangeEnum = hedgeExchangeName as any;
 
-        // Estimated monthly ROI (assuming price spread closes once, funding accumulates)
-        estimatedMonthlyROI = spreadPercent + (dailyFundingReturn * 30);
+        const realisticMetrics = await calculateRealisticROI(
+          primaryExchangeEnum,
+          hedgeExchangeEnum,
+          symbol,
+          spreadPercent,
+          7 // 7 days historical data
+        );
 
-        // Combined score = immediate price spread + projected funding for 7 days
-        combinedScore = spreadPercent + (dailyFundingReturn * 7);
+        // Also get funding differential metrics for data quality info
+        const fundingMetrics = await calculateFundingDifferentialMetrics(
+          primaryExchangeEnum,
+          hedgeExchangeEnum,
+          symbol,
+          7
+        );
+
+        if (realisticMetrics) {
+          // Use realistic calculations based on historical data
+          expectedDailyReturn = realisticMetrics.expectedDailyReturn.realistic;
+          estimatedMonthlyROI = realisticMetrics.expectedMonthlyROI.realistic;
+          combinedScore = spreadPercent + (realisticMetrics.expectedDailyReturn.realistic * 7);
+
+          // Prepare realistic metrics object for response
+          realisticMetricsData = {
+            dailyReturn: {
+              pessimistic: realisticMetrics.expectedDailyReturn.pessimistic,
+              realistic: realisticMetrics.expectedDailyReturn.realistic,
+              optimistic: realisticMetrics.expectedDailyReturn.optimistic,
+            },
+            monthlyROI: {
+              pessimistic: realisticMetrics.expectedMonthlyROI.pessimistic,
+              realistic: realisticMetrics.expectedMonthlyROI.realistic,
+              optimistic: realisticMetrics.expectedMonthlyROI.optimistic,
+            },
+            confidence: realisticMetrics.confidence,
+            dataPoints: fundingMetrics?.dataPoints,
+            historicalPeriodDays: 7,
+          };
+        } else {
+          // Fallback to simple calculation if no historical data
+          const dailyFundingReturn = fundingDifferential * 3; // 3 funding periods per day
+          expectedDailyReturn = spreadPercent + dailyFundingReturn;
+          estimatedMonthlyROI = spreadPercent + (dailyFundingReturn * 30);
+          combinedScore = spreadPercent + (dailyFundingReturn * 7);
+        }
 
         strategyType = 'combined';
       }
@@ -414,13 +491,16 @@ export async function GET(request: NextRequest) {
         allExchanges: sortedExchanges,
         primaryFundingRate,
         hedgeFundingRate,
+        primaryFundingInterval,
+        hedgeFundingInterval,
         fundingDifferential,
         combinedScore,
         expectedDailyReturn,
         estimatedMonthlyROI,
+        realisticMetrics: realisticMetricsData,
         strategyType,
       });
-    });
+    }
 
     // Sort by combined score (if available), otherwise by spread (highest first)
     opportunities.sort((a, b) => {

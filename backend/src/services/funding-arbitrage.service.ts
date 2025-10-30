@@ -96,7 +96,7 @@ export class FundingArbitrageService extends EventEmitter {
       return;
     }
 
-    console.log('[FundingArbitrage] Initializing service and restoring active subscriptions...');
+    // console.log('[FundingArbitrage] Initializing service and restoring active subscriptions...');
 
     try {
       // Load all active subscriptions from database
@@ -107,7 +107,7 @@ export class FundingArbitrageService extends EventEmitter {
         },
       });
 
-      console.log(`[FundingArbitrage] Found ${dbSubscriptions.length} active subscriptions in database`);
+      // console.log(`[FundingArbitrage] Found ${dbSubscriptions.length} active subscriptions in database`);
 
       // Restore each subscription
       for (const dbSub of dbSubscriptions) {
@@ -116,7 +116,7 @@ export class FundingArbitrageService extends EventEmitter {
 
           // Handle EXECUTING subscriptions (positions already opened, waiting for close)
           if (dbSub.status === 'EXECUTING') {
-            console.log(`[FundingArbitrage] Found EXECUTING subscription ${dbSub.id} - positions opened, checking close status...`);
+            // console.log(`[FundingArbitrage] Found EXECUTING subscription ${dbSub.id} - positions opened, checking close status...`);
 
             // Check if funding time has passed
             if (timeUntilFunding < -600000) {
@@ -134,7 +134,7 @@ export class FundingArbitrageService extends EventEmitter {
             }
 
             // If funding time hasn't passed yet, restore subscription and wait for funding
-            console.log(`[FundingArbitrage] Restoring EXECUTING subscription ${dbSub.id}, will schedule position closing...`);
+            // console.log(`[FundingArbitrage] Restoring EXECUTING subscription ${dbSub.id}, will schedule position closing...`);
           } else {
             // For ACTIVE/WAITING subscriptions, check expiration
             if (timeUntilFunding < -60000) {
@@ -143,7 +143,7 @@ export class FundingArbitrageService extends EventEmitter {
                 where: { id: dbSub.id },
                 data: { status: 'ERROR', errorMessage: 'Expired - funding time passed' },
               });
-              console.log(`[FundingArbitrage] Subscription ${dbSub.id} expired - marked as ERROR`);
+              // console.log(`[FundingArbitrage] Subscription ${dbSub.id} expired - marked as ERROR`);
               continue;
             }
           }
@@ -156,7 +156,7 @@ export class FundingArbitrageService extends EventEmitter {
           );
 
           if (!credential) {
-            console.error(`[FundingArbitrage] Credential ${dbSub.primaryCredentialId} not found for subscription ${dbSub.id}`);
+            // console.error(`[FundingArbitrage] Credential ${dbSub.primaryCredentialId} not found for subscription ${dbSub.id}`);
             await prisma.fundingArbitrageSubscription.update({
               where: { id: dbSub.id },
               data: { status: 'ERROR', errorMessage: 'Credentials not found' },
@@ -310,10 +310,10 @@ export class FundingArbitrageService extends EventEmitter {
         this.cleanup(); // Existing subscription cleanup
       }, 900000); // 15 minutes
 
-      console.log('[FundingArbitrage] Started periodic cleanup timer');
+      // console.log('[FundingArbitrage] Started periodic cleanup timer');
 
       this.initialized = true;
-      console.log('[FundingArbitrage] Service initialization complete');
+      // console.log('[FundingArbitrage] Service initialization complete');
     } catch (error: any) {
       console.error('[FundingArbitrage] Error initializing service:', error);
     }
@@ -345,13 +345,13 @@ export class FundingArbitrageService extends EventEmitter {
     const margin = params.margin;
     const mode = params.mode || 'HEDGED';
 
-    console.log('[FundingArbitrage] Creating subscription with margin:', {
-      quantity: params.quantity,
-      leverage,
-      margin,
-      marginProvided: margin !== undefined,
-      mode,
-    });
+    // console.log('[FundingArbitrage] Creating subscription with margin:', {
+    //   quantity: params.quantity,
+    //   leverage,
+    //   margin,
+    //   marginProvided: margin !== undefined,
+    //   mode,
+    // });
 
     const dbSubscription = await prisma.fundingArbitrageSubscription.create({
       data: {
@@ -476,9 +476,9 @@ export class FundingArbitrageService extends EventEmitter {
         false
       );
 
-      console.log('[FundingArbitrage] Primary and hedge connectors created and cached, creating subscription...');
+      // console.log('[FundingArbitrage] Primary and hedge connectors created and cached, creating subscription...');
     } else {
-      console.log('[FundingArbitrage] NON_HEDGED mode: Primary connector created, creating subscription...');
+      // console.log('[FundingArbitrage] NON_HEDGED mode: Primary connector created, creating subscription...');
     }
 
     // IMMEDIATELY set leverage on exchanges (user-requested feature)
@@ -688,23 +688,20 @@ export class FundingArbitrageService extends EventEmitter {
       connector = new BybitConnector(
         credential.apiKey,
         credential.apiSecret,
-        credential.environment === 'TESTNET'
       );
     } else if (credential.exchange === 'BINGX') {
       const { BingXConnector } = await import('@/connectors/bingx.connector');
       connector = new BingXConnector(
         credential.apiKey,
         credential.apiSecret,
-        credential.environment === 'TESTNET',
         userId,          // Enable persistent time sync caching
-        credentialId     // Enable persistent time sync caching
+        credentialId,     // Enable persistent time sync caching
       );
     } else if (credential.exchange === 'MEXC') {
       const { MEXCConnector } = await import('@/connectors/mexc.connector');
       connector = new MEXCConnector(
         credential.apiKey,
         credential.apiSecret,
-        credential.environment === 'TESTNET',
         credential.authToken  // Browser session token for MEXC futures trading
       );
     } else if (credential.exchange === 'BINANCE') {
@@ -712,7 +709,6 @@ export class FundingArbitrageService extends EventEmitter {
       connector = new BinanceFuturesConnector(
         credential.apiKey,
         credential.apiSecret,
-        credential.environment === 'TESTNET',
         userId,
         credentialId
       );

@@ -194,7 +194,7 @@ async function getBybitBalance(apiKey: string, apiSecret: string): Promise<Excha
  */
 async function getGateIOBalance(apiKey: string, apiSecret: string): Promise<ExchangeBalance | null> {
   try {
-    console.log('[Gate.io] Fetching balance...');
+    // console.log('[Gate.io] Fetching balance...');
 
     // Create Gate.io exchange instance using CCXT
     const exchange = new ccxt.gate({
@@ -207,11 +207,11 @@ async function getGateIOBalance(apiKey: string, apiSecret: string): Promise<Exch
     // Gate.io uses 'swap' market type for perpetual futures
     const balance = await exchange.fetchBalance({ type: 'swap' });
 
-    console.log('[Gate.io] Balance data received:', {
-      total: balance.total,
-      free: balance.free,
-      used: balance.used,
-    });
+    // console.log('[Gate.io] Balance data received:', {
+    //   total: balance.total,
+    //   free: balance.free,
+    //   used: balance.used,
+    // });
 
     // Extract USDT balance
     const usdtTotal = balance.total?.USDT || 0;

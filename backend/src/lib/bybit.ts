@@ -180,7 +180,6 @@ export interface CoinBalance {
   bonus: string;
   collateralSwitch: boolean;
   marginCollateral: boolean;
-  availableToBorrow: string;
 }
 
 export interface WalletBalanceDetail {
@@ -215,6 +214,47 @@ export interface UserProfile {
   feeRates?: FeeRate[];
 }
 
+export interface InstrumentInfo {
+  symbol: string;
+  contractType: string;
+  status: string;
+  baseCoin: string;
+  quoteCoin: string;
+  launchTime: string;
+  deliveryTime: string; // "0" for perpetual, timestamp for expiring contracts
+  deliveryFeeRate: string;
+  priceScale: string;
+  leverageFilter: {
+    minLeverage: string;
+    maxLeverage: string;
+    leverageStep: string;
+  };
+  priceFilter: {
+    minPrice: string;
+    maxPrice: string;
+    tickSize: string;
+  };
+  lotSizeFilter: {
+    maxOrderQty: string;
+    minOrderQty: string;
+    qtyStep: string;
+    postOnlyMaxOrderQty: string;
+    maxMktOrderQty: string;
+    minNotionalValue: string;
+  };
+  unifiedMarginTrade: boolean;
+  fundingInterval: number;
+  settleCoin: string;
+}
+
+export interface DelistingInfo {
+  symbol: string;
+  isDelisting: boolean;
+  deliveryTime: number; // 0 for no delivery, timestamp for delivery
+  daysUntilDelivery?: number;
+  status: string;
+}
+
 export class BybitService {
   private restClient: RestClientV5;
   private wsClient?: WebsocketClient;
@@ -233,14 +273,14 @@ export class BybitService {
       ...config
     };
 
-    console.log('[BybitService] Initializing with config:', {
-      hasApiKey: !!this.config.apiKey,
-      apiKeyLength: this.config.apiKey?.length,
-      hasApiSecret: !!this.config.apiSecret,
-      apiSecretLength: this.config.apiSecret?.length,
-      enableRateLimit: this.config.enableRateLimit,
-      userId: this.config.userId
-    });
+    // console.log('[BybitService] Initializing with config:', {
+    //   hasApiKey: !!this.config.apiKey,
+    //   apiKeyLength: this.config.apiKey?.length,
+    //   hasApiSecret: !!this.config.apiSecret,
+    //   apiSecretLength: this.config.apiSecret?.length,
+    //   enableRateLimit: this.config.enableRateLimit,
+    //   userId: this.config.userId
+    // });
 
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
@@ -256,9 +296,9 @@ export class BybitService {
         secret: this.config.apiSecret,
         testnet: false, // Mainnet only
       });
-      console.log('[BybitService] WebSocket client initialized');
+      // console.log('[BybitService] WebSocket client initialized');
     } else {
-      console.log('[BybitService] WebSocket client not initialized (no credentials)');
+      // console.log('[BybitService] WebSocket client not initialized (no credentials)');
     }
   }
 
@@ -270,15 +310,15 @@ export class BybitService {
    */
   static async createFromDatabase(userId: string): Promise<BybitService | null> {
     try {
-      console.log(`[BybitService] Loading keys from database for user: ${userId}`);
+      // console.log(`[BybitService] Loading keys from database for user: ${userId}`);
       const keys = await BybitKeysService.getApiKeys(userId);
 
       if (!keys) {
-        console.log(`[BybitService] No keys found in database for user: ${userId}`);
+        // console.log(`[BybitService] No keys found in database for user: ${userId}`);
         return null;
       }
 
-      console.log(`[BybitService] Keys loaded from database`);
+      // console.log(`[BybitService] Keys loaded from database`);
 
       const service = new BybitService({
         apiKey: keys.apiKey,
@@ -345,25 +385,25 @@ export class BybitService {
       this.lastSyncTime = endTime;
 
       // Log sync status with detailed timing info
-      console.log('[BybitService] Time synchronized:', {
-        serverTime,
-        localTime: endTime,
-        midpoint,
-        roundTripTime,
-        latency,
-        offset: newOffset
-      });
+      // console.log('[BybitService] Time synchronized:', {
+      //   serverTime,
+      //   localTime: endTime,
+      //   midpoint,
+      //   roundTripTime,
+      //   latency,
+      //   offset: newOffset
+      // });
 
       // Check if offset exceeds maximum allowed
       if (Math.abs(newOffset) > this.MAX_OFFSET_MS) {
-        const errorMsg =
-          `CRITICAL: Time offset (${newOffset}ms) exceeds maximum allowed (${this.MAX_OFFSET_MS}ms). ` +
-          `Bybit API will reject all requests. ` +
-          `\n\nTo fix this issue:\n` +
-          `1. Sync your system time: Run 'sudo ntpdate -s time.apple.com' (macOS) or 'sudo ntpdate pool.ntp.org' (Linux)\n` +
-          `2. Or use NTP service: 'sudo systemctl restart systemd-timesyncd' (Linux with systemd)\n` +
-          `3. Restart the server after syncing time\n`;
-        console.error(`[BybitService] ${errorMsg}`);
+        // const errorMsg =
+        //   `CRITICAL: Time offset (${newOffset}ms) exceeds maximum allowed (${this.MAX_OFFSET_MS}ms). ` +
+        //   `Bybit API will reject all requests. ` +
+        //   `\n\nTo fix this issue:\n` +
+        //   `1. Sync your system time: Run 'sudo ntpdate -s time.apple.com' (macOS) or 'sudo ntpdate pool.ntp.org' (Linux)\n` +
+        //   `2. Or use NTP service: 'sudo systemctl restart systemd-timesyncd' (Linux with systemd)\n` +
+        //   `3. Restart the server after syncing time\n`;
+        // console.error(`[BybitService] ${errorMsg}`);
         throw new Error(errorMsg);
       }
 
@@ -406,14 +446,14 @@ export class BybitService {
    */
   startPeriodicSync(): void {
     if (this.syncInterval) {
-      console.log('[BybitService] Periodic sync already running');
+      // console.log('[BybitService] Periodic sync already running');
       return;
     }
 
     console.log(`[BybitService] Starting periodic time sync (interval: ${this.SYNC_INTERVAL_MS / 1000} seconds)`);
 
     this.syncInterval = setInterval(async () => {
-      console.log('[BybitService] Performing periodic time sync...');
+      // console.log('[BybitService] Performing periodic time sync...');
       await this.syncTime();
     }, this.SYNC_INTERVAL_MS);
   }
@@ -425,7 +465,7 @@ export class BybitService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
-      console.log('[BybitService] Periodic time sync stopped');
+      // console.log('[BybitService] Periodic time sync stopped');
     }
   }
 
@@ -689,11 +729,11 @@ export class BybitService {
       const params: any = { accountType };
       if (coin) params.coin = coin;
 
-      console.log(`[Bybit] Fetching wallet balance - accountType: ${accountType}, coin: ${coin || 'all'}`);
+      // console.log(`[Bybit] Fetching wallet balance - accountType: ${accountType}, coin: ${coin || 'all'}`);
 
       const response = await this.restClient.getWalletBalance(params);
 
-      console.log(`[Bybit] Wallet balance response - retCode: ${response.retCode}, retMsg: ${response.retMsg}`);
+      // console.log(`[Bybit] Wallet balance response - retCode: ${response.retCode}, retMsg: ${response.retMsg}`);
 
       if (response.retCode !== 0) {
         throw new Error(`Bybit API Error (${response.retCode}): ${response.retMsg}`);
@@ -703,18 +743,18 @@ export class BybitService {
         throw new Error('Bybit API returned empty result');
       }
 
-      console.log(`[Bybit] Wallet balance retrieved successfully - accounts: ${response.result.list?.length || 0}`);
+      // console.log(`[Bybit] Wallet balance retrieved successfully - accounts: ${response.result.list?.length || 0}`);
 
       // Log detailed balance data
       if (response.result.list && response.result.list.length > 0) {
         const account = response.result.list[0];
-        console.log('[Bybit] Balance Details:', {
-          totalEquity: account.totalEquity,
-          totalWalletBalance: account.totalWalletBalance,
-          totalAvailableBalance: account.totalAvailableBalance,
-          accountType: account.accountType,
-          coinsCount: account.coin?.length || 0
-        });
+        // console.log('[Bybit] Balance Details:', {
+        //   totalEquity: account.totalEquity,
+        //   totalWalletBalance: account.totalWalletBalance,
+        //   totalAvailableBalance: account.totalAvailableBalance,
+        //   accountType: account.accountType,
+        //   coinsCount: account.coin?.length || 0
+        // });
 
         // Log first few coins with balances
         if (account.coin && account.coin.length > 0) {
@@ -722,22 +762,22 @@ export class BybitService {
             .filter((c: any) => parseFloat(c.walletBalance || '0') > 0)
             .slice(0, 5)
             .map((c: any) => `${c.coin}: ${c.walletBalance}`);
-          console.log('[Bybit] Non-zero balances:', topCoins);
+          // console.log('[Bybit] Non-zero balances:', topCoins);
         } else {
-          console.warn('[Bybit] ⚠️  Account has zero balance! This could mean:');
-          console.warn('  1. Funds are in a different account type (try SPOT or CONTRACT)');
-          console.warn('  2. API key lacks "Read-Write" or "Wallet" permissions');
+          // console.warn('[Bybit] ⚠️  Account has zero balance! This could mean:');
+          // console.warn('  1. Funds are in a different account type (try SPOT or CONTRACT)');
+          // console.warn('  2. API key lacks "Read-Write" or "Wallet" permissions');
         }
       }
 
       return response.result;
     } catch (error: any) {
-      console.error('[Bybit] Error fetching wallet balance:', {
-        message: error.message,
-        accountType,
-        coin,
-        hasCredentials: this.hasCredentials()
-      });
+      // console.error('[Bybit] Error fetching wallet balance:', {
+      //   message: error.message,
+      //   accountType,
+      //   coin,
+      //   hasCredentials: this.hasCredentials()
+      // });
       throw error;
     }
   }
@@ -900,12 +940,12 @@ export class BybitService {
         throw new Error('API credentials required for leverage operations');
       }
 
-      console.log('[BybitService] Setting leverage:', {
-        category,
-        symbol,
-        buyLeverage,
-        sellLeverage,
-      });
+      // console.log('[BybitService] Setting leverage:', {
+      //   category,
+      //   symbol,
+      //   buyLeverage,
+      //   sellLeverage,
+      // });
 
       // Validate leverage range (typically 1-100x, but can vary by symbol)
       if (buyLeverage < 1 || buyLeverage > 100) {
@@ -933,7 +973,7 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
-      console.log('[BybitService] Leverage set successfully:', response.result);
+      // console.log('[BybitService] Leverage set successfully:', response.result);
       return response.result;
     } catch (error: any) {
       console.error('[BybitService] Error setting leverage:', error.message);
@@ -979,13 +1019,13 @@ export class BybitService {
         throw new Error('At least one of takeProfit or stopLoss must be provided');
       }
 
-      console.log('[BybitService] Setting trading stop:', {
-        category: params.category || 'linear',
-        symbol: params.symbol,
-        takeProfit: params.takeProfit,
-        stopLoss: params.stopLoss,
-        positionIdx: params.positionIdx || 0,
-      });
+      // console.log('[BybitService] Setting trading stop:', {
+      //   category: params.category || 'linear',
+      //   symbol: params.symbol,
+      //   takeProfit: params.takeProfit,
+      //   stopLoss: params.stopLoss,
+      //   positionIdx: params.positionIdx || 0,
+      // });
 
       // Build request parameters
       const requestParams: any = {
@@ -1014,7 +1054,7 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
-      console.log('[BybitService] Trading stop set successfully:', response.result);
+      // console.log('[BybitService] Trading stop set successfully:', response.result);
       return response.result;
     } catch (error: any) {
       console.error('[BybitService] Error setting trading stop:', error.message);
@@ -1143,7 +1183,7 @@ export class BybitService {
       if (params.startTime) requestParams.startTime = params.startTime;
       if (params.endTime) requestParams.endTime = params.endTime;
 
-      console.log('[BybitService] Fetching transaction log with params:', requestParams);
+      // console.log('[BybitService] Fetching transaction log with params:', requestParams);
 
       const response = await this.restClient.getTransactionLog(requestParams);
 
@@ -1151,10 +1191,10 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
-      console.log('[BybitService] Transaction log response:', {
-        recordCount: response.result?.list?.length || 0,
-        nextPageCursor: response.result?.nextPageCursor,
-      });
+      // console.log('[BybitService] Transaction log response:', {
+      //   recordCount: response.result?.list?.length || 0,
+      //   nextPageCursor: response.result?.nextPageCursor,
+      // });
 
       return response.result.list as TransactionLog[];
     } catch (error: any) {
@@ -1205,7 +1245,7 @@ export class BybitService {
       if (params.endTime) requestParams.endTime = params.endTime;
       if (params.cursor) requestParams.cursor = params.cursor;
 
-      console.log('[BybitService] Fetching closed P&L with params:', requestParams);
+      // console.log('[BybitService] Fetching closed P&L with params:', requestParams);
 
       const response = await this.restClient.getClosedPnL(requestParams);
 
@@ -1213,10 +1253,10 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
-      console.log('[BybitService] Closed P&L response:', {
-        recordCount: response.result?.list?.length || 0,
-        nextPageCursor: response.result?.nextPageCursor,
-      });
+      // console.log('[BybitService] Closed P&L response:', {
+      //   recordCount: response.result?.list?.length || 0,
+      //   nextPageCursor: response.result?.nextPageCursor,
+      // });
 
       return response.result;
     } catch (error: any) {
@@ -1266,7 +1306,7 @@ export class BybitService {
       if (params.execType) requestParams.execType = params.execType;
       if (params.cursor) requestParams.cursor = params.cursor;
 
-      console.log('[BybitService] Fetching execution list with params:', requestParams);
+      // console.log('[BybitService] Fetching execution list with params:', requestParams);
 
       const response = await this.restClient.getExecutionList(requestParams);
 
@@ -1274,10 +1314,10 @@ export class BybitService {
         throw new Error(`Bybit API Error: ${response.retMsg}`);
       }
 
-      console.log('[BybitService] Execution list response:', {
-        recordCount: response.result?.list?.length || 0,
-        nextPageCursor: response.result?.nextPageCursor,
-      });
+      // console.log('[BybitService] Execution list response:', {
+      //   recordCount: response.result?.list?.length || 0,
+      //   nextPageCursor: response.result?.nextPageCursor,
+      // });
 
       return response.result;
     } catch (error: any) {
@@ -1340,6 +1380,96 @@ export class BybitService {
       console.error('Error fetching instruments info:', error);
       throw error;
     }
+  }
+
+  /**
+   * Check if a symbol is being delisted on Bybit
+   *
+   * Bybit uses deliveryTime field to indicate contract expiry:
+   * - "0" = perpetual contract (no delisting)
+   * - non-zero timestamp = contract will be settled/delisted at that time
+   *
+   * When a contract is approaching delivery, Bybit prevents opening new positions
+   * but keeps status as "Trading" for existing positions.
+   *
+   * @param symbol - The trading symbol to check (e.g., "HIFIUSDT")
+   * @param category - The category ('linear', 'spot', 'option')
+   * @param thresholdDays - Number of days before delivery to consider as "delisting" (default: 7)
+   * @returns DelistingInfo object with delisting status and details
+   */
+  async checkDelisting(
+    symbol: string,
+    category: 'linear' | 'spot' | 'option' = 'linear',
+    thresholdDays: number = 7
+  ): Promise<DelistingInfo> {
+    try {
+      const response = await this.getInstrumentsInfo(category, symbol);
+
+      if (!response.list || response.list.length === 0) {
+        return {
+          symbol,
+          isDelisting: true, // Symbol not found = effectively delisted
+          deliveryTime: 0,
+          status: 'NOT_FOUND',
+        };
+      }
+
+      const instrument = response.list[0] as InstrumentInfo;
+      const deliveryTimeMs = parseInt(instrument.deliveryTime);
+
+      // deliveryTime = "0" means perpetual contract (no expiry)
+      if (deliveryTimeMs === 0) {
+        return {
+          symbol,
+          isDelisting: false,
+          deliveryTime: 0,
+          status: instrument.status,
+        };
+      }
+
+      // Calculate days until delivery
+      const now = Date.now();
+      const daysUntilDelivery = (deliveryTimeMs - now) / (1000 * 60 * 60 * 24);
+
+      // Consider as delisting if within threshold
+      const isDelisting = daysUntilDelivery <= thresholdDays;
+
+      return {
+        symbol,
+        isDelisting,
+        deliveryTime: deliveryTimeMs,
+        daysUntilDelivery: Math.max(0, daysUntilDelivery),
+        status: instrument.status,
+      };
+    } catch (error: any) {
+      console.error(`[BybitService] Error checking delisting for ${symbol}:`, error.message);
+      // On error, assume it might be delisting to be safe
+      return {
+        symbol,
+        isDelisting: true,
+        deliveryTime: 0,
+        status: 'ERROR',
+      };
+    }
+  }
+
+  /**
+   * Check multiple symbols for delisting in batch
+   *
+   * @param symbols - Array of symbols to check
+   * @param category - The category ('linear', 'spot', 'option')
+   * @param thresholdDays - Number of days before delivery to consider as "delisting"
+   * @returns Array of DelistingInfo objects
+   */
+  async checkMultipleDelisting(
+    symbols: string[],
+    category: 'linear' | 'spot' | 'option' = 'linear',
+    thresholdDays: number = 7
+  ): Promise<DelistingInfo[]> {
+    const results = await Promise.all(
+      symbols.map(symbol => this.checkDelisting(symbol, category, thresholdDays))
+    );
+    return results;
   }
 
   // WebSocket Methods
@@ -1419,10 +1549,10 @@ export class BybitService {
       throw new Error('WebSocket client not initialized. API credentials required.');
     }
 
-    console.log('[BybitService] Subscribing to wallet updates via WebSocket...');
+    // console.log('[BybitService] Subscribing to wallet updates via WebSocket...');
     this.wsClient.subscribeV5('wallet', 'linear');
     this.wsClient.on('update', callback);
-    console.log('[BybitService] Wallet subscription active');
+    // console.log('[BybitService] Wallet subscription active');
   }
 
   unsubscribeAll() {

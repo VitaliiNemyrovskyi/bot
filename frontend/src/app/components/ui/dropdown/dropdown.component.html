@@ -22,14 +22,14 @@
           @if (selectedOption()?.icon) {
             <span class="dropdown-icon">{{ selectedOption()?.icon }}</span>
           }
-          {{ selectedOption()?.label }}
+          <span [innerHTML]="(selectedOption()?.label ?? '') | safeHtml"></span>
         </span>
       } @else {
         <span class="dropdown-placeholder">{{ placeholder }}</span>
       }
     </span>
     <span class="dropdown-arrow" [class.dropdown-arrow-up]="isOpen()">▼</span>
-    @if (selectedValue() && !disabled) {
+    @if (selectedValue() && !disabled && showClearButton) {
       <button
         type="button"
         class="dropdown-clear"
@@ -76,7 +76,7 @@
               @if (option.icon) {
                 <span class="option-icon">{{ option.icon }}</span>
               }
-              <span class="option-label">{{ option.label }}</span>
+              <span class="option-label" [innerHTML]="option.label | safeHtml"></span>
             </div>
           }
         }

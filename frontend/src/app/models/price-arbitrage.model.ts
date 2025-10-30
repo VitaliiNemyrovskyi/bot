@@ -137,17 +137,58 @@ export interface PriceArbitrageOpportunity {
 
   // NEW FIELDS FOR COMBINED STRATEGY
   // Funding rate data (optional - may not be available for all symbols)
-  primaryFundingRate?: number; // Funding rate on primary exchange (% per 8h)
-  hedgeFundingRate?: number; // Funding rate on hedge exchange (% per 8h)
-  fundingDifferential?: number; // Difference in funding rates (% per 8h)
+  primaryFundingRate?: number; // Funding rate on primary exchange (% per interval)
+  hedgeFundingRate?: number; // Funding rate on hedge exchange (% per interval)
+  primaryFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  hedgeFundingInterval?: string; // Funding interval (e.g., "1h", "4h", "8h")
+  fundingDifferential?: number; // Difference in funding rates (% per 8h - normalized)
 
-  // Combined strategy metrics
+  // Combined strategy metrics (LEGACY - simple calculations)
   combinedScore?: number; // Combined score (price spread + funding)
-  expectedDailyReturn?: number; // Expected daily return (%)
-  estimatedMonthlyROI?: number; // Estimated monthly ROI (%)
+  expectedDailyReturn?: number; // Expected daily return (%) - LEGACY
+  estimatedMonthlyROI?: number; // Estimated monthly ROI (%) - LEGACY
+
+  // REALISTIC METRICS - based on historical data (NEW)
+  realisticMetrics?: {
+    // Daily return scenarios (%)
+    dailyReturn: {
+      pessimistic: number; // avg - 1 stddev
+      realistic: number; // avg
+      optimistic: number; // avg + 1 stddev
+    };
+    // Monthly ROI scenarios (%)
+    monthlyROI: {
+      pessimistic: number;
+      realistic: number;
+      optimistic: number;
+    };
+    // Confidence score (0-100)
+    // Higher = more reliable historical data
+    confidence: number;
+    // Data quality indicators
+    dataPoints?: number; // Number of historical samples
+    historicalPeriodDays?: number; // Period of analysis (usually 7 days)
+  };
 
   // Strategy type
   strategyType: 'price_only' | 'funding_only' | 'combined'; // Type of strategy
+
+  // NEW FIELDS FOR SPOT+FUTURES STRATEGY DISPLAY
+  // Best exchange for funding (positive funding - where you go LONG spot + SHORT futures)
+  bestFundingExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., 0.001 = 0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
+
+  // Best exchange for shorting (negative funding - where you go SHORT)
+  bestShortExchange?: {
+    exchange: string;
+    fundingRate: number; // As decimal (e.g., -0.001 = -0.1%)
+    nextFundingTime: number; // Timestamp in milliseconds
+    currentPrice: number;
+  };
 }
 
 /**

@@ -34,12 +34,12 @@ export class TriangleDiscovery {
     const triangles: Triangle[] = [];
 
     // Debug: Show first 10 symbols
-    console.log('[TriangleDiscovery] Sample symbols:', symbols.slice(0, 10));
+    // console.log('[TriangleDiscovery] Sample symbols:', symbols.slice(0, 10));
 
     const assetPairs = this.parseSymbols(symbols);
 
     // Debug: Show first 10 parsed pairs
-    console.log('[TriangleDiscovery] Sample parsed pairs:', assetPairs.slice(0, 10));
+    // console.log('[TriangleDiscovery] Sample parsed pairs:', assetPairs.slice(0, 10));
 
     // Build asset graph (adjacency list)
     const graph = new Map<string, Set<string>>();
@@ -53,8 +53,8 @@ export class TriangleDiscovery {
     }
 
     // Debug: Show graph structure
-    console.log('[TriangleDiscovery] Graph nodes:', graph.size);
-    console.log('[TriangleDiscovery] Sample graph connections:');
+    // console.log('[TriangleDiscovery] Graph nodes:', graph.size);
+    // console.log('[TriangleDiscovery] Sample graph connections:');
     let count = 0;
     for (const [node, connections] of graph.entries()) {
       if (count < 5) {
@@ -95,7 +95,7 @@ export class TriangleDiscovery {
               } else if (!isValid) {
                 invalidTrianglesFiltered++;
                 if (invalidTrianglesFiltered <= 3) {
-                  console.log('[TriangleDiscovery] Invalid triangle filtered:', triangle.symbols);
+                  // console.log('[TriangleDiscovery] Invalid triangle filtered:', triangle.symbols);
                 }
               }
             }
@@ -104,7 +104,7 @@ export class TriangleDiscovery {
       }
     }
 
-    console.log('[TriangleDiscovery] Triangle discovery stats:');
+    // console.log('[TriangleDiscovery] Triangle discovery stats:');
     console.log(`  Total triangles found: ${totalTrianglesFound}`);
     console.log(`  Valid triangles: ${validTrianglesFound}`);
     console.log(`  Invalid triangles filtered: ${invalidTrianglesFiltered}`);

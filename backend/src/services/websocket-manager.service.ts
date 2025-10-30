@@ -52,7 +52,7 @@ export class WebSocketManagerService {
     callback: (data: any) => void
   ): Promise<() => void> {
     const connectionKey = `${exchange}:${symbol}`;
-    console.log(`[WebSocketManager] Subscribing to ${connectionKey}`);
+    // console.log(`[WebSocketManager] Subscribing to ${connectionKey}`);
 
     // Get or create connection state
     let state = this.connections.get(connectionKey);

@@ -45,9 +45,9 @@ export interface AppConfig {
         startPosition: string;
         closePosition: string;
         historicalPrices: string;
+        spotFutures: string;
         graduatedEntry: string;
-        graduatedEntryStop: string;
-        graduatedEntrySetTpSl: string;
+        spotFuturesSetTpSl: string;
       };
       fundingArbitrage: {
         revenue: string;
@@ -142,9 +142,9 @@ export const appConfig: AppConfig = {
         startPosition: '/arbitrage/positions/start',
         closePosition: '/arbitrage/positions/:id/close',
         historicalPrices: '/arbitrage/historical-prices',
+        spotFutures: '/arbitrage/spot-futures/positions',
         graduatedEntry: '/arbitrage/graduated-entry',
-        graduatedEntryStop: '/arbitrage/graduated-entry/stop',
-        graduatedEntrySetTpSl: '/arbitrage/graduated-entry/set-tpsl'
+        spotFuturesSetTpSl: '/arbitrage/spot-futures/set-tpsl'
       },
       fundingArbitrage: {
         revenue: '/funding-arbitrage/revenue',

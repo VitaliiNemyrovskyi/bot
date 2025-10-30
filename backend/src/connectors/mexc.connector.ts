@@ -96,7 +96,7 @@ export class MEXCConnector extends BaseExchangeConnector {
       // Test connection by fetching account info
       await this.mexcService.getAccountInfo();
       this.isInitialized = true;
-      console.log('[MEXCConnector] MEXC connector initialized successfully');
+      // console.log('[MEXCConnector] MEXC connector initialized successfully');
     } catch (error: any) {
       console.error('[MEXCConnector] Failed to initialize:', error.message);
       throw new Error(`Failed to initialize MEXC connector: ${error.message}`);
@@ -152,7 +152,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         openType: 2, // Cross margin (default)
       });
 
-      console.log('[MEXCConnector] Market order placed:', result);
+      // console.log('[MEXCConnector] Market order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing market order:', error.message);
@@ -211,7 +211,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         openType: 2, // Cross margin (default)
       });
 
-      console.log('[MEXCConnector] Limit order placed:', result);
+      // console.log('[MEXCConnector] Limit order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing limit order:', error.message);
@@ -232,7 +232,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.cancelOrder(normalizedSymbol, orderId);
-      console.log('[MEXCConnector] Order canceled:', result);
+      // console.log('[MEXCConnector] Order canceled:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error canceling order:', error.message);
@@ -250,7 +250,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.getBalance();
-      console.log('[MEXCConnector] Balance retrieved');
+      // console.log('[MEXCConnector] Balance retrieved');
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting balance:', error.message);
@@ -282,7 +282,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         };
       }
 
-      console.log('[MEXCConnector] Position retrieved:', position);
+      // console.log('[MEXCConnector] Position retrieved:', position);
       return position;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting position:', error.message);
@@ -303,7 +303,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const positions = await this.mexcService.getPositions(normalizedSymbol);
-      console.log('[MEXCConnector] Positions retrieved:', positions.length);
+      // console.log('[MEXCConnector] Positions retrieved:', positions.length);
       return positions;
     } catch (error: any) {
       console.error('[MEXCConnector] Error getting positions:', error.message);
@@ -353,7 +353,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         position.positionType
       );
 
-      console.log('[MEXCConnector] Position closed:', result);
+      // console.log('[MEXCConnector] Position closed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error closing position:', error.message);
@@ -412,7 +412,7 @@ export class MEXCConnector extends BaseExchangeConnector {
         positionId: position.positionId,
       });
 
-      console.log('[MEXCConnector] Reduce-only order placed:', result);
+      // console.log('[MEXCConnector] Reduce-only order placed:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error placing reduce-only order:', error.message);
@@ -459,7 +459,7 @@ export class MEXCConnector extends BaseExchangeConnector {
 
     try {
       const result = await this.mexcService.setLeverage(normalizedSymbol, leverage, openType);
-      console.log('[MEXCConnector] ✓ Leverage set successfully via API:', result);
+      // console.log('[MEXCConnector] ✓ Leverage set successfully via API:', result);
       return result;
     } catch (error: any) {
       console.error('[MEXCConnector] Error setting leverage via API:', error.message);
@@ -599,6 +599,199 @@ export class MEXCConnector extends BaseExchangeConnector {
     } catch (error: any) {
       console.error(`[MEXCConnector] Error subscribing to price stream for ${normalizedSymbol}:`, error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Set take-profit and stop-loss for an existing position
+   * MEXC doesn't have a direct setTradingStop API, so we implement it using plan orders (conditional orders)
+   *
+   * @param symbol - Trading pair symbol
+   * @param side - Position side (Buy for long, Sell for short)
+   * @param takeProfit - Take profit price (optional)
+   * @param stopLoss - Stop loss price (optional)
+   * @returns Order IDs or confirmation
+   */
+  async setTradingStop(params: {
+    symbol: string;
+    side: OrderSide;
+    takeProfit?: number;
+    stopLoss?: number;
+  }): Promise<{
+    success: boolean;
+    takeProfitOrderId?: string;
+    stopLossOrderId?: string;
+    message?: string;
+  }> {
+    const normalizedSymbol = this.normalizeSymbol(params.symbol);
+
+    console.log(`[MEXCConnector] Setting trading stop for ${normalizedSymbol}:`, {
+      side: params.side,
+      takeProfit: params.takeProfit,
+      stopLoss: params.stopLoss,
+    });
+
+    if (!this.isInitialized) {
+      throw new Error('MEXC connector not initialized');
+    }
+
+    // Validate at least one parameter is provided
+    if (!params.takeProfit && !params.stopLoss) {
+      throw new Error('At least one of takeProfit or stopLoss must be provided');
+    }
+
+    try {
+      // Get current position to determine size
+      const position = await this.getPosition(params.symbol);
+
+      // MEXC position uses 'holdVol' field (string), not 'vol'
+      const holdVol = parseFloat(position.holdVol || '0');
+
+      if (!position || holdVol === 0) {
+        throw new Error(
+          `No open position found for ${normalizedSymbol}. ` +
+          `Please open a position first before setting take-profit or stop-loss.`
+        );
+      }
+
+      // Determine position direction from positionType (1 = long, 2 = short)
+      const isLongPosition = position.positionType === 1;
+      const positionVol = Math.abs(holdVol);
+
+      console.log(`[MEXCConnector] Current position for ${normalizedSymbol}:`, {
+        positionId: position.positionId,
+        holdVol,
+        positionVol,
+        positionType: position.positionType,
+        isLong: isLongPosition,
+        leverage: position.leverage,
+      });
+
+      // Get contract size for quantity conversion
+      const contractSize = await this.getContractSize(params.symbol);
+
+      // Convert position volume to contracts (MEXC uses contract quantities, not base currency)
+      // For example: 200 (base units) / 10 (contract size) = 20 contracts
+      const contracts = positionVol / contractSize;
+
+      console.log(`[MEXCConnector] Quantity conversion for ${normalizedSymbol}:`, {
+        positionVol,
+        contractSize,
+        contracts,
+      });
+
+      // Check minimum notional value requirement (MEXC requires ~$5 USDT minimum for conditional orders)
+      // Use position's average price as current price approximation
+      const currentPrice = parseFloat(position.holdAvgPrice || '0');
+
+      if (currentPrice === 0) {
+        throw new Error(`Cannot determine current price for ${normalizedSymbol}. Position data may be incomplete.`);
+      }
+
+      const notionalValue = positionVol * currentPrice;
+      const MIN_NOTIONAL_VALUE = 5; // MEXC minimum order value in USDT
+
+      console.log(`[MEXCConnector] Notional value check for ${normalizedSymbol}:`, {
+        currentPrice,
+        positionVol,
+        notionalValue: notionalValue.toFixed(2),
+        minRequired: MIN_NOTIONAL_VALUE,
+        meetsMinimum: notionalValue >= MIN_NOTIONAL_VALUE,
+      });
+
+      if (notionalValue < MIN_NOTIONAL_VALUE) {
+        const errorMessage =
+          `Position notional value ($${notionalValue.toFixed(2)}) is below MEXC's minimum requirement ($${MIN_NOTIONAL_VALUE}) for TP/SL orders. ` +
+          `MEXC does not support setting stop-loss or take-profit on positions with value below $${MIN_NOTIONAL_VALUE}. ` +
+          `To set TP/SL, please increase your position size to at least $${MIN_NOTIONAL_VALUE} (${Math.ceil(MIN_NOTIONAL_VALUE / currentPrice)} units).`;
+
+        console.warn(`[MEXCConnector] ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+
+      let takeProfitOrderId: string | undefined;
+      let stopLossOrderId: string | undefined;
+
+      // Place Take-Profit order if provided
+      // MEXC API field semantics:
+      // - takeProfitPrice: Triggers when price RISES to this level
+      // - stopLossPrice: Triggers when price FALLS to this level
+      //
+      // For LONG: TP when price goes UP (use takeProfitPrice)
+      // For SHORT: TP when price goes DOWN (use stopLossPrice)
+      if (params.takeProfit) {
+        console.log(`[MEXCConnector] Placing take-profit order at $${params.takeProfit}`);
+
+        const tpSide = isLongPosition ? 4 : 3; // 4 = close long, 3 = close short
+
+        try {
+          const tpOrderPayload = {
+            symbol: normalizedSymbol,
+            vol: contracts, // Use converted contract quantity
+            side: tpSide,
+            type: 5, // 5 = market order
+            openType: 2, // 2 = cross margin
+            positionId: position.positionId, // Required for closing position
+            takeProfitPrice: isLongPosition ? params.takeProfit : undefined, // LONG: TP when price rises
+            stopLossPrice: !isLongPosition ? params.takeProfit : undefined, // SHORT: TP when price falls
+          };
+
+          console.log(`[MEXCConnector] Placing TP order with payload:`, tpOrderPayload);
+
+          const tpOrder = await this.mexcService.placeOrder(tpOrderPayload);
+
+          takeProfitOrderId = tpOrder.orderId || tpOrder.data?.orderId || `TP-${Date.now()}`;
+          console.log(`[MEXCConnector] Take-profit order placed: ${takeProfitOrderId}`);
+        } catch (tpError: any) {
+          console.error(`[MEXCConnector] Failed to place take-profit order:`, tpError.message);
+          throw new Error(`Failed to place take-profit order: ${tpError.message}`);
+        }
+      }
+
+      // Place Stop-Loss order if provided
+      // For LONG: SL when price goes DOWN (use stopLossPrice)
+      // For SHORT: SL when price goes UP (use takeProfitPrice)
+      if (params.stopLoss) {
+        console.log(`[MEXCConnector] Placing stop-loss order at $${params.stopLoss}`);
+
+        const slSide = isLongPosition ? 4 : 3; // 4 = close long, 3 = close short
+
+        try {
+          const slOrder = await this.mexcService.placeOrder({
+            symbol: normalizedSymbol,
+            vol: contracts, // Use converted contract quantity
+            side: slSide,
+            type: 5, // 5 = market order
+            openType: 2, // 2 = cross margin
+            positionId: position.positionId, // Required for closing position
+            stopLossPrice: isLongPosition ? params.stopLoss : undefined, // LONG: SL when price falls
+            takeProfitPrice: !isLongPosition ? params.stopLoss : undefined, // SHORT: SL when price rises
+          });
+
+          stopLossOrderId = slOrder.orderId || slOrder.data?.orderId || `SL-${Date.now()}`;
+          console.log(`[MEXCConnector] Stop-loss order placed: ${stopLossOrderId}`);
+        } catch (slError: any) {
+          console.error(`[MEXCConnector] Failed to place stop-loss order:`, slError.message);
+          throw new Error(`Failed to place stop-loss order: ${slError.message}`);
+        }
+      }
+
+      // console.log('[MEXCConnector] Trading stop set successfully:', {
+      //   symbol: normalizedSymbol,
+      //   positionSide: isLongPosition ? 'LONG' : 'SHORT',
+      //   takeProfitOrderId,
+      //   stopLossOrderId,
+      // });
+
+      return {
+        success: true,
+        takeProfitOrderId,
+        stopLossOrderId,
+        message: 'Trading stop set successfully',
+      };
+    } catch (error: any) {
+      console.error('[MEXCConnector] Error setting trading stop:', error.message);
+      throw new Error(`Failed to set trading stop: ${error.message}`);
     }
   }
 

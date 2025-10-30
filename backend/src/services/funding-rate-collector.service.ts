@@ -1,10 +1,13 @@
 import { PrismaClient, Exchange } from '@prisma/client';
 import { BingXService } from '../lib/bingx';
 import { BybitService } from '../lib/bybit';
+import { redisService } from '../lib/redis';
 
 /**
  * Background service for collecting historical funding rates
- * Runs every hour to save funding rates to database for historical analysis
+ * Runs every hour to:
+ * - Save funding rates to PostgreSQL for historical analysis
+ * - Cache funding rates in Redis for fast real-time access (60s TTL)
  */
 export class FundingRateCollectorService {
   private prisma: PrismaClient;
@@ -42,7 +45,7 @@ export class FundingRateCollectorService {
    * Start periodic funding rate collection
    */
   start(): void {
-    console.log('[FundingRateCollector] Starting periodic funding rate collection...');
+    // console.log('[FundingRateCollector] Starting periodic funding rate collection...');
 
     // Collect immediately on start
     this.collectAllFundingRates();
@@ -62,7 +65,7 @@ export class FundingRateCollectorService {
     if (this.collectionInterval) {
       clearInterval(this.collectionInterval);
       this.collectionInterval = null;
-      console.log('[FundingRateCollector] Stopped periodic collection');
+      // console.log('[FundingRateCollector] Stopped periodic collection');
     }
   }
 
@@ -71,7 +74,7 @@ export class FundingRateCollectorService {
    */
   private async collectAllFundingRates(): Promise<void> {
     const startTime = Date.now();
-    console.log('[FundingRateCollector] Starting collection cycle...');
+    // console.log('[FundingRateCollector] Starting collection cycle...');
 
     let totalCollected = 0;
     let totalErrors = 0;
@@ -126,7 +129,7 @@ export class FundingRateCollectorService {
         return;
       }
 
-      // Save to database
+      // Save to database (for historical analysis)
       await this.prisma.publicFundingRate.create({
         data: {
           symbol,
@@ -138,6 +141,16 @@ export class FundingRateCollectorService {
           indexPrice: fundingData.indexPrice,
         },
       });
+
+      // Save to Redis cache (for real-time access with 60s TTL)
+      await redisService.cacheFundingRate(
+        exchange,
+        symbol,
+        fundingData.fundingRate,
+        fundingData.nextFundingTime,
+        fundingData.markPrice,
+        fundingData.indexPrice
+      );
 
       console.log(`[FundingRateCollector] ✓ ${exchange}:${symbol} - Rate: ${(fundingData.fundingRate * 100).toFixed(4)}%`);
     } catch (error: any) {

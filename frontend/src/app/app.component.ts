@@ -6,11 +6,12 @@ import { TranslationService, Language, LanguageOption } from './services/transla
 import { ThemeService } from './services/theme.service';
 import { ThemeToggleComponent } from './components/ui/theme-toggle/theme-toggle.component';
 import { ButtonComponent } from './components/ui/button/button.component';
+import { ToastContainerComponent } from './components/ui/tooltip/tooltip.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, ThemeToggleComponent, ButtonComponent],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, ThemeToggleComponent, ButtonComponent, ToastContainerComponent],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })

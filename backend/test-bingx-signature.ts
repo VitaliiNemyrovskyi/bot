@@ -19,7 +19,7 @@ function generateSignature(params: Record<string, any>, apiSecret: string): stri
     .map(([key, value]) => `${key}=${value}`)
     .join('&');
 
-  console.log('Query String:', queryString);
+  // console.log('Query String:', queryString);
 
   // Generate HMAC SHA256 signature using HEX encoding
   const signature = crypto
@@ -32,7 +32,7 @@ function generateSignature(params: Record<string, any>, apiSecret: string): stri
 
 async function testBingXSignature() {
   try {
-    console.log('=== BingX Signature Test ===\n');
+    // console.log('=== BingX Signature Test ===\n');
 
     // Fetch BingX credentials
     const cred = await prisma.exchangeCredentials.findFirst({
@@ -51,33 +51,33 @@ async function testBingXSignature() {
     const apiKey = EncryptionService.decrypt(cred.apiKey);
     const apiSecret = EncryptionService.decrypt(cred.apiSecret);
 
-    console.log('API Key:', apiKey);
-    console.log('API Secret length:', apiSecret.length);
-    console.log('');
+    // console.log('API Key:', apiKey);
+    // console.log('API Secret length:', apiSecret.length);
+    // console.log('');
 
     // Test 1: Simple server time request (no signature needed typically)
-    console.log('=== Test 1: Server Time (GET) ===');
+    // console.log('=== Test 1: Server Time (GET) ===');
     const timestamp = Date.now();
-    console.log('Timestamp:', timestamp);
+    // console.log('Timestamp:', timestamp);
 
     const timeResponse = await fetch('https://open-api.bingx.com/openApi/swap/v2/server/time');
     const timeData = await timeResponse.json();
-    console.log('Server Time Response:', timeData);
-    console.log('');
+    // console.log('Server Time Response:', timeData);
+    // console.log('');
 
     // Test 2: Account balance request (requires signature)
-    console.log('=== Test 2: Account Balance (with signature) ===');
+    // console.log('=== Test 2: Account Balance (with signature) ===');
     const balanceTimestamp = Date.now();
     const balanceParams = {
       timestamp: balanceTimestamp
     };
 
     const balanceSignature = generateSignature(balanceParams, apiSecret);
-    console.log('Balance Signature:', balanceSignature);
-    console.log('');
+    // console.log('Balance Signature:', balanceSignature);
+    // console.log('');
 
     const balanceUrl = `https://open-api.bingx.com/openApi/swap/v2/user/balance?timestamp=${balanceTimestamp}&signature=${balanceSignature}`;
-    console.log('Balance URL:', balanceUrl);
+    // console.log('Balance URL:', balanceUrl);
 
     const balanceResponse = await fetch(balanceUrl, {
       method: 'GET',
@@ -87,11 +87,11 @@ async function testBingXSignature() {
     });
 
     const balanceData = await balanceResponse.json();
-    console.log('Balance Response:', JSON.stringify(balanceData, null, 2));
-    console.log('');
+    // console.log('Balance Response:', JSON.stringify(balanceData, null, 2));
+    // console.log('');
 
     // Test 3: Actually place a small market order to test POST signature
-    console.log('=== Test 3: LIVE Order Placement Test ===');
+    // console.log('=== Test 3: LIVE Order Placement Test ===');
     const orderTimestamp = Date.now();
     const orderParams = {
       symbol: 'BTC-USDT',
@@ -103,9 +103,9 @@ async function testBingXSignature() {
     };
 
     const orderSignature = generateSignature(orderParams, apiSecret);
-    console.log('Order Parameters:', JSON.stringify(orderParams, null, 2));
-    console.log('Order Signature:', orderSignature);
-    console.log('');
+    // console.log('Order Parameters:', JSON.stringify(orderParams, null, 2));
+    // console.log('Order Signature:', orderSignature);
+    // console.log('');
 
     // Build the full query string with signature
     const fullOrderParams = {...orderParams, signature: orderSignature};
@@ -117,8 +117,8 @@ async function testBingXSignature() {
     const orderQueryString = orderQueryParts.join('&');
 
     const orderUrl = 'https://open-api.bingx.com/openApi/swap/v2/trade/order?' + orderQueryString;
-    console.log('Order URL (first 150 chars):', orderUrl.substring(0, 150) + '...');
-    console.log('');
+    // console.log('Order URL (first 150 chars):', orderUrl.substring(0, 150) + '...');
+    // console.log('');
 
     const orderResponse = await fetch(orderUrl, {
       method: 'POST',
@@ -129,16 +129,16 @@ async function testBingXSignature() {
     });
 
     const orderData = await orderResponse.json();
-    console.log('Order Response:', JSON.stringify(orderData, null, 2));
+    // console.log('Order Response:', JSON.stringify(orderData, null, 2));
 
     if (orderData.code === 0) {
-      console.log('\n✅ SUCCESS: Order placed successfully!');
+      // console.log('\n✅ SUCCESS: Order placed successfully!');
     } else {
-      console.log('\n❌ FAILED: ' + orderData.msg + ' (code: ' + orderData.code + ')');
+      // console.log('\n❌ FAILED: ' + orderData.msg + ' (code: ' + orderData.code + ')');
     }
 
   } catch (error) {
-    console.error('Error:', error);
+    // console.error('Error:', error);
   } finally {
     await prisma.$disconnect();
   }

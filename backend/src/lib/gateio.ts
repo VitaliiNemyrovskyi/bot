@@ -40,11 +40,11 @@ export class GateIOService {
     // Gate.io Futures API base URL
     this.baseUrl = 'https://api.gateio.ws/api/v4/futures/usdt';
 
-    console.log('[GateIOService] Initialized with API key authentication:', {
-      apiKeyLength: this.apiKey.length,
-      apiSecretLength: this.apiSecret.length,
-      apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
-    });
+    // console.log('[GateIOService] Initialized with API key authentication:', {
+    //   apiKeyLength: this.apiKey.length,
+    //   apiSecretLength: this.apiSecret.length,
+    //   apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
+    // });
   }
 
   /**
@@ -73,14 +73,14 @@ export class GateIOService {
     // Create signature payload
     const signaturePayload = `${method}\n${urlPath}\n${queryString}\n${bodyHash}\n${timestamp}`;
 
-    console.log('[GateIOService] Signature calculation:', {
-      method,
-      urlPath: urlPath.substring(0, 50),
-      queryString: queryString.substring(0, 50),
-      bodyHashPrefix: bodyHash.substring(0, 16) + '...',
-      timestamp,
-      payloadLength: signaturePayload.length,
-    });
+    // console.log('[GateIOService] Signature calculation:', {
+    //   method,
+    //   urlPath: urlPath.substring(0, 50),
+    //   queryString: queryString.substring(0, 50),
+    //   bodyHashPrefix: bodyHash.substring(0, 16) + '...',
+    //   timestamp,
+    //   payloadLength: signaturePayload.length,
+    // });
 
     // Generate HMAC SHA512 signature
     const signature = crypto
@@ -116,12 +116,12 @@ export class GateIOService {
     let bodyString = '';
     if (method === 'POST' && body) {
       bodyString = JSON.stringify(body);
-      console.log('[GateIOService] POST body stringified:', {
-        originalBody: body,
-        bodyString,
-        bodyStringLength: bodyString.length,
-        bodyBytes: Buffer.from(bodyString).toString('hex').substring(0, 100)
-      });
+      // console.log('[GateIOService] POST body stringified:', {
+      //   originalBody: body,
+      //   bodyString,
+      //   bodyStringLength: bodyString.length,
+      //   bodyBytes: Buffer.from(bodyString).toString('hex').substring(0, 100)
+      // });
     }
 
     // Generate timestamp
@@ -142,13 +142,13 @@ export class GateIOService {
       url += `?${queryString}`;
     }
 
-    console.log('[GateIOService] Making request:', {
-      method,
-      endpoint,
-      paramsCount: Object.keys(params).length,
-      hasBody: !!body,
-      timestamp,
-    });
+    // console.log('[GateIOService] Making request:', {
+    //   method,
+    //   endpoint,
+    //   paramsCount: Object.keys(params).length,
+    //   hasBody: !!body,
+    //   timestamp,
+    // });
 
     const headers: Record<string, string> = {
       'KEY': this.apiKey,
@@ -178,11 +178,11 @@ export class GateIOService {
 
       const data = await response.json();
 
-      console.log('[GateIOService] Request successful:', {
-        endpoint,
-        dataType: Array.isArray(data) ? 'array' : typeof data,
-        dataLength: Array.isArray(data) ? data.length : undefined,
-      });
+      // console.log('[GateIOService] Request successful:', {
+      //   endpoint,
+      //   dataType: Array.isArray(data) ? 'array' : typeof data,
+      //   dataLength: Array.isArray(data) ? data.length : undefined,
+      // });
 
       return data as T;
     } catch (error: any) {
@@ -212,11 +212,11 @@ export class GateIOService {
   ): Promise<T> {
     let url = `${this.baseUrl}${endpoint}`;
 
-    console.log('[GateIOService] Making public request:', {
-      endpoint,
-      method,
-      paramsCount: Object.keys(params).length,
-    });
+    // console.log('[GateIOService] Making public request:', {
+    //   endpoint,
+    //   method,
+    //   paramsCount: Object.keys(params).length,
+    // });
 
     // For GET requests, add parameters to query string
     if (method === 'GET' && Object.keys(params).length > 0) {
@@ -249,10 +249,10 @@ export class GateIOService {
 
       const data = await response.json();
 
-      console.log('[GateIOService] Public request successful:', {
-        endpoint,
-        dataType: Array.isArray(data) ? 'array' : typeof data,
-      });
+      // console.log('[GateIOService] Public request successful:', {
+      //   endpoint,
+      //   dataType: Array.isArray(data) ? 'array' : typeof data,
+      // });
 
       return data as T;
     } catch (error: any) {
@@ -269,7 +269,7 @@ export class GateIOService {
    * Endpoint: GET /accounts (baseUrl already includes settle=usdt)
    */
   async getAccountInfo(): Promise<GateIOAccountInfo> {
-    console.log('[GateIOService] Fetching account info...');
+    // console.log('[GateIOService] Fetching account info...');
 
     const data = await this.makeRequest<GateIOAccountInfo>(
       'GET',
@@ -277,11 +277,11 @@ export class GateIOService {
       {}
     );
 
-    console.log('[GateIOService] Account info retrieved:', {
-      currency: data.currency,
-      available: data.available,
-      total: data.total,
-    });
+    // console.log('[GateIOService] Account info retrieved:', {
+    //   currency: data.currency,
+    //   available: data.available,
+    //   total: data.total,
+    // });
 
     return data;
   }
@@ -299,7 +299,7 @@ export class GateIOService {
    * Endpoint: GET /positions (baseUrl already includes settle=usdt)
    */
   async getPositions(contract?: string): Promise<GateIOPosition[]> {
-    console.log('[GateIOService] Fetching positions...', contract ? `for ${contract}` : '');
+    // console.log('[GateIOService] Fetching positions...', contract ? `for ${contract}` : '');
 
     const params: Record<string, any> = {};
     if (contract) {
@@ -312,10 +312,10 @@ export class GateIOService {
       params
     );
 
-    console.log('[GateIOService] Positions retrieved:', {
-      count: data.length,
-      contracts: data.map(p => p.contract),
-    });
+    // console.log('[GateIOService] Positions retrieved:', {
+    //   count: data.length,
+    //   contracts: data.map(p => p.contract),
+    // });
 
     return data;
   }
@@ -325,7 +325,7 @@ export class GateIOService {
    * Endpoint: POST /orders
    */
   async placeOrder(orderRequest: GateIOOrderRequest): Promise<GateIOOrder> {
-    console.log('[GateIOService] Placing order:', orderRequest);
+    // console.log('[GateIOService] Placing order:', orderRequest);
 
     // Prepare order body
     const orderBody: any = {
@@ -342,7 +342,7 @@ export class GateIOService {
     } else if (orderRequest.tif === 'ioc') {
       // Market order - price must be "0" (string)
       orderBody.price = "0";
-      console.log('[GateIOService] Market order detected, setting price="0" for tif=ioc');
+      // console.log('[GateIOService] Market order detected, setting price="0" for tif=ioc');
     } else {
       throw new Error('Price is required for non-market orders');
     }
@@ -375,12 +375,12 @@ export class GateIOService {
       orderBody
     );
 
-    console.log('[GateIOService] Order placed:', {
-      orderId: data.id,
-      contract: data.contract,
-      size: data.size,
-      status: data.status,
-    });
+    // console.log('[GateIOService] Order placed:', {
+    //   orderId: data.id,
+    //   contract: data.contract,
+    //   size: data.size,
+    //   status: data.status,
+    // });
 
     return data;
   }
@@ -390,7 +390,7 @@ export class GateIOService {
    * Endpoint: DELETE /orders/{order_id}
    */
   async cancelOrder(orderId: string): Promise<GateIOOrder> {
-    console.log('[GateIOService] Canceling order:', orderId);
+    // console.log('[GateIOService] Canceling order:', orderId);
 
     const data = await this.makeRequest<GateIOOrder>(
       'DELETE',
@@ -398,7 +398,7 @@ export class GateIOService {
       {}
     );
 
-    console.log('[GateIOService] Order canceled:', data.id);
+    // console.log('[GateIOService] Order canceled:', data.id);
 
     return data;
   }
@@ -408,7 +408,7 @@ export class GateIOService {
    * Endpoint: POST /orders with close=true
    */
   async closePosition(contract: string): Promise<GateIOOrder> {
-    console.log('[GateIOService] Closing position for:', contract);
+    // console.log('[GateIOService] Closing position for:', contract);
 
     // Get current position to determine size
     const positions = await this.getPositions(contract);
@@ -433,7 +433,7 @@ export class GateIOService {
       orderBody
     );
 
-    console.log('[GateIOService] Position closed:', data.id);
+    // console.log('[GateIOService] Position closed:', data.id);
 
     return data;
   }
@@ -449,11 +449,11 @@ export class GateIOService {
     leverage: number,
     crossLeverageLimit?: string
   ): Promise<GateIOPosition> {
-    console.log('[GateIOService] Setting leverage:', {
-      contract,
-      leverage,
-      crossLeverageLimit,
-    });
+    // console.log('[GateIOService] Setting leverage:', {
+    //   contract,
+    //   leverage,
+    //   crossLeverageLimit,
+    // });
 
     // Validate leverage range (Gate.io typically supports 1-100x)
     if (leverage < 1 || leverage > 100) {
@@ -470,10 +470,10 @@ export class GateIOService {
       params.cross_leverage_limit = crossLeverageLimit;
     }
 
-    console.log('[GateIOService] Setting leverage - query params:', {
-      contract,
-      params
-    });
+    // console.log('[GateIOService] Setting leverage - query params:', {
+    //   contract,
+    //   params
+    // });
 
     const data = await this.makeRequest<GateIOPosition>(
       'POST',
@@ -482,10 +482,10 @@ export class GateIOService {
       null     // No body needed
     );
 
-    console.log('[GateIOService] ✓ Leverage set successfully:', {
-      contract: data.contract,
-      leverage: data.leverage,
-    });
+    // console.log('[GateIOService] ✓ Leverage set successfully:', {
+    //   contract: data.contract,
+    //   leverage: data.leverage,
+    // });
 
     return data;
   }
@@ -509,11 +509,11 @@ export class GateIOService {
     contract: string,
     leverage: number
   ): Promise<GateIOPosition> {
-    console.log('[GateIOService] Setting leverage BEFORE placing orders:', {
-      contract,
-      leverage,
-      marginMode: leverage === 0 ? 'CROSS' : 'ISOLATED'
-    });
+    // console.log('[GateIOService] Setting leverage BEFORE placing orders:', {
+    //   contract,
+    //   leverage,
+    //   marginMode: leverage === 0 ? 'CROSS' : 'ISOLATED'
+    // });
 
     // Gate.io expects leverage as a QUERY PARAMETER (not in body)
     // API format: POST /positions/{contract}/leverage?leverage={value}
@@ -528,22 +528,22 @@ export class GateIOService {
       null     // No body needed
     );
 
-    console.log('[GateIOService] ✓ Leverage API response:', {
-      fullResponse: JSON.stringify(data),
-      isArray: Array.isArray(data),
-      type: typeof data,
-      keys: Object.keys(data || {})
-    });
+    // console.log('[GateIOService] ✓ Leverage API response:', {
+    //   fullResponse: JSON.stringify(data),
+    //   isArray: Array.isArray(data),
+    //   type: typeof data,
+    //   keys: Object.keys(data || {})
+    // });
 
     // Gate.io returns an array with two positions (long and short)
     const positionData = Array.isArray(data) ? data[0] : data;
 
-    console.log('[GateIOService] ✓ Leverage set successfully (applies to all future orders):', {
-      contract: positionData?.contract,
-      leverage: positionData?.leverage,
-      mode: positionData?.mode,
-      cross_leverage_limit: positionData?.cross_leverage_limit
-    });
+    // console.log('[GateIOService] ✓ Leverage set successfully (applies to all future orders):', {
+    //   contract: positionData?.contract,
+    //   leverage: positionData?.leverage,
+    //   mode: positionData?.mode,
+    //   cross_leverage_limit: positionData?.cross_leverage_limit
+    // });
 
     return positionData || data;
   }
@@ -553,7 +553,7 @@ export class GateIOService {
    * Endpoint: GET /tickers
    */
   async getTickers(): Promise<GateIOTicker[]> {
-    console.log('[GateIOService] Fetching all tickers...');
+    // console.log('[GateIOService] Fetching all tickers...');
 
     const data = await this.makePublicRequest<GateIOTicker[]>(
       'GET',
@@ -570,7 +570,7 @@ export class GateIOService {
    * Endpoint: GET /tickers?contract={contract}
    */
   async getTicker(contract: string): Promise<GateIOTicker> {
-    console.log('[GateIOService] Fetching ticker for:', contract);
+    // console.log('[GateIOService] Fetching ticker for:', contract);
 
     const data = await this.makePublicRequest<GateIOTicker[]>(
       'GET',
@@ -590,7 +590,7 @@ export class GateIOService {
    * Endpoint: GET /funding_rate?contract={contract}
    */
   async getFundingRateHistory(contract: string, limit: number = 100): Promise<GateIOFundingRate[]> {
-    console.log('[GateIOService] Fetching funding rate history for:', contract);
+    // console.log('[GateIOService] Fetching funding rate history for:', contract);
 
     const data = await this.makePublicRequest<GateIOFundingRate[]>(
       'GET',
@@ -607,7 +607,7 @@ export class GateIOService {
    * Endpoint: GET /contracts/{contract}
    */
   async getContractDetails(contract: string): Promise<GateIOContract> {
-    console.log('[GateIOService] Fetching contract details for:', contract);
+    // console.log('[GateIOService] Fetching contract details for:', contract);
 
     const data = await this.makePublicRequest<GateIOContract>(
       'GET',
@@ -615,12 +615,12 @@ export class GateIOService {
       {}
     );
 
-    console.log('[GateIOService] Contract details retrieved:', {
-      name: data.name,
-      orderSizeMin: data.order_size_min,
-      orderSizeMax: data.order_size_max,
-      leverageMax: data.leverage_max,
-    });
+    // console.log('[GateIOService] Contract details retrieved:', {
+    //   name: data.name,
+    //   orderSizeMin: data.order_size_min,
+    //   orderSizeMax: data.order_size_max,
+    //   leverageMax: data.leverage_max,
+    // });
 
     return data;
   }
@@ -630,7 +630,7 @@ export class GateIOService {
    * Endpoint: GET /contracts
    */
   async getAllContracts(): Promise<GateIOContract[]> {
-    console.log('[GateIOService] Fetching all contracts...');
+    // console.log('[GateIOService] Fetching all contracts...');
 
     const data = await this.makePublicRequest<GateIOContract[]>(
       'GET',
@@ -795,7 +795,7 @@ export class GateIOService {
     to?: number;
     limit?: number;
   } = {}): Promise<GateIOAccountBookEntry[]> {
-    console.log('[GateIOService] Fetching account book with params:', params);
+    // console.log('[GateIOService] Fetching account book with params:', params);
 
     const queryParams: Record<string, any> = {
       limit: params.limit || 100,
@@ -841,7 +841,7 @@ export class GateIOService {
     to?: number;
     limit?: number;
   }): Promise<GateIOMyTrade[]> {
-    console.log('[GateIOService] Fetching my trades with params:', params);
+    // console.log('[GateIOService] Fetching my trades with params:', params);
 
     const queryParams: Record<string, any> = {
       contract: params.contract,
@@ -879,7 +879,7 @@ export class GateIOService {
    * @returns Price-triggered order details
    */
   async placePriceTriggeredOrder(orderRequest: GateIOPriceOrderRequest): Promise<GateIOPriceOrder> {
-    console.log('[GateIOService] Placing price-triggered order:', orderRequest);
+    // console.log('[GateIOService] Placing price-triggered order:', orderRequest);
 
     // Prepare order body with 'initial' and 'trigger' structure
     const orderBody: any = {
@@ -913,15 +913,15 @@ export class GateIOService {
 
     // Add order execution details to 'initial'
     if (orderRequest.put) {
-      console.log('[GateIOService] Processing put:', JSON.stringify(orderRequest.put));
+      // console.log('[GateIOService] Processing put:', JSON.stringify(orderRequest.put));
 
       // IMPORTANT: Always include side for the order execution
       if (orderRequest.put.side) {
         // Gate.io expects 'b' for bid (buy/close short) and 'a' for ask (sell/close long)
         orderBody.initial.side = orderRequest.put.side === 'bid' ? 'b' : 'a';
-        console.log(`[GateIOService] Mapped side: ${orderRequest.put.side} -> ${orderBody.initial.side}`);
+        // console.log(`[GateIOService] Mapped side: ${orderRequest.put.side} -> ${orderBody.initial.side}`);
       } else {
-        console.warn('[GateIOService] WARNING: put.side is undefined!');
+        // console.warn('[GateIOService] WARNING: put.side is undefined!');
       }
 
       // For market orders, set price to "0" and tif to "ioc"
@@ -937,7 +937,7 @@ export class GateIOService {
       console.error('[GateIOService] Full orderRequest:', JSON.stringify(orderRequest));
     }
 
-    console.log('[GateIOService] Price-triggered order body:', JSON.stringify(orderBody, null, 2));
+    // console.log('[GateIOService] Price-triggered order body:', JSON.stringify(orderBody, null, 2));
 
     const data = await this.makeRequest<GateIOPriceOrder>(
       'POST',
@@ -946,14 +946,65 @@ export class GateIOService {
       orderBody
     );
 
-    console.log('[GateIOService] Price-triggered order placed:', {
-      orderId: data.id,
-      contract: data.contract,
-      triggerPrice: data.trigger.price,
-      side: data.put.side,
-      status: data.status,
-    });
+    // console.log('[GateIOService] Price-triggered order placed:', {
+    //   orderId: data.id,
+    //   contract: data.contract,
+    //   triggerPrice: data.trigger.price,
+    //   side: data.put.side,
+    //   status: data.status,
+    // });
 
+    return data;
+  }
+
+  /**
+   * Get list of price-triggered orders
+   * Endpoint: GET /api/v4/futures/usdt/price_orders
+   *
+   * @param contract - Trading pair contract (e.g., "BTC_USDT")
+   * @param status - Order status filter: "open" | "finished" (optional)
+   * @returns List of price-triggered orders
+   */
+  async getPriceOrders(
+    contract: string,
+    status?: 'open' | 'finished'
+  ): Promise<GateIOPriceOrder[]> {
+    // console.log(`[GateIOService] Getting price orders for ${contract}, status: ${status || 'all'}`);
+
+    const queryParams: Record<string, string> = {
+      contract,
+    };
+
+    if (status) {
+      queryParams.status = status;
+    }
+
+    const data = await this.makeRequest<GateIOPriceOrder[]>(
+      'GET',
+      '/price_orders',
+      queryParams
+    );
+
+    console.log(`[GateIOService] Retrieved ${data.length} price orders for ${contract}`);
+    return data;
+  }
+
+  /**
+   * Cancel a price-triggered order
+   * Endpoint: DELETE /api/v4/futures/usdt/price_orders/{order_id}
+   *
+   * @param orderId - Price-triggered order ID
+   * @returns Cancelled order details
+   */
+  async cancelPriceOrder(orderId: string): Promise<GateIOPriceOrder> {
+    console.log(`[GateIOService] Cancelling price order: ${orderId}`);
+
+    const data = await this.makeRequest<GateIOPriceOrder>(
+      'DELETE',
+      `/price_orders/${orderId}`
+    );
+
+    console.log(`[GateIOService] Price order ${orderId} cancelled successfully`);
     return data;
   }
 }

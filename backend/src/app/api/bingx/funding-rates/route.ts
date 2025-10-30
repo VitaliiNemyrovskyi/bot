@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BingXService } from '@/lib/bingx';
 import { AuthService } from '@/lib/auth';
+import prisma from '@/lib/prisma';
 
 /**
  * GET /api/bingx/funding-rates
  *
- * Fetches funding rates for all trading pairs from BingX.
- * This endpoint fetches tickers first, then gets funding rate for each symbol.
+ * Fetches funding rates from database (populated by /api/bingx/public-funding-rates).
+ * Returns funding rates with fundingInterval from DB.
  *
  * Authentication: Required (Bearer token)
  *
@@ -17,7 +17,8 @@ import { AuthService } from '@/lib/auth';
  *     {
  *       "symbol": "BTC-USDT",
  *       "fundingRate": "0.0001",
- *       "fundingTime": 1234567890000
+ *       "fundingTime": 1234567890000,
+ *       "fundingInterval": "8h"
  *     }
  *   ],
  *   "timestamp": "2025-10-06T13:00:00.000Z"
@@ -40,81 +41,82 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = authResult.user.userId;
+    console.log(`[BingX Funding Rates] Fetching from database...`);
 
-    // 2. Get query parameters
-    const { searchParams } = new URL(request.url);
-    const credentialId = searchParams.get('credentialId') || undefined;
+    // 2. Get latest funding rates from DB (populated by /api/bingx/public-funding-rates)
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000); // Accept data up to 1 minute old
 
-    // 3. Load BingX credentials (by ID if provided, otherwise active)
-    const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
-
-    let credentials;
-    if (credentialId) {
-      console.log(`[BingX Funding Rates] Loading specific credential: ${credentialId} for user: ${userId}`);
-      credentials = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
-
-      if (!credentials || credentials.exchange !== 'BINGX') {
-        console.warn(`[BingX Funding Rates] Invalid or unauthorized BingX credential: ${credentialId}`);
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Invalid credential',
-            message: 'The specified credential is invalid or does not belong to you.',
-            code: 'INVALID_CREDENTIAL',
-            timestamp: new Date().toISOString(),
-          },
-          { status: 403 }
-        );
-      }
-    } else {
-      console.log(`[BingX Funding Rates] Loading active credentials for user: ${userId}`);
-      credentials = await ExchangeCredentialsService.getActiveCredentials(
-        userId,
-        'BINGX' as any
-      );
-
-      if (!credentials) {
-        console.warn(`[BingX Funding Rates] No active BingX credentials found for user: ${userId}`);
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'API credentials not configured',
-            message: 'Please configure and activate your BingX API credentials first.',
-            code: 'NO_API_KEYS',
-            timestamp: new Date().toISOString(),
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    console.log(`[BingX Funding Rates] Credentials loaded - ID: ${credentials.id}`);
-
-    // 3. Create BingXService (mainnet only)
-    const bingxService = new BingXService({
-      apiKey: credentials.apiKey,
-      apiSecret: credentials.apiSecret,
-      enableRateLimit: true,
+    const dbRates = await prisma.publicFundingRate.findMany({
+      where: {
+        exchange: 'BINGX',
+        timestamp: {
+          gte: oneMinuteAgo,
+        },
+      },
+      orderBy: {
+        symbol: 'asc',
+      },
+      distinct: ['symbol'], // Get latest record per symbol
     });
 
-    console.log(`[BingX Funding Rates] Fetching all funding rates in a single request...`);
+    console.log(`[BingX Funding Rates] Found ${dbRates.length} rates in database`);
 
-    // Sync time with BingX server (required for authenticated endpoints)
-    await bingxService.syncTime();
+    // If no data in DB, trigger public endpoint to populate it
+    if (dbRates.length === 0) {
+      console.log(`[BingX Funding Rates] No data in DB, triggering public endpoint...`);
 
-    // 4. Get all funding rates at once (no symbol parameter returns all)
-    const allFundingRates = await bingxService.getAllFundingRates();
-    console.log(`[BingX Funding Rates] Successfully fetched ${allFundingRates.length} funding rates`);
+      // Call public endpoint to populate DB
+      const publicUrl = new URL('/api/bingx/public-funding-rates', request.url);
+      const publicResponse = await fetch(publicUrl.toString());
 
-    // 5. Format the response
-    const fundingRates = allFundingRates.map(rate => ({
-      symbol: rate.symbol,
-      fundingRate: rate.fundingRate,
-      fundingTime: rate.fundingTime
+      if (!publicResponse.ok) {
+        throw new Error('Failed to fetch from public endpoint');
+      }
+
+      // Re-fetch from DB after population
+      const refreshedRates = await prisma.publicFundingRate.findMany({
+        where: {
+          exchange: 'BINGX',
+          timestamp: {
+            gte: oneMinuteAgo,
+          },
+        },
+        orderBy: {
+          symbol: 'asc',
+        },
+        distinct: ['symbol'],
+      });
+
+      console.log(`[BingX Funding Rates] After refresh: ${refreshedRates.length} rates`);
+
+      // Transform DB data to API format
+      const fundingRates = refreshedRates.map(rate => ({
+        symbol: rate.symbol.replace('/', '-'), // BTC/USDT → BTC-USDT
+        fundingRate: rate.fundingRate.toString(),
+        fundingTime: Math.floor(rate.nextFundingTime.getTime()),
+        fundingInterval: `${rate.fundingInterval}h`, // From DB
+      }));
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: fundingRates,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 200 }
+      );
+    }
+
+    // 3. Transform DB data to API format
+    const fundingRates = dbRates.map(rate => ({
+      symbol: rate.symbol.replace('/', '-'), // BTC/USDT → BTC-USDT
+      fundingRate: rate.fundingRate.toString(),
+      fundingTime: Math.floor(rate.nextFundingTime.getTime()),
+      fundingInterval: `${rate.fundingInterval}h`, // From DB
     }));
 
-    // 6. Return response
+    // 4. Return response
     return NextResponse.json(
       {
         success: true,

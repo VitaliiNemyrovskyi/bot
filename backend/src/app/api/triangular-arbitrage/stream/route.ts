@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!authResult.success || !authResult.user) {
-      console.log('[TriArbStream] Auth failed:', authResult.error);
+      // console.log('[TriArbStream] Auth failed:', authResult.error);
       return new Response('Unauthorized', { status: 401 });
     }
     const userId = authResult.user.userId;

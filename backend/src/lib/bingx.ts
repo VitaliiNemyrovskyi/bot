@@ -65,13 +65,13 @@ export class BingXService {
     this.credentialId = config.credentialId;
 
     // Log API key/secret lengths for debugging (after trimming)
-    console.log('[BingXService] Initialized with credentials:', {
-      apiKeyLength: this.apiKey.length,
-      apiSecretLength: this.apiSecret.length,
-      apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
-      apiSecretPrefix: this.apiSecret.substring(0, 8) + '...',
-      cacheEnabled: !!(this.userId && this.credentialId)
-    });
+    // // console.log('[BingXService] Initialized with credentials:', {
+    //   apiKeyLength: this.apiKey.length,
+    //   apiSecretLength: this.apiSecret.length,
+    //   apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
+    //   apiSecretPrefix: this.apiSecret.substring(0, 8) + '...',
+    //   cacheEnabled: !!(this.userId && this.credentialId)
+    // });
 
     // BingX API base URL (mainnet only)
     this.baseUrl = 'https://open-api.bingx.com';
@@ -132,7 +132,7 @@ export class BingXService {
 
     // Try loading from persistent cache first (if enabled and not forcing refresh)
     if (!forceRefresh && this.userId && this.credentialId) {
-      console.log('[BingXService] Checking persistent cache for time sync...');
+      // // console.log('[BingXService] Checking persistent cache for time sync...');
 
       const cached = await ConnectorStateCacheService.get(this.userId, this.credentialId);
 
@@ -141,32 +141,32 @@ export class BingXService {
 
         // Validate cached offset - if too large, force re-sync
         if (Math.abs(cached.timeOffset) > MAX_ACCEPTABLE_OFFSET_MS) {
-          console.warn('[BingXService] ⚠️ Cached offset too large, forcing re-sync:', {
-            cachedOffset: cached.timeOffset,
-            maxAcceptable: MAX_ACCEPTABLE_OFFSET_MS,
-            cacheAge: `${cacheAge}s`
-          });
+          // console.warn('[BingXService] ⚠️ Cached offset too large, forcing re-sync:', {
+          //   cachedOffset: cached.timeOffset,
+          //   maxAcceptable: MAX_ACCEPTABLE_OFFSET_MS,
+          //   cacheAge: `${cacheAge}s`
+          // });
           // Continue to server sync below
         } else {
           // Cache HIT with valid offset - use cached offset
           this.timeOffset = cached.timeOffset;
           this.lastSyncTime = cached.lastSyncTime.getTime();
 
-          console.log('[BingXService] ⚡ Time sync loaded from cache:', {
-            offset: this.timeOffset,
-            cacheAge: `${cacheAge}s`,
-            loadTime: `${Date.now() - syncStartTime}ms`
-          });
+          // // console.log('[BingXService] ⚡ Time sync loaded from cache:', {
+          //   offset: this.timeOffset,
+          //   cacheAge: `${cacheAge}s`,
+          //   loadTime: `${Date.now() - syncStartTime}ms`
+          // });
 
           return; // Skip server sync
         }
       }
 
-      console.log('[BingXService] Cache miss - syncing with server...');
+      // // console.log('[BingXService] Cache miss - syncing with server...');
     }
 
     if (forceRefresh) {
-      console.log('[BingXService] Force refresh requested - syncing with server...');
+      // // console.log('[BingXService] Force refresh requested - syncing with server...');
     }
 
     // Cache MISS or cache disabled - sync with server
@@ -184,17 +184,17 @@ export class BingXService {
     this.lastSyncTime = endTime;
 
     // Log sync status
-    console.log('[BingXService] Time synchronized from server:', {
-      serverTime,
-      localTime: endTime,
-      offset: newOffset,
-      latency: endTime - startTime,
-      totalTime: `${Date.now() - syncStartTime}ms`
-    });
+    // // console.log('[BingXService] Time synchronized from server:', {
+    //   serverTime,
+    //   localTime: endTime,
+    //   offset: newOffset,
+    //   latency: endTime - startTime,
+    //   totalTime: `${Date.now() - syncStartTime}ms`
+    // });
 
     // Warn if offset is large
     if (Math.abs(newOffset) > this.LARGE_OFFSET_WARNING_MS) {
-      console.warn(`[BingXService] WARNING: Large time offset detected: ${newOffset}ms. This may cause API request failures.`);
+      // console.warn(`[BingXService] WARNING: Large time offset detected: ${newOffset}ms. This may cause API request failures.`);
     }
 
     // Save to persistent cache (if enabled)
@@ -209,7 +209,7 @@ export class BingXService {
             lastSyncTime: new Date(this.lastSyncTime)
           }
         );
-        console.log('[BingXService] Time sync cached for future use');
+        // // console.log('[BingXService] Time sync cached for future use');
       } catch (error: any) {
         console.error('[BingXService] Failed to cache time sync:', error.message);
         // Don't fail if caching fails - connector still works
@@ -229,12 +229,12 @@ export class BingXService {
 
     // Validate the timestamp
     if (!syncedTime || isNaN(syncedTime) || syncedTime <= 0) {
-      console.error('[BingXService] Invalid synced time:', {
-        now,
-        timeOffset: this.timeOffset,
-        syncedTime,
-        lastSyncTime: this.lastSyncTime
-      });
+      // console.error('[BingXService] Invalid synced time:', {
+      //   now,
+      //   timeOffset: this.timeOffset,
+      //   syncedTime,
+      //   lastSyncTime: this.lastSyncTime
+      // });
       // Fallback to current time if sync failed
       return Math.floor(now);
     }
@@ -248,7 +248,7 @@ export class BingXService {
    */
   startPeriodicSync(): void {
     if (this.syncInterval) {
-      console.log('[BingXService] Periodic sync already running');
+      // // console.log('[BingXService] Periodic sync already running');
       return;
     }
 
@@ -256,7 +256,7 @@ export class BingXService {
 
     this.syncInterval = setInterval(async () => {
       try {
-        console.log('[BingXService] Performing periodic time sync...');
+        // // console.log('[BingXService] Performing periodic time sync...');
         await this.syncTime();
       } catch (error: any) {
         console.error('[BingXService] Periodic time sync failed:', error.message);
@@ -272,7 +272,7 @@ export class BingXService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
-      console.log('[BingXService] Periodic time sync stopped');
+      // // console.log('[BingXService] Periodic time sync stopped');
     }
   }
 
@@ -304,7 +304,7 @@ export class BingXService {
   async getPositionMode(): Promise<boolean> {
     // Return cached value if available
     if (this.isHedgeMode !== null) {
-      console.log(`[BingXService] Using cached position mode: ${this.isHedgeMode ? 'Hedge Mode' : 'One-Way Mode'}`);
+      // console.log(`[BingXService] Using cached position mode: ${this.isHedgeMode ? 'Hedge Mode' : 'One-Way Mode'}`);
       return this.isHedgeMode;
     }
 
@@ -316,14 +316,14 @@ export class BingXService {
     // - Hedge Mode: Use "LONG" or "SHORT" based on BUY/SELL
     //
     // Default to One-Way Mode (most common setup)
-    console.log('[BingXService] BingX does not support position mode detection API');
-    console.log('[BingXService] Defaulting to One-Way Mode (positionSide="BOTH")');
+    // // console.log('[BingXService] BingX does not support position mode detection API');
+    // // console.log('[BingXService] Defaulting to One-Way Mode (positionSide="BOTH")');
 
     // Default to One-Way Mode
     this.isHedgeMode = false;
 
-    console.log(`[BingXService] Account position mode: One-Way Mode [DEFAULT]`);
-    console.log(`[BingXService] positionSide will be set to "BOTH" for all orders`);
+    // console.log(`[BingXService] Account position mode: One-Way Mode [DEFAULT]`);
+    // console.log(`[BingXService] positionSide will be set to "BOTH" for all orders`);
 
     return this.isHedgeMode;
   }
@@ -349,9 +349,9 @@ export class BingXService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
-    console.log('[BingXService] Signature calculation details:');
-    console.log('  Query string (insertion order):', queryString);
-    console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
+    // // console.log('[BingXService] Signature calculation details:');
+    // console.log('  Query string (insertion order):', queryString);
+    // console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
 
     // Generate HMAC SHA256 signature using HEX encoding
     // This matches the official BingX Node.js example
@@ -382,14 +382,14 @@ export class BingXService {
       throw new Error('Invalid timestamp generated - time sync may have failed');
     }
 
-    console.log('[BingXService] Making request:', {
-      endpoint,
-      method,
-      timestamp,
-      serverTime: timestamp - this.timeOffset,
-      timeOffset: this.timeOffset,
-      paramsCount: paramsArray.length
-    });
+    // // console.log('[BingXService] Making request:', {
+    //   endpoint,
+    //   method,
+    //   timestamp,
+    //   serverTime: timestamp - this.timeOffset,
+    //   timeOffset: this.timeOffset,
+    //   paramsCount: paramsArray.length
+    // });
 
     // Add timestamp to the END of the params array (preserves order)
     const paramsWithTimestamp = [...paramsArray, ['timestamp', timestamp]];
@@ -399,7 +399,7 @@ export class BingXService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
-    console.log('[BingXService] Signature calculation details:');
+    // // console.log('[BingXService] Signature calculation details:');
     console.log('  Query string (exact order):', queryString);
     console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
 
@@ -419,7 +419,7 @@ export class BingXService {
     // Append signature at the end
     const fullQueryString = `${urlParamsString}&signature=${signature}`;
 
-    console.log('[BingXService] Request method:', method);
+    // // console.log('[BingXService] Request method:', method);
 
     // For POST requests, send parameters in body; for GET/DELETE, use URL query string
     let url: string;
@@ -440,13 +440,13 @@ export class BingXService {
       body.append('signature', signature);
 
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      console.log('[BingXService] Request URL:', url);
-      console.log('[BingXService] Request body:', body.toString());
+      // // console.log('[BingXService] Request URL:', url);
+      // // console.log('[BingXService] Request body:', body.toString());
     } else {
       // GET/DELETE: Parameters in URL query string
       url = `${this.baseUrl}${endpoint}?${fullQueryString}`;
       headers['Content-Type'] = 'application/json';
-      console.log('[BingXService] Request URL (truncated):', url.substring(0, 120) + '...');
+      // // console.log('[BingXService] Request URL (truncated):', url.substring(0, 120) + '...');
     }
 
     try {
@@ -458,13 +458,13 @@ export class BingXService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BingXService] API error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText,
-          endpoint,
-          timestamp
-        });
+        // console.error('[BingXService] API error response:', {
+        //   status: response.status,
+        //   statusText: response.statusText,
+        //   body: errorText,
+        //   endpoint,
+        //   timestamp
+        // });
         throw new Error(`BingX API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
@@ -480,20 +480,20 @@ export class BingXService {
         });
       } else {
         // Log successful request
-        console.log('[BingXService] Request successful:', {
-          endpoint,
-          responseCode: data.code
-        });
+        // // console.log('[BingXService] Request successful:', {
+        //   endpoint,
+        //   responseCode: data.code
+        // });
       }
 
       return data as BingXApiResponse<T>;
     } catch (error: any) {
-      console.error('[BingXService] API request failed:', {
-        error: error.message,
-        endpoint,
-        timestamp,
-        timeOffset: this.timeOffset
-      });
+      // console.error('[BingXService] API request failed:', {
+      //   error: error.message,
+      //   endpoint,
+      //   timestamp,
+      //   timeOffset: this.timeOffset
+      // });
       throw error;
     }
   }
@@ -514,14 +514,14 @@ export class BingXService {
       throw new Error('Invalid timestamp generated - time sync may have failed');
     }
 
-    console.log('[BingXService] Making request:', {
-      endpoint,
-      method,
-      timestamp,
-      serverTime: timestamp - this.timeOffset, // Show what server time we think it is
-      timeOffset: this.timeOffset,
-      paramsCount: Object.keys(params).length
-    });
+    // // console.log('[BingXService] Making request:', {
+    //   endpoint,
+    //   method,
+    //   timestamp,
+    //   serverTime: timestamp - this.timeOffset, // Show what server time we think it is
+    //   timeOffset: this.timeOffset,
+    //   paramsCount: Object.keys(params).length
+    // });
 
     // Prepare params for signature calculation (params first, then timestamp)
     // IMPORTANT: Order matters! Must match official BingX example (insertion order)
@@ -562,13 +562,13 @@ export class BingXService {
       body.append('signature', signature);
 
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      console.log('[BingXService] Request URL:', url);
-      console.log('[BingXService] Request body:', body.toString());
+      // // console.log('[BingXService] Request URL:', url);
+      // // console.log('[BingXService] Request body:', body.toString());
     } else {
       // GET/DELETE: Parameters in URL query string
       url = `${this.baseUrl}${endpoint}?${queryString}`;
       headers['Content-Type'] = 'application/json';
-      console.log('[BingXService] Request URL (truncated):', url.substring(0, 100) + '...');
+      // // console.log('[BingXService] Request URL (truncated):', url.substring(0, 100) + '...');
     }
 
     try {
@@ -580,13 +580,13 @@ export class BingXService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BingXService] API error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText,
-          endpoint,
-          timestamp
-        });
+        // console.error('[BingXService] API error response:', {
+        //   status: response.status,
+        //   statusText: response.statusText,
+        //   body: errorText,
+        //   endpoint,
+        //   timestamp
+        // });
         throw new Error(`BingX API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
@@ -594,28 +594,28 @@ export class BingXService {
 
       // Check if the response indicates an error
       if (data.code && data.code !== 0) {
-        console.error('[BingXService] API returned error code:', {
-          endpoint,
-          code: data.code,
-          msg: data.msg,
-          timestamp
-        });
+        // console.error('[BingXService] API returned error code:', {
+        //   endpoint,
+        //   code: data.code,
+        //   msg: data.msg,
+        //   timestamp
+        // });
       } else {
         // Log successful request
-        console.log('[BingXService] Request successful:', {
-          endpoint,
-          responseCode: data.code
-        });
+        // // console.log('[BingXService] Request successful:', {
+        //   endpoint,
+        //   responseCode: data.code
+        // });
       }
 
       return data as BingXApiResponse<T>;
     } catch (error: any) {
-      console.error('[BingXService] API request failed:', {
-        error: error.message,
-        endpoint,
-        timestamp,
-        timeOffset: this.timeOffset
-      });
+      // console.error('[BingXService] API request failed:', {
+      //   error: error.message,
+      //   endpoint,
+      //   timestamp,
+      //   timeOffset: this.timeOffset
+      // });
       throw error;
     }
   }
@@ -626,7 +626,7 @@ export class BingXService {
    * Returns array of balance objects (one per asset, typically USDT)
    */
   async getBalance(): Promise<BingXAccountInfo> {
-    console.log('[BingXService] Fetching account balance...');
+    // // console.log('[BingXService] Fetching account balance...');
 
     const response = await this.makeRequest<BingXAccountInfo[]>(
       'GET',
@@ -670,7 +670,7 @@ export class BingXService {
    * Get all positions
    */
   async getPositions(symbol?: string): Promise<BingXPosition[]> {
-    console.log('[BingXService] Fetching positions...');
+    // // console.log('[BingXService] Fetching positions...');
 
     const params: Record<string, any> = {};
     if (symbol) {
@@ -706,7 +706,7 @@ export class BingXService {
    * - One-Way Mode: Can only have one direction, derive from side (BUY->LONG, SELL->SHORT)
    */
   async placeOrder(orderRequest: BingXOrderRequest): Promise<BingXOrder> {
-    console.log('[BingXService] Placing order:', orderRequest);
+    // // console.log('[BingXService] Placing order:', orderRequest);
 
     // CRITICAL: Build params array to preserve EXACT order from official BingX example
     // Reference: https://bingx-api.github.io/docs/#/en-us/swapV2/trade-api
@@ -726,7 +726,7 @@ export class BingXService {
       throw new Error('positionSide is required for all BingX orders. Use "BOTH" for One-Way Mode, or "LONG"/"SHORT" for Hedge Mode.');
     }
     paramsArray.push(['positionSide', orderRequest.positionSide]);
-    console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
+    // // console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
 
     paramsArray.push(['type', orderRequest.type]);
 
@@ -745,31 +745,31 @@ export class BingXService {
     // Add Take Profit and Stop Loss (numeric parameters) - attempting atomic order
     if ((orderRequest as any).takeProfitPrice !== undefined) {
       paramsArray.push(['takeProfitPrice', (orderRequest as any).takeProfitPrice]);
-      console.log('[BingXService] ✓ Adding takeProfitPrice (atomic):', (orderRequest as any).takeProfitPrice);
+      // // console.log('[BingXService] ✓ Adding takeProfitPrice (atomic):', (orderRequest as any).takeProfitPrice);
     }
     if ((orderRequest as any).takeProfitTriggerBy) {
       paramsArray.push(['takeProfitTriggerBy', (orderRequest as any).takeProfitTriggerBy]);
-      console.log('[BingXService] ✓ Adding takeProfitTriggerBy (atomic):', (orderRequest as any).takeProfitTriggerBy);
+      // // console.log('[BingXService] ✓ Adding takeProfitTriggerBy (atomic):', (orderRequest as any).takeProfitTriggerBy);
     }
     if ((orderRequest as any).stopLossPrice !== undefined) {
       paramsArray.push(['stopLossPrice', (orderRequest as any).stopLossPrice]);
-      console.log('[BingXService] ✓ Adding stopLossPrice (atomic):', (orderRequest as any).stopLossPrice);
+      // // console.log('[BingXService] ✓ Adding stopLossPrice (atomic):', (orderRequest as any).stopLossPrice);
     }
     if ((orderRequest as any).stopLossTriggerBy) {
       paramsArray.push(['stopLossTriggerBy', (orderRequest as any).stopLossTriggerBy]);
-      console.log('[BingXService] ✓ Adding stopLossTriggerBy (atomic):', (orderRequest as any).stopLossTriggerBy);
+      // // console.log('[BingXService] ✓ Adding stopLossTriggerBy (atomic):', (orderRequest as any).stopLossTriggerBy);
     }
     if ((orderRequest as any).stopLoss) {
       paramsArray.push(['stopLoss', (orderRequest as any).stopLoss]);
-      console.log('[BingXService] ✓ Adding stopLoss (atomic):', (orderRequest as any).stopLoss);
+      // // console.log('[BingXService] ✓ Adding stopLoss (atomic):', (orderRequest as any).stopLoss);
     }
     if ((orderRequest as any).takeProfit) {
       paramsArray.push(['takeProfit', (orderRequest as any).takeProfit]);
-      console.log('[BingXService] ✓ Adding takeProfit (atomic):', (orderRequest as any).takeProfit);
+      // // console.log('[BingXService] ✓ Adding takeProfit (atomic):', (orderRequest as any).takeProfit);
     }
 
 
-    console.log('[BingXService] Order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+    // // console.log('[BingXService] Order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
 
     const response = await this.makeRequestWithOrder<BingXOrder>(
       'POST',
@@ -778,13 +778,13 @@ export class BingXService {
     );
 
     if (response.code !== 0) {
-      console.error('[BingXService] Order failed:', {
-        code: response.code,
-        msg: response.msg,
-        sentParams: paramsArray,
-        orderRequest,
-        fullResponse: JSON.stringify(response)
-      });
+      // console.error('[BingXService] Order failed:', {
+      //   code: response.code,
+      //   msg: response.msg,
+      //   sentParams: paramsArray,
+      //   orderRequest,
+      //   fullResponse: JSON.stringify(response)
+      // });
       throw new Error(`Failed to place order: ${response.msg} (code: ${response.code})`);
     }
 
@@ -799,7 +799,7 @@ export class BingXService {
    * @returns Test result with validation details
    */
   async testOrder(orderRequest: BingXOrderRequest): Promise<any> {
-    console.log('[BingXService] Testing order (no execution):', orderRequest);
+    // // console.log('[BingXService] Testing order (no execution):', orderRequest);
 
     // Use array of [key, value] pairs to preserve insertion order (same as placeOrder)
     const paramsArray: Array<[string, any]> = [];
@@ -815,7 +815,7 @@ export class BingXService {
       throw new Error('positionSide is required for all BingX orders. Use "BOTH" for One-Way Mode, or "LONG"/"SHORT" for Hedge Mode.');
     }
     paramsArray.push(['positionSide', orderRequest.positionSide]);
-    console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
+    // // console.log('[BingXService] Using positionSide:', orderRequest.positionSide);
 
     paramsArray.push(['type', orderRequest.type]);
 
@@ -831,7 +831,7 @@ export class BingXService {
     if (orderRequest.timeInForce) paramsArray.push(['timeInForce', orderRequest.timeInForce]);
     if (orderRequest.closePosition !== undefined) paramsArray.push(['closePosition', orderRequest.closePosition]);
 
-    console.log('[BingXService] Test order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+    // // console.log('[BingXService] Test order parameters (in order):', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
 
     const response = await this.makeRequestWithOrder(
       'POST',
@@ -848,7 +848,7 @@ export class BingXService {
       throw new Error(`Test order validation failed: ${response.msg} (code: ${response.code})`);
     }
 
-    console.log('[BingXService] Test order validated successfully:', response);
+    // // console.log('[BingXService] Test order validated successfully:', response);
     return response;
   }
 
@@ -856,7 +856,7 @@ export class BingXService {
    * Cancel an order
    */
   async cancelOrder(symbol: string, orderId: string): Promise<any> {
-    console.log('[BingXService] Canceling order:', { symbol, orderId });
+    // // console.log('[BingXService] Canceling order:', { symbol, orderId });
 
     const response = await this.makeRequest(
       'DELETE',
@@ -878,7 +878,7 @@ export class BingXService {
    * Get all orders
    */
   async getOrders(symbol: string): Promise<BingXOrder[]> {
-    console.log('[BingXService] Fetching orders for:', symbol);
+    // // console.log('[BingXService] Fetching orders for:', symbol);
 
     const response = await this.makeRequest<BingXOrder[]>(
       'GET',
@@ -897,7 +897,7 @@ export class BingXService {
    * Get ticker/market data for all symbols
    */
   async getTickers(): Promise<BingXTicker[]> {
-    console.log('[BingXService] Fetching all tickers...');
+    // // console.log('[BingXService] Fetching all tickers...');
 
     const response = await this.makeRequest<BingXTicker[]>(
       'GET',
@@ -934,7 +934,7 @@ export class BingXService {
    * Get funding rate for a symbol
    */
   async getFundingRate(symbol: string): Promise<BingXFundingRate> {
-    console.log('[BingXService] Fetching funding rate for:', symbol);
+    // // console.log('[BingXService] Fetching funding rate for:', symbol);
 
     const response = await this.makeRequest<BingXFundingRate>(
       'GET',
@@ -991,7 +991,7 @@ export class BingXService {
    * Returns: Array of { symbol, markPrice, indexPrice, lastFundingRate, nextFundingTime }
    */
   async getAllFundingRates(): Promise<BingXFundingRate[]> {
-    console.log('[BingXService] Fetching all funding rates from premium index endpoint...');
+    // // console.log('[BingXService] Fetching all funding rates from premium index endpoint...');
 
     // Premium index is a public endpoint, no authentication needed
     const url = `${this.baseUrl}/openApi/swap/v2/quote/premiumIndex`;
@@ -1021,7 +1021,7 @@ export class BingXService {
       // Log a few samples with non-zero funding rates
       const samplesWithRate = premiumIndexData.filter((d: any) => d.lastFundingRate && parseFloat(d.lastFundingRate) !== 0).slice(0, 5);
       if (samplesWithRate.length > 0) {
-        console.log('[BingXService] Sample funding rates:');
+        // // console.log('[BingXService] Sample funding rates:');
         samplesWithRate.forEach((d: any) => {
           console.log(`  ${d.symbol}: lastFundingRate=${d.lastFundingRate}, nextFundingTime=${d.nextFundingTime}`);
         });
@@ -1062,7 +1062,7 @@ export class BingXService {
    * Close a position
    */
   async closePosition(symbol: string, positionSide: 'LONG' | 'SHORT'): Promise<any> {
-    console.log('[BingXService] Closing position:', { symbol, positionSide });
+    // // console.log('[BingXService] Closing position:', { symbol, positionSide });
 
     // CRITICAL: BingX API requires quantity parameter even with closePosition=true
     // First, fetch the position to get the current quantity
@@ -1070,7 +1070,7 @@ export class BingXService {
     const position = positions.find((p) => p.symbol === symbol && parseFloat(p.positionAmt || '0') !== 0);
 
     if (!position) {
-      console.log('[BingXService] No open position found for', symbol);
+      // // console.log('[BingXService] No open position found for', symbol);
       return { success: true, message: 'No position to close' };
     }
 
@@ -1115,11 +1115,11 @@ export class BingXService {
     leverage: number,
     side: 'LONG' | 'SHORT' | 'BOTH' = 'BOTH'
   ): Promise<any> {
-    console.log('[BingXService] Setting leverage:', {
-      symbol,
-      leverage,
-      side
-    });
+    // // console.log('[BingXService] Setting leverage:', {
+    //   symbol,
+    //   leverage,
+    //   side
+    // });
 
     // Validate leverage range (1-125x typically, but depends on symbol and position size)
     if (leverage < 1 || leverage > 125) {
@@ -1133,7 +1133,7 @@ export class BingXService {
       ['leverage', leverage]
     ];
 
-    console.log('[BingXService] Leverage parameters:', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
+    // // console.log('[BingXService] Leverage parameters:', paramsArray.map(([k, v]) => `${k}=${v}`).join('&'));
 
     const response = await this.makeRequestWithOrder(
       'POST',
@@ -1142,17 +1142,17 @@ export class BingXService {
     );
 
     if (response.code !== 0) {
-      console.error('[BingXService] Set leverage failed:', {
-        code: response.code,
-        msg: response.msg,
-        symbol,
-        leverage,
-        side
-      });
+      // console.error('[BingXService] Set leverage failed:', {
+      //   code: response.code,
+      //   msg: response.msg,
+      //   symbol,
+      //   leverage,
+      //   side
+      // });
       throw new Error(`Failed to set leverage: ${response.msg} (code: ${response.code})`);
     }
 
-    console.log('[BingXService] Leverage set successfully:', response.data);
+    // // console.log('[BingXService] Leverage set successfully:', response.data);
     return response.data;
   }
 
@@ -1192,7 +1192,7 @@ export class BingXService {
     endTime?: number;
     limit?: number;
   }): Promise<any> {
-    console.log('[BingXService] Fetching income history with params:', params);
+    // // console.log('[BingXService] Fetching income history with params:', params);
 
     const requestParams: Record<string, any> = {
       limit: params.limit || 100,
@@ -1218,9 +1218,9 @@ export class BingXService {
       throw new Error(`Failed to get income history: ${response.msg} (code: ${response.code})`);
     }
 
-    console.log('[BingXService] Income history response:', {
-      recordCount: response.data?.length || 0,
-    });
+    // // console.log('[BingXService] Income history response:', {
+    //   recordCount: response.data?.length || 0,
+    // });
 
     return response;
   }
@@ -1233,14 +1233,14 @@ export class BingXService {
    * @returns Ticker with price information
    */
   async getTickerPrice(symbol: string): Promise<{ symbol: string; price: string } | null> {
-    console.log('[BingXService] Fetching ticker price for:', symbol);
+    // // console.log('[BingXService] Fetching ticker price for:', symbol);
 
     try {
       const tickers = await this.getTickers();
       const ticker = tickers.find(t => t.symbol === symbol);
 
       if (!ticker) {
-        console.warn(`[BingXService] Ticker not found for symbol: ${symbol}`);
+        // console.warn(`[BingXService] Ticker not found for symbol: ${symbol}`);
         return null;
       }
 
@@ -1266,7 +1266,7 @@ export class BingXService {
    * @returns Commission rate data including maker/taker fees and user level
    */
   async getCommissionRate(): Promise<any> {
-    console.log('[BingXService] Fetching commission rate...');
+    // // console.log('[BingXService] Fetching commission rate...');
 
     const response = await this.makeRequest(
       'GET',
@@ -1282,7 +1282,7 @@ export class BingXService {
       throw new Error(`Failed to get commission rate: ${response.msg} (code: ${response.code})`);
     }
 
-    console.log('[BingXService] Commission rate response:', response.data);
+    // // console.log('[BingXService] Commission rate response:', response.data);
 
     return response;
   }
@@ -1296,16 +1296,16 @@ export class BingXService {
    */
   private initializeWebSocket(): void {
     if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-      console.log('[BingXService] WebSocket already connected');
+      // // console.log('[BingXService] WebSocket already connected');
       return;
     }
 
-    console.log('[BingXService] Initializing WebSocket connection...');
+    // // console.log('[BingXService] Initializing WebSocket connection...');
 
     this.wsClient = new WebSocket(this.wsUrl);
 
     this.wsClient.on('open', () => {
-      console.log('[BingXService] ✓ WebSocket connected');
+      // // console.log('[BingXService] ✓ WebSocket connected');
     });
 
     this.wsClient.on('message', (data: Buffer) => {
@@ -1317,7 +1317,7 @@ export class BingXService {
     });
 
     this.wsClient.on('close', (code: number, reason: string) => {
-      console.log('[BingXService] WebSocket closed:', { code, reason: reason.toString() });
+      // // console.log('[BingXService] WebSocket closed:', { code, reason: reason.toString() });
       this.wsClient = null;
     });
   }
@@ -1337,7 +1337,7 @@ export class BingXService {
       if (decodedMsg === 'Ping') {
         if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
           this.wsClient.send('Pong');
-          console.log('[BingXService] Sent Pong');
+          // // console.log('[BingXService] Sent Pong');
         }
         return;
       }
@@ -1438,7 +1438,7 @@ export class BingXService {
    * Unsubscribe from all WebSocket subscriptions and close connection
    */
   unsubscribeAll(): void {
-    console.log('[BingXService] Unsubscribing from all WebSocket subscriptions...');
+    // // console.log('[BingXService] Unsubscribing from all WebSocket subscriptions...');
 
     // Clear all subscriptions
     this.subscriptions.clear();
@@ -1451,7 +1451,7 @@ export class BingXService {
       this.wsClient = null;
     }
 
-    console.log('[BingXService] ✓ All WebSocket subscriptions closed');
+    // // console.log('[BingXService] ✓ All WebSocket subscriptions closed');
   }
 
   /**
@@ -1464,7 +1464,7 @@ export class BingXService {
    * @returns listenKey string
    */
   async createListenKey(): Promise<string> {
-    console.log('[BingXService] Creating listenKey for user data stream...');
+    // // console.log('[BingXService] Creating listenKey for user data stream...');
 
     const response = await this.makeRequest<{ listenKey: string }>(
       'POST',
@@ -1477,7 +1477,7 @@ export class BingXService {
     }
 
     this.listenKey = response.data.listenKey;
-    console.log('[BingXService] ✓ ListenKey created:', this.listenKey?.substring(0, 20) + '...');
+    // // console.log('[BingXService] ✓ ListenKey created:', this.listenKey?.substring(0, 20) + '...');
 
     return this.listenKey;
   }
@@ -1493,7 +1493,7 @@ export class BingXService {
       throw new Error('No listenKey to extend. Call createListenKey() first.');
     }
 
-    console.log('[BingXService] Extending listenKey...');
+    // // console.log('[BingXService] Extending listenKey...');
 
     const response = await this.makeRequest(
       'PUT',
@@ -1508,7 +1508,7 @@ export class BingXService {
       return;
     }
 
-    console.log('[BingXService] ✓ ListenKey extended');
+    // // console.log('[BingXService] ✓ ListenKey extended');
   }
 
   /**
@@ -1517,14 +1517,14 @@ export class BingXService {
    */
   private startListenKeyRefresh(): void {
     if (this.listenKeyRefreshInterval) {
-      console.log('[BingXService] ListenKey refresh already running');
+      // // console.log('[BingXService] ListenKey refresh already running');
       return;
     }
 
     // Refresh every 30 minutes (listenKey expires after 60 minutes)
     const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
-    console.log('[BingXService] Starting listenKey refresh (interval: 30 minutes)');
+    // // console.log('[BingXService] Starting listenKey refresh (interval: 30 minutes)');
 
     this.listenKeyRefreshInterval = setInterval(async () => {
       try {
@@ -1542,7 +1542,7 @@ export class BingXService {
     if (this.listenKeyRefreshInterval) {
       clearInterval(this.listenKeyRefreshInterval);
       this.listenKeyRefreshInterval = null;
-      console.log('[BingXService] ListenKey refresh stopped');
+      // // console.log('[BingXService] ListenKey refresh stopped');
     }
   }
 
@@ -1554,11 +1554,11 @@ export class BingXService {
    */
   private initializeUserDataWebSocket(listenKey: string): void {
     if (this.userDataWsClient && this.userDataWsClient.readyState === WebSocket.OPEN) {
-      console.log('[BingXService] User data WebSocket already connected');
+      // // console.log('[BingXService] User data WebSocket already connected');
       return;
     }
 
-    console.log('[BingXService] Initializing user data WebSocket connection...');
+    // // console.log('[BingXService] Initializing user data WebSocket connection...');
 
     // User data stream URL format: wss://open-api-swap.bingx.com/swap-market?listenKey={listenKey}
     const wsUrlWithKey = `${this.userDataWsUrl}?listenKey=${listenKey}`;
@@ -1566,7 +1566,7 @@ export class BingXService {
     this.userDataWsClient = new WebSocket(wsUrlWithKey);
 
     this.userDataWsClient.on('open', () => {
-      console.log('[BingXService] ✓ User data WebSocket connected');
+      // // console.log('[BingXService] ✓ User data WebSocket connected');
     });
 
     this.userDataWsClient.on('message', (data: Buffer) => {
@@ -1578,13 +1578,13 @@ export class BingXService {
     });
 
     this.userDataWsClient.on('close', (code: number, reason: string) => {
-      console.log('[BingXService] User data WebSocket closed:', { code, reason: reason.toString() });
+      // // console.log('[BingXService] User data WebSocket closed:', { code, reason: reason.toString() });
       this.userDataWsClient = null;
 
       // Try to reconnect after 5 seconds
       setTimeout(() => {
         if (this.listenKey) {
-          console.log('[BingXService] Attempting to reconnect user data WebSocket...');
+          // // console.log('[BingXService] Attempting to reconnect user data WebSocket...');
           this.initializeUserDataWebSocket(this.listenKey);
         }
       }, 5000);
@@ -1611,7 +1611,7 @@ export class BingXService {
       if (decodedMsg === 'Ping') {
         if (this.userDataWsClient && this.userDataWsClient.readyState === WebSocket.OPEN) {
           this.userDataWsClient.send('Pong');
-          console.log('[BingXService] Sent Pong (user data)');
+          // // console.log('[BingXService] Sent Pong (user data)');
         }
         return;
       }
@@ -1620,7 +1620,7 @@ export class BingXService {
       const message = JSON.parse(decodedMsg);
 
       // Log message for debugging
-      console.log('[BingXService] User data message received:', JSON.stringify(message).substring(0, 200) + '...');
+      // // console.log('[BingXService] User data message received:', JSON.stringify(message).substring(0, 200) + '...');
 
       // Handle listenKey expiration warning
       if (message.e === 'listenKeyExpired') {
@@ -1679,7 +1679,7 @@ export class BingXService {
    * @returns Promise<void>
    */
   async subscribeToPositions(callback: (data: any) => void): Promise<void> {
-    console.log('[BingXService] Subscribing to position updates...');
+    // // console.log('[BingXService] Subscribing to position updates...');
 
     // Create listenKey if not already created
     if (!this.listenKey) {
@@ -1725,14 +1725,14 @@ export class BingXService {
       }
     });
 
-    console.log('[BingXService] ✓ Subscribed to position updates');
+    // // console.log('[BingXService] ✓ Subscribed to position updates');
   }
 
   /**
    * Unsubscribe from all user data subscriptions and close connection
    */
   unsubscribeUserDataStream(): void {
-    console.log('[BingXService] Unsubscribing from user data stream...');
+    // // console.log('[BingXService] Unsubscribing from user data stream...');
 
     // Stop listenKey refresh
     this.stopListenKeyRefresh();
@@ -1751,6 +1751,6 @@ export class BingXService {
     // Clear listenKey
     this.listenKey = null;
 
-    console.log('[BingXService] ✓ User data stream closed');
+    // // console.log('[BingXService] ✓ User data stream closed');
   }
 }

@@ -12,6 +12,15 @@ export async function register() {
     console.log('[Instrumentation] Initializing server-side services...');
 
     try {
+      // Initialize Redis cache for real-time data
+      const { redisService } = await import('@/lib/redis');
+      try {
+        await redisService.connect();
+        console.log('[Instrumentation] Redis cache initialized');
+      } catch (redisError: any) {
+        console.warn('[Instrumentation] Redis connection failed, continuing without cache:', redisError.message);
+      }
+
       // Initialize funding arbitrage service to restore active subscriptions
       const { fundingArbitrageService } = await import('@/services/funding-arbitrage.service');
       await fundingArbitrageService.initialize();

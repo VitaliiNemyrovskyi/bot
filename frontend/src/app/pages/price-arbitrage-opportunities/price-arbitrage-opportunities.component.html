@@ -33,76 +33,65 @@
   <!-- Filters -->
       <div class="filters-section">
         <div class="filter-group">
-          <label for="search">Symbol Search:</label>
-          <input
-            id="search"
+          <ui-input
             type="text"
+            label="Symbol Search"
             [(ngModel)]="searchQuery"
             placeholder="e.g., BTC, ETH, COAI"
-            class="filter-input"
-          />
+            size="medium"
+            [fullWidth]="true">
+          </ui-input>
         </div>
 
         <div class="filter-group">
-          <label for="strategyType">Strategy Type:</label>
-          <select id="strategyType" [(ngModel)]="strategyTypeFilter" class="filter-select">
-            <option value="combined">Combined</option>
-            <option value="price_only">Price Only</option>
-            <option value="spot_futures">Spot + Futures</option>
-            <option value="funding_farm">Funding Farm (Δ-Neutral)</option>
-          </select>
+          <ui-dropdown
+            [options]="strategyTypeOptions"
+            [ngModel]="strategyTypeFilter()"
+            (ngModelChange)="onStrategyTypeChange($event)"
+            [searchable]="false"
+            placeholder="Strategy Type"
+            size="medium"
+            width="medium">
+          </ui-dropdown>
         </div>
 
         <div class="filter-group">
-          <label for="minScore">Min Score (%):</label>
-          <input
-            id="minScore"
+          <ui-input
             type="number"
+            label="Min Score (%)"
             [(ngModel)]="minCombinedScore"
             placeholder="e.g., 1.0"
-            step="0.1"
-            min="0"
-            class="filter-input filter-input-number"
-          />
+            [step]="0.1"
+            [min]="0"
+            size="medium"
+            [fullWidth]="true">
+          </ui-input>
         </div>
 
-        <div class="filter-group filter-group-exchanges">
-          <label>Filter by Exchanges:</label>
-          <div class="exchange-checkboxes">
-            @for (exchange of availableExchanges; track exchange) {
-              <button
-                type="button"
-                class="exchange-checkbox"
-                [class.active]="isExchangeSelected(exchange)"
-                (click)="toggleExchange(exchange)"
-                [title]="isExchangeSelected(exchange) ? 'Click to hide ' + exchange : 'Click to show ' + exchange"
-              >
-                {{ exchange }}
-              </button>
-            }
-            @if (availableExchanges.length > 0) {
-              <div class="exchange-actions">
-                <ui-button
-                  type="button"
-                  variant="secondary"
-                  size="small"
-                  (clicked)="selectAllExchanges()"
-                  [className]="'btn-exchange-action'"
-                >
-                  All
-                </ui-button>
-                <ui-button
-                  type="button"
-                  variant="secondary"
-                  size="small"
-                  (clicked)="deselectAllExchanges()"
-                  [className]="'btn-exchange-action'"
-                >
-                  None
-                </ui-button>
-              </div>
-            }
-          </div>
+        <div class="filter-group">
+          <ui-input
+            type="number"
+            label="Min Funding (%)"
+            [(ngModel)]="minFundingRate"
+            placeholder="e.g., 0.05"
+            [step]="0.01"
+            [min]="0"
+            size="medium"
+            [fullWidth]="true">
+          </ui-input>
+        </div>
+
+        <div class="filter-group">
+          <ui-input
+            type="number"
+            label="Min Spread (%)"
+            [(ngModel)]="minPriceSpread"
+            placeholder="e.g., 0.1"
+            [step]="0.01"
+            [min]="0"
+            size="medium"
+            [fullWidth]="true">
+          </ui-input>
         </div>
 
         <div class="filter-actions">
@@ -110,6 +99,57 @@
             <ui-icon name="clear" [size]="18"></ui-icon>
             Clear Filters
           </ui-button>
+        </div>
+      </div>
+
+      <!-- Exchanges Filter Panel -->
+      <div class="exchanges-panel">
+        <div class="exchanges-panel-header">
+          <h3 class="exchanges-panel-title">
+            <ui-icon name="swap_horiz" [size]="20"></ui-icon>
+            Filter by Exchanges
+          </h3>
+          <span class="exchanges-count">{{ selectedExchanges().length }} / {{ availableExchanges.length }} selected</span>
+        </div>
+        <div class="exchanges-panel-content">
+          <div class="exchange-chips">
+            @for (exchange of availableExchanges; track exchange) {
+              <button
+                type="button"
+                class="exchange-chip"
+                [class.active]="isExchangeSelected(exchange)"
+                (click)="toggleExchange(exchange)"
+                [title]="isExchangeSelected(exchange) ? 'Click to hide ' + exchange : 'Click to show ' + exchange"
+              >
+                <span class="exchange-name">{{ exchange }}</span>
+                <span class="exchange-indicator" [class.selected]="isExchangeSelected(exchange)">
+                  {{ isExchangeSelected(exchange) ? '✓' : '' }}
+                </span>
+              </button>
+            }
+          </div>
+          @if (availableExchanges.length > 0) {
+            <div class="exchange-actions">
+              <ui-button
+                type="button"
+                variant="secondary"
+                size="small"
+                (clicked)="selectAllExchanges()"
+              >
+                <ui-icon name="done_all" [size]="16"></ui-icon>
+                Select All
+              </ui-button>
+              <ui-button
+                type="button"
+                variant="secondary"
+                size="small"
+                (clicked)="deselectAllExchanges()"
+              >
+                <ui-icon name="clear_all" [size]="16"></ui-icon>
+                Deselect All
+              </ui-button>
+            </div>
+          }
         </div>
       </div>
 
@@ -149,8 +189,20 @@
                   ></ui-icon>
                 </th>
                 @if (!isFundingFarmMode()) {
+                  <!-- Spot Price Column -->
+                  <th>
+                    Spot Price
+                    <br><small>(Lower/Buy)</small>
+                  </th>
+                  <!-- Futures Price Column -->
+                  <th>
+                    Futures Price
+                    <br><small>(Higher/Short)</small>
+                  </th>
+                  <!-- Price Spread Column -->
                   <th (click)="setSortColumn('spreadPercent')" class="sortable">
                     Price Spread
+                    <br><small>(Futures - Spot)</small>
                     <ui-icon
                       *ngIf="sortColumn() === 'spreadPercent'"
                       [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
@@ -169,7 +221,7 @@
                   ></ui-icon>
                 </th>
                 <th (click)="setSortColumn('combinedScore')" class="sortable">
-                  Combined Score
+                  Score
                   <ui-icon
                     *ngIf="sortColumn() === 'combinedScore'"
                     [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
@@ -200,11 +252,15 @@
                     [size]="16"
                   ></ui-icon>
                 </th>
-                @if (!isSpotFuturesMode()) {
-                  <th>Best Long<br><small>(Lower Price)</small></th>
-                  <th>Best Short<br><small>(Higher Price)</small></th>
-                } @else {
+                @if (!isSpotFuturesMode() && !isSpotFuturesMode()) {
+                  <th>Best Long</th>
+                  <th>Best Short</th>
+                } @else if (isSpotFuturesMode()) {
                   <th>Best Exchange<br><small>(Spot + Futures)</small></th>
+                } @else {
+                  <!-- Spot-Futures Mode: Show Best Funding and Best Short columns -->
+                  <th>Best Funding<br><small>(Long Spot + Short Futures)</small></th>
+                  <th>Best Short<br><small>(Short Only)</small></th>
                 }
                 <th>Strategy</th>
                 <th>Actions</th>
@@ -218,55 +274,144 @@
                     <span class="symbol">{{ opp.symbol }}</span>
                   </td>
 
-                  <!-- Price Spread / Hedge Ratio -->
                   @if (!isFundingFarmMode()) {
+                    <!-- Spot Price -->
+                    <td class="spot-price-cell">
+                      <div class="price-info">
+                        <span class="price-value">{{ formatPrice(getSpotPrice(opp)) }}</span>
+                        <span class="exchange-badge">{{ getExchangeLabel(opp, 'spot') }}</span>
+                      </div>
+                    </td>
+
+                    <!-- Futures Price -->
+                    <td class="futures-price-cell">
+                      <div class="price-info">
+                        <span class="price-value">{{ formatPrice(getFuturesPrice(opp)) }}</span>
+                        <span class="exchange-badge">{{ getExchangeLabel(opp, 'futures') }}</span>
+                      </div>
+                    </td>
+
+                    <!-- Price Spread with Visual Indicator -->
                     <td class="price-spread-cell">
-                      <div class="price-spread-info">
-                        <span class="spread-percent">{{ formatPercent(opp.priceSpread * 100) }}</span>
-                        <span class="spread-usdt">{{ opp.priceSpreadUsdt }}</span>
+                      <div class="price-spread-info" [class]="getPriceSpreadInfo(opp).colorClass">
+                        <div class="spread-header">
+                          <span class="spread-indicator">{{ getPriceSpreadInfo(opp).indicator }}</span>
+                          <span class="spread-percent" [class.favorable]="getPriceSpreadInfo(opp).isFavorable" [class.unfavorable]="!getPriceSpreadInfo(opp).isFavorable">
+                            {{ formatPercent(getPriceSpreadInfo(opp).spreadPercent, 2) }}
+                          </span>
+                        </div>
+                        <span class="spread-usdt" [title]="'Absolute difference: $' + getPriceSpreadInfo(opp).spreadUsdt.toFixed(2)">
+                          {{ getPriceSpreadInfo(opp).spreadUsdt >= 0 ? '+' : '' }}${{ getPriceSpreadInfo(opp).spreadUsdt.toFixed(2) }}
+                        </span>
                       </div>
                     </td>
                   } @else {
                     <td class="hedge-ratio-cell">
-                      <div class="hedge-ratio-info">
-                        <span class="ratio-value">{{ formatHedgeRatio(opp) }}</span>
-                        <span class="ratio-label">Long/Short</span>
-                      </div>
+                      @if (!isSpotFuturesStrategy(opp)) {
+                        <div class="hedge-ratio-info">
+                          <span class="ratio-value">{{ formatHedgeRatio(opp) }}</span>
+                          <span class="ratio-label">Long/Short</span>
+                        </div>
+                      } @else {
+                        <span>—</span>
+                      }
                     </td>
                   }
 
                   <!-- Funding Differential -->
                   <td class="funding-spread-cell">
-                    <span class="funding-spread">
-                      {{ opp.maxFundingSpreadPercent }}
+                    <span class="funding-spread" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultFunding">
+                      {{ recalculated.fundingSpreadPercent }}
                     </span>
+                    <ng-template #defaultFunding>
+                      <span class="funding-spread">{{ opp.maxFundingSpreadPercent }}</span>
+                    </ng-template>
                   </td>
 
                   <!-- Combined Score -->
                   <td class="combined-score-cell">
-                    @if (opp.combinedScore !== undefined) {
-                      <span class="metric-value metric-highlight">{{ formatPercent(opp.combinedScore) }}</span>
-                    } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
-                    }
+                    <span class="metric-value metric-highlight" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultCombinedScore">
+                      {{ formatPercent(recalculated.combinedScore) }}
+                    </span>
+                    <ng-template #defaultCombinedScore>
+                      @if (opp.combinedScore !== undefined) {
+                        <span class="metric-value metric-highlight">{{ formatPercent(opp.combinedScore) }}</span>
+                      } @else {
+                        <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
+                      }
+                    </ng-template>
                   </td>
 
                   <!-- Daily Return -->
                   <td class="daily-return-cell">
-                    @if (opp.expectedDailyReturn !== undefined) {
-                      <span class="metric-value">{{ formatPercent(opp.expectedDailyReturn) }}</span>
-                    } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
-                    }
+                    <span class="metric-value" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultDailyReturn">
+                      {{ formatPercent(recalculated.dailyReturn) }}
+                    </span>
+                    <ng-template #defaultDailyReturn>
+                      @if (opp.realisticMetrics) {
+                        <div class="metric-realistic">
+                          <span class="metric-value metric-highlight"
+                                [title]="'Realistic: ' + formatPercent(opp.realisticMetrics.dailyReturn.realistic) + ' | Range: ' + formatPercent(opp.realisticMetrics.dailyReturn.pessimistic) + ' - ' + formatPercent(opp.realisticMetrics.dailyReturn.optimistic)">
+                            {{ formatPercent(opp.realisticMetrics.dailyReturn.realistic) }}
+                          </span>
+                          <span class="metric-range"
+                                [title]="'Based on ' + (opp.realisticMetrics.dataPoints || 0) + ' historical data points over ' + (opp.realisticMetrics.historicalPeriodDays || 7) + ' days'">
+                            <small class="range-pessimistic">{{ formatPercent(opp.realisticMetrics.dailyReturn.pessimistic, 1) }}</small>
+                            <small class="range-separator">-</small>
+                            <small class="range-optimistic">{{ formatPercent(opp.realisticMetrics.dailyReturn.optimistic, 1) }}</small>
+                          </span>
+                          @if (opp.realisticMetrics.confidence) {
+                            <span class="confidence-badge"
+                                  [class.high]="opp.realisticMetrics.confidence >= 70"
+                                  [class.medium]="opp.realisticMetrics.confidence >= 40 && opp.realisticMetrics.confidence < 70"
+                                  [class.low]="opp.realisticMetrics.confidence < 40"
+                                  [title]="'Confidence: ' + opp.realisticMetrics.confidence + '/100 (based on historical data quality)'">
+                              {{ opp.realisticMetrics.confidence }}%
+                            </span>
+                          }
+                        </div>
+                      } @else if (opp.expectedDailyReturn !== undefined) {
+                        <span class="metric-value">{{ formatPercent(opp.expectedDailyReturn) }}</span>
+                      } @else {
+                        <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
+                      }
+                    </ng-template>
                   </td>
 
                   <!-- Monthly ROI -->
                   <td class="monthly-roi-cell">
-                    @if (opp.estimatedMonthlyROI !== undefined) {
-                      <span class="metric-value metric-highlight">{{ formatPercent(opp.estimatedMonthlyROI) }}</span>
-                    } @else {
-                      <span class="metric-value">{{ formatPercent(opp.priceSpread * 100) }}</span>
-                    }
+                    <span class="metric-value metric-highlight" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultMonthlyROI">
+                      {{ formatPercent(recalculated.monthlyROI) }}
+                    </span>
+                    <ng-template #defaultMonthlyROI>
+                      @if (opp.realisticMetrics) {
+                        <div class="metric-realistic">
+                          <span class="metric-value metric-highlight"
+                                [title]="'Realistic: ' + formatPercent(opp.realisticMetrics.monthlyROI.realistic) + ' | Range: ' + formatPercent(opp.realisticMetrics.monthlyROI.pessimistic) + ' - ' + formatPercent(opp.realisticMetrics.monthlyROI.optimistic)">
+                            {{ formatPercent(opp.realisticMetrics.monthlyROI.realistic) }}
+                          </span>
+                          <span class="metric-range"
+                                [title]="'Based on ' + (opp.realisticMetrics.dataPoints || 0) + ' historical data points over ' + (opp.realisticMetrics.historicalPeriodDays || 7) + ' days'">
+                            <small class="range-pessimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.pessimistic, 1) }}</small>
+                            <small class="range-separator">-</small>
+                            <small class="range-optimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.optimistic, 1) }}</small>
+                          </span>
+                          @if (opp.realisticMetrics.confidence) {
+                            <span class="confidence-badge"
+                                  [class.high]="opp.realisticMetrics.confidence >= 70"
+                                  [class.medium]="opp.realisticMetrics.confidence >= 40 && opp.realisticMetrics.confidence < 70"
+                                  [class.low]="opp.realisticMetrics.confidence < 40"
+                                  [title]="'Confidence: ' + opp.realisticMetrics.confidence + '/100 (based on historical data quality)'">
+                              {{ opp.realisticMetrics.confidence }}%
+                            </span>
+                          }
+                        </div>
+                      } @else if (opp.estimatedMonthlyROI !== undefined) {
+                        <span class="metric-value metric-highlight">{{ formatPercent(opp.estimatedMonthlyROI) }}</span>
+                      } @else {
+                        <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
+                      }
+                    </ng-template>
                   </td>
 
                   <!-- Volatility 24h -->
@@ -280,35 +425,84 @@
                     }
                   </td>
 
-                  @if (!isSpotFuturesMode()) {
-                    <!-- Best Long (Lower Price) -->
+                  @if (!isSpotFuturesMode() && !isSpotFuturesMode()) {
+                    <!-- Best Long (Lower Price) - Cross-Exchange -->
                     <td class="best-long-cell">
-                      <div class="best-exchange">
-                        <span class="exchange-name">{{ opp.bestLong.exchange }}</span>
-                        <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.bestLong.fundingRate)">{{ formatFundingRate(opp.bestLong.fundingRate) }}</span>
-                        <span class="price">${{ opp.bestLong.lastPrice }}</span>
-                        <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.bestLong) }}</span>
-                      </div>
+                      @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                        <div class="best-exchange">
+                          <ui-dropdown
+                            [options]="getLongExchangeOptions(opp)"
+                            [ngModel]="getEffectiveLongExchange(opp).exchange"
+                            (selectionChange)="onExchangeChange(opp.symbol, 'long', $event)"
+                            [searchable]="false"
+                            [showClearButton]="false"
+                            size="small"
+                            width="medium">
+                          </ui-dropdown>
+                        </div>
+                      }
                     </td>
 
-                    <!-- Best Short (Higher Price) -->
+                    <!-- Best Short (Higher Price) - Cross-Exchange -->
                     <td class="best-short-cell">
-                      <div class="best-exchange">
-                        <span class="exchange-name">{{ opp.bestShort.exchange }}</span>
-                        <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.bestShort.fundingRate)">{{ formatFundingRate(opp.bestShort.fundingRate) }}</span>
-                        <span class="price">${{ opp.bestShort.lastPrice }}</span>
-                        <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.bestShort) }}</span>
-                      </div>
+                      @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                        <div class="best-exchange">
+                          <ui-dropdown
+                            [options]="getShortExchangeOptions(opp)"
+                            [ngModel]="getEffectiveShortExchange(opp).exchange"
+                            (selectionChange)="onExchangeChange(opp.symbol, 'short', $event)"
+                            [searchable]="false"
+                            [showClearButton]="false"
+                            size="small"
+                            width="medium">
+                          </ui-dropdown>
+                        </div>
+                      }
+                    </td>
+                  } @else if (isSpotFuturesMode()) {
+                    <!-- Single Exchange for Spot + Futures (Spot+Futures) -->
+                    <td class="best-exchange-cell">
+                      @if (asSpotFuturesOpportunity(opp); as gradOpp) {
+                        <div class="best-exchange">
+                          <span class="exchange-name">{{ gradOpp.bestShort.exchange || '—' }}</span>
+                          <span class="funding-rate positive">{{ formatPercent(parseFundingRateToNumber(gradOpp.bestShort.fundingRate)) }}</span>
+                          <span class="price">${{ getFuturesPrice(gradOpp) || '—' }}</span>
+                          @if (gradOpp.bestShort.nextFundingTime && gradOpp.bestShort.fundingInterval) {
+                            <span class="time-to-funding">{{ formatFundingTimeFromTimestamp(gradOpp.bestShort.nextFundingTime, gradOpp.bestShort.fundingInterval) }}</span>
+                          }
+                        </div>
+                      } @else {
+                        <span>—</span>
+                      }
                     </td>
                   } @else {
-                    <!-- Best Exchange for Spot-Futures -->
-                    <td class="best-exchange-cell">
-                      @if (opp.spotFuturesBestExchange) {
+                    <!-- Spot-Futures Mode: Show Best Funding and Best Short -->
+                    <!-- Best Funding Exchange (positive funding - Long Spot + Short Futures) -->
+                    <td class="best-funding-cell">
+                      @if (opp.bestFundingExchange) {
                         <div class="best-exchange">
-                          <span class="exchange-name">{{ opp.spotFuturesBestExchange.exchange }}</span>
-                          <span class="funding-rate" [ngClass]="getFundingRateColorClass(opp.spotFuturesBestExchange.fundingRate)">{{ formatFundingRate(opp.spotFuturesBestExchange.fundingRate) }}</span>
-                          <span class="price">${{ opp.spotFuturesBestExchange.lastPrice }}</span>
-                          <span class="time-to-funding">{{ formatTimeToFundingWithInterval(opp.spotFuturesBestExchange) }}</span>
+                          <span class="exchange-name">{{ opp.bestFundingExchange.exchange }}</span>
+                          <span class="funding-rate" [ngClass]="getFundingRateColorClassFromNumber(opp.bestFundingExchange.fundingRate)">
+                            {{ formatFundingRatePercent(opp.bestFundingExchange.fundingRate) }}
+                          </span>
+                          <span class="price">{{ formatPrice(opp.bestFundingExchange.currentPrice) }}</span>
+                          <span class="time-to-funding">{{ formatTimeToNextFunding(opp.bestFundingExchange.nextFundingTime) }}</span>
+                        </div>
+                      } @else {
+                        <span>—</span>
+                      }
+                    </td>
+
+                    <!-- Best Short Exchange (negative funding - Short Only) -->
+                    <td class="best-short-exchange-cell">
+                      @if (opp.bestShortExchange) {
+                        <div class="best-exchange">
+                          <span class="exchange-name">{{ opp.bestShortExchange.exchange }}</span>
+                          <span class="funding-rate" [ngClass]="getFundingRateColorClassFromNumber(opp.bestShortExchange.fundingRate)">
+                            {{ formatFundingRatePercent(opp.bestShortExchange.fundingRate) }}
+                          </span>
+                          <span class="price">{{ formatPrice(opp.bestShortExchange.currentPrice) }}</span>
+                          <span class="time-to-funding">{{ formatTimeToNextFunding(opp.bestShortExchange.nextFundingTime) }}</span>
                         </div>
                       } @else {
                         <span>—</span>
@@ -321,26 +515,30 @@
                     <span class="badge" [ngClass]="getStrategyBadgeClass(opp.strategyType || 'price_only')">
                       {{ getStrategyTypeText(opp.strategyType || 'price_only') }}
                     </span>
-                    @if (opp.recommendedStrategy === 'spot-futures') {
-                      <span class="badge badge-recommendation" title="Spot-Futures арбітраж рекомендується для максимального прибутку">
-                        💡 SF
-                      </span>
+                    @if (asFundingRateOpportunity(opp); as fundingOpp) {
+                      @if (fundingOpp.recommendedStrategy === 'spot-futures') {
+                        <span class="badge badge-recommendation" title="Spot-Futures арбітраж рекомендується для максимального прибутку">
+                          💡 SF
+                        </span>
+                      }
                     }
                   </td>
 
                   <!-- Actions -->
                   <td class="actions-cell">
-                    <!-- Analytics button for spread stability modal -->
-                    <ui-button
-                      (clicked)="openDetailsModal(opp)"
-                      variant="secondary"
-                      size="small"
-                      [iconOnly]="true"
-                      [className]="'btn-analytics'"
-                      [title]="'View historical stability metrics'"
-                    >
-                      <ui-icon name="analytics" [size]="20"></ui-icon>
-                    </ui-button>
+                    <!-- Analytics button for spread stability modal (only for cross-exchange) -->
+                    @if (!isSpotFuturesMode() && !isSpotFuturesStrategy(opp)) {
+                      <ui-button
+                        (clicked)="openDetailsModal(opp)"
+                        variant="secondary"
+                        size="small"
+                        [iconOnly]="true"
+                        [className]="'btn-analytics'"
+                        [title]="'View historical stability metrics'"
+                      >
+                        <ui-icon name="analytics" [size]="20"></ui-icon>
+                      </ui-button>
+                    }
                     <!-- Start position button -->
                     <ui-button
                       (clicked)="startPosition(opp)"
@@ -377,11 +575,30 @@
   <div class="help-section">
     <h3>Understanding Combined Strategy</h3>
     <ul>
-      <li><strong>Price Spread:</strong> Immediate profit opportunity from price difference between exchanges</li>
+      <li><strong>Spot Price:</strong> The lower price where you would BUY the asset (typically on the "long" exchange)</li>
+      <li><strong>Futures Price:</strong> The higher price where you would SHORT the futures contract</li>
+      <li><strong>Price Spread:</strong> The difference between futures and spot prices
+        <ul>
+          <li>🟢 <strong>Green (Favorable):</strong> Futures > Spot - Good for spot+futures arbitrage (buy cheap spot, short expensive futures)</li>
+          <li>🔴 <strong>Red (Unfavorable):</strong> Spot > Futures - Not ideal for this strategy</li>
+        </ul>
+      </li>
       <li><strong>Funding Diff:</strong> Net funding rate you receive/pay every 8 hours (SHORT - LONG)</li>
       <li><strong>Combined Score:</strong> Price spread + projected funding for 7 days</li>
-      <li><strong>Daily Return:</strong> Expected daily profit (spread + funding × 3)</li>
-      <li><strong>Monthly ROI:</strong> Estimated profit over 30 days (spread + funding × 90)</li>
+      <li><strong>Daily Return:</strong> Expected daily profit based on 7-day historical average funding rates (spread + funding × 3)</li>
+      <li><strong>Monthly ROI:</strong> Estimated profit over 30 days based on historical data (spread + funding × 90)</li>
+    </ul>
+
+    <h3>📊 Realistic Metrics (NEW)</h3>
+    <ul>
+      <li><strong>Historical Analysis:</strong> Return estimates are now based on 7 days of historical funding rate data</li>
+      <li><strong>Pessimistic Scenario:</strong> Lower bound (average - 1 standard deviation) - worst case from historical data</li>
+      <li><strong>Realistic Scenario:</strong> Middle estimate (historical average) - most likely outcome</li>
+      <li><strong>Optimistic Scenario:</strong> Upper bound (average + 1 standard deviation) - best case from historical data</li>
+      <li><strong>Confidence Score:</strong> Data quality indicator (0-100%) - higher means more reliable historical data</li>
+      <li><strong>Green badge (70%+):</strong> High confidence - lots of historical data, consistent rates</li>
+      <li><strong>Orange badge (40-70%):</strong> Medium confidence - moderate data, some variance</li>
+      <li><strong>Red badge (&lt;40%):</strong> Low confidence - limited data or high variance</li>
     </ul>
 
     <h3>💡 Spot-Futures Recommendation</h3>
@@ -391,6 +608,43 @@
       <li><strong>Cross-Exchange:</strong> Short high funding + Long low funding = earn only the DIFFERENCE</li>
       <li><strong>Example:</strong> If exchange has +0.15% funding, Spot-Futures earns 0.15%, Cross-Exchange earns 0.15% - 0.05% = 0.10%</li>
     </ul>
+
+    <h3>🏦 Spot + Futures (Spot+Futures)</h3>
+    <ul>
+      <li><strong>Strategy:</strong> Buy spot asset + Open SHORT futures on SAME exchange</li>
+      <li><strong>Profit Source:</strong> Earn FULL funding rate when longs pay shorts (positive funding)</li>
+      <li><strong>Comparison:</strong> Earns MORE than cross-exchange when funding is positive</li>
+      <li><strong>Example:</strong> If funding is +0.15%, you earn full 0.15%, not just differential</li>
+      <li><strong>Risk:</strong> No price spread profit - relies entirely on funding rates</li>
+      <li><strong>Capital Efficiency:</strong> Requires capital for both spot purchase and futures margin</li>
+      <li><strong>Best For:</strong> High positive funding rates (0.1%+ per 8h)</li>
+    </ul>
+
+    <h3>📊 Strategy Comparison</h3>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+      <thead>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Strategy</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Exchanges</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Profit Source</th>
+          <th style="padding: 0.5rem; text-align: left; border: 1px solid #ddd;">Example Return</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;"><strong>Cross-Exchange</strong></td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">2 different exchanges</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">Price spread + Funding differential</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">0.05% spread + 0.10% funding diff</td>
+        </tr>
+        <tr>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;"><strong>Spot + Futures</strong></td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">1 exchange (spot + futures)</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">FULL funding rate</td>
+          <td style="padding: 0.5rem; border: 1px solid #ddd;">0.00% spread + 0.15% full funding</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </div>
 

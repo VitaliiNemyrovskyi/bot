@@ -67,6 +67,7 @@ async function fetchExchangeFundingRates(
           fundingRate: r.fundingRate,
           nextFundingTime: r.nextFundingTime,
           lastPrice: r.markPrice,
+          fundingIntervalFromApi: r.fundingInterval, // Pass through from CCXT if available
         };
       })
     };
@@ -141,41 +142,64 @@ async function fetchExchangeFundingRates(
 }
 
 /**
- * Determine funding interval based on exchange and next funding time
- * @param exchange - Exchange name (BYBIT, BINGX, MEXC, etc.)
- * @param nextFundingTime - Next funding time timestamp
- * @returns Funding interval string (e.g., "8h", "4h", "1h")
+ * Get default funding interval for an exchange
+ *
+ * IMPORTANT: This is only a FALLBACK when CCXT doesn't provide the interval.
+ * Funding intervals can vary by SYMBOL and can change over time.
+ * Always prefer the interval from CCXT API (fundingIntervalFromApi) when available.
+ *
+ * Common default intervals:
+ * - Most exchanges: 8h (3 times per day)
+ * - Some symbols: 4h (6 times per day)
+ * - Some symbols: 1h (24 times per day)
  */
-function determineFundingInterval(exchange: string, nextFundingTime: number): string {
-  // Default intervals for each exchange
-  const defaultIntervals: Record<string, string> = {
+function getDefaultFundingInterval(exchange: string): string {
+  const intervals: Record<string, string> = {
+    'BINANCE': '8h',
     'BYBIT': '8h',
     'BINGX': '8h',
-    'MEXC': '8h',
     'OKX': '8h',
+    'GATEIO': '8h', // Confirmed via API: funding_interval=28800 seconds
+    'MEXC': '8h', // Confirmed via API: collectCycle=8 hours
   };
 
-  // If we have a default for this exchange, return it
-  if (defaultIntervals[exchange]) {
-    return defaultIntervals[exchange];
-  }
+  return intervals[exchange.toUpperCase()] || '8h';
+}
 
-  // Otherwise, try to determine from the next funding time
-  const fundingDate = new Date(nextFundingTime);
-  const fundingHour = fundingDate.getUTCHours();
+/**
+ * Normalize funding rate to 8-hour interval for fair comparison
+ *
+ * Different exchanges use different funding intervals:
+ * - Most exchanges: 8h (3 times per day)
+ * - Some exchanges: 4h (6 times per day)
+ * - Some exchanges: 1h (24 times per day)
+ *
+ * Example: If Exchange A has 2% funding every 8h and Exchange B has 1.5% funding every 1h:
+ * - Exchange A: 2% per 8h (normalized: 2%)
+ * - Exchange B: 1.5% per 1h (normalized: 1.5% * 8 = 12% per 8h)
+ *
+ * Without normalization, we might think A is better (2% > 1.5%), but actually B pays 12% per 8h period!
+ *
+ * @param fundingRate - Original funding rate as string (e.g., "0.0001")
+ * @param fundingInterval - Funding interval (e.g., "8h", "4h", "1h")
+ * @returns Normalized funding rate to 8h interval as number
+ */
+function normalizeFundingRateTo8h(fundingRate: string, fundingInterval: string): number {
+  const rate = parseFloat(fundingRate);
 
-  // Check if funding time aligns with 8h intervals (00:00, 08:00, 16:00 UTC)
-  if (fundingHour % 8 === 0) {
-    return '8h';
-  }
-  // Check if funding time aligns with 4h intervals
-  else if (fundingHour % 4 === 0) {
-    return '4h';
-  }
-  // Assume 1h if no pattern matches
-  else {
-    return '1h';
-  }
+  // Normalization multipliers to convert to 8h interval
+  const multipliers: Record<string, number> = {
+    '1h': 8,   // 8 hourly payments = 1 eight-hour period
+    '4h': 2,   // 2 four-hour payments = 1 eight-hour period
+    '8h': 1,   // Already 8h interval
+  };
+
+  const multiplier = multipliers[fundingInterval] || 1;
+  const normalizedRate = rate * multiplier;
+
+  console.log(`[FundingNormalization] ${fundingRate} (${fundingInterval}) → ${normalizedRate.toFixed(6)} (8h normalized), multiplier: ${multiplier}x`);
+
+  return normalizedRate;
 }
 
 /**
@@ -365,6 +389,7 @@ export async function GET(request: NextRequest) {
                 fundingRate: r.fundingRate,
                 nextFundingTime: r.nextFundingTime,
                 lastPrice: r.markPrice,
+                fundingIntervalFromApi: r.fundingInterval, // Pass through from CCXT if available
               };
             })
           };
@@ -408,6 +433,7 @@ export async function GET(request: NextRequest) {
               originalSymbol: r.symbol, // Keep original for reference
               fundingRate: r.fundingRate.toString(),
               nextFundingTime: r.nextSettleTime,
+              fundingIntervalFromApi: r.collectCycle, // Funding interval from MEXC API (1, 4, or 8 hours)
               lastPrice: r.lastPrice?.toString() || '0',
             }))
           };
@@ -444,16 +470,42 @@ export async function GET(request: NextRequest) {
           symbolMap.set(rate.symbol, []);
         }
 
-        // Determine funding interval based on exchange and next funding time
-        const fundingInterval = determineFundingInterval(result.exchange, rate.nextFundingTime);
+        // Get funding interval from multiple sources (priority order):
+        // 1. CCXT API (if provided by exchange)
+        // 2. Default exchange interval (verified for each exchange)
+        let fundingIntervalHours: number;
+        let fundingInterval: string;
+
+        if (rate.fundingIntervalFromApi && rate.fundingIntervalFromApi > 0) {
+          // CCXT provided the interval directly from the exchange API
+          fundingIntervalHours = rate.fundingIntervalFromApi;
+          fundingInterval = `${fundingIntervalHours}h`;
+          console.log(`[FundingInterval] ${result.exchange} ${rate.symbol}: CCXT provided interval: ${fundingInterval}`);
+        } else {
+          // Use verified default interval for exchange
+          // All major exchanges use 8h intervals (verified via direct API calls)
+          fundingInterval = getDefaultFundingInterval(result.exchange);
+          fundingIntervalHours = parseInt(fundingInterval);
+          console.log(`[FundingInterval] ${result.exchange} ${rate.symbol}: Using default ${fundingInterval} interval`);
+        }
+
+        // Normalize funding rate to 8h interval for backend sorting only
+        const normalizedFundingRate = normalizeFundingRateTo8h(rate.fundingRate, fundingInterval);
+
+        // Debug log for verification
+        const nextTime = new Date(rate.nextFundingTime);
+        const timeUntil = (rate.nextFundingTime - Date.now()) / (1000 * 60 * 60);
+        console.log(`[FundingInterval] ${result.exchange} ${rate.symbol}: interval=${fundingInterval}, nextFunding=${nextTime.toISOString()}, hoursUntil=${timeUntil.toFixed(2)}h, rate=${rate.fundingRate}, normalized=${normalizedFundingRate.toFixed(6)}`);
+
 
         symbolMap.get(rate.symbol)!.push({
           exchange: result.exchange,
           credentialId: result.credentialId,
           environment: result.environment,
-          fundingRate: rate.fundingRate,
-          nextFundingTime: rate.nextFundingTime,
-          fundingInterval,
+          fundingRate: rate.fundingRate, // Original funding rate for display
+          fundingRateNormalized: normalizedFundingRate, // For backend sorting
+          nextFundingTime: rate.nextFundingTime, // Frontend calculates interval from this
+          fundingInterval, // Calculated from real data!
           originalSymbol: rate.originalSymbol || rate.symbol,
           lastPrice: rate.lastPrice,
         });
@@ -480,21 +532,54 @@ export async function GET(request: NextRequest) {
       if (exchanges.length < 2) return;
 
       // Debug: Show all funding rates and prices before sorting
-      console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
-        exchanges.map(e => `${e.exchange}=${e.fundingRate} ($${e.lastPrice})`).join(', '));
+      // console.log(`[Arbitrage] Analyzing "${symbol}" with ${exchanges.length} exchanges:`,
+      //   exchanges.map(e => `${e.exchange}=${e.fundingRate} (${e.fundingInterval}) [normalized: ${e.fundingRateNormalized.toFixed(6)}] ($${e.lastPrice})`).join(', '));
 
-      // Sort by FUNDING RATE for funding arbitrage
-      // Primary (Long): lowest funding rate (most negative) - we receive more funding
-      // Hedge (Short): highest funding rate (most positive/least negative) - we pay less funding
-      const sortedExchanges = [...exchanges].sort((a, b) =>
-        parseFloat(a.fundingRate) - parseFloat(b.fundingRate)
+      // Calculate average price for normalization
+      const avgPrice = exchanges.reduce((sum, e) => sum + parseFloat(e.lastPrice), 0) / exchanges.length;
+
+      // Score each exchange for LONG and SHORT positions
+      // LONG score: lower funding rate (more negative) + higher price = better
+      // SHORT score: higher funding rate (more positive) + lower price = better
+      const exchangesWithScores = exchanges.map(e => {
+        const price = parseFloat(e.lastPrice);
+        const priceDeviationPercent = ((price - avgPrice) / avgPrice) * 100;
+
+        // LONG score: Funding rate weight 70%, price deviation weight 30%
+        // Lower (more negative) funding = better for LONG
+        // Higher price = better for LONG (entry spread profit)
+        const longScore = (e.fundingRateNormalized * 0.7) + (-priceDeviationPercent * 0.003);
+
+        // SHORT score: Funding rate weight 70%, price deviation weight 30%
+        // Higher (more positive) funding = better for SHORT
+        // Lower price = better for SHORT (entry spread profit)
+        const shortScore = (-e.fundingRateNormalized * 0.7) + (-priceDeviationPercent * 0.003);
+
+        return {
+          ...e,
+          longScore,
+          shortScore,
+          priceDeviationPercent,
+        };
+      });
+
+      // Select bestLong: most negative funding + highest price
+      const primaryExchange = exchangesWithScores.reduce((best, current) =>
+        current.longScore < best.longScore ? current : best
       );
 
-      // Calculate funding spread between primary (bestLong) and hedge (bestShort) exchanges
-      // bestLong = lowest funding rate (primary exchange - LONG position receives funding)
-      // bestShort = highest funding rate (hedge exchange - SHORT position pays less)
-      const primaryExchange = sortedExchanges[0]; // Lowest (most negative) funding rate
-      const hedgeExchange = sortedExchanges[sortedExchanges.length - 1]; // Highest (least negative/most positive) funding rate
+      // Select bestShort: most positive funding + lowest price
+      const hedgeExchange = exchangesWithScores.reduce((best, current) =>
+        current.shortScore < best.shortScore ? current : best
+      );
+
+      // console.log(`[Arbitrage] Exchange scoring for "${symbol}":`,
+      //   exchangesWithScores.map(e =>
+      //     `${e.exchange}: price=$${e.lastPrice} (${e.priceDeviationPercent.toFixed(2)}%), ` +
+      //     `funding=${e.fundingRateNormalized.toFixed(6)}, ` +
+      //     `longScore=${e.longScore.toFixed(6)}, shortScore=${e.shortScore.toFixed(6)}`
+      //   ).join(' | '));
+      // console.log(`[Arbitrage] Selected for "${symbol}": bestLong=${primaryExchange.exchange}, bestShort=${hedgeExchange.exchange}`);
 
       const primaryPrice = parseFloat(primaryExchange.lastPrice);
       const hedgePrice = parseFloat(hedgeExchange.lastPrice);
@@ -509,13 +594,18 @@ export async function GET(request: NextRequest) {
       // Calculate absolute price difference in USDT
       const priceSpreadUsdt = hedgePrice - primaryPrice;
 
+      // Calculate funding spread (difference between normalized rates)
+      const fundingSpread = hedgeExchange.fundingRateNormalized - primaryExchange.fundingRateNormalized;
+      const fundingSpreadPercent = fundingSpread * 100;
+
       // Log detailed spread calculation
-      console.log(`[Arbitrage] ${symbol} spread calculation:`);
-      console.log(`  - Primary exchange (${primaryExchange.exchange}): $${primaryPrice}`);
-      console.log(`  - Hedge exchange (${hedgeExchange.exchange}): $${hedgePrice}`);
-      console.log(`  - Price spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(4)}%)`);
-      console.log(`  - Price spread USDT: $${priceSpreadUsdt.toFixed(3)}`);
-      console.log(`  - Is opportunity: ${Math.abs(spread) > 0.0001}`);
+      // console.log(`[Arbitrage] ${symbol} spread calculation:`);
+      // console.log(`  - Primary exchange (${primaryExchange.exchange}): $${primaryPrice}, funding: ${primaryExchange.fundingRate} (${primaryExchange.fundingInterval}) [normalized: ${primaryExchange.fundingRateNormalized.toFixed(6)}]`);
+      // console.log(`  - Hedge exchange (${hedgeExchange.exchange}): $${hedgePrice}, funding: ${hedgeExchange.fundingRate} (${hedgeExchange.fundingInterval}) [normalized: ${hedgeExchange.fundingRateNormalized.toFixed(6)}]`);
+      // console.log(`  - Price spread: ${spread.toFixed(6)} (${spreadPercent.toFixed(4)}%)`);
+      // console.log(`  - Price spread USDT: $${priceSpreadUsdt.toFixed(3)}`);
+      // console.log(`  - Funding spread (normalized): ${fundingSpread.toFixed(6)} (${fundingSpreadPercent.toFixed(4)}% per 8h)`);
+      // console.log(`  - Is opportunity: ${Math.abs(spread) > 0.0001}`);
 
       // Filter out unrealistic spreads (likely symbol mismatch or data errors)
       // Maximum realistic spread: 100% (1.0 in decimal)
@@ -539,34 +629,67 @@ export async function GET(request: NextRequest) {
 
       arbitrageOpportunities.push({
         symbol,
-        exchanges: sortedExchanges,
+        exchanges: exchangesWithScores,
         spread: spread.toFixed(6),
         spreadPercent: spreadPercent.toFixed(2),
         priceSpreadUsdt: priceSpreadUsdt.toFixed(3),
+        // Funding spread (normalized)
+        fundingSpread: fundingSpread.toFixed(6),
+        fundingSpreadPercent: fundingSpreadPercent.toFixed(4),
         bestLong: {
-          exchange: sortedExchanges[0].exchange,
-          credentialId: sortedExchanges[0].credentialId,
-          fundingRate: sortedExchanges[0].fundingRate,
-          environment: sortedExchanges[0].environment,
+          exchange: primaryExchange.exchange,
+          symbol: primaryExchange.symbol,
+          originalSymbol: primaryExchange.originalSymbol,
+          fundingRate: primaryExchange.fundingRate, // Original rate
+          fundingRateNormalized: primaryExchange.fundingRateNormalized, // Normalized to 8h
+          nextFundingTime: primaryExchange.nextFundingTime,
+          lastPrice: primaryExchange.lastPrice,
+          fundingInterval: primaryExchange.fundingInterval,
+          credentialId: primaryExchange.credentialId,
+          environment: primaryExchange.environment,
+          // Optional fields
+          volume24h: primaryExchange.volume24h,
+          openInterest: primaryExchange.openInterest,
+          high24h: primaryExchange.high24h,
+          low24h: primaryExchange.low24h,
         },
         bestShort: {
-          exchange: sortedExchanges[sortedExchanges.length - 1].exchange,
-          credentialId: sortedExchanges[sortedExchanges.length - 1].credentialId,
-          fundingRate: sortedExchanges[sortedExchanges.length - 1].fundingRate,
-          environment: sortedExchanges[sortedExchanges.length - 1].environment,
+          exchange: hedgeExchange.exchange,
+          symbol: hedgeExchange.symbol,
+          originalSymbol: hedgeExchange.originalSymbol,
+          fundingRate: hedgeExchange.fundingRate, // Original rate
+          fundingRateNormalized: hedgeExchange.fundingRateNormalized, // Normalized to 8h
+          nextFundingTime: hedgeExchange.nextFundingTime,
+          lastPrice: hedgeExchange.lastPrice,
+          fundingInterval: hedgeExchange.fundingInterval,
+          credentialId: hedgeExchange.credentialId,
+          environment: hedgeExchange.environment,
+          // Optional fields
+          volume24h: hedgeExchange.volume24h,
+          openInterest: hedgeExchange.openInterest,
+          high24h: hedgeExchange.high24h,
+          low24h: hedgeExchange.low24h,
         },
         arbitrageOpportunity,
       });
     });
 
-    // Sort by absolute spread (highest first)
-    arbitrageOpportunities.sort((a, b) => Math.abs(parseFloat(b.spread)) - Math.abs(parseFloat(a.spread)));
+    // Sort by FUNDING SPREAD (normalized) - this is the primary profit source in funding arbitrage
+    // Secondary sort by price spread to break ties
+    arbitrageOpportunities.sort((a, b) => {
+      const fundingDiff = Math.abs(parseFloat(b.fundingSpread)) - Math.abs(parseFloat(a.fundingSpread));
+      if (Math.abs(fundingDiff) > 0.000001) { // If funding spreads are different
+        return fundingDiff;
+      }
+      // If funding spreads are very similar, use price spread as tiebreaker
+      return Math.abs(parseFloat(b.spread)) - Math.abs(parseFloat(a.spread));
+    });
 
-    console.log(`[Arbitrage] Found ${arbitrageOpportunities.length} symbols with cross-exchange data`);
-    console.log(`[Arbitrage] Arbitrage opportunities: ${arbitrageOpportunities.filter(o => o.arbitrageOpportunity).length}`);
+    // console.log(`[Arbitrage] Found ${arbitrageOpportunities.length} symbols with cross-exchange data`);
+    // console.log(`[Arbitrage] Arbitrage opportunities: ${arbitrageOpportunities.filter(o => o.arbitrageOpportunity).length}`);
 
     // 6. Fetch market cap data from CoinGecko
-    console.log('[Arbitrage] Fetching market cap data from CoinGecko...');
+    // console.log('[Arbitrage] Fetching market cap data from CoinGecko...');
     const symbols = arbitrageOpportunities.map(o => o.symbol);
     const marketCaps = await CoinGeckoService.getMarketCaps(symbols);
 

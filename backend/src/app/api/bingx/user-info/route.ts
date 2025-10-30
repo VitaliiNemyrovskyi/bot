@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     // Account Info
     if (accountInfo.status === 'fulfilled') {
       response.data.accountInfo = accountInfo.value;
-      console.log('[BingX UserInfo] Account info fetched successfully');
+      // console.log('[BingX UserInfo] Account info fetched successfully');
     } else {
       response.data.accountInfo = { error: 'Failed to fetch account info' };
       console.error('[BingX UserInfo] Account info error:', accountInfo.reason);
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
     // Wallet Balance
     if (walletBalance.status === 'fulfilled') {
       response.data.walletBalance = walletBalance.value;
-      console.log('[BingX UserInfo] Wallet balance fetched successfully');
+      // console.log('[BingX UserInfo] Wallet balance fetched successfully');
     } else {
       response.data.walletBalance = { error: 'Failed to fetch wallet balance' };
       console.error('[BingX UserInfo] Wallet balance error:', walletBalance.reason);
@@ -138,13 +138,13 @@ export async function GET(request: NextRequest) {
     if (tickers.status === 'fulfilled') {
       const btcTicker = tickers.value.find(t => t.symbol === 'BTC-USDT');
       response.data.marketReference = btcTicker || tickers.value[0] || null;
-      console.log('[BingX UserInfo] Market reference data fetched successfully');
+      // console.log('[BingX UserInfo] Market reference data fetched successfully');
     } else {
       response.data.marketReference = null;
       console.error('[BingX UserInfo] Market reference error:', tickers.reason);
     }
 
-    console.log('[BingX UserInfo] User info compiled successfully');
+    // console.log('[BingX UserInfo] User info compiled successfully');
 
     return NextResponse.json(response);
 

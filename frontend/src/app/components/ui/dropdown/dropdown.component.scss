@@ -15,7 +15,7 @@
   justify-content: space-between;
   width: 100%;
   padding: 8px 12px;
-  background: var(--background-secondary);
+  background-color: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   color: var(--text-primary);
@@ -315,6 +315,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+::ng-deep .exchange {
+  display: inline-block;
+  font-weight: bold;
 }
 
 // Responsive

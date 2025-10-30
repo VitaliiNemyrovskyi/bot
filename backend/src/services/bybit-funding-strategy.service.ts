@@ -136,7 +136,7 @@ export class BybitFundingStrategyService extends EventEmitter {
    * Initialize service and restore active strategies from database
    */
   async initialize(): Promise<void> {
-    console.log('[BybitFundingStrategy] Initializing service and restoring active strategies...');
+    // console.log('[BybitFundingStrategy] Initializing service and restoring active strategies...');
 
     try {
       // Query database for active strategies
@@ -156,7 +156,7 @@ export class BybitFundingStrategyService extends EventEmitter {
       });
 
       if (activeSubscriptions.length === 0) {
-        console.log('[BybitFundingStrategy] No active strategies to restore');
+        // console.log('[BybitFundingStrategy] No active strategies to restore');
         return;
       }
 

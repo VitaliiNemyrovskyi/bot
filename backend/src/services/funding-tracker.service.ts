@@ -54,7 +54,7 @@ export class FundingTrackerService {
    * Start periodic funding tracking for all active positions
    */
   startTracking(): void {
-    console.log('[FundingTracker] Starting periodic funding tracking...');
+    // console.log('[FundingTracker] Starting periodic funding tracking...');
 
     // Run immediately
     this.updateAllPositions();
@@ -72,7 +72,7 @@ export class FundingTrackerService {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
-      console.log('[FundingTracker] Stopped periodic funding tracking');
+      // console.log('[FundingTracker] Stopped periodic funding tracking');
     }
   }
 
@@ -81,7 +81,7 @@ export class FundingTrackerService {
    */
   async updateAllPositions(): Promise<void> {
     try {
-      console.log('[FundingTracker] Updating funding data for all active positions...');
+      // console.log('[FundingTracker] Updating funding data for all active positions...');
 
       // Get all active positions (ACTIVE status)
       const positions = await this.prisma.graduatedEntryPosition.findMany({
@@ -102,7 +102,7 @@ export class FundingTrackerService {
         }
       }
 
-      console.log('[FundingTracker] Funding update completed');
+      // console.log('[FundingTracker] Funding update completed');
     } catch (error: any) {
       console.error('[FundingTracker] Error in updateAllPositions:', error.message);
     }
@@ -150,21 +150,52 @@ export class FundingTrackerService {
         return null;
       }
 
-      // Calculate totals
-      const grossProfit = (primaryData?.totalFunding || 0) + (hedgeData?.totalFunding || 0);
+      // Calculate entry price spread profit
+      // For arbitrage: Long on one exchange, Short on another
+      // Entry spread profit = (Primary notional value) - (Hedge notional value)
+      // where notional value = entry_price × leverage × quantity
+      let entrySpreadProfit = 0;
+      if (position.primaryEntryPrice && position.hedgeEntryPrice) {
+        const primaryNotional = position.primaryEntryPrice * position.primaryLeverage * position.primaryQuantity;
+        const hedgeNotional = position.hedgeEntryPrice * position.hedgeLeverage * position.hedgeQuantity;
+
+        // The spread profit depends on which side is long vs short
+        // If primary is LONG and hedge is SHORT: profit when primary entry > hedge entry
+        // If primary is SHORT and hedge is LONG: profit when hedge entry > primary entry
+        if (position.primarySide === 'long') {
+          entrySpreadProfit = primaryNotional - hedgeNotional;
+        } else {
+          entrySpreadProfit = hedgeNotional - primaryNotional;
+        }
+
+        console.log(`[FundingTracker] Entry spread calculation for ${positionId}:`, {
+          primaryEntry: position.primaryEntryPrice,
+          hedgeEntry: position.hedgeEntryPrice,
+          primaryNotional,
+          hedgeNotional,
+          primarySide: position.primarySide,
+          hedgeSide: position.hedgeSide,
+          entrySpreadProfit,
+        });
+      }
+
+      // Calculate totals including entry spread
+      const fundingProfit = (primaryData?.totalFunding || 0) + (hedgeData?.totalFunding || 0);
+      const grossProfit = fundingProfit + entrySpreadProfit;  // Include entry spread in gross profit
       const totalFees = (primaryData?.fees || 0) + (hedgeData?.fees || 0);
       const netProfit = grossProfit - totalFees;
 
-      // IMPORTANT: Trust real fees from exchange API over calculated fees
-      // Graduated entry calculates fees based on fee rates (which may be default 0.055% if not synced)
-      // Exchange API provides ACTUAL fees paid, which is the source of truth
-      // We use exchange fees if available, otherwise keep existing calculated fees
+      // IMPORTANT: Fees calculation strategy
+      // 1. Graduated entry service calculates and saves ENTRY fees when position opens
+      // 2. Exchange API returns CUMULATIVE fees (entry + ongoing + exit)
+      // 3. We take the MAX to ensure we never lose entry fees if exchange API lags
+      // 4. As the position continues, exchange API fees will grow and become the source of truth
       const primaryFeesUpdate = primaryData?.fees !== undefined
-        ? primaryData.fees  // Use real fees from exchange API
+        ? Math.max(primaryData.fees, position.primaryTradingFees || 0)  // Use MAX of API fees vs existing fees
         : (position.primaryTradingFees || 0);  // Keep existing fees if API data unavailable
 
       const hedgeFeesUpdate = hedgeData?.fees !== undefined
-        ? hedgeData.fees  // Use real fees from exchange API
+        ? Math.max(hedgeData.fees, position.hedgeTradingFees || 0)  // Use MAX of API fees vs existing fees
         : (position.hedgeTradingFees || 0);  // Keep existing fees if API data unavailable
 
       const totalFeesUpdate = primaryFeesUpdate + hedgeFeesUpdate;

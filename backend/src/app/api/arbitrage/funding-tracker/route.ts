@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { positionId } = body;
 
-    console.log('[API] Funding tracker update requested by user', user.userId, 'for position:', positionId || 'ALL');
+    // console.log('[API] Funding tracker update requested by user', user.userId, 'for position:', positionId || 'ALL');
 
     if (positionId) {
       // Update specific position

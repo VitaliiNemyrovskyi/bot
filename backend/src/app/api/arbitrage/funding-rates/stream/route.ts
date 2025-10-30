@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
           if (isClosing) return;
           isClosing = true;
 
-          console.log('[ArbitrageStream] Cleaning up stream');
+          // console.log('[ArbitrageStream] Cleaning up stream');
 
           // Unsubscribe from all WebSocket streams
           unsubscribeFunctions.forEach((unsubscribe) => {
@@ -304,7 +304,7 @@ export async function GET(request: NextRequest) {
             console.error('[ArbitrageStream] Error closing controller:', error.message);
           }
 
-          console.log('[ArbitrageStream] Stream cleaned up');
+          // console.log('[ArbitrageStream] Stream cleaned up');
         };
 
         // Handle client disconnect

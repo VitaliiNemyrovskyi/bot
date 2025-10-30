@@ -1,0 +1,16 @@
+<div class="toast-container">
+  @for (toast of toasts(); track toast.id) {
+    <div [class]="getToastClasses(toast)">
+      <div class="toast__icon">{{ getIcon(toast.variant) }}</div>
+      <div class="toast__content">
+        <div class="toast__message" [innerHTML]="toast.message"></div>
+      </div>
+      <button
+        class="toast__close"
+        (click)="close(toast)"
+        aria-label="Close notification">
+        ×
+      </button>
+    </div>
+  }
+</div>

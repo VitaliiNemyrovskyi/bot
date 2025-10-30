@@ -117,12 +117,16 @@
         <table class="positions-table">
           <thead>
             <tr>
+              <th>Type</th>
               <th>{{ translate('arbitrage.positions.table.symbol') }}</th>
               <th>{{ translate('arbitrage.positions.table.exchanges') }}</th>
               <th>{{ translate('arbitrage.positions.table.margin') }}</th>
+              <th>Entry Time</th>
+              <th>Funding Earned</th>
+              <th>Gross Profit</th>
+              <th>Net Profit</th>
               <th>{{ translate('arbitrage.positions.table.entrySpread') }}</th>
               <th>{{ translate('arbitrage.positions.table.currentSpread') }}</th>
-              <th>{{ translate('arbitrage.positions.table.unrealizedPnl') }}</th>
               <th>{{ translate('arbitrage.positions.table.holdingTime') }}</th>
               <th>{{ translate('arbitrage.positions.table.status') }}</th>
               <th>{{ translate('arbitrage.positions.table.actions') }}</th>
@@ -130,13 +134,23 @@
           </thead>
           <tbody>
             <tr *ngFor="let position of filteredPositions()" class="position-row">
+              <td class="type-cell">
+                <span class="badge" [class.badge-price]="position.type === 'price'" [class.badge-graduated]="position.type === 'graduated'">
+                  {{ position.type === 'price' ? 'Price' : 'Graduated' }}
+                </span>
+              </td>
+
               <td class="symbol-cell">
                 <div class="symbol-info">
                   <div class="symbol">{{ position.symbol }}</div>
-                  <div class="exchanges">
-                    <span class="exchange primary">{{ position.primaryExchange }}</span>
-                    <span class="separator">→</span>
-                    <span class="exchange hedge">{{ position.hedgeExchange }}</span>
+                  <div class="position-sides">
+                    <span class="side" [class.side-long]="position.primarySide === 'LONG'" [class.side-short]="position.primarySide === 'SHORT'">
+                      {{ position.primarySide }}
+                    </span>
+                    <span class="separator">/</span>
+                    <span class="side" [class.side-long]="position.hedgeSide === 'LONG'" [class.side-short]="position.hedgeSide === 'SHORT'">
+                      {{ position.hedgeSide }}
+                    </span>
                   </div>
                 </div>
               </td>
@@ -144,41 +158,51 @@
               <td class="exchanges-cell">
                 <div class="exchanges-info">
                   <div class="exchange-detail">
-                    <span class="exchange-label">{{ translate('arbitrage.positions.exchanges.primary') }}:</span>
-                    <span class="exchange-name">{{ position.primaryExchange }}</span>
+                    <span class="exchange-name primary">{{ position.primaryExchange }}</span>
+                    <span class="leverage">{{ position.primaryLeverage }}x</span>
                   </div>
                   <div class="exchange-detail">
-                    <span class="exchange-label">{{ translate('arbitrage.positions.exchanges.hedge') }}:</span>
-                    <span class="exchange-name">{{ position.hedgeExchange }}</span>
+                    <span class="exchange-name hedge">{{ position.hedgeExchange }}</span>
+                    <span class="leverage">{{ position.hedgeLeverage }}x</span>
                   </div>
                 </div>
               </td>
-              
+
               <td class="margin-cell">
                 <div class="margin-info">
-                  <div class="margin-detail">
-                    <span class="margin-label">{{ translate('arbitrage.positions.exchanges.primary') }}:</span>
-                    <span class="margin-value">${{ position.primaryMargin.toFixed(2) }}</span>
-                  </div>
-                  <div class="margin-detail">
-                    <span class="margin-label">{{ translate('arbitrage.positions.exchanges.hedge') }}:</span>
-                    <span class="margin-value">${{ position.hedgeMargin.toFixed(2) }}</span>
-                  </div>
+                  <div class="margin-value">${{ position.primaryMargin.toFixed(2) }}</div>
+                  <div class="margin-value">${{ position.hedgeMargin.toFixed(2) }}</div>
                 </div>
               </td>
-              
+
+              <td class="entry-time-cell">
+                <span class="entry-time">{{ formatEntryTime(position.openedAt) }}</span>
+              </td>
+
+              <td class="funding-cell">
+                <span class="funding-value" [class.text-success]="position.totalFundingEarned > 0" [class.text-danger]="position.totalFundingEarned < 0">
+                  {{ position.totalFundingEarned >= 0 ? '+' : '' }}${{ position.totalFundingEarned.toFixed(4) }}
+                </span>
+              </td>
+
+              <td class="profit-cell">
+                <span class="profit-value" [class.text-success]="position.grossProfit > 0" [class.text-danger]="position.grossProfit < 0">
+                  {{ position.grossProfit >= 0 ? '+' : '' }}${{ position.grossProfit.toFixed(4) }}
+                </span>
+              </td>
+
+              <td class="profit-cell">
+                <span class="profit-value" [class.text-success]="position.netProfit > 0" [class.text-danger]="position.netProfit < 0">
+                  {{ position.netProfit >= 0 ? '+' : '' }}${{ position.netProfit.toFixed(4) }}
+                </span>
+              </td>
+
               <td class="spread-cell">
                 <span class="spread-value">{{ getEntrySpreadDisplay(position) }}</span>
               </td>
-              
+
               <td class="spread-cell">
                 <span class="spread-value">{{ getCurrentSpreadDisplay(position) }}</span>
-              </td>
-              
-              <td class="pnl-cell">
-                <span class="pnl-value" [class]="getPnlDisplay(position).textClass">
-                  {{ formatPnl(getUnrealizedPnl(position)) }}
-                </span>
               </td>
               
               <td class="time-cell">
@@ -192,14 +216,17 @@
               </td>
               
               <td class="actions-cell">
-                <ui-button 
-                  *ngIf="position.status === 'ACTIVE'"
+                <ui-button
+                  *ngIf="position.status === 'ACTIVE' && position.type === 'price'"
                   variant="secondary"
                   size="small"
                   class="danger"
                   (click)="openCloseDialog(position)">
                   {{ translate('arbitrage.positions.close.button') }}
                 </ui-button>
+                <span *ngIf="position.status === 'ACTIVE' && position.type === 'graduated'" class="text-muted">
+                  Auto-managed
+                </span>
               </td>
             </tr>
           </tbody>

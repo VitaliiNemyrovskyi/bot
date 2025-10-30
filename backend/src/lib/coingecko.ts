@@ -202,7 +202,7 @@ export class CoinGeckoService {
 
     const url = `${this.BASE_URL}/coins/markets?vs_currency=usd&ids=${coinIds}&order=market_cap_desc&per_page=250&page=1&sparkline=false`;
 
-    console.log('[CoinGecko] Fetching market data from API...');
+    // console.log('[CoinGecko] Fetching market data from API...');
 
     const response = await fetch(url, {
       headers: {
@@ -331,7 +331,7 @@ export class CoinGeckoService {
    * Preload cache (useful for warming up on server start)
    */
   public static async preloadCache(): Promise<void> {
-    console.log('[CoinGecko] Preloading cache...');
+    // console.log('[CoinGecko] Preloading cache...');
     await this.updateCache();
   }
 }

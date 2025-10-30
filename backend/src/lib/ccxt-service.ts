@@ -163,16 +163,69 @@ export class CCXTService {
     fundingRate: string;
     nextFundingTime: number;
     markPrice: string;
+    fundingInterval?: number; // Funding interval in hours (e.g., 1, 4, 8)
   }>> {
     try {
       const fundingRates = await this.exchange.fetchFundingRates();
 
-      return Object.entries(fundingRates).map(([symbol, rate]: [string, any]) => ({
-        symbol,
-        fundingRate: rate.fundingRate?.toString() || '0',
-        nextFundingTime: rate.nextFundingTimestamp || rate.fundingTimestamp || Date.now(),
-        markPrice: rate.markPrice?.toString() || '0',
-      }));
+      // Ensure markets are loaded to access contract info
+      if (!this.exchange.markets || Object.keys(this.exchange.markets).length === 0) {
+        await this.loadMarkets();
+      }
+
+      return Object.entries(fundingRates).map(([symbol, rate]: [string, any]) => {
+        // Extract funding interval from CCXT response
+        // Different exchanges return this data differently
+        let intervalHours: number | undefined;
+
+        // Method 1: Check rate object itself
+        if (rate.fundingInterval) {
+          // Some exchanges return interval in milliseconds or hours
+          intervalHours = typeof rate.fundingInterval === 'number'
+            ? (rate.fundingInterval > 24 ? rate.fundingInterval / (1000 * 60 * 60) : rate.fundingInterval)
+            : parseInt(rate.fundingInterval);
+        }
+        // Method 2: Check raw exchange response (rate.info)
+        else if (rate.info?.fundingInterval) {
+          const val = rate.info.fundingInterval;
+          intervalHours = typeof val === 'string' ? parseInt(val) : val;
+        } else if (rate.info?.fundingIntervalHours) {
+          intervalHours = parseInt(rate.info.fundingIntervalHours);
+        } else if (rate.info?.funding_interval) {
+          intervalHours = parseInt(rate.info.funding_interval);
+        }
+        // Method 3: Check market info from loadMarkets
+        else if (this.exchange.markets && this.exchange.markets[symbol]) {
+          const market = this.exchange.markets[symbol];
+          if (market.info?.fundingInterval) {
+            const val = market.info.fundingInterval;
+            intervalHours = typeof val === 'string' ? parseInt(val) : val;
+          } else if (market.info?.funding_interval) {
+            intervalHours = parseInt(market.info.funding_interval);
+          }
+        }
+
+        // Debug log for BTC symbols to see what data is available
+        if (symbol.includes('BTC')) {
+          const market = this.exchange.markets?.[symbol];
+          console.log(`[CCXTService] ${this.exchangeId} ${symbol} funding interval extraction:`, {
+            from_rate: rate.fundingInterval,
+            from_rate_info: rate.info?.fundingInterval || rate.info?.funding_interval,
+            from_market: market?.info?.fundingInterval || market?.info?.funding_interval,
+            extracted: intervalHours,
+            rateInfoKeys: rate.info ? Object.keys(rate.info).slice(0, 10) : [],
+            marketInfoKeys: market?.info ? Object.keys(market.info).slice(0, 10) : []
+          });
+        }
+
+        return {
+          symbol,
+          fundingRate: rate.fundingRate?.toString() || '0',
+          nextFundingTime: rate.nextFundingTimestamp || rate.fundingTimestamp || Date.now(),
+          markPrice: rate.markPrice?.toString() || '0',
+          fundingInterval: intervalHours,
+        };
+      });
     } catch (error: any) {
       console.error(`[CCXTService] Error fetching all funding rates:`, error.message);
       throw error;
