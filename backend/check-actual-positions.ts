@@ -41,8 +41,7 @@ async function main() {
 
       const bybitConnector = new BybitConnector(
         primaryCred.apiKey,
-        primaryCred.apiSecret,
-        false // mainnet
+        primaryCred.apiSecret
       );
 
       await bybitConnector.initialize();
@@ -62,7 +61,7 @@ async function main() {
       }
 
       // Try to find AVNTUSDT specifically
-      const avntPosition = bybitPositions.find((p: any) => {
+      const avntPosition = bybitPositions.find((p: typeof bybitPositions[number]) => {
         const posSymbol = p.symbol?.replace(/[-/:_]/g, '')?.toUpperCase();
         const targetSymbol = 'AVNTUSDT';
         console.log(`  Comparing: "${posSymbol}" vs "${targetSymbol}"`);
@@ -112,7 +111,7 @@ async function main() {
       }
 
       // Try to find AVNTUSDT specifically
-      const avntPosition = gateioPositions.find((p: any) => {
+      const avntPosition = gateioPositions.find((p: typeof gateioPositions[number]) => {
         const posContract = (p.contract || p.symbol)?.replace(/[-/:_]/g, '')?.toUpperCase();
         const targetSymbol = 'AVNTUSDT';
         console.log(`  Comparing: "${posContract}" vs "${targetSymbol}"`);
@@ -128,9 +127,10 @@ async function main() {
 
     console.log('');
     console.log('='.repeat(80));
-  } catch (error: any) {
-    console.error('Error:', error.message);
-    console.error(error.stack);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error:', err.message);
+    console.error(err.stack);
   } finally {
     await prisma.$disconnect();
   }

@@ -47,9 +47,9 @@ function initMockData() {
   }
 }
 
-function generateMockId(): string {
-  return Math.random().toString(36).substr(2, 9);
-}
+// function generateMockId(): string {
+//   return Math.random().toString(36).substr(2, 9);
+// }
 
 export async function GET(request: NextRequest) {
   try {

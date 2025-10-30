@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
 import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
@@ -10,16 +9,13 @@ import { CCXTService } from '@/lib/ccxt-service';
 /**
  * Fetch funding rates from an exchange using CCXT with fallback to legacy services
  * @param credential - Exchange credential
- * @param userId - User ID for logging
  * @returns Exchange funding rates or null on failure
  */
 async function fetchExchangeFundingRates(
-  credential: any,
-  userId: string
+  credential: any
 ): Promise<{
   credentialId: string;
   exchange: string;
-  environment: string;
   rates: Array<{
     symbol: string;
     originalSymbol?: string;
@@ -30,7 +26,7 @@ async function fetchExchangeFundingRates(
 } | null> {
   const exchangeUpper = credential.exchange.toUpperCase();
 
-  console.log(`[Arbitrage] Fetching funding rates for ${exchangeUpper} (${credential.environment})`);
+  console.log(`[Arbitrage] Fetching funding rates for ${exchangeUpper}`);
   console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
 
   // Try CCXT first for all exchanges
@@ -40,7 +36,6 @@ async function fetchExchangeFundingRates(
     const ccxtService = new CCXTService(credential.exchange.toLowerCase(), {
       apiKey: credential.apiKey,
       apiSecret: credential.apiSecret,
-      testnet: credential.environment === 'TESTNET',
       enableRateLimit: true,
     });
 
@@ -52,7 +47,6 @@ async function fetchExchangeFundingRates(
     return {
       credentialId: credential.id,
       exchange: credential.exchange,
-      environment: credential.environment,
       rates: fundingRates.map(r => {
         // Normalize symbol: remove slashes, special characters, and perpetual contract suffixes
         // Examples:
@@ -78,33 +72,13 @@ async function fetchExchangeFundingRates(
     // Fallback to legacy services
     try {
       if (exchangeUpper === 'BYBIT') {
-        const bybitService = new BybitService({
-          apiKey: credential.apiKey,
-          apiSecret: credential.apiSecret,
-          testnet: credential.environment === 'TESTNET',
-          enableRateLimit: true,
-          userId,
-        });
-
-        const tickers = await bybitService.getTicker('linear');
-        console.log(`[Arbitrage] ${exchangeUpper} legacy - Successfully fetched ${tickers.length} tickers`);
-
-        return {
-          credentialId: credential.id,
-          exchange: credential.exchange,
-          environment: credential.environment,
-          rates: tickers.map(t => ({
-            symbol: t.symbol,
-            fundingRate: t.fundingRate,
-            nextFundingTime: t.nextFundingTime,
-            lastPrice: t.lastPrice,
-          }))
-        };
+        // BYBIT legacy service doesn't support funding rates, rely on CCXT
+        console.error(`[Arbitrage] ${exchangeUpper} - Legacy service not available for funding rates`);
+        return null;
       } else if (exchangeUpper === 'BINGX') {
         const bingxService = new BingXService({
           apiKey: credential.apiKey,
           apiSecret: credential.apiSecret,
-          testnet: credential.environment === 'TESTNET',
           enableRateLimit: true,
         });
 
@@ -117,7 +91,6 @@ async function fetchExchangeFundingRates(
         return {
           credentialId: credential.id,
           exchange: credential.exchange,
-          environment: credential.environment,
           rates: rates.map(r => ({
             symbol: r.symbol.replace(/-/g, ''), // Normalize symbol format (BTC-USDT -> BTCUSDT)
             originalSymbol: r.symbol, // Keep original for reference
@@ -264,7 +237,7 @@ export async function GET(request: NextRequest) {
 
     // 2. Load all active exchange credentials with decryption
     console.log(`[Arbitrage] Loading and decrypting all active credentials for user: ${userId}`);
-    const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
+    // const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
     const { EncryptionService } = await import('@/lib/encryption');
     const prismaModule = await import('@/lib/prisma');
     const prisma = prismaModule.default;
@@ -281,7 +254,7 @@ export async function GET(request: NextRequest) {
 
     // Decrypt each credential
     const validActiveCredentials = dbCredentials
-      .map((cred) => {
+      .map((cred: any) => {
         try {
           console.log(`[Arbitrage] Decrypting ${cred.exchange} credential ID: ${cred.id}`);
 
@@ -294,7 +267,6 @@ export async function GET(request: NextRequest) {
           return {
             id: cred.id,
             exchange: cred.exchange,
-            environment: cred.environment,
             apiKey,
             apiSecret,
             authToken,
@@ -307,7 +279,7 @@ export async function GET(request: NextRequest) {
           return null;
         }
       })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
+      .filter((c: any): c is NonNullable<typeof c> => c !== null);
 
     console.log(`[Arbitrage] Total valid credentials after decryption: ${validActiveCredentials.length}`);
 
@@ -326,12 +298,12 @@ export async function GET(request: NextRequest) {
 
     // 3. Fetch funding rates from all exchanges
     // Step 1: Fetch from non-MEXC exchanges first to build symbol list
-    const nonMexcCredentials = validActiveCredentials.filter(c => c.exchange !== 'MEXC');
-    const mexcCredentials = validActiveCredentials.filter(c => c.exchange === 'MEXC');
+    const nonMexcCredentials = validActiveCredentials.filter((c: any) => c.exchange !== 'MEXC');
+    const mexcCredentials = validActiveCredentials.filter((c: any) => c.exchange === 'MEXC');
 
     // Use the new helper function with CCXT + fallback
-    const nonMexcFetchPromises = nonMexcCredentials.map(credential =>
-      fetchExchangeFundingRates(credential, userId)
+    const nonMexcFetchPromises = nonMexcCredentials.map((credential: any) =>
+      fetchExchangeFundingRates(credential)
     );
 
     const nonMexcResults = await Promise.all(nonMexcFetchPromises);
@@ -339,18 +311,18 @@ export async function GET(request: NextRequest) {
 
     // Step 2: Build unique symbol list from non-MEXC exchanges
     const uniqueSymbols = new Set<string>();
-    validNonMexcResults.forEach(result => {
+    validNonMexcResults.forEach((result: any) => {
       if (result) {
-        result.rates.forEach(rate => uniqueSymbols.add(rate.symbol));
+        result.rates.forEach((rate: any) => uniqueSymbols.add(rate.symbol));
       }
     });
 
     console.log(`[Arbitrage] Found ${uniqueSymbols.size} unique symbols from non-MEXC exchanges`);
 
     // Step 3: Fetch MEXC funding rates only for symbols that exist on other exchanges
-    const mexcFetchPromises = mexcCredentials.map(async (credential) => {
+    const mexcFetchPromises = mexcCredentials.map(async (credential: any) => {
       try {
-        console.log(`[Arbitrage] Fetching funding rates for MEXC (${credential.environment})`);
+        console.log(`[Arbitrage] Fetching funding rates for MEXC`);
         console.log(`[Arbitrage] Credential details - ID: ${credential.id}, hasApiKey: ${!!credential.apiKey}, hasApiSecret: ${!!credential.apiSecret}`);
 
         // Try CCXT first for MEXC
@@ -360,7 +332,6 @@ export async function GET(request: NextRequest) {
           const ccxtService = new CCXTService('mexc', {
             apiKey: credential.apiKey,
             apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
             enableRateLimit: true,
           });
 
@@ -379,7 +350,6 @@ export async function GET(request: NextRequest) {
           return {
             credentialId: credential.id,
             exchange: credential.exchange,
-            environment: credential.environment,
             rates: filteredRates.map(r => {
               let normalizedSymbol = r.symbol.replace(/[\/\-_]/g, '');
               normalizedSymbol = normalizedSymbol.replace(/:.*$/, ''); // Remove colon and everything after
@@ -402,7 +372,6 @@ export async function GET(request: NextRequest) {
             apiKey: credential.apiKey,
             apiSecret: credential.apiSecret,
             authToken: credential.authToken,
-            testnet: credential.environment === 'TESTNET',
             enableRateLimit: true,
           });
 
@@ -414,10 +383,6 @@ export async function GET(request: NextRequest) {
 
           console.log(`[Arbitrage] MEXC legacy - Fetching tickers and funding rates for ${mexcSymbols.length} symbols`);
 
-          // First, get all tickers for lastPrice data
-          const allTickers = await mexcService.getTickers();
-          const tickerMap = new Map(allTickers.map(t => [t.symbol, t]));
-
           // Use optimized batch method to avoid rate limiting
           console.log(`[Arbitrage] MEXC - Using getFundingRatesForSymbols() for ${mexcSymbols.length} symbols`);
           const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
@@ -427,7 +392,6 @@ export async function GET(request: NextRequest) {
           return {
             credentialId: credential.id,
             exchange: credential.exchange,
-            environment: credential.environment,
             rates: rates.map(r => ({
               symbol: r.symbol.replace(/_/g, ''), // Normalize symbol format (BTC_USDT -> BTCUSDT)
               originalSymbol: r.symbol, // Keep original for reference
@@ -501,7 +465,6 @@ export async function GET(request: NextRequest) {
         symbolMap.get(rate.symbol)!.push({
           exchange: result.exchange,
           credentialId: result.credentialId,
-          environment: result.environment,
           fundingRate: rate.fundingRate, // Original funding rate for display
           fundingRateNormalized: normalizedFundingRate, // For backend sorting
           nextFundingTime: rate.nextFundingTime, // Frontend calculates interval from this
@@ -646,7 +609,6 @@ export async function GET(request: NextRequest) {
           lastPrice: primaryExchange.lastPrice,
           fundingInterval: primaryExchange.fundingInterval,
           credentialId: primaryExchange.credentialId,
-          environment: primaryExchange.environment,
           // Optional fields
           volume24h: primaryExchange.volume24h,
           openInterest: primaryExchange.openInterest,
@@ -663,7 +625,6 @@ export async function GET(request: NextRequest) {
           lastPrice: hedgeExchange.lastPrice,
           fundingInterval: hedgeExchange.fundingInterval,
           credentialId: hedgeExchange.credentialId,
-          environment: hedgeExchange.environment,
           // Optional fields
           volume24h: hedgeExchange.volume24h,
           openInterest: hedgeExchange.openInterest,

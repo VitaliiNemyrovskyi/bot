@@ -120,7 +120,6 @@ async function fetchExchangeHistoricalData(
     // Create CCXT service for the exchange
     const ccxtService = new CCXTService(exchange.toLowerCase(), {
       enableRateLimit: true,
-      testnet: false, // Use mainnet for historical data (more reliable)
     });
 
     // Load markets first

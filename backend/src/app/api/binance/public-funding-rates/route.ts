@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * - /fapi/v1/premiumIndex - Mark price and funding rate
  * - /fapi/v1/fundingInfo - Funding interval hours (1h, 4h, 8h)
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
 
     // Fetch both endpoints in parallel

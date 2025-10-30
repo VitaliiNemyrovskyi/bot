@@ -45,7 +45,7 @@ import {
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   const requestId = generateRequestId();
 
@@ -64,7 +64,7 @@ export async function DELETE(
     const userId = authResult.user.userId;
 
     // 2. Extract and validate path parameter
-    const { orderId } = params;
+    const { orderId } = await params;
 
     if (!orderId) {
       const { response, status } = createErrorResponse(
@@ -135,7 +135,7 @@ export async function DELETE(
 
     // 6. Cancel the order
     try {
-      const cancelResult = await bybitClient.cancelOrder(
+      await bybitClient.cancelOrder(
         category as 'linear' | 'spot' | 'option',
         symbol!,
         orderId
@@ -166,14 +166,16 @@ export async function DELETE(
 
       return NextResponse.json({ ...response, requestId }, { status });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
       // 9. Log failed operation
       await logTradingOperation({
         userId,
         operation: 'CANCEL_ORDER',
         symbol: symbol!,
         status: 'error',
-        errorMessage: error.message,
+        errorMessage,
         metadata: {
           orderId,
           category,
@@ -182,7 +184,7 @@ export async function DELETE(
       });
 
       // 10. Handle order not found error
-      if (error.message?.includes('not found') || error.message?.includes('does not exist')) {
+      if (errorMessage?.includes('not found') || errorMessage?.includes('does not exist')) {
         const { response, status } = createErrorResponse(
           `Order ${orderId} not found or already cancelled`,
           'ORDER_NOT_FOUND',
@@ -196,11 +198,12 @@ export async function DELETE(
       return NextResponse.json({ ...response, requestId }, { status });
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while cancelling the order';
     console.error('[Trading API] Unexpected error in DELETE /orders/:orderId:', error);
 
     const { response, status } = createErrorResponse(
-      'An unexpected error occurred while cancelling the order',
+      errorMessage,
       'INTERNAL_ERROR',
       500
     );

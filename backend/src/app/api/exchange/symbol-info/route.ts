@@ -610,7 +610,6 @@ async function getBinanceSymbolInfo(symbol: string): Promise<SymbolInfo | null> 
       // Extract filters
       const lotSizeFilter = symbolData.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
       const minNotionalFilter = symbolData.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
-      const priceFilter = symbolData.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
 
       return {
         symbol: symbolData.symbol,

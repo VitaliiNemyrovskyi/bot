@@ -77,17 +77,19 @@ export async function POST(
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
     console.error('[FundingArbitrageAPI] Error executing subscription:', {
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
     });
 
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to execute subscription',
-        message: error.message || 'An unexpected error occurred',
+        message: errorMessage,
         timestamp: new Date().toISOString(),
       },
       { status: 500 }

@@ -14,7 +14,7 @@ import { bybitFundingStrategyService } from '@/services/bybit-funding-strategy.s
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authenticate user
@@ -26,7 +26,7 @@ export async function GET(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Get strategy
     const strategy = bybitFundingStrategyService.getStrategy(id);
@@ -81,12 +81,13 @@ export async function GET(
       success: true,
       data: response,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API] Error getting funding strategy:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get funding strategy';
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to get funding strategy',
+        error: errorMessage,
       },
       { status: 500 }
     );
@@ -98,7 +99,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authenticate user
@@ -110,7 +111,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Get strategy
     const strategy = bybitFundingStrategyService.getStrategy(id);
@@ -138,12 +139,13 @@ export async function DELETE(
       success: true,
       message: 'Strategy stopped successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API] Error stopping funding strategy:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to stop funding strategy';
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to stop funding strategy',
+        error: errorMessage,
       },
       { status: 500 }
     );

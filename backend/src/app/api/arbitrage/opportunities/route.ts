@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
-import { calculateRealisticROI, calculateOpportunityConfidence, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
+import { calculateRealisticROI, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
 
 /**
  * Normalize funding rate to 8-hour interval for fair comparison
@@ -123,31 +123,34 @@ export async function GET(request: NextRequest) {
 
     // Decrypt credentials
     const validActiveCredentials = dbCredentials
-      .map((cred) => {
+      .map((cred: typeof dbCredentials[number]) => {
         try {
           return {
             id: cred.id,
             exchange: cred.exchange,
-            environment: cred.environment,
             apiKey: EncryptionService.decrypt(cred.apiKey),
             apiSecret: EncryptionService.decrypt(cred.apiSecret),
             authToken: cred.authToken ? EncryptionService.decrypt(cred.authToken) : undefined,
           };
-        } catch (error: any) {
-          console.error(`[PriceOpportunities] Error decrypting ${cred.exchange}:`, error.message);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`[PriceOpportunities] Error decrypting ${cred.exchange}:`, errorMessage);
           return null;
         }
       })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
+      .filter((c: ReturnType<typeof dbCredentials['map']>[number]): c is NonNullable<typeof c> => c !== null);
 
     console.log(`[PriceOpportunities] Valid credentials: ${validActiveCredentials.length}`);
 
+    // Define the type for credentials (non-null)
+    type Credential = NonNullable<typeof validActiveCredentials[number]>;
+
     // 4. Fetch current prices from all exchanges
-    const nonMexcCredentials = validActiveCredentials.filter((c) => c.exchange !== 'MEXC');
-    const mexcCredentials = validActiveCredentials.filter((c) => c.exchange === 'MEXC');
+    const nonMexcCredentials = validActiveCredentials.filter((c): c is Credential => c !== null && c.exchange !== 'MEXC');
+    const mexcCredentials = validActiveCredentials.filter((c): c is Credential => c !== null && c.exchange === 'MEXC');
 
     // Fetch non-MEXC exchanges first
-    const nonMexcFetchPromises = nonMexcCredentials.map(async (credential) => {
+    const nonMexcFetchPromises = nonMexcCredentials.map(async (credential: Credential) => {
       try {
         console.log(`[PriceOpportunities] Fetching prices from ${credential.exchange}`);
 
@@ -155,7 +158,6 @@ export async function GET(request: NextRequest) {
           const bybitService = new BybitService({
             apiKey: credential.apiKey,
             apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
             enableRateLimit: true,
             userId,
           });
@@ -164,7 +166,6 @@ export async function GET(request: NextRequest) {
           return {
             credentialId: credential.id,
             exchange: credential.exchange,
-            environment: credential.environment,
             prices: tickers.map((t) => ({
               symbol: t.symbol,
               price: parseFloat(t.lastPrice),
@@ -174,7 +175,6 @@ export async function GET(request: NextRequest) {
           const bingxService = new BingXService({
             apiKey: credential.apiKey,
             apiSecret: credential.apiSecret,
-            testnet: credential.environment === 'TESTNET',
             enableRateLimit: true,
           });
 
@@ -183,7 +183,6 @@ export async function GET(request: NextRequest) {
           return {
             credentialId: credential.id,
             exchange: credential.exchange,
-            environment: credential.environment,
             prices: rates.map((r) => ({
               symbol: r.symbol.replace(/-/g, ''), // BTC-USDT -> BTCUSDT
               price: parseFloat(r.markPrice || '0'),
@@ -192,27 +191,28 @@ export async function GET(request: NextRequest) {
         }
 
         return null;
-      } catch (error: any) {
-        console.error(`[PriceOpportunities] Failed to fetch from ${credential.exchange}:`, error.message);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[PriceOpportunities] Failed to fetch from ${credential.exchange}:`, errorMessage);
         return null;
       }
     });
 
     const nonMexcResults = await Promise.all(nonMexcFetchPromises);
-    const validNonMexcResults = nonMexcResults.filter((r) => r !== null);
+    const validNonMexcResults = nonMexcResults.filter((r: typeof nonMexcResults[number]) => r !== null);
 
     // Build symbol list from non-MEXC exchanges
     const uniqueSymbols = new Set<string>();
-    validNonMexcResults.forEach((result) => {
+    validNonMexcResults.forEach((result: typeof validNonMexcResults[number]) => {
       if (result) {
-        result.prices.forEach((p) => uniqueSymbols.add(p.symbol));
+        result.prices.forEach((p: typeof result.prices[number]) => uniqueSymbols.add(p.symbol));
       }
     });
 
     console.log(`[PriceOpportunities] Found ${uniqueSymbols.size} unique symbols from non-MEXC exchanges`);
 
     // Fetch MEXC prices for symbols that exist on other exchanges
-    const mexcFetchPromises = mexcCredentials.map(async (credential) => {
+    const mexcFetchPromises = mexcCredentials.map(async (credential: Credential) => {
       try {
         console.log(`[PriceOpportunities] Fetching prices from ${credential.exchange}`);
 
@@ -220,7 +220,6 @@ export async function GET(request: NextRequest) {
           apiKey: credential.apiKey,
           apiSecret: credential.apiSecret,
           authToken: credential.authToken,
-          testnet: credential.environment === 'TESTNET',
           enableRateLimit: true,
         });
 
@@ -232,20 +231,20 @@ export async function GET(request: NextRequest) {
         return {
           credentialId: credential.id,
           exchange: credential.exchange,
-          environment: credential.environment,
           prices: rates.map((r) => ({
             symbol: r.symbol.replace(/_/g, ''), // BTC_USDT -> BTCUSDT
             price: parseFloat(r.lastPrice?.toString() || '0'),
           })),
         };
-      } catch (error: any) {
-        console.error(`[PriceOpportunities] Failed to fetch from ${credential.exchange}:`, error.message);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[PriceOpportunities] Failed to fetch from ${credential.exchange}:`, errorMessage);
         return null;
       }
     });
 
     const mexcResults = await Promise.all(mexcFetchPromises);
-    const validMexcResults = mexcResults.filter((r) => r !== null);
+    const validMexcResults = mexcResults.filter((r: typeof mexcResults[number]) => r !== null);
 
     // Combine all results
     const validResults = [...validNonMexcResults, ...validMexcResults];
@@ -263,10 +262,10 @@ export async function GET(request: NextRequest) {
       }>
     > = new Map();
 
-    validResults.forEach((result) => {
+    validResults.forEach((result: typeof validResults[number]) => {
       if (!result) return;
 
-      result.prices.forEach((priceData) => {
+      result.prices.forEach((priceData: typeof result.prices[number]) => {
         if (!priceData.price || priceData.price <= 0) return;
 
         if (!symbolMap.has(priceData.symbol)) {
@@ -277,7 +276,6 @@ export async function GET(request: NextRequest) {
           exchange: result.exchange,
           credentialId: result.credentialId,
           price: priceData.price,
-          environment: result.environment,
         });
       });
     });
@@ -303,7 +301,7 @@ export async function GET(request: NextRequest) {
           const rates = data.data || data.rates || data.result?.list || data;
 
           if (Array.isArray(rates)) {
-            rates.forEach((r: any) => {
+            rates.forEach((r: typeof rates[number]) => {
               // Get funding rate from various field names
               const fundingRateRaw = r.fundingRate || r.lastFundingRate || r.funding_rate;
 
@@ -330,8 +328,9 @@ export async function GET(request: NextRequest) {
         } else {
           console.warn(`[PriceOpportunities] Public endpoint failed for ${result.exchange}: ${response.status}`);
         }
-      } catch (error: any) {
-        console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, error.message);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn(`[PriceOpportunities] Could not fetch public funding rates for ${result.exchange}:`, errorMessage);
       }
     }
 
@@ -346,14 +345,14 @@ export async function GET(request: NextRequest) {
       if (symbolFilter && symbol !== symbolFilter) continue;
 
       // Sort by price (lowest to highest) and add funding intervals
-      const sortedExchanges = [...exchanges].map(ex => {
+      const sortedExchanges = [...exchanges].map((ex: typeof exchanges[number]) => {
         const fundingMap = fundingRateMap.get(ex.exchange);
         const fundingData = fundingMap?.get(symbol);
         return {
           ...ex,
           fundingInterval: fundingData?.interval
         };
-      }).sort((a, b) => a.price - b.price);
+      }).sort((a: typeof exchanges[number], b: typeof exchanges[number]) => a.price - b.price);
 
       const lowestPrice = sortedExchanges[0].price;
       const highestPrice = sortedExchanges[sortedExchanges.length - 1].price;
@@ -388,7 +387,13 @@ export async function GET(request: NextRequest) {
       let combinedScore: number | undefined;
       let expectedDailyReturn: number | undefined;
       let estimatedMonthlyROI: number | undefined;
-      let realisticMetricsData: any = undefined;
+      let realisticMetricsData: {
+        dailyReturn: { pessimistic: number; realistic: number; optimistic: number };
+        monthlyROI: { pessimistic: number; realistic: number; optimistic: number };
+        confidence: number;
+        dataPoints?: number;
+        historicalPeriodDays: number;
+      } | undefined = undefined;
       let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
       if (primaryFundingData && hedgeFundingData) {
@@ -419,8 +424,10 @@ export async function GET(request: NextRequest) {
         console.log(`  Funding differential (normalized): ${fundingDifferential.toFixed(4)}%`);
 
         // Calculate realistic ROI based on historical data
-        const primaryExchangeEnum = primaryExchangeName as any; // Convert string to Exchange enum
-        const hedgeExchangeEnum = hedgeExchangeName as any;
+        // @ts-expect-error Exchange enum type comes from Prisma auto-generated types
+        const primaryExchangeEnum = primaryExchangeName;
+        // @ts-expect-error Exchange enum type comes from Prisma auto-generated types
+        const hedgeExchangeEnum = hedgeExchangeName;
 
         const realisticMetrics = await calculateRealisticROI(
           primaryExchangeEnum,
@@ -477,13 +484,11 @@ export async function GET(request: NextRequest) {
           name: primaryExchangeName,
           credentialId: sortedExchanges[sortedExchanges.length - 1].credentialId,
           price: highestPrice,
-          environment: sortedExchanges[sortedExchanges.length - 1].environment,
         },
         hedgeExchange: {
           name: hedgeExchangeName,
           credentialId: sortedExchanges[0].credentialId,
           price: lowestPrice,
-          environment: sortedExchanges[0].environment,
         },
         spread,
         spreadPercent,
@@ -503,7 +508,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort by combined score (if available), otherwise by spread (highest first)
-    opportunities.sort((a, b) => {
+    opportunities.sort((a: typeof opportunities[number], b: typeof opportunities[number]) => {
       const scoreA = a.combinedScore !== undefined ? a.combinedScore : a.spreadPercent;
       const scoreB = b.combinedScore !== undefined ? b.combinedScore : b.spreadPercent;
       return scoreB - scoreA;
@@ -512,8 +517,8 @@ export async function GET(request: NextRequest) {
     console.log(`[PriceOpportunities] Found ${opportunities.length} opportunities with spread >= ${minSpread}%`);
 
     // Calculate stats
-    const combinedOpportunities = opportunities.filter(o => o.strategyType === 'combined').length;
-    const priceOnlyOpportunities = opportunities.filter(o => o.strategyType === 'price_only').length;
+    const combinedOpportunities = opportunities.filter((o: typeof opportunities[number]) => o.strategyType === 'combined').length;
+    const priceOnlyOpportunities = opportunities.filter((o: typeof opportunities[number]) => o.strategyType === 'price_only').length;
 
     console.log(`[PriceOpportunities] Strategy breakdown: ${combinedOpportunities} combined, ${priceOnlyOpportunities} price-only`);
 
@@ -524,8 +529,8 @@ export async function GET(request: NextRequest) {
         data: opportunities,
         stats: {
           totalOpportunities: opportunities.length,
-          combinedStrategy: opportunities.filter(o => o.strategyType === 'combined').length,
-          priceOnly: opportunities.filter(o => o.strategyType === 'price_only').length,
+          combinedStrategy: opportunities.filter((o: typeof opportunities[number]) => o.strategyType === 'combined').length,
+          priceOnly: opportunities.filter((o: typeof opportunities[number]) => o.strategyType === 'price_only').length,
           minSpread: minSpread,
           exchangesAnalyzed: validResults.length,
           fundingDataAvailable: fundingRateMap.size > 0,
@@ -534,17 +539,19 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
     console.error('[PriceOpportunities] Error fetching opportunities:', {
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
     });
 
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to fetch arbitrage opportunities',
-        message: error.message || 'An unexpected error occurred',
+        message: errorMessage || 'An unexpected error occurred',
         code: 'INTERNAL_ERROR',
         timestamp: new Date().toISOString(),
       },

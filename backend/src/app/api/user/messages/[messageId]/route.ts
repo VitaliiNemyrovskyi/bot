@@ -16,7 +16,7 @@ const mockMessages = new Map<string, {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params }: { params: Promise<{ messageId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -28,7 +28,7 @@ export async function PATCH(
       );
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
     const body = await request.json();
 
     // Find and verify message belongs to user
@@ -58,8 +58,9 @@ export async function PATCH(
       actions: updatedMessage.actions as any,
       metadata: updatedMessage.metadata as any
     });
-  } catch (error) {
-    console.error('Error updating message:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error updating message:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -69,7 +70,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params }: { params: Promise<{ messageId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -81,7 +82,7 @@ export async function DELETE(
       );
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
 
     // Find and verify message belongs to user
     const message = mockMessages.get(messageId);
@@ -97,8 +98,9 @@ export async function DELETE(
     mockMessages.delete(messageId);
 
     return NextResponse.json({ message: 'Message deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting message:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error deleting message:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

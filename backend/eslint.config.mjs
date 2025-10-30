@@ -21,9 +21,20 @@ const eslintConfig = [
     ],
   },
   {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
+      },
+    },
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn", // Changed from error to warning
-      "@typescript-eslint/no-unused-vars": "warn", // Changed from error to warning
+      "@typescript-eslint/no-explicit-any": "error", // Fail build on explicit any
+      "@typescript-eslint/no-unused-vars": "error", // Fail build on unused variables
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
     },
   },
 ];

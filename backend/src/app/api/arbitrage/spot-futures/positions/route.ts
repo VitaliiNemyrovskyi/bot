@@ -35,8 +35,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = authResult.user.userId;
-
     // 2. Return empty array for now (spot+futures tracking not yet implemented)
     // TODO: Implement spot+futures position tracking in database
     // TODO: Query and return actual positions when available

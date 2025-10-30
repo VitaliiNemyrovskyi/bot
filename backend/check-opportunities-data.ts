@@ -21,7 +21,7 @@ async function main() {
 
     console.log(`Found ${opportunities.length} opportunities:\n`);
 
-    opportunities.forEach((opp, index) => {
+    opportunities.forEach((opp: typeof opportunities[number], index: number) => {
       console.log(`\n=== Opportunity ${index + 1} ===`);
       console.log(`ID: ${opp.id}`);
       console.log(`Exchange: ${opp.exchange}`);

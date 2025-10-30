@@ -31,7 +31,7 @@ async function checkCredentials() {
 
     console.log(`Found ${credentials.length} credentials:\n`);
 
-    credentials.forEach((cred, i) => {
+    credentials.forEach((cred: typeof credentials[number], i: number) => {
       console.log(`${i + 1}. ${cred.exchange} - ${cred.label}`);
       console.log(`   ID: ${cred.id}`);
       console.log(`   Active: ${cred.isActive}`);

@@ -319,7 +319,6 @@ export class FundingTrackerService {
       const bybit = new BybitService({
         apiKey: credentials.apiKey,
         apiSecret: credentials.apiSecret,
-        testnet: credentials.environment === 'TESTNET',
       });
 
       console.log(`[FundingTracker] Fetching Bybit data for ${symbol}, side=${side}, since ${startTime.toISOString()}`);

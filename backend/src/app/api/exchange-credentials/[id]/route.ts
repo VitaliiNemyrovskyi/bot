@@ -95,9 +95,10 @@ export async function GET(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -111,7 +112,7 @@ export async function GET(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error getting credential:', error);
 
     return NextResponse.json(
@@ -233,9 +234,10 @@ export async function PATCH(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -247,7 +249,7 @@ export async function PATCH(
         );
       }
 
-      if (error.message.includes('not found')) {
+      if (errorMessage.includes('not found')) {
         return NextResponse.json(
           {
             success: false,
@@ -259,11 +261,11 @@ export async function PATCH(
         );
       }
 
-      if (error.message.includes('Invalid API credentials')) {
+      if (errorMessage.includes('Invalid API credentials')) {
         return NextResponse.json(
           {
             success: false,
-            error: error.message,
+            error: errorMessage,
             code: CredentialErrorCode.VALIDATION_FAILED,
             timestamp: new Date().toISOString(),
           },
@@ -273,7 +275,7 @@ export async function PATCH(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating credential:', error);
 
     return NextResponse.json(
@@ -371,9 +373,10 @@ export async function DELETE(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -387,7 +390,7 @@ export async function DELETE(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting credential:', error);
 
     return NextResponse.json(

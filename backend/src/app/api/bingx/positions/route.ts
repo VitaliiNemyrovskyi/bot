@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     console.log(`[BingX Positions] Fetching positions for user: ${user.userId}`);
 
     // Get BingX credentials
-    const credentials = await ExchangeCredentialsService.getActiveCredential(
+    const credentials = await ExchangeCredentialsService.getActiveCredentials(
       user.userId,
       'BINGX'
     );
@@ -41,7 +41,8 @@ export async function GET(request: NextRequest) {
     const connector = new BingXConnector(
       credentials.apiKey,
       credentials.apiSecret,
-      credentials.environment === 'TESTNET'
+      user.userId,
+      credentials.id
     );
 
     await connector.initialize();

@@ -48,8 +48,9 @@ async function closeAllOpenPositions() {
     }
 
     console.log('\n=== Done ===');
-  } catch (error: any) {
-    console.error('Error:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error:', err.message);
   } finally {
     await prisma.$disconnect();
   }
@@ -74,7 +75,7 @@ async function closePositionOnExchange(
       return;
     }
 
-    const testnet = credentials.environment === 'TESTNET';
+    // Note: Connectors don't accept testnet parameter - they use mainnet by default
 
     // Normalize symbol for BingX
     let normalizedSymbol = symbol;
@@ -95,14 +96,12 @@ async function closePositionOnExchange(
     if (exchange === 'BINGX') {
       connector = new BingXConnector(
         credentials.apiKey,
-        credentials.apiSecret,
-        testnet
+        credentials.apiSecret
       );
     } else if (exchange === 'BYBIT') {
       connector = new BybitConnector(
         credentials.apiKey,
-        credentials.apiSecret,
-        testnet
+        credentials.apiSecret
       );
     } else {
       console.log(`  ⚠️  Unsupported exchange: ${exchange}\n`);
@@ -115,15 +114,17 @@ async function closePositionOnExchange(
     try {
       await connector.closePosition(normalizedSymbol);
       console.log(`  ✅ Position closed successfully on ${exchange}\n`);
-    } catch (error: any) {
-      if (error.message && (error.message.includes('no position') || error.message.includes('No open position'))) {
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message && (err.message.includes('no position') || err.message.includes('No open position'))) {
         console.log(`  ℹ️  No open position found on ${exchange}\n`);
       } else {
-        console.log(`  ❌ Error: ${error.message}\n`);
+        console.log(`  ❌ Error: ${err.message}\n`);
       }
     }
-  } catch (error: any) {
-    console.log(`  ❌ Error closing position on ${exchange}: ${error.message}\n`);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.log(`  ❌ Error closing position on ${exchange}: ${err.message}\n`);
   }
 }
 

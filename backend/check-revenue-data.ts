@@ -3,7 +3,7 @@
  * Tests the revenue API endpoint and shows what's actually stored
  */
 
-const TOKEN = process.env.AUTH_TOKEN || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhZG1pbl8xIiwiZW1haWwiOiJhZG1pbkB0ZXN0LmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc1OTMyOTY2NCwiZXhwIjoxNzU5NDE2MDY0fQ.SBSJqPSNEdPtvw8HJUWfd0f0i54g78BI8VqEPVl2oSE";
+const TOKEN = process.env['AUTH_TOKEN'] || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhZG1pbl8xIiwiZW1haWwiOiJhZG1pbkB0ZXN0LmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc1OTMyOTY2NCwiZXhwIjoxNzU5NDE2MDY0fQ.SBSJqPSNEdPtvw8HJUWfd0f0i54g78BI8VqEPVl2oSE";
 
 async function checkRevenueData() {
   console.log('='.repeat(80));
@@ -24,7 +24,7 @@ async function checkRevenueData() {
     console.log(JSON.stringify(data, null, 2));
 
     if (data.success && data.data) {
-      const { summary, bySymbol, byExchange, deals, timeline } = data.data;
+      const { summary, deals, timeline } = data.data;
 
       console.log('\n' + '='.repeat(80));
       console.log('📈 SUMMARY STATISTICS');
@@ -79,8 +79,9 @@ async function checkRevenueData() {
       console.log('\n❌ API Error:', data.message || data.error);
     }
 
-  } catch (error: any) {
-    console.error('\n❌ Error:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n❌ Error:', err.message);
   }
 }
 
@@ -108,10 +109,10 @@ async function checkDatabaseDirectly() {
     console.log(`\nFound ${subscriptions.length} total subscriptions in database`);
 
     // Count by status
-    const statusCounts = subscriptions.reduce((acc: any, sub) => {
+    const statusCounts = subscriptions.reduce((acc: Record<string, number>, sub: typeof subscriptions[number]) => {
       acc[sub.status] = (acc[sub.status] || 0) + 1;
       return acc;
-    }, {});
+    }, {} as Record<string, number>);
 
     console.log('\n📊 Status breakdown:');
     Object.entries(statusCounts).forEach(([status, count]) => {
@@ -119,12 +120,12 @@ async function checkDatabaseDirectly() {
     });
 
     // Show completed deals
-    const completed = subscriptions.filter(sub => sub.status === 'COMPLETED');
+    const completed = subscriptions.filter((sub: typeof subscriptions[number]) => sub.status === 'COMPLETED');
     console.log(`\n✅ Completed deals: ${completed.length}`);
 
     if (completed.length > 0) {
       console.log('\nCompleted deals details:');
-      completed.forEach((sub, index) => {
+      completed.forEach((sub: typeof completed[number], index: number) => {
         console.log(`\nDeal #${index + 1}:`);
         console.log(`  ID: ${sub.id}`);
         console.log(`  Symbol: ${sub.symbol}`);
@@ -139,7 +140,7 @@ async function checkDatabaseDirectly() {
     } else {
       console.log('\n⚠️  No COMPLETED deals found in database!');
       console.log('\nShowing other statuses:');
-      subscriptions.slice(0, 5).forEach((sub, index) => {
+      subscriptions.slice(0, 5).forEach((sub: typeof subscriptions[number], index: number) => {
         console.log(`\n${index + 1}. ${sub.symbol} - ${sub.status}`);
         console.log(`   Created: ${sub.createdAt.toISOString()}`);
         console.log(`   Realized P&L: ${sub.realizedPnl !== null ? `$${sub.realizedPnl.toFixed(4)}` : 'NULL'}`);
@@ -149,12 +150,12 @@ async function checkDatabaseDirectly() {
     }
 
     // Show ERROR deals specifically
-    const errorDeals = subscriptions.filter(sub => sub.status === 'ERROR');
+    const errorDeals = subscriptions.filter((sub: typeof subscriptions[number]) => sub.status === 'ERROR');
     if (errorDeals.length > 0) {
       console.log('\n' + '='.repeat(80));
       console.log('❌ ERROR DEALS - DETAILED ANALYSIS');
       console.log('='.repeat(80));
-      errorDeals.forEach((sub, index) => {
+      errorDeals.forEach((sub: typeof errorDeals[number], index: number) => {
         console.log(`\n❌ Error Deal #${index + 1}:`);
         console.log(`   ID: ${sub.id}`);
         console.log(`   Symbol: ${sub.symbol}`);
@@ -168,8 +169,9 @@ async function checkDatabaseDirectly() {
       });
     }
 
-  } catch (error: any) {
-    console.error('\n❌ Database Error:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n❌ Database Error:', err.message);
   } finally {
     await prisma.$disconnect();
   }

@@ -61,7 +61,7 @@ import { PriceArbitragePositionDTO } from '@/types/price-arbitrage';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Authenticate user
@@ -82,7 +82,7 @@ export async function GET(
     }
 
     const userId = authResult.user.userId;
-    const positionId = params.id;
+    const { id: positionId } = await params;
 
     console.log('[PriceArbitrageAPI] User authenticated:', userId);
     console.log('[PriceArbitrageAPI] Fetching position:', positionId);
@@ -194,17 +194,20 @@ export async function GET(
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     console.error('[PriceArbitrageAPI] Error getting position:', {
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
     });
 
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to get position',
-        message: error.message || 'An unexpected error occurred',
+        message: errorMessage,
         code: 'INTERNAL_ERROR',
         timestamp: new Date().toISOString(),
       },

@@ -724,7 +724,6 @@ export class FundingArbitrageService extends EventEmitter {
       connector,
       credentialId,
       exchange: credential.exchange,
-      environment: credential.environment,
       subscriptionIds: new Set(),
       lastUsed: Date.now(),
       initializationTime: Date.now(),

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * GET /api/bitget/public-funding-rates
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Bitget requires productType parameter - we'll fetch USDT perpetuals
     const bitgetUrl = 'https://api.bitget.com/api/v2/mix/market/current-fund-rate?productType=USDT-FUTURES';

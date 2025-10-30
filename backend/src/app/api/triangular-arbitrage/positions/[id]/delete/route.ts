@@ -8,7 +8,7 @@ import prisma from '@/lib/prisma';
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication
@@ -18,7 +18,7 @@ export async function DELETE(
     }
     const userId = authResult.user.userId;
 
-    const positionId = params.id;
+    const { id: positionId } = await params;
 
     console.log('[TriArb Delete] Deleting position:', {
       positionId,
@@ -71,10 +71,11 @@ export async function DELETE(
       success: true,
       message: 'Position deleted successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to delete position';
     console.error('[TriArb Delete] Error deleting position:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to delete position' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

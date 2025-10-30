@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BybitService } from '@/lib/bybit';
 import { AuthService } from '@/lib/auth';
-import { BybitKeysService } from '@/lib/bybit-keys-service';
+// import { BybitKeysService } from '@/lib/bybit-keys-service';
 
 /**
  * GET /api/bybit/user-info
@@ -59,28 +59,23 @@ export async function GET(request: NextRequest) {
 
     const userId = authResult.user.userId;
 
-    // Get environment parameter
-    const { searchParams } = new URL(request.url);
-    const environment = searchParams.get('environment')?.toUpperCase() || 'TESTNET';
-
     // Load credentials from new exchange_credentials table
-    console.log(`[UserInfo] Loading credentials for user: ${userId}, environment: ${environment}`);
+    console.log(`[UserInfo] Loading credentials for user: ${userId}`);
     const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
 
-    // Get decrypted credentials for this environment
-    const credentials = await ExchangeCredentialsService.getCredentialsByEnvironment(
+    // Get decrypted credentials
+    const credentials = await ExchangeCredentialsService.getActiveCredentials(
       userId,
-      'BYBIT' as any,
-      environment as any
+      'BYBIT' as any
     );
 
     if (!credentials) {
-      console.warn(`[UserInfo] No ${environment} API keys found for user: ${userId}`);
+      console.warn(`[UserInfo] No API keys found for user: ${userId}`);
       return NextResponse.json(
         {
           success: false,
           error: 'API credentials not configured',
-          message: `Please configure your Bybit ${environment} API credentials first. Go to Settings → Exchange Credentials.`,
+          message: `Please configure your Bybit API credentials first. Go to Settings → Exchange Credentials.`,
           code: 'NO_API_KEYS',
           timestamp: new Date().toISOString(),
         },
@@ -88,14 +83,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`[UserInfo] Credentials loaded - environment: ${credentials.environment}`);
+    console.log(`[UserInfo] Credentials loaded`);
 
     // Create BybitService with loaded credentials
-    const isTestnet = credentials.environment === 'TESTNET';
     const service = new BybitService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId: userId,
     });
@@ -116,7 +109,6 @@ export async function GET(request: NextRequest) {
     const response: any = {
       success: true,
       timestamp: new Date().toISOString(),
-      testnet: service.isTestnet(),
       data: {}
     };
 

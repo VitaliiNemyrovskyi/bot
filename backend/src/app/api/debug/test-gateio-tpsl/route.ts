@@ -7,7 +7,7 @@ import { GateIOConnector } from '@/connectors/gateio.connector';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import prisma from '@/lib/prisma';
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   const logs: string[] = [];
 
   try {

@@ -16,7 +16,7 @@ const mockMessages = new Map<string, {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params }: { params: Promise<{ messageId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -28,7 +28,7 @@ export async function PATCH(
       );
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
 
     // Find and verify message belongs to user
     const message = mockMessages.get(messageId);
@@ -45,8 +45,9 @@ export async function PATCH(
     mockMessages.set(messageId, message);
 
     return NextResponse.json({ message: 'Message marked as read' });
-  } catch (error) {
-    console.error('Error marking message as read:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error marking message as read:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
