@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { PriceArbitrageOpportunity } from '@/types/price-arbitrage';
 import { calculateRealisticROI, calculateFundingDifferentialMetrics } from '@/lib/metrics-calculator';
+import { BybitService } from '@/lib/bybit';
+import { BingXService } from '@/lib/bingx';
+import { MEXCService } from '@/lib/mexc';
+import { Exchange } from '@prisma/client';
 
 /**
  * Normalize funding rate to 8-hour interval for fair comparison
@@ -258,7 +262,6 @@ export async function GET(request: NextRequest) {
         exchange: string;
         credentialId: string;
         price: number;
-        environment: string;
       }>
     > = new Map();
 
@@ -344,18 +347,77 @@ export async function GET(request: NextRequest) {
       // Apply symbol filter if specified
       if (symbolFilter && symbol !== symbolFilter) continue;
 
-      // Sort by price (lowest to highest) and add funding intervals
-      const sortedExchanges = [...exchanges].map((ex: typeof exchanges[number]) => {
+      // Add funding data to exchanges
+      const exchangesWithFunding = [...exchanges].map((ex: typeof exchanges[number]) => {
         const fundingMap = fundingRateMap.get(ex.exchange);
         const fundingData = fundingMap?.get(symbol);
         return {
           ...ex,
+          fundingRate: fundingData?.rate,
           fundingInterval: fundingData?.interval
         };
-      }).sort((a: typeof exchanges[number], b: typeof exchanges[number]) => a.price - b.price);
+      });
 
-      const lowestPrice = sortedExchanges[0].price;
-      const highestPrice = sortedExchanges[sortedExchanges.length - 1].price;
+      // Safety check (should not happen due to earlier check)
+      if (exchangesWithFunding.length < 2) continue;
+
+      // Find optimal exchange pair for "Price Only" strategy:
+      // 1. Maximum price spread
+      // 2. Minimum total funding cost (absolute values)
+      let bestLong: typeof exchangesWithFunding[number] | undefined;
+      let bestShort: typeof exchangesWithFunding[number] | undefined;
+      let maxSpread = 0;
+      let minFundingCost = Infinity;
+
+      // Try all possible pairs (both directions)
+      for (const ex1 of exchangesWithFunding) {
+        for (const ex2 of exchangesWithFunding) {
+          if (ex1.exchange === ex2.exchange) continue;
+
+          // Calculate spread (absolute value)
+          const spread = Math.abs(ex2.price - ex1.price) / Math.min(ex1.price, ex2.price);
+
+          // Determine which is LONG and which is SHORT
+          const longEx = ex1.price < ex2.price ? ex1 : ex2;
+          const shortEx = ex1.price < ex2.price ? ex2 : ex1;
+
+          // Calculate total funding cost (absolute value)
+          // LONG pays funding if positive, SHORT receives funding if positive
+          // We want minimum |LONG funding| + |SHORT funding|
+          const longFundingCost = Math.abs(longEx.fundingRate || 0);
+          const shortFundingCost = Math.abs(shortEx.fundingRate || 0);
+          const totalFundingCost = longFundingCost + shortFundingCost;
+
+          // Prefer pairs with:
+          // 1. Better spread (primary)
+          // 2. Lower funding costs (secondary)
+          const isSpreadBetter = spread > maxSpread;
+          const isSpreadEqual = Math.abs(spread - maxSpread) < 0.0001; // ~0.01%
+          const isFundingBetter = totalFundingCost < minFundingCost;
+
+          if (isSpreadBetter || (isSpreadEqual && isFundingBetter)) {
+            maxSpread = spread;
+            minFundingCost = totalFundingCost;
+            bestLong = longEx;
+            bestShort = shortEx;
+          }
+        }
+      }
+
+      // Skip if no valid pair found
+      if (!bestLong || !bestShort) continue;
+
+      const lowestPrice = bestLong.price;
+      const highestPrice = bestShort.price;
+
+      // Log optimal selection for "Price Only" strategy
+      console.log(`[PriceOpportunities] ${symbol} optimal pair:`);
+      console.log(`  LONG (buy): ${bestLong.exchange} @ $${lowestPrice.toFixed(4)} | Funding: ${(bestLong.fundingRate || 0).toFixed(4)}%`);
+      console.log(`  SHORT (sell): ${bestShort.exchange} @ $${highestPrice.toFixed(4)} | Funding: ${(bestShort.fundingRate || 0).toFixed(4)}%`);
+      console.log(`  Spread: ${(maxSpread * 100).toFixed(4)}% | Total funding cost: ${minFundingCost.toFixed(4)}%`);
+
+      // Sort all exchanges by price for display
+      const sortedExchanges = [...exchangesWithFunding].sort((a, b) => a.price - b.price);
 
       // Calculate spread: (maxPrice - minPrice) / minPrice
       const spread = (highestPrice - lowestPrice) / lowestPrice;
@@ -366,9 +428,9 @@ export async function GET(request: NextRequest) {
 
       if (!arbitrageOpportunity) continue;
 
-      // Get funding rates for primary and hedge exchanges
-      const primaryExchangeName = sortedExchanges[sortedExchanges.length - 1].exchange;
-      const hedgeExchangeName = sortedExchanges[0].exchange;
+      // Use our optimally selected exchanges
+      const primaryExchangeName = bestShort.exchange; // SHORT = higher price
+      const hedgeExchangeName = bestLong.exchange; // LONG = lower price
 
       const primaryFundingMap = fundingRateMap.get(primaryExchangeName);
       const hedgeFundingMap = fundingRateMap.get(hedgeExchangeName);
@@ -424,10 +486,8 @@ export async function GET(request: NextRequest) {
         console.log(`  Funding differential (normalized): ${fundingDifferential.toFixed(4)}%`);
 
         // Calculate realistic ROI based on historical data
-        // @ts-expect-error Exchange enum type comes from Prisma auto-generated types
-        const primaryExchangeEnum = primaryExchangeName;
-        // @ts-expect-error Exchange enum type comes from Prisma auto-generated types
-        const hedgeExchangeEnum = hedgeExchangeName;
+        const primaryExchangeEnum = primaryExchangeName as Exchange;
+        const hedgeExchangeEnum = hedgeExchangeName as Exchange;
 
         const realisticMetrics = await calculateRealisticROI(
           primaryExchangeEnum,
@@ -482,12 +542,12 @@ export async function GET(request: NextRequest) {
         symbol,
         primaryExchange: {
           name: primaryExchangeName,
-          credentialId: sortedExchanges[sortedExchanges.length - 1].credentialId,
+          credentialId: bestShort.credentialId,
           price: highestPrice,
         },
         hedgeExchange: {
           name: hedgeExchangeName,
-          credentialId: sortedExchanges[0].credentialId,
+          credentialId: bestLong.credentialId,
           price: lowestPrice,
         },
         spread,
