@@ -42,7 +42,16 @@ export async function GET(_request: NextRequest) {
     const data = await response.json();
     console.log('[Bitget] Successfully fetched', data?.data?.length || 0, 'rates');
 
-    return NextResponse.json(data, {
+    // Add unified fundingInterval format (e.g., "8h")
+    const enrichedData = {
+      ...data,
+      data: data?.data?.map((item: any) => ({
+        ...item,
+        fundingInterval: item.fundingRateInterval ? `${item.fundingRateInterval}h` : '8h',
+      })) || []
+    };
+
+    return NextResponse.json(enrichedData, {
       headers: {
         'Cache-Control': 'public, max-age=30', // Cache for 30 seconds
       },
