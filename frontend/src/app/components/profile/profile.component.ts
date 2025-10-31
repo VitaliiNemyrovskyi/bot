@@ -87,8 +87,8 @@ export class ProfileComponent implements OnInit {
   testingConnectionId = signal<string | null>(null);
   deletingCredentialId = signal<string | null>(null);
   savingCredentialId = signal<string | null>(null);
-  showApiSecret = signal<{ [key: string]: boolean }>({});
-  revealedCredentials = signal<{ [key: string]: { apiKey?: string; apiSecret?: string } }>({});
+  showApiSecret = signal<Record<string, boolean>>({});
+  revealedCredentials = signal<Record<string, { apiKey?: string; apiSecret?: string }>>({});
 
   // Toast notification state
   toastMessage = signal<string>('');
@@ -165,7 +165,7 @@ export class ProfileComponent implements OnInit {
     private authService: AuthService,
     private translationService: TranslationService,
     private themeService: ThemeService,
-    private userService: UserService,
+    private _userService: UserService,
     private googleAuthService: GoogleAuthService,
     public exchangeCredentialsService: ExchangeCredentialsService,
     private router: Router
@@ -452,7 +452,7 @@ export class ProfileComponent implements OnInit {
     this.savingCredentialId.set(credentialId);
 
     this.exchangeCredentialsService.updateCredential(credentialId, updateRequest).pipe(take(1)).subscribe({
-      next: (updated) => {
+      next: (_updated) => {
         // Clear editing and saving state first
         this.editingCredentialId.set(null);
         this.editFormData.set({});
@@ -544,7 +544,7 @@ export class ProfileComponent implements OnInit {
 
     this.exchangeCredentialsService.updateCredential(credential.id, { isActive: isChecked })
       .pipe(take(1)).subscribe({
-      next: (updated) => {
+      next: (_updated) => {
         // Service already updated the state - sync local component state
         this.credentials.set(this.exchangeCredentialsService.credentials());
 
@@ -651,7 +651,7 @@ export class ProfileComponent implements OnInit {
     };
 
     this.exchangeCredentialsService.createCredential(data).subscribe({
-      next: (newCred) => {
+      next: (_newCred) => {
         // Service already updated the state - sync local component state
         this.credentials.set(this.exchangeCredentialsService.credentials());
 

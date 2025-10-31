@@ -48,10 +48,10 @@ export interface GridConfig {
 })
 export class TradingChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('tradingviewWidget', { static: false }) tradingviewWidget!: ElementRef;
-  @Input() symbol: string = 'BINANCE:BTCUSDT';
-  @Input() initialSymbol: string = 'BINANCE:BTCUSDT';
-  @Input() initialResolution: string = 'D';
-  @Input() chartHeight: number = 600;
+  @Input() symbol = 'BINANCE:BTCUSDT';
+  @Input() initialSymbol = 'BINANCE:BTCUSDT';
+  @Input() initialResolution = 'D';
+  @Input() chartHeight = 600;
   @Output() symbolChange = new EventEmitter<string>();
 
   private scriptElement: HTMLScriptElement | null = null;

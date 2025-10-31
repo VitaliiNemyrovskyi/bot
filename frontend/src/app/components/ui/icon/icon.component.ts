@@ -146,7 +146,7 @@ import { CommonModule } from '@angular/common';
   `]
 })
 export class IconComponent {
-  @Input() name: string = '';
+  @Input() name = '';
   @Input() size: string | number = 24;
-  @Input() class: string = '';
+  @Input() class = '';
 }

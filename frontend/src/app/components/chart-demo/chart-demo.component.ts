@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TradingChartComponent } from '../trading-chart/trading-chart.component';
-import { RealtimeService, TickerData, PriceUpdate } from '../../services/realtime.service';
-import { ChartService, ChartSymbol } from '../../services/chart.service';
+import { RealtimeService } from '../../services/realtime.service';
+import { ChartService } from '../../services/chart.service';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -144,13 +144,12 @@ import { Subscription } from 'rxjs';
   `]
 })
 export class ChartDemoComponent implements OnInit, OnDestroy {
-  selectedSymbol: string = 'BTCUSDT';
+  selectedSymbol = 'BTCUSDT';
 
   private subscriptions: Subscription[] = [];
 
   constructor(
-    private realtimeService: RealtimeService,
-    private chartService: ChartService
+    private realtimeService: RealtimeService
   ) {}
 
   ngOnInit() {

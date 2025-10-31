@@ -96,8 +96,8 @@ export class BybitService {
    * ```
    */
   getKlineData(
-    symbol: string = 'BTCUSDT',
-    interval: string = '60',
+    symbol = 'BTCUSDT',
+    interval = '60',
     limit: number = 24*30
   ): Observable<CandlestickData[]> {
     // console.log(`Fetching Bybit data for ${symbol}, interval: ${interval}, limit: ${limit}`);
@@ -261,7 +261,7 @@ export class BybitService {
    * Get base price for different symbols
    */
   private getBasePrice(symbol: string): number {
-    const basePrices: { [key: string]: number } = {
+    const basePrices: Record<string, number> = {
       'BTCUSDT': 45000,
       'ETHUSDT': 2500,
       'ADAUSDT': 0.5,
@@ -298,8 +298,8 @@ export class BybitService {
    * @returns Observable<CandlestickData[]> - Emits initial data then real-time updates
    */
   getRealTimeKlineData(
-    symbol: string = 'BTCUSDT',
-    interval: string = '1'
+    symbol = 'BTCUSDT',
+    interval = '1'
   ): Observable<CandlestickData[]> {
     // console.log(`[BYBIT SERVICE] Starting real-time kline data for ${symbol}, interval: ${interval}`);
 
@@ -367,8 +367,8 @@ export class BybitService {
    * @returns Observable<CandlestickData> - Emits individual candle updates
    */
   subscribeToRealtimeKline(
-    symbol: string = 'BTCUSDT',
-    interval: string = '1'
+    symbol = 'BTCUSDT',
+    interval = '1'
   ): Observable<CandlestickData> {
     // console.log(`Subscribing to real-time updates for ${symbol}, interval: ${interval}`);
     return this.webSocketService.subscribeToKline(symbol, interval);
@@ -379,7 +379,7 @@ export class BybitService {
    * @param symbol Trading pair symbol
    * @param interval Time interval
    */
-  unsubscribeFromRealtimeKline(symbol: string, interval: string = '1'): void {
+  unsubscribeFromRealtimeKline(symbol: string, interval = '1'): void {
     // console.log(`Unsubscribing from real-time updates for ${symbol}, interval: ${interval}`);
     this.webSocketService.unsubscribeFromKline(symbol, interval);
   }
@@ -452,7 +452,7 @@ export class BybitService {
   private convertIntervalFormat(interval: string): string {
     // Bybit WebSocket and REST API use the same interval format
     // But we can add conversion logic here if needed
-    const intervalMap: { [key: string]: string } = {
+    const intervalMap: Record<string, string> = {
       '1m': '1',
       '5m': '5',
       '15m': '15',
@@ -470,7 +470,7 @@ export class BybitService {
    * @param symbol Trading pair symbol
    * @returns Observable<TickerData> - Emits ticker updates
    */
-  subscribeToRealtimeTicker(symbol: string = 'BTCUSDT'): Observable<any> {
+  subscribeToRealtimeTicker(symbol = 'BTCUSDT'): Observable<any> {
     // console.log(`Subscribing to real-time ticker for ${symbol}`);
     return this.webSocketService.subscribeToTicker(symbol);
   }
@@ -481,7 +481,7 @@ export class BybitService {
    * @param depth Orderbook depth (1, 50, 200)
    * @returns Observable<OrderbookData> - Emits orderbook updates
    */
-  subscribeToRealtimeOrderbook(symbol: string = 'BTCUSDT', depth: number = 50): Observable<any> {
+  subscribeToRealtimeOrderbook(symbol = 'BTCUSDT', depth = 50): Observable<any> {
     // console.log(`Subscribing to real-time orderbook for ${symbol}, depth: ${depth}`);
     return this.webSocketService.subscribeToOrderbook(symbol, depth);
   }
@@ -491,7 +491,7 @@ export class BybitService {
    * @param symbol Trading pair symbol
    * @returns Observable<TradeData> - Emits individual trades
    */
-  subscribeToRealtimeTrades(symbol: string = 'BTCUSDT'): Observable<any> {
+  subscribeToRealtimeTrades(symbol = 'BTCUSDT'): Observable<any> {
     // console.log(`Subscribing to real-time trades for ${symbol}`);
     return this.webSocketService.subscribeToTrades(symbol);
   }
@@ -507,7 +507,7 @@ export class BybitService {
   /**
    * Unsubscribe from real-time orderbook data
    */
-  unsubscribeFromRealtimeOrderbook(symbol: string, depth: number = 50): void {
+  unsubscribeFromRealtimeOrderbook(symbol: string, depth = 50): void {
     // console.log(`Unsubscribing from real-time orderbook for ${symbol}`);
     this.webSocketService.unsubscribeFromOrderbook(symbol, depth);
   }
@@ -542,7 +542,7 @@ export class BybitService {
    * @param symbol Trading pair symbol
    * @returns Observable with combined market data
    */
-  getComprehensiveMarketStream(symbol: string = 'BTCUSDT'): Observable<any> {
+  getComprehensiveMarketStream(symbol = 'BTCUSDT'): Observable<any> {
     // console.log(`Starting comprehensive market stream for ${symbol}`);
 
     return combineLatest([

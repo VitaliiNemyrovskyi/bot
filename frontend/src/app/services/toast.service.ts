@@ -30,7 +30,7 @@ export class ToastService {
   /**
    * Show a toast notification
    */
-  show(message: string, variant: ToastVariant = 'info', duration: number = 5000): void {
+  show(message: string, variant: ToastVariant = 'info', duration = 5000): void {
     const id = ++this.toastIdCounter;
     const toast: Toast = { id, message, variant, duration };
 

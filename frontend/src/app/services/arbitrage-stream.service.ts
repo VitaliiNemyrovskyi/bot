@@ -48,7 +48,7 @@ export type StreamMessage = PriceUpdate | ConnectionMessage | ErrorMessage;
  */
 export interface StreamSubscription {
   symbols: string[];
-  exchanges: Array<{
+  exchanges: {
     exchange: string;
     symbol: string;
     credentialId: string;
@@ -56,7 +56,7 @@ export interface StreamSubscription {
     apiSecret?: string;
     authToken?: string;
     environment: string;
-  }>;
+  }[];
 }
 
 /**

@@ -74,7 +74,7 @@ export class TriangularArbitrageComponent implements OnInit, OnDestroy {
   readonly positionFilter = signal<PositionFilter>({});
 
   // Scanner configuration per exchange (to track position size)
-  private scannerConfigs: Map<Exchange, ScannerConfig> = new Map();
+  private scannerConfigs = new Map<Exchange, ScannerConfig>();
 
   // Computed values
   readonly activePositions = computed(() =>

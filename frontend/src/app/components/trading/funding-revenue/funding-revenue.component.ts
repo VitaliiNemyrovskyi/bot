@@ -252,7 +252,7 @@ export class FundingRevenueComponent implements OnInit, OnDestroy {
   private getDefaultStartDate(): string {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
+    return date.toISOString().split('T')[0]!;
   }
 
   /**
@@ -276,7 +276,7 @@ export class FundingRevenueComponent implements OnInit, OnDestroy {
   /**
    * Format number with thousands separator
    */
-  formatNumber(value: number, decimals: number = 0): string {
+  formatNumber(value: number, decimals = 0): string {
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals

@@ -42,8 +42,8 @@ export class LoginComponent {
     private route: ActivatedRoute,
     private translationService: TranslationService
   ) {
-    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/trading';
-    this.loginReason = this.route.snapshot.queryParams['reason'] || null;
+    this.returnUrl = (this.route.snapshot.queryParams['returnUrl'] as string) || '/trading';
+    this.loginReason = (this.route.snapshot.queryParams['reason'] as string) || null;
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', Validators.required]
@@ -66,14 +66,18 @@ export class LoginComponent {
   onLogin() {
     if (this.loginForm.valid) {
       const { email, password } = this.loginForm.value;
-      this.authService.login(email, password).subscribe();
+      if (email && password) {
+        this.authService.login(email, password).subscribe();
+      }
     }
   }
 
   onRegister() {
     if (this.registerForm.valid) {
       const { email, password, name } = this.registerForm.value;
-      this.authService.register(email, password, name).subscribe();
+      if (email && password) {
+        this.authService.register(email, password, name || undefined).subscribe();
+      }
     }
   }
 

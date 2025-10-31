@@ -249,25 +249,25 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   // WebSocket connections
   private primaryWs: WebSocket | null = null;
   private hedgeWs: WebSocket | null = null;
-  private reconnectTimeout: any;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Funding rates storage for both exchanges
   private fundingRatesMap = new Map<string, { fundingRate: string; fundingTime: number; fundingInterval?: string }>();
-  private fundingRateRefreshInterval: any;
+  private fundingRateRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   // Track previous funding times to calculate intervals
   private previousPrimaryFundingTime: number | null = null;
   private previousHedgeFundingTime: number | null = null;
 
   // MEXC ping intervals
-  private mexcPingIntervals = new Map<string, any>();
+  private mexcPingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
   // Destroyed flag to prevent updates after component destruction
   private isDestroyed = false;
 
   // Current time signal for funding countdown - updates every 10 seconds
   private currentTime = signal<number>(Date.now());
-  private timeUpdateInterval: any;
+  private timeUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
   // Computed signals for formatted funding info to prevent ExpressionChangedAfterItHasBeenCheckedError
   primaryFormattedFunding = computed(() => {
@@ -627,7 +627,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
-    const chartElement = this.chartContainer.nativeElement;
+    const chartElement = this.chartContainer.nativeElement as HTMLElement;
 
     // Ensure container has dimensions (similar to lightweight-chart component)
     if (chartElement.clientWidth === 0 || chartElement.clientHeight === 0) {
@@ -746,7 +746,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
 
       if (entries.length > 0) {
-        const { width } = entries[0].contentRect;
+        const { width } = entries[0]!.contentRect;
         if (width > 0) {
           this.chart.applyOptions({ width });
         }
@@ -1342,7 +1342,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const interval = this.selectedTimeframe();
 
       // Calculate limit based on interval to get ~3 months of data
-      const limitMap: { [key: string]: number } = {
+      const limitMap: Record<string, number> = {
         '1m': 4320,   // 3 days (too much for 3 months, API limits)
         '5m': 2160,   // 7.5 days
         '15m': 2016,  // 3 weeks
@@ -2005,7 +2005,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Get interval in milliseconds for timeframe
    */
   private getIntervalMs(timeframe: string): number {
-    const intervals: { [key: string]: number } = {
+    const intervals: Record<string, number> = {
       '1m': 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
@@ -2128,7 +2128,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const primarySymbolInfo = this.primarySymbolInfo();
       
       if (primaryUnit === 'usdt' && primaryPrice > 0 && primarySymbolInfo) {
-        let convertedQuantity = primaryOrder.quantity / primaryPrice;
+        const convertedQuantity = primaryOrder.quantity / primaryPrice;
         
         // Apply step rounding (same logic as validation)
         let qtyPerPart = convertedQuantity / (primaryOrder.graduatedParts || 5);
@@ -2150,7 +2150,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const hedgeSymbolInfo = this.hedgeSymbolInfo();
       
       if (hedgeUnit === 'usdt' && hedgePrice > 0 && hedgeSymbolInfo) {
-        let convertedQuantity = hedgeOrder.quantity / hedgePrice;
+        const convertedQuantity = hedgeOrder.quantity / hedgePrice;
         
         // Apply step rounding (same logic as validation)
         let qtyPerPart = convertedQuantity / (hedgeOrder.graduatedParts || 5);

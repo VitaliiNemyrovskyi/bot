@@ -24,13 +24,13 @@ export interface SelectOption {
 })
 export class SelectComponent implements ControlValueAccessor {
   @Input() options: SelectOption[] = [];
-  @Input() placeholder: string = 'Select an option';
-  @Input() label: string = '';
-  @Input() error: string = '';
-  @Input() disabled: boolean = false;
+  @Input() placeholder = 'Select an option';
+  @Input() label = '';
+  @Input() error = '';
+  @Input() disabled = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
-  @Input() fullWidth: boolean = false;
-  @Input() multiple: boolean = false;
+  @Input() fullWidth = false;
+  @Input() multiple = false;
 
   // Support for direct value binding
   @Input() set value(val: any) {
@@ -42,7 +42,7 @@ export class SelectComponent implements ControlValueAccessor {
   @Output() valueChange = new EventEmitter<any>();
 
   private _value: any = null;
-  touched: boolean = false;
+  touched = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};

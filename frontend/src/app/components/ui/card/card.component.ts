@@ -11,7 +11,7 @@ import { CommonModule } from '@angular/common';
 export class CardComponent {
   @Input() variant: 'default' | 'outlined' | 'elevated' = 'default';
   @Input() padding: 'none' | 'small' | 'medium' | 'large' = 'medium';
-  @Input() hover: boolean = false;
+  @Input() hover = false;
 
   getCardClasses(): string {
     const classes = ['card'];

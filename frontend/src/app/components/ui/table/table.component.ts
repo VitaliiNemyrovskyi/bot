@@ -26,12 +26,12 @@ export interface SortEvent {
 export class TableComponent {
   @Input() columns: TableColumn[] = [];
   @Input() data: any[] = [];
-  @Input() loading: boolean = false;
-  @Input() striped: boolean = true;
-  @Input() hoverable: boolean = true;
-  @Input() bordered: boolean = false;
+  @Input() loading = false;
+  @Input() striped = true;
+  @Input() hoverable = true;
+  @Input() bordered = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
-  @Input() stickyHeader: boolean = false;
+  @Input() stickyHeader = false;
   @Input() maxHeight?: string;
 
   @Output() sort = new EventEmitter<SortEvent>();

@@ -160,7 +160,7 @@ export class BybitFundingStrategyService {
    * @param decimals Number of decimal places
    * @returns Formatted rate string (e.g., "0.01%")
    */
-  formatFundingRate(rate: number, decimals: number = 4): string {
+  formatFundingRate(rate: number, decimals = 4): string {
     return `${(rate * 100).toFixed(decimals)}%`;
   }
 
@@ -225,7 +225,7 @@ export class BybitFundingStrategyService {
    * @param minThreshold Minimum absolute threshold (default: 0.01%)
    * @returns True if rate meets threshold
    */
-  isFundingRateFavorable(fundingRate: number, minThreshold: number = 0.0001): boolean {
+  isFundingRateFavorable(fundingRate: number, minThreshold = 0.0001): boolean {
     return Math.abs(fundingRate) >= minThreshold;
   }
 }

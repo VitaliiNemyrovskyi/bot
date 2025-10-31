@@ -63,7 +63,7 @@ export class OpportunityListComponent {
   get isLoading(): boolean {
     return this._isLoading;
   }
-  private _isLoading: boolean = false;
+  private _isLoading = false;
 
   @Input() set scannerStatus(value: ScannerStatus) {
     console.log('[OpportunityList] scannerStatus changed to:', value);

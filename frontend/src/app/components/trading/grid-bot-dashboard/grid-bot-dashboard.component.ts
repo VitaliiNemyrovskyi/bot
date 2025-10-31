@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardSubtitleComponent, CardContentComponent, CardActionsComponent } from '../../ui/card/card.component';
 import { TableComponent } from '../../ui/table/table.component';
@@ -80,7 +80,7 @@ export class GridBotDashboardComponent implements OnInit {
       next: (bots) => {
         this.activeBots = bots;
       },
-      error: (error) => {
+      error: (_error) => {
         console.error('Failed to load bots');
       }
     });
@@ -92,7 +92,7 @@ export class GridBotDashboardComponent implements OnInit {
       next: (backtests) => {
         this.backtests = backtests;
       },
-      error: (error) => {
+      error: (_error) => {
         console.error('Failed to load backtests');
       }
     });
@@ -118,7 +118,7 @@ export class GridBotDashboardComponent implements OnInit {
         console.log(`Bot ${action}ed successfully`);
         this.loadActiveBots();
       },
-      error: (error) => {
+      error: (_error) => {
         console.error(`Failed to ${action} bot`);
       }
     });
@@ -131,7 +131,7 @@ export class GridBotDashboardComponent implements OnInit {
           console.log('Bot deleted successfully');
           this.loadActiveBots();
         },
-        error: (error) => {
+        error: (_error) => {
           console.error('Failed to delete bot');
         }
       });
@@ -149,15 +149,15 @@ export class GridBotDashboardComponent implements OnInit {
     });
   }
 
-  backtestStrategy(strategy: any) {
+  backtestStrategy(_strategy: any) {
     console.log('Backtest strategy - not implemented');
   }
 
-  editStrategy(strategy: any) {
+  editStrategy(_strategy: any) {
     console.log('Edit strategy - not implemented');
   }
 
-  deleteStrategy(strategy: any) {
+  deleteStrategy(_strategy: any) {
     console.log('Delete strategy - not implemented');
   }
 
@@ -177,7 +177,7 @@ export class GridBotDashboardComponent implements OnInit {
           console.log('Backtest deleted successfully');
           this.loadBacktests();
         },
-        error: (error) => {
+        error: (_error) => {
           console.error('Failed to delete backtest');
         }
       });

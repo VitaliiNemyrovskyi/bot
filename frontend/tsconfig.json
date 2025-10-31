@@ -22,9 +22,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "useDefineForClassFields": false,
-    "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

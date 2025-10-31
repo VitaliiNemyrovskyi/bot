@@ -13,8 +13,7 @@ import { Injectable } from '@angular/core';
   providedIn: 'root'
 })
 export class StatisticalUtilsService {
-
-  constructor() { }
+  // No dependencies needed for this utility service
 
   /**
    * Calculate the arithmetic mean (average) of an array of numbers
@@ -275,7 +274,7 @@ export class StatisticalUtilsService {
    * formatPercentage(0.5, 0) // returns "50%"
    * formatPercentage(-0.15) // returns "-15.00%"
    */
-  formatPercentage(value: number, decimals: number = 2): string {
+  formatPercentage(value: number, decimals = 2): string {
     const percentage = value * 100;
     return `${percentage.toFixed(decimals)}%`;
   }

@@ -1,8 +1,8 @@
 import { Component, computed, Signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
-import { AuthService, User } from './services/auth.service';
-import { TranslationService, Language, LanguageOption } from './services/translation.service';
+import { AuthService } from './services/auth.service';
+import { TranslationService, Language } from './services/translation.service';
 import { ThemeService } from './services/theme.service';
 import { ThemeToggleComponent } from './components/ui/theme-toggle/theme-toggle.component';
 import { ButtonComponent } from './components/ui/button/button.component';

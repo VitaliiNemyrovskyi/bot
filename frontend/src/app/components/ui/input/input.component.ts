@@ -18,13 +18,13 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 })
 export class InputComponent implements ControlValueAccessor {
   @Input() type: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' = 'text';
-  @Input() placeholder: string = '';
-  @Input() label: string = '';
-  @Input() hint: string = '';
-  @Input() error: string = '';
-  @Input() disabled: boolean = false;
+  @Input() placeholder = '';
+  @Input() label = '';
+  @Input() hint = '';
+  @Input() error = '';
+  @Input() disabled = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
-  @Input() fullWidth: boolean = false;
+  @Input() fullWidth = false;
   @Input() icon?: string;
   @Input() iconPosition: 'left' | 'right' = 'left';
   @Input() suffix?: string;
@@ -42,7 +42,7 @@ export class InputComponent implements ControlValueAccessor {
   @Output() valueChange = new EventEmitter<any>();
 
   private _value: any = '';
-  touched: boolean = false;
+  touched = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};
@@ -137,12 +137,12 @@ export class InputComponent implements ControlValueAccessor {
   ]
 })
 export class TextareaComponent implements ControlValueAccessor {
-  @Input() placeholder: string = '';
-  @Input() label: string = '';
-  @Input() error: string = '';
-  @Input() disabled: boolean = false;
-  @Input() rows: number = 4;
-  @Input() fullWidth: boolean = false;
+  @Input() placeholder = '';
+  @Input() label = '';
+  @Input() error = '';
+  @Input() disabled = false;
+  @Input() rows = 4;
+  @Input() fullWidth = false;
 
   // Support for direct value binding
   @Input() set value(val: any) {
@@ -154,7 +154,7 @@ export class TextareaComponent implements ControlValueAccessor {
   @Output() valueChange = new EventEmitter<any>();
 
   private _value: any = '';
-  touched: boolean = false;
+  touched = false;
 
   private onChange = (value: any) => {};
   private onTouched = () => {};

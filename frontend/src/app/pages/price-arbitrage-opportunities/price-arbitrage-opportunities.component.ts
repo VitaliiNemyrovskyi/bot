@@ -419,7 +419,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Format percentage for display
    */
-  formatPercent(value: number | undefined, decimals: number = 2): string {
+  formatPercent(value: number | undefined, decimals = 2): string {
     if (value === undefined || value === null) return '—';
     return `${value.toFixed(decimals)}%`;
   }
@@ -961,7 +961,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     if (!opp) return;
 
     // Only load for FundingRateOpportunity (not SpotFutures)
-    if (!!this.isSpotFuturesStrategy(opp)) return;
+    if (this.isSpotFuturesStrategy(opp)) return;
 
     // Set loading
     const loading = new Set(this.loadingPhase2Metrics());

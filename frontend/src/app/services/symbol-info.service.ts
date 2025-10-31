@@ -71,7 +71,7 @@ export class SymbolInfoService {
   validateOrderQuantity(
     symbolInfo: SymbolInfo,
     totalQuantity: number,
-    graduatedParts: number = 1
+    graduatedParts = 1
   ): { valid: boolean; error?: string; suggestion?: string } {
     if (!symbolInfo) {
       return { valid: false, error: 'Symbol information not available' };

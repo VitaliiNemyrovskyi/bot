@@ -90,7 +90,7 @@ export class StrategyService {
     return this.http.post<any>(this.apiUrl, strategy);
   }
 
-  getStrategies(includePublic: boolean = false): Observable<Strategy[]> {
+  getStrategies(includePublic = false): Observable<Strategy[]> {
     const params = new HttpParams().set('includePublic', includePublic.toString());
     return this.http.get<Strategy[]>(this.apiUrl, { params });
   }
@@ -150,7 +150,7 @@ export class StrategyService {
   }
 
   // Performance Analytics
-  getStrategyPerformance(strategyId: string, period: string = '30d'): Observable<StrategyPerformance> {
+  getStrategyPerformance(strategyId: string, period = '30d'): Observable<StrategyPerformance> {
     const params = new HttpParams()
       .set('strategyId', strategyId)
       .set('period', period);
@@ -170,13 +170,13 @@ export class StrategyService {
 
   // Market Scanning
   scanMarket(strategyId: string, symbols: string[]): Observable<{
-    matches: Array<{
+    matches: {
       symbol: string;
       score: number;
       signals: any[];
       lastPrice: number;
       recommendation: 'BUY' | 'SELL' | 'HOLD';
-    }>;
+    }[];
   }> {
     return this.http.post<any>(`${this.apiUrl}/scan`, {
       strategyId,
@@ -185,19 +185,19 @@ export class StrategyService {
   }
 
   // Indicator Utilities
-  getAvailableIndicators(): Observable<Array<{
+  getAvailableIndicators(): Observable<{
     name: string;
     displayName: string;
     description: string;
-    parameters: Array<{
+    parameters: {
       name: string;
       type: string;
       default: any;
       min?: number;
       max?: number;
       options?: string[];
-    }>;
-  }>> {
+    }[];
+  }[]> {
     return this.http.get<any[]>(`${this.apiUrl}/indicators`);
   }
 
@@ -223,12 +223,12 @@ export class StrategyService {
     startDate: string;
     endDate: string;
     optimizationTarget: 'profit' | 'winRate' | 'sharpeRatio' | 'profitFactor';
-    parameters: Array<{
+    parameters: {
       name: string;
       min: number;
       max: number;
       step: number;
-    }>;
+    }[];
   }): Observable<{
     optimizationId: string;
     status: 'running' | 'completed' | 'failed';
@@ -253,7 +253,7 @@ export class StrategyService {
   }
 
   // Community Features
-  getPopularStrategies(limit: number = 10): Observable<Strategy[]> {
+  getPopularStrategies(limit = 10): Observable<Strategy[]> {
     const params = new HttpParams().set('limit', limit.toString());
     return this.http.get<Strategy[]>(`${this.apiUrl}/popular`, { params });
   }
@@ -268,12 +268,12 @@ export class StrategyService {
   getStrategyRatings(strategyId: string): Observable<{
     averageRating: number;
     totalRatings: number;
-    reviews: Array<{
+    reviews: {
       rating: number;
       review: string;
       user: string;
       createdAt: Date;
-    }>;
+    }[];
   }> {
     return this.http.get<any>(`${this.apiUrl}/${strategyId}/ratings`);
   }
@@ -285,7 +285,7 @@ export class StrategyService {
     riskTolerance: 'low' | 'medium' | 'high';
     timeframe: string;
   }): Observable<{
-    suggestions: Array<{
+    suggestions: {
       name: string;
       description: string;
       entryConditions: string[];
@@ -293,18 +293,18 @@ export class StrategyService {
       expectedWinRate: number;
       expectedReturn: number;
       riskLevel: string;
-    }>;
+    }[];
   }> {
     return this.http.post<any>(`${this.apiUrl}/ai/generate-ideas`, params);
   }
 
   improveStrategy(strategyId: string, feedback: string): Observable<{
-    suggestions: Array<{
+    suggestions: {
       type: 'add_filter' | 'modify_filter' | 'add_risk_rule' | 'adjust_parameters';
       description: string;
       implementation: any;
       expectedImprovement: string;
-    }>;
+    }[];
   }> {
     return this.http.post<any>(`${this.apiUrl}/${strategyId}/ai/improve`, {
       feedback

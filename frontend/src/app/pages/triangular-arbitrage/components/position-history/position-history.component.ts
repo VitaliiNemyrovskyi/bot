@@ -38,7 +38,7 @@ import { ExecutionProgressComponent } from '../execution-progress/execution-prog
 })
 export class PositionHistoryComponent {
   @Input() positions: TriangularPosition[] = [];
-  @Input() isLoading: boolean = false;
+  @Input() isLoading = false;
 
   @Output() filterChange = new EventEmitter<PositionFilter>();
   @Output() cancelPosition = new EventEmitter<string>();

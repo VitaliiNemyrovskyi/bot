@@ -109,7 +109,7 @@ export class GraduatedEntryService {
    * @param showAll If true, include completed positions
    * @returns Observable of graduated entry positions
    */
-  getPositions(showAll: boolean = false): Observable<GraduatedEntryPosition[]> {
+  getPositions(showAll = false): Observable<GraduatedEntryPosition[]> {
     const url = showAll ? `${this.API_BASE}?showAll=true` : this.API_BASE;
 
     return this.http.get<GraduatedEntryPositionsResponse>(url, {
@@ -121,7 +121,7 @@ export class GraduatedEntryService {
         }
         throw new Error('Failed to fetch graduated entry positions');
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('Error fetching graduated entry positions:', error);
         return throwError(() => error);
       })

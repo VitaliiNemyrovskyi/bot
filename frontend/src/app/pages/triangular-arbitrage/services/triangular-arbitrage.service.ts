@@ -509,7 +509,7 @@ export class TriangularArbitrageService {
   /**
    * Download CSV file
    */
-  downloadCSV(csvContent: string, filename: string = 'triangular-arbitrage-positions.csv'): void {
+  downloadCSV(csvContent: string, filename = 'triangular-arbitrage-positions.csv'): void {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);

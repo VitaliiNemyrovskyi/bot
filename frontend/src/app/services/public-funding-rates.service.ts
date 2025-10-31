@@ -16,7 +16,7 @@ import { StatisticalUtilsService } from './statistical-utils.service';
 export class PublicFundingRatesService {
   // Exchange trading fees (taker fees per trade)
   // Arbitrage requires 4 trades: open long, open short, close long, close short
-  private readonly EXCHANGE_FEES = {
+  private readonly EXCHANGE_FEES: Record<string, number> = {
     BYBIT: 0.055,   // 0.055% per trade × 4 = 0.22% total
     BINGX: 0.05,    // 0.05% per trade × 4 = 0.20% total
     MEXC: 0.03,     // 0.03% per trade × 4 = 0.12% total
@@ -27,7 +27,7 @@ export class PublicFundingRatesService {
 
   // Cache for the funding rates observable to prevent duplicate HTTP requests
   private fundingRatesCache$?: Observable<FundingRateOpportunity[]>;
-  private lastFetchTime: number = 0;
+  private lastFetchTime = 0;
   private readonly CACHE_DURATION_MS = 5000; // Cache for 5 seconds
 
   constructor(
@@ -43,13 +43,13 @@ export class PublicFundingRatesService {
    * @param symbol - Trading symbol (e.g., 'AVNTUSDT')
    * @returns Observable of funding rate data for specified exchanges
    */
-  getArbitrageFundingRates(exchanges: string[], symbol: string): Observable<Array<{
+  getArbitrageFundingRates(exchanges: string[], symbol: string): Observable<{
     exchange: string;
     symbol: string;
     fundingRate: string;
     nextFundingTime: number;
     fundingInterval: string;
-  }>> {
+  }[]> {
     const exchangesParam = exchanges.join(',');
     const url = `/api/arbitrage/public-funding-rates?exchanges=${exchangesParam}&symbol=${symbol}`;
 
@@ -57,13 +57,13 @@ export class PublicFundingRatesService {
 
     return this.http.get<{
       success: boolean;
-      data: Array<{
+      data: {
         exchange: string;
         symbol: string;
         fundingRate: string;
         nextFundingTime: number;
         fundingInterval: string;
-      }>;
+      }[];
       timestamp: string;
     }>(url).pipe(
       map(response => {
@@ -148,7 +148,25 @@ export class PublicFundingRatesService {
   private fetchBybitFundingRates(): Observable<ExchangeFundingRate[]> {
     const url = 'https://api.bybit.com/v5/market/tickers?category=linear';
 
-    return this.http.get<any>(url).pipe(
+    interface BybitResponse {
+      retCode: number;
+      retMsg: string;
+      result?: {
+        list: {
+          symbol: string;
+          fundingRate: string;
+          lastPrice: string;
+          nextFundingTime: string;
+          fundingIntervalHour?: number;
+          turnover24h?: string;
+          openInterest?: string;
+          highPrice24h?: string;
+          lowPrice24h?: string;
+        }[];
+      };
+    }
+
+    return this.http.get<BybitResponse>(url).pipe(
       map(response => {
         if (response.retCode !== 0 || !response.result?.list) {
           console.error('[Bybit] API error:', response.retMsg);
@@ -159,10 +177,10 @@ export class PublicFundingRatesService {
         console.log(`[Bybit] Fetched ${tickers.length} tickers`);
 
         return tickers
-          .filter((t: any) => t.symbol && t.fundingRate && t.lastPrice)
-          .map((t: any) => ({
+          .filter(t => t.symbol && t.fundingRate && t.lastPrice)
+          .map(t => ({
             exchange: 'BYBIT',
-            symbol: t.symbol.replace(/[\/\-_:]/g, ''), // BTCUSDT
+            symbol: t.symbol.replace(/[\\/\-_:]/g, ''), // BTCUSDT
             originalSymbol: t.symbol, // BTC/USDT:USDT
             fundingRate: t.fundingRate,
             nextFundingTime: parseInt(t.nextFundingTime) || 0,
@@ -174,7 +192,7 @@ export class PublicFundingRatesService {
             low24h: t.lowPrice24h,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[Bybit] Failed to fetch funding rates:', error.message);
         return of([]);
       })
@@ -191,7 +209,15 @@ export class PublicFundingRatesService {
     // Use backend proxy to bypass CORS
     const url = '/api/binance/public-funding-rates';
 
-    return this.http.get<any>(url).pipe(
+    interface BinanceRate {
+      symbol: string;
+      lastFundingRate: string;
+      markPrice: string;
+      nextFundingTime: string;
+      fundingInterval?: string;
+    }
+
+    return this.http.get<BinanceRate[]>(url).pipe(
       map(response => {
         if (!Array.isArray(response)) {
           console.error('[Binance] Invalid response format');
@@ -201,8 +227,8 @@ export class PublicFundingRatesService {
         console.log(`[Binance] Fetched ${response.length} premium index entries via proxy`);
 
         return response
-          .filter((p: any) => p.symbol && p.lastFundingRate && p.markPrice)
-          .map((p: any) => ({
+          .filter(p => p.symbol && p.lastFundingRate && p.markPrice)
+          .map(p => ({
             exchange: 'BINANCE',
             symbol: p.symbol, // Already in format BTCUSDT
             originalSymbol: p.symbol,
@@ -216,7 +242,7 @@ export class PublicFundingRatesService {
             low24h: '0',
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[Binance] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
@@ -233,7 +259,23 @@ export class PublicFundingRatesService {
     // Use backend proxy to bypass CORS
     const url = '/api/bingx/public-funding-rates';
 
-    return this.http.get<any>(url).pipe(
+    interface BingXResponse {
+      code: number;
+      msg?: string;
+      data: {
+        symbol: string;
+        lastFundingRate: string;
+        markPrice: string;
+        nextFundingTime: string;
+        fundingInterval?: string;
+        volume24h?: string;
+        openInterest?: string;
+        high24h?: string;
+        low24h?: string;
+      }[];
+    }
+
+    return this.http.get<BingXResponse>(url).pipe(
       map(response => {
         if (response.code !== 0 || !response.data) {
           console.error('[BingX] API error:', response.msg);
@@ -244,10 +286,10 @@ export class PublicFundingRatesService {
         console.log(`[BingX] Fetched ${premiumIndex.length} premium index entries via proxy`);
 
         return premiumIndex
-          .filter((p: any) => p.symbol && p.lastFundingRate && p.markPrice)
-          .map((p: any) => ({
+          .filter(p => p.symbol && p.lastFundingRate && p.markPrice)
+          .map(p => ({
             exchange: 'BINGX',
-            symbol: p.symbol.replace(/[\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
+            symbol: p.symbol.replace(/[\\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
             originalSymbol: p.symbol, // BTC-USDT
             fundingRate: p.lastFundingRate,
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
@@ -259,7 +301,7 @@ export class PublicFundingRatesService {
             low24h: p.low24h,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[BingX] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
@@ -276,7 +318,23 @@ export class PublicFundingRatesService {
     // Use backend proxy to bypass CORS
     const url = '/api/mexc/public-funding-rates';
 
-    return this.http.get<any>(url).pipe(
+    interface MEXCResponse {
+      code: number;
+      msg?: string;
+      data: {
+        symbol: string;
+        fundingRate: number;
+        lastPrice: number;
+        fairPrice: number;
+        fundingInterval?: string;
+        volume24?: number;
+        holdVol?: number;
+        high24Price?: number;
+        low24Price?: number;
+      }[];
+    }
+
+    return this.http.get<MEXCResponse>(url).pipe(
       map(response => {
         if (response.code !== 0 || !response.data) {
           console.error('[MEXC] API error:', response.msg);
@@ -287,15 +345,15 @@ export class PublicFundingRatesService {
         console.log(`[MEXC] Fetched ${tickers.length} tickers via proxy`);
 
         return tickers
-          .filter((t: any) =>
+          .filter(t =>
             t.symbol &&
             t.fundingRate !== undefined &&
             t.fundingRate !== 0 &&
             (t.lastPrice > 0 || t.fairPrice > 0)
           )
-          .map((t: any) => ({
+          .map(t => ({
             exchange: 'MEXC',
-            symbol: t.symbol.replace(/[\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
+            symbol: t.symbol.replace(/[\\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
             originalSymbol: t.symbol, // BTC_USDT
             fundingRate: t.fundingRate.toString(),
             nextFundingTime: 0, // MEXC doesn't provide nextFundingTime in tickers
@@ -307,7 +365,7 @@ export class PublicFundingRatesService {
             low24h: t.low24Price ? t.low24Price.toString() : undefined,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[MEXC] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
@@ -324,7 +382,18 @@ export class PublicFundingRatesService {
     // Use backend proxy to bypass CORS
     const url = '/api/gateio/public-funding-rates';
 
-    return this.http.get<any>(url).pipe(
+    interface GateIOContract {
+      name: string;
+      funding_rate: string;
+      last_price: string;
+      funding_next_apply: string;
+      fundingInterval?: string;
+      trade_size?: string;
+      position_size?: string;
+      in_delisting: boolean;
+    }
+
+    return this.http.get<GateIOContract[]>(url).pipe(
       map(response => {
         if (!Array.isArray(response)) {
           console.error('[Gate.io] API error: Expected array response');
@@ -335,15 +404,15 @@ export class PublicFundingRatesService {
         console.log(`[Gate.io] Fetched ${contracts.length} contracts via proxy`);
 
         return contracts
-          .filter((c: any) =>
+          .filter(c =>
             c.name &&
             c.funding_rate &&
             c.last_price &&
             !c.in_delisting
           )
-          .map((c: any) => ({
+          .map(c => ({
             exchange: 'GATEIO',
-            symbol: c.name.replace(/[\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
+            symbol: c.name.replace(/[\\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
             originalSymbol: c.name, // BTC_USDT
             fundingRate: c.funding_rate,
             nextFundingTime: parseInt(c.funding_next_apply) * 1000 || 0, // Convert to ms
@@ -355,7 +424,7 @@ export class PublicFundingRatesService {
             low24h: undefined,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[Gate.io] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
@@ -372,7 +441,18 @@ export class PublicFundingRatesService {
     // Use backend proxy to bypass CORS
     const url = '/api/bitget/public-funding-rates';
 
-    return this.http.get<any>(url).pipe(
+    interface BitgetResponse {
+      code: string;
+      msg?: string;
+      data: {
+        symbol: string;
+        fundingRate: string;
+        nextUpdate: string;
+        fundingRateInterval?: number;
+      }[];
+    }
+
+    return this.http.get<BitgetResponse>(url).pipe(
       map(response => {
         if (response.code !== '00000' || !response.data) {
           console.error('[Bitget] API error:', response.msg);
@@ -383,13 +463,13 @@ export class PublicFundingRatesService {
         console.log(`[Bitget] Fetched ${fundingRates.length} funding rates via proxy`);
 
         return fundingRates
-          .filter((fr: any) =>
+          .filter(fr =>
             fr.symbol &&
             fr.fundingRate !== undefined
           )
-          .map((fr: any) => ({
+          .map(fr => ({
             exchange: 'BITGET',
-            symbol: fr.symbol.replace(/[\/\-_:]/g, ''), // BTCUSDT
+            symbol: fr.symbol.replace(/[\\/\-_:]/g, ''), // BTCUSDT
             originalSymbol: fr.symbol, // BTCUSDT
             fundingRate: fr.fundingRate,
             nextFundingTime: parseInt(fr.nextUpdate) || 0,
@@ -401,7 +481,7 @@ export class PublicFundingRatesService {
             low24h: undefined,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
+      catchError((error: Error) => {
         console.error('[Bitget] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
@@ -436,7 +516,7 @@ export class PublicFundingRatesService {
    * Normalize funding rate to 8-hour interval for fair comparison
    * Different exchanges use different intervals (1h, 4h, 8h)
    */
-  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval: string = '8h'): number {
+  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval = '8h'): number {
     const rate = parseFloat(fundingRate);
 
     // Normalization multipliers to convert to 8h interval
@@ -583,8 +663,8 @@ export class PublicFundingRatesService {
       let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
       // Check if we have valid funding spread (not just price data)
-      if (Math.abs(fundingSpread) > 0.0001) {
-        // We have funding data - calculate combined metrics
+      if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpread) > 0.0001) {
+        // We have both funding and price data - calculate combined metrics
 
         // Convert price spread to percentage
         const priceSpreadPercent = priceSpread * 100;
@@ -739,8 +819,8 @@ export class PublicFundingRatesService {
    * @returns Total fees as decimal (e.g., 0.0022 = 0.22%)
    */
   private calculateTotalFees(longExchange: string, shortExchange: string): number {
-    const longFee = (this.EXCHANGE_FEES as any)[longExchange] || 0.055;
-    const shortFee = (this.EXCHANGE_FEES as any)[shortExchange] || 0.055;
+    const longFee = this.EXCHANGE_FEES[longExchange] || 0.055;
+    const shortFee = this.EXCHANGE_FEES[shortExchange] || 0.055;
 
     // 4 trades: open long, open short, close long, close short
     return (longFee + shortFee) * 2 / 100; // Convert from percentage to decimal
@@ -910,14 +990,14 @@ export class PublicFundingRatesService {
     symbol: string,
     exchange: string,
     days: 7 | 30
-  ): Promise<Array<{ timestamp: number; fundingRate: number }>> {
+  ): Promise<{ timestamp: number; fundingRate: number }[]> {
     const url = `/api/arbitrage/funding-rates/history?symbol=${symbol}&exchange=${exchange}&days=${days}`;
 
     try {
       const response = await firstValueFrom(
         this.http.get<{
           success: boolean;
-          data: Array<{ timestamp: number; fundingRate: number }>;
+          data: { timestamp: number; fundingRate: number }[];
         }>(url)
       );
 
@@ -943,11 +1023,11 @@ export class PublicFundingRatesService {
    * @returns Array of spread data points with timestamps and values
    */
   private calculateSpreads(
-    longRates: Array<{ timestamp: number; fundingRate: number }>,
-    shortRates: Array<{ timestamp: number; fundingRate: number }>
-  ): Array<{ timestamp: number; spread: number }> {
+    longRates: { timestamp: number; fundingRate: number }[],
+    shortRates: { timestamp: number; fundingRate: number }[]
+  ): { timestamp: number; spread: number }[] {
     // Match timestamps and calculate spreads
-    const spreads: Array<{ timestamp: number; spread: number }> = [];
+    const spreads: { timestamp: number; spread: number }[] = [];
 
     for (const longRate of longRates) {
       const shortRate = shortRates.find(s => s.timestamp === longRate.timestamp);
@@ -972,7 +1052,7 @@ export class PublicFundingRatesService {
    * @returns Complete spread stability metrics
    */
   private calculateStabilityMetrics(
-    spreads: Array<{ timestamp: number; spread: number }>,
+    spreads: { timestamp: number; spread: number }[],
     periodDays: 7 | 30,
     expectedSamples: number
   ): SpreadStabilityMetrics {

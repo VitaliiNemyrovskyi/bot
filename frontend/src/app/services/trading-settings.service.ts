@@ -105,7 +105,7 @@ export class TradingSettingsService {
     try {
       const saved = localStorage.getItem('fundingSubscriptionSettings');
       if (saved) {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(saved) as Partial<TradingSettings>;
         this.settings.set({
           ...this.settings(),
           ...parsed

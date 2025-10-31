@@ -79,11 +79,11 @@ import { ExchangeCredential, getExchangeName } from '../../../models/exchange-cr
 })
 export class TradingDashboardComponent implements OnInit, OnDestroy {
   // Injected services
-  private http = inject(HttpClient);
+  private _http = inject(HttpClient);
   private tradingService = inject(ManualTradingService);
   protected translationService = inject(TranslationService);
   private credentialsService = inject(ExchangeCredentialsService);
-  private bybitService = inject(BybitService);
+  private _bybitService = inject(BybitService);
 
   // Component lifecycle
   private destroy$ = new Subject<void>();
@@ -163,7 +163,7 @@ export class TradingDashboardComponent implements OnInit, OnDestroy {
   });
 
   // Regular property for chart binding (updated via effect)
-  chartSymbol: string = '';
+  chartSymbol = '';
 
   // Loading and error states from service
   isPlacingOrder = this.tradingService.isPlacingOrder;

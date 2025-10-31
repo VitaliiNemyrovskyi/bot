@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+// Use Node.js runtime instead of Edge runtime for database access
+export const runtime = 'nodejs';
+
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 
 /**

@@ -1,6 +1,6 @@
 import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormArray } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, CardActionsComponent } from '../../ui/card/card.component';
 import { InputComponent } from '../../ui/input/input.component';
@@ -227,16 +227,16 @@ export class EntryFilterComponent implements OnInit {
     const filter = this.filters[index];
 
     this.filterForm.patchValue({
-      name: filter.name,
-      indicator: filter.indicator,
-      condition: filter.condition,
-      value: filter.value,
-      period: filter.period,
-      timeframe: filter.timeframe || '1h',
-      description: filter.description || ''
+      name: filter!.name,
+      indicator: filter!.indicator,
+      condition: filter!.condition,
+      value: filter!.value,
+      period: filter!.period,
+      timeframe: filter!.timeframe || '1h',
+      description: filter!.description || ''
     });
 
-    this.onIndicatorChange(filter.indicator);
+    this.onIndicatorChange(filter!.indicator);
   }
 
   saveFilter() {
@@ -244,7 +244,7 @@ export class EntryFilterComponent implements OnInit {
 
     const formValue = this.filterForm.value;
     const filter: TradingFilter = {
-      id: this.editingIndex !== -1 ? this.filters[this.editingIndex].id : this.generateFilterId(),
+      id: this.editingIndex !== -1 ? this.filters[this.editingIndex]!.id : this.generateFilterId(),
       name: formValue.name,
       type: this.mode,
       enabled: true,
@@ -278,7 +278,7 @@ export class EntryFilterComponent implements OnInit {
 
   toggleFilter(index: number, event: any) {
     const newFilters = [...this.filters];
-    newFilters[index].enabled = event.target.checked;
+    newFilters[index]!.enabled = event.target.checked;
     this.filters = newFilters;
     this.filtersChange.emit(this.filters);
   }

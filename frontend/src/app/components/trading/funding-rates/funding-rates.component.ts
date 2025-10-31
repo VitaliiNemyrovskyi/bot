@@ -16,7 +16,7 @@ import { PriceArbitrageService } from '../../../services/price-arbitrage.service
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { DropdownComponent, DropdownOption } from '../../ui/dropdown/dropdown.component';
-import { TradeHistoryComponent, TradeHistoryDialogData } from '../trade-history/trade-history.component';
+import { TradeHistoryComponent } from '../trade-history/trade-history.component';
 import { StartBybitStrategyModalComponent, StartBybitStrategyModalData } from '../start-bybit-strategy-modal/start-bybit-strategy-modal.component';
 import { BybitFundingStrategyService } from '../../../services/bybit-funding-strategy.service';
 import { ActiveStrategy } from '../../../models/bybit-funding-strategy.model';
@@ -158,6 +158,73 @@ export interface FundingRateArbitrageOpportunity {
 }
 
 /**
+ * API response interfaces
+ */
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+}
+
+interface CredentialsData {
+  credentials: ExchangeCredential[];
+  totalCount: number;
+}
+
+interface TickerListResponse {
+  list: Array<{
+    totalAvailableBalance: string;
+  }>;
+}
+
+interface BingXBalanceResponse {
+  balance: {
+    availableMargin?: string;
+    balance?: string;
+  };
+}
+
+interface FundingRateData {
+  symbol: string;
+  fundingRate: string;
+  fundingTime?: number | string;
+}
+
+interface SubscriptionData extends FundingSubscription {
+  subscriptionId: string;
+  status: string;
+  entryPrice?: number;
+  hedgeEntryPrice?: number;
+  fundingEarned?: number;
+  realizedPnl?: number;
+  executedAt?: string;
+  createdAt?: string;
+}
+
+interface ArbitrageOpportunityRaw {
+  symbol: string;
+  exchanges: ExchangeData[];
+  spread: string;
+  spreadPercent: string;
+  priceSpreadUsdt: string;
+  bestLong: {
+    exchange: string;
+    credentialId: string;
+    fundingRate: string;
+    environment: string;
+  };
+  bestShort: {
+    exchange: string;
+    credentialId: string;
+    fundingRate: string;
+    environment: string;
+  };
+  arbitrageOpportunity: boolean;
+  marketCap?: number;
+}
+
+/**
  * Enhanced Funding Rates Component
  *
  * Displays real-time funding rates with advanced filtering and exchange selection.
@@ -253,7 +320,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
 
   // HEDGED mode dialog state
   showHedgedDialog = signal<boolean>(false);
-  selectedHedgedOpportunity = signal<any>(null);
+  selectedHedgedOpportunity = signal<FundingRateArbitrageOpportunity | null>(null);
   hedgedPrimaryLeverage = signal<number>(3);
   hedgedPrimaryMargin = signal<number>(100);
   hedgedHedgeLeverage = signal<number>(3);
@@ -317,13 +384,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   showSettingsDialog = signal<boolean>(false);
 
   // Multi-sort state
-  sortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
+  sortColumns = signal<{ column: string; direction: 'asc' | 'desc' }[]>([
     { column: 'fundingRate', direction: 'desc' }
   ]);
 
   // Arbitrage table multi-sort state
   // Initial sort matches initial mode (HEDGED = fundingSpread, NON_HEDGED = funding)
-  arbitrageSortColumns = signal<Array<{ column: string; direction: 'asc' | 'desc' }>>([
+  arbitrageSortColumns = signal<{ column: string; direction: 'asc' | 'desc' }[]>([
     { column: 'fundingSpread', direction: 'desc' }  // Default HEDGED mode - sort by funding spread
   ]);
 
@@ -411,13 +478,13 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     return tickers.sort((a, b) => {
       // Apply each sort column in order
       for (const { column, direction } of sortCols) {
-        let aVal: any = a[column as keyof TickerData];
-        let bVal: any = b[column as keyof TickerData];
+        let aVal: string | number = a[column as keyof TickerData];
+        let bVal: string | number = b[column as keyof TickerData];
 
         // Parse numbers for numeric columns
         if (column !== 'symbol') {
-          aVal = parseFloat(aVal) || 0;
-          bVal = parseFloat(bVal) || 0;
+          aVal = parseFloat(String(aVal)) || 0;
+          bVal = parseFloat(String(bVal)) || 0;
         }
 
         // Compare values
@@ -584,8 +651,8 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
               if (!periodicity) return 0;
               const match = periodicity.match(/(\d+)г\s+(\d+)хв/);
               if (match) {
-                const hours = parseInt(match[1], 10);
-                const minutes = parseInt(match[2], 10);
+                const hours = parseInt(match[1]!, 10);
+                const minutes = parseInt(match[2]!, 10);
                 return hours * 60 + minutes; // Convert to total minutes
               }
               return 0;
@@ -1170,7 +1237,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
    * Load arbitrage opportunities from all exchanges
    * @param silent If true, reduces console logging (for auto-refresh)
    */
-  loadArbitrageOpportunities(silent: boolean = false): void {
+  loadArbitrageOpportunities(silent = false): void {
     // Prevent concurrent requests - skip if previous request is still in progress
     if (this.isArbitrageRequestInProgress()) {
       if (!silent) {
@@ -1592,7 +1659,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         const updated = [...currentSorts];
         updated[existingIndex] = {
           column,
-          direction: updated[existingIndex].direction === 'asc' ? 'desc' : 'asc'
+          direction: updated[existingIndex]!.direction === 'asc' ? 'desc' : 'asc'
         };
         this.sortColumns.set(updated);
       } else {
@@ -1605,7 +1672,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         // Same column, toggle direction
         this.sortColumns.set([{
           column,
-          direction: currentSorts[0].direction === 'asc' ? 'desc' : 'asc'
+          direction: currentSorts[0]!.direction === 'asc' ? 'desc' : 'asc'
         }]);
       } else {
         // New column, default to descending
@@ -1621,7 +1688,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
     const sorts = this.sortColumns();
     const index = sorts.findIndex(s => s.column === column);
     if (index === -1) return null;
-    return { index, direction: sorts[index].direction };
+    return { index, direction: sorts[index]!.direction };
   }
 
   /**
@@ -2507,7 +2574,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Unsubscribe from funding arbitrage
    */
-  async unsubscribe(subscriptionId: string, silent: boolean = false): Promise<void> {
+  async unsubscribe(subscriptionId: string, silent = false): Promise<void> {
     try {
       const token = this.authService.authState().token;
       if (!token) return;
@@ -2516,7 +2583,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
         'Authorization': `Bearer ${token}`
       });
 
-      const response = await this.http.delete<any>(
+      await this.http.delete<any>(
         `http://localhost:3000/api/funding-arbitrage/subscribe?subscriptionId=${subscriptionId}`,
         { headers }
       ).toPromise();
@@ -2612,7 +2679,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
    * Calculate funding periodicity in format "HH:MM / 8h"
    * Returns time until next funding and the interval
    */
-  calculateFundingPeriodicity(nextFundingTime: number, fundingInterval: string = '8h'): string {
+  calculateFundingPeriodicity(nextFundingTime: number, fundingInterval = '8h'): string {
     if (!nextFundingTime || nextFundingTime === 0) {
       return 'N/A';
     }
@@ -2989,7 +3056,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Fetch balances for primary and hedge exchanges and calculate position details
    */
-  async fetchBalancesAndCalculatePosition(symbol: string): Promise<void> {
+  async fetchBalancesAndCalculatePosition(_symbol: string): Promise<void> {
     const primaryCred = this.selectedCredential();
     const hedgeCred = this.hedgeCredential();
     const ticker = this.selectedTicker();
@@ -3288,7 +3355,7 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   /**
    * Get market cap for a symbol
    */
-  getMarketCap(symbol: string): number {
+  getMarketCap(_symbol: string): number {
     // TODO: Implement market cap fetching
     return 0;
   }

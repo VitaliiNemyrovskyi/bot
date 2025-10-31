@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, Input, Output, EventEmitter, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../ui/dialog/dialog.component';
@@ -54,8 +54,8 @@ export class TradeHistoryComponent implements OnInit, OnDestroy {
   }
   private _open = signal<boolean>(false);
 
-  @Input() initialSymbol: string = '';
-  @Input() initialExchange: string = '';
+  @Input() initialSymbol = '';
+  @Input() initialExchange = '';
   @Output() openChange = new EventEmitter<boolean>();
   @Output() close = new EventEmitter<void>();
 
@@ -74,14 +74,14 @@ export class TradeHistoryComponent implements OnInit, OnDestroy {
   ];
 
   // Filters
-  selectedSymbol: string = '';
-  selectedExchange: string = '';
+  selectedSymbol = '';
+  selectedExchange = '';
   availableSymbols: string[] = [];
   availableExchanges: string[] = ['BYBIT', 'BINGX', 'MEXC', 'BINANCE', 'OKX'];
 
   // Auto-refresh
   private refreshInterval?: number;
-  autoRefreshEnabled: boolean = false;
+  autoRefreshEnabled = false;
 
   constructor(public tradeHistoryService: TradeHistoryService) {}
 
@@ -273,7 +273,7 @@ export class TradeHistoryComponent implements OnInit, OnDestroy {
    */
   getTradeAdvice(trade: TradeHistoryRecord): string {
     const pnl = trade.realizedPnl;
-    const duration = trade.duration || 0;
+    const _duration = trade.duration || 0;
 
     if (pnl > 10) {
       return '🎉 Great trade!';

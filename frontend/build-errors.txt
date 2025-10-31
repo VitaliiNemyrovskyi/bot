@@ -1,0 +1,1221 @@
+- Generating browser application bundles (phase: setup)...
+✔ Browser application bundle generation complete.
+✔ Browser application bundle generation complete.
+[1m[33m
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/app.component.css exceeded maximum budget. Budget 2.05 kB was not met by 4.76 kB with a total of 6.81 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/home/home.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 720 bytes with a total of 2.77 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/lightweight-chart/lightweight-chart.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 6.22 kB with a total of 8.27 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/login/login.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 692 bytes with a total of 2.74 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/profile/profile.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 22.87 kB with a total of 24.92 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/testing/api-tester/api-tester.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 7.27 kB with a total of 9.32 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading-chart/trading-chart.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 1.25 kB with a total of 3.30 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading-platform-info-modal/trading-platform-info-modal.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 10.85 kB with a total of 12.89 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/arbitrage-chart/arbitrage-chart.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 53.99 kB with a total of 56.04 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/bot-config-form/bot-config-form.component.css exceeded maximum budget. Budget 2.05 kB was not met by 7.62 kB with a total of 9.67 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-rate-spread-chart/funding-rate-spread-chart.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 2.13 kB with a total of 4.18 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-rates/funding-rates.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 76.28 kB with a total of 78.33 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-revenue/funding-revenue.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 8.00 kB with a total of 10.05 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-spread-details/funding-spread-details.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.88 kB with a total of 5.93 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/order-form/order-form.component.css exceeded maximum budget. Budget 2.05 kB was not met by 9.34 kB with a total of 11.38 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/start-bybit-strategy-modal/start-bybit-strategy-modal.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.77 kB with a total of 5.82 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/trade-history/trade-history.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.57 kB with a total of 5.62 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/trading-dashboard/trading-dashboard.component.css exceeded maximum budget. Budget 2.05 kB was not met by 5.99 kB with a total of 8.03 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/button/button.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 5.01 kB with a total of 7.05 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/dialog/dialog.component.css exceeded maximum budget. Budget 2.05 kB was not met by 3.55 kB with a total of 5.59 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/dropdown/dropdown.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.21 kB with a total of 5.26 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/input/input.component.css exceeded maximum budget. Budget 2.05 kB was not met by 1.73 kB with a total of 3.77 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/table/table.component.css exceeded maximum budget. Budget 2.05 kB was not met by 283 bytes with a total of 2.33 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/active-arbitrage-positions/active-arbitrage-positions.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 9.98 kB with a total of 12.03 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/arbitrage-funding/arbitrage-funding.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 32.95 kB with a total of 35.00 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 26.67 kB with a total of 28.71 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/execution-progress/execution-progress.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.69 kB with a total of 5.74 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/opportunity-list/opportunity-list.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 6.10 kB with a total of 8.15 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 8.19 kB with a total of 10.24 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/position-history/position-history.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 3.69 kB with a total of 5.73 kB.
+
+Warning: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/triangular-arbitrage.component.scss exceeded maximum budget. Budget 2.05 kB was not met by 1.43 kB with a total of 3.47 kB.
+
+[39m[22m
+[1m[31m
+Error: [96msrc/app/components/chart-demo/chart-demo.component.ts[0m:[93m153[0m:[93m13[0m - [91merror[0m[90m TS6138: [0mProperty 'chartService' is declared but its value is never read.
+
+[7m153[0m     private chartService: ChartService
+[7m   [0m [91m            ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/lightweight-chart/lightweight-chart.component.ts[0m:[93m392[0m:[93m45[0m - [91merror[0m[90m TS2345: [0mArgument of type 'CandlestickData<Time> | undefined' is not assignable to parameter of type 'CandlestickData<Time> | WhitespaceData<Time>'.
+  Type 'undefined' is not assignable to type 'CandlestickData<Time> | WhitespaceData<Time>'.
+
+[7m392[0m               this.candlestickSeries.update(lastCandle);
+[7m   [0m [91m                                            ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/lightweight-chart/lightweight-chart.component.ts[0m:[93m487[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'loadData' is declared but its value is never read.
+
+[7m487[0m   private loadData(data: ChartData[]): void {
+[7m   [0m [91m          ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/lightweight-chart/lightweight-chart.component.ts[0m:[93m508[0m:[93m51[0m - [91merror[0m[90m TS2345: [0mArgument of type 'unknown' is not assignable to parameter of type 'IPriceLine'.
+
+[7m508[0m           this.candlestickSeries?.removePriceLine(line);
+[7m   [0m [91m                                                  ~~~~[0m
+
+
+Error: [96msrc/app/components/lightweight-chart/lightweight-chart.component.ts[0m:[93m547[0m:[93m27[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m547[0m         const { width } = entries[0].contentRect;
+[7m   [0m [91m                          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/lightweight-chart/lightweight-chart.component.ts[0m:[93m607[0m:[93m51[0m - [91merror[0m[90m TS2345: [0mArgument of type 'unknown' is not assignable to parameter of type 'IPriceLine'.
+
+[7m607[0m           this.candlestickSeries?.removePriceLine(line);
+[7m   [0m [91m                                                  ~~~~[0m
+
+
+Error: [96msrc/app/components/profile/profile.component.ts[0m:[93m168[0m:[93m13[0m - [91merror[0m[90m TS6138: [0mProperty 'userService' is declared but its value is never read.
+
+[7m168[0m     private userService: UserService,
+[7m   [0m [91m            ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/profile/profile.component.ts[0m:[93m455[0m:[93m14[0m - [91merror[0m[90m TS6133: [0m'updated' is declared but its value is never read.
+
+[7m455[0m       next: (updated) => {
+[7m   [0m [91m             ~~~~~~~[0m
+
+
+Error: [96msrc/app/components/profile/profile.component.ts[0m:[93m547[0m:[93m14[0m - [91merror[0m[90m TS6133: [0m'updated' is declared but its value is never read.
+
+[7m547[0m       next: (updated) => {
+[7m   [0m [91m             ~~~~~~~[0m
+
+
+Error: [96msrc/app/components/profile/profile.component.ts[0m:[93m654[0m:[93m14[0m - [91merror[0m[90m TS6133: [0m'newCred' is declared but its value is never read.
+
+[7m654[0m       next: (newCred) => {
+[7m   [0m [91m             ~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading-platform-info-modal/trading-platform-info-modal.component.ts[0m:[93m7[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'BybitCoinBalance' is declared but its value is never read.
+
+[7m7[0m   BybitCoinBalance,
+[7m [0m [91m  ~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading-platform-info-modal/trading-platform-info-modal.component.ts[0m:[93m9[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'BybitOrder' is declared but its value is never read.
+
+[7m9[0m   BybitOrder
+[7m [0m [91m  ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/arbitrage-chart/arbitrage-chart.component.ts[0m:[93m749[0m:[93m27[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m749[0m         const { width } = entries[0].contentRect;
+[7m   [0m [91m                          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/arbitrage-chart/arbitrage-chart.component.ts[0m:[93m1204[0m:[93m5[0m - [91merror[0m[90m TS6133: [0m'exchange' is declared but its value is never read.
+
+[7m1204[0m     exchange: string,
+[7m    [0m [91m    ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/arbitrage-chart/arbitrage-chart.component.ts[0m:[93m1205[0m:[93m5[0m - [91merror[0m[90m TS6133: [0m'symbol' is declared but its value is never read.
+
+[7m1205[0m     symbol: string,
+[7m    [0m [91m    ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/bot-config-page/bot-config-page.component.ts[0m:[93m142[0m:[93m13[0m - [91merror[0m[90m TS6133: [0m'botData' is declared but its value is never read.
+
+[7m142[0m   onBotEdit(botData: any) {
+[7m   [0m [91m            ~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m3[0m:[93m67[0m - [91merror[0m[90m TS6133: [0m'FormArray' is declared but its value is never read.
+
+[7m3[0m import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormArray } from '@angular/forms';
+[7m [0m [91m                                                                  ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m230[0m:[93m13[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m230[0m       name: filter.name,
+[7m   [0m [91m            ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m231[0m:[93m18[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m231[0m       indicator: filter.indicator,
+[7m   [0m [91m                 ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m232[0m:[93m18[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m232[0m       condition: filter.condition,
+[7m   [0m [91m                 ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m233[0m:[93m14[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m233[0m       value: filter.value,
+[7m   [0m [91m             ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m234[0m:[93m15[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m234[0m       period: filter.period,
+[7m   [0m [91m              ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m235[0m:[93m18[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m235[0m       timeframe: filter.timeframe || '1h',
+[7m   [0m [91m                 ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m236[0m:[93m20[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m236[0m       description: filter.description || ''
+[7m   [0m [91m                   ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m239[0m:[93m28[0m - [91merror[0m[90m TS18048: [0m'filter' is possibly 'undefined'.
+
+[7m239[0m     this.onIndicatorChange(filter.indicator);
+[7m   [0m [91m                           ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m247[0m:[93m38[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m247[0m       id: this.editingIndex !== -1 ? this.filters[this.editingIndex].id : this.generateFilterId(),
+[7m   [0m [91m                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/entry-filter/entry-filter.component.ts[0m:[93m281[0m:[93m5[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m281[0m     newFilters[index].enabled = event.target.checked;
+[7m   [0m [91m    ~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rate-spread-chart/funding-rate-spread-chart.component.ts[0m:[93m269[0m:[93m27[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m269[0m         const { width } = entries[0].contentRect;
+[7m   [0m [91m                          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m163[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'ApiResponse' is declared but never used.
+
+[7m163[0m interface ApiResponse<T> {
+[7m   [0m [91m          ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m170[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'CredentialsData' is declared but never used.
+
+[7m170[0m interface CredentialsData {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m175[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'TickerListResponse' is declared but never used.
+
+[7m175[0m interface TickerListResponse {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m181[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'BingXBalanceResponse' is declared but never used.
+
+[7m181[0m interface BingXBalanceResponse {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m188[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'FundingRateData' is declared but never used.
+
+[7m188[0m interface FundingRateData {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m194[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'SubscriptionData' is declared but never used.
+
+[7m194[0m interface SubscriptionData extends FundingSubscription {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m205[0m:[93m11[0m - [91merror[0m[90m TS6196: [0m'ArbitrageOpportunityRaw' is declared but never used.
+
+[7m205[0m interface ArbitrageOpportunityRaw {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m654[0m:[93m40[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m654[0m                 const hours = parseInt(match[1], 10);
+[7m   [0m [91m                                       ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m655[0m:[93m42[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m655[0m                 const minutes = parseInt(match[2], 10);
+[7m   [0m [91m                                         ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1662[0m:[93m22[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1662[0m           direction: updated[existingIndex].direction === 'asc' ? 'desc' : 'asc'
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1675[0m:[93m22[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1675[0m           direction: currentSorts[0].direction === 'asc' ? 'desc' : 'asc'
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1691[0m:[93m32[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1691[0m     return { index, direction: sorts[index].direction };
+[7m    [0m [91m                               ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1718[0m:[93m22[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1718[0m           direction: updated[existingIndex].direction === 'asc' ? 'desc' : 'asc'
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1731[0m:[93m22[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1731[0m           direction: currentSorts[0].direction === 'asc' ? 'desc' : 'asc'
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m1747[0m:[93m32[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1747[0m     return { index, direction: sorts[index].direction };
+[7m    [0m [91m                               ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m2539[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'startCountdownMonitoring' is declared but its value is never read.
+
+[7m2539[0m   private startCountdownMonitoring(subscription: FundingSubscription): void {
+[7m    [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m2586[0m:[93m13[0m - [91merror[0m[90m TS6133: [0m'response' is declared but its value is never read.
+
+[7m2586[0m       const response = await this.http.delete<any>(
+[7m    [0m [91m            ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m3059[0m:[93m43[0m - [91merror[0m[90m TS6133: [0m'symbol' is declared but its value is never read.
+
+[7m3059[0m   async fetchBalancesAndCalculatePosition(symbol: string): Promise<void> {
+[7m    [0m [91m                                          ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-rates/funding-rates.component.ts[0m:[93m3358[0m:[93m16[0m - [91merror[0m[90m TS6133: [0m'symbol' is declared but its value is never read.
+
+[7m3358[0m   getMarketCap(symbol: string): number {
+[7m    [0m [91m               ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-revenue/funding-revenue.component.ts[0m:[93m8[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'FundingArbitrageDeal' is declared but its value is never read.
+
+[7m8[0m   FundingArbitrageDeal,
+[7m [0m [91m  ~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-revenue/funding-revenue.component.ts[0m:[93m9[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'RevenueBySymbol' is declared but its value is never read.
+
+[7m9[0m   RevenueBySymbol,
+[7m [0m [91m  ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-revenue/funding-revenue.component.ts[0m:[93m10[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'RevenueByExchange' is declared but its value is never read.
+
+[7m10[0m   RevenueByExchange
+[7m  [0m [91m  ~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-revenue/funding-revenue.component.ts[0m:[93m255[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m255[0m     return date.toISOString().split('T')[0];
+[7m   [0m [91m    ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-revenue/funding-revenue.component.ts[0m:[93m263[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m263[0m     return date.toISOString().split('T')[0];
+[7m   [0m [91m    ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/funding-spread-details/funding-spread-details.component.ts[0m:[93m1[0m:[93m28[0m - [91merror[0m[90m TS6133: [0m'signal' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, signal, computed } from '@angular/core';
+[7m [0m [91m                           ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m4[0m:[93m44[0m - [91merror[0m[90m TS6133: [0m'FormBuilder' is declared but its value is never read.
+
+[7m4[0m import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+[7m [0m [91m                                           ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m4[0m:[93m57[0m - [91merror[0m[90m TS6133: [0m'FormGroup' is declared but its value is never read.
+
+[7m4[0m import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+[7m [0m [91m                                                        ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m4[0m:[93m68[0m - [91merror[0m[90m TS6133: [0m'Validators' is declared but its value is never read.
+
+[7m4[0m import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+[7m [0m [91m                                                                   ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m83[0m:[93m15[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m83[0m       error: (error) => {
+[7m  [0m [91m              ~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m95[0m:[93m15[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m95[0m       error: (error) => {
+[7m  [0m [91m              ~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m121[0m:[93m15[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m121[0m       error: (error) => {
+[7m   [0m [91m              ~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m134[0m:[93m17[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m134[0m         error: (error) => {
+[7m   [0m [91m                ~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m152[0m:[93m20[0m - [91merror[0m[90m TS6133: [0m'strategy' is declared but its value is never read.
+
+[7m152[0m   backtestStrategy(strategy: any) {
+[7m   [0m [91m                   ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m156[0m:[93m16[0m - [91merror[0m[90m TS6133: [0m'strategy' is declared but its value is never read.
+
+[7m156[0m   editStrategy(strategy: any) {
+[7m   [0m [91m               ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m160[0m:[93m18[0m - [91merror[0m[90m TS6133: [0m'strategy' is declared but its value is never read.
+
+[7m160[0m   deleteStrategy(strategy: any) {
+[7m   [0m [91m                 ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/grid-bot-dashboard/grid-bot-dashboard.component.ts[0m:[93m180[0m:[93m17[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m180[0m         error: (error) => {
+[7m   [0m [91m                ~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/order-form/order-form.component.ts[0m:[93m17[0m:[93m10[0m - [91merror[0m[90m TS6133: [0m'OrderRequest' is declared but its value is never read.
+
+[7m17[0m import { OrderRequest, OrderSide, OrderType, TimeInForce, Balance } from '../../../models/trading.model';
+[7m  [0m [91m         ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/order-form/order-form.component.ts[0m:[93m17[0m:[93m35[0m - [91merror[0m[90m TS6133: [0m'OrderType' is declared but its value is never read.
+
+[7m17[0m import { OrderRequest, OrderSide, OrderType, TimeInForce, Balance } from '../../../models/trading.model';
+[7m  [0m [91m                                  ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/order-form/order-form.component.ts[0m:[93m170[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'marginMode' is declared but its value is never read.
+
+[7m170[0m     const marginMode = this._marginMode();
+[7m   [0m [91m          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/start-bybit-strategy-modal/start-bybit-strategy-modal.component.ts[0m:[93m40[0m:[93m3[0m - [91merror[0m[90m TS6196: [0m'PositionSideConfig' is declared but never used.
+
+[7m40[0m   PositionSideConfig,
+[7m  [0m [91m  ~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/trade-history/trade-history.component.ts[0m:[93m1[0m:[93m77[0m - [91merror[0m[90m TS6133: [0m'inject' is declared but its value is never read.
+
+[7m1[0m import { Component, OnInit, OnDestroy, signal, Input, Output, EventEmitter, inject } from '@angular/core';
+[7m [0m [91m                                                                            ~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/trade-history/trade-history.component.ts[0m:[93m276[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'duration' is declared but its value is never read.
+
+[7m276[0m     const duration = trade.duration || 0;
+[7m   [0m [91m          ~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/trading-dashboard/trading-dashboard.component.ts[0m:[93m82[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'http' is declared but its value is never read.
+
+[7m82[0m   private http = inject(HttpClient);
+[7m  [0m [91m          ~~~~[0m
+
+
+Error: [96msrc/app/components/trading/trading-dashboard/trading-dashboard.component.ts[0m:[93m86[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'bybitService' is declared but its value is never read.
+
+[7m86[0m   private bybitService = inject(BybitService);
+[7m  [0m [91m          ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/trading/trading-dashboard/trading-dashboard.component.ts[0m:[93m517[0m:[93m36[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m517[0m           this._selectedSymbol.set(options[0].value);
+[7m   [0m [91m                                   ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/button/button.component.ts[0m:[93m1[0m:[93m50[0m - [91merror[0m[90m TS6133: [0m'signal' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, signal, computed, inject } from '@angular/core';
+[7m [0m [91m                                                 ~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/dialog/dialog.component.ts[0m:[93m16[0m:[93m19[0m - [91merror[0m[90m TS6133: [0m'state' is declared but its value is never read.
+
+[7m16[0m import { trigger, state, style, transition, animate } from '@angular/animations';
+[7m  [0m [91m                  ~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/dialog/dialog.component.ts[0m:[93m168[0m:[93m9[0m - [91merror[0m[90m TS18048: [0m'lastElement' is possibly 'undefined'.
+
+[7m168[0m         lastElement.focus();
+[7m   [0m [91m        ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/dialog/dialog.component.ts[0m:[93m174[0m:[93m9[0m - [91merror[0m[90m TS18048: [0m'firstElement' is possibly 'undefined'.
+
+[7m174[0m         firstElement.focus();
+[7m   [0m [91m        ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/dialog/dialog.component.ts[0m:[93m213[0m:[93m7[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m213[0m       this.focusableElements[0].focus();
+[7m   [0m [91m      ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/input/input.component.ts[0m:[93m47[0m:[93m23[0m - [91merror[0m[90m TS6133: [0m'value' is declared but its value is never read.
+
+[7m47[0m   private onChange = (value: any) => {};
+[7m  [0m [91m                      ~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/input/input.component.ts[0m:[93m159[0m:[93m23[0m - [91merror[0m[90m TS6133: [0m'value' is declared but its value is never read.
+
+[7m159[0m   private onChange = (value: any) => {};
+[7m   [0m [91m                      ~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/select/select.component.ts[0m:[93m47[0m:[93m23[0m - [91merror[0m[90m TS6133: [0m'value' is declared but its value is never read.
+
+[7m47[0m   private onChange = (value: any) => {};
+[7m  [0m [91m                      ~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/table/table.component.ts[0m:[93m150[0m:[93m31[0m - [91merror[0m[90m TS6133: [0m'item' is declared but its value is never read.
+
+[7m150[0m   trackByIndex(index: number, item: any): number {
+[7m   [0m [91m                              ~~~~[0m
+
+
+Error: [96msrc/app/components/ui/tabs/tabs.component.ts[0m:[93m1[0m:[93m50[0m - [91merror[0m[90m TS6133: [0m'ContentChildren' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, ContentChildren, QueryList, AfterContentInit } from '@angular/core';
+[7m [0m [91m                                                 ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/tabs/tabs.component.ts[0m:[93m1[0m:[93m67[0m - [91merror[0m[90m TS6133: [0m'QueryList' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, ContentChildren, QueryList, AfterContentInit } from '@angular/core';
+[7m [0m [91m                                                                  ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/components/ui/tabs/tabs.component.ts[0m:[93m1[0m:[93m78[0m - [91merror[0m[90m TS6133: [0m'AfterContentInit' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, ContentChildren, QueryList, AfterContentInit } from '@angular/core';
+[7m [0m [91m                                                                             ~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/config/app.config.ts[0m:[93m221[0m:[93m9[0m - [91merror[0m[90m TS18048: [0m'endpointPath' is possibly 'undefined'.
+
+[7m221[0m     if (endpointPath.includes(paramPlaceholder)) {
+[7m   [0m [91m        ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/config/app.config.ts[0m:[93m222[0m:[93m22[0m - [91merror[0m[90m TS18048: [0m'endpointPath' is possibly 'undefined'.
+
+[7m222[0m       endpointPath = endpointPath.replace(paramPlaceholder, value);
+[7m   [0m [91m                     ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/active-arbitrage-positions/active-arbitrage-positions.component.ts[0m:[93m460[0m:[93m13[0m - [91merror[0m[90m TS6133: [0m'key' is declared but its value is never read.
+
+[7m460[0m       const key = `${update.symbol}`;
+[7m   [0m [91m            ~~~[0m
+
+
+Error: [96msrc/app/pages/arbitrage-funding/arbitrage-funding.component.ts[0m:[93m8[0m:[93m34[0m - [91merror[0m[90m TS6133: [0m'SpreadStabilityMetrics' is declared but its value is never read.
+
+[7m8[0m import { FundingRateOpportunity, SpreadStabilityMetrics } from '../../models/public-funding-rate.model';
+[7m [0m [91m                                 ~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/arbitrage-funding/arbitrage-funding.component.ts[0m:[93m178[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'themeService' is declared but its value is never read.
+
+[7m178[0m   private themeService = inject(ThemeService);
+[7m   [0m [91m          ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component.ts[0m:[93m5[0m:[93m34[0m - [91merror[0m[90m TS6133: [0m'forkJoin' is declared but its value is never read.
+
+[7m5[0m import { interval, Subscription, forkJoin, of } from 'rxjs';
+[7m [0m [91m                                 ~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component.ts[0m:[93m5[0m:[93m44[0m - [91merror[0m[90m TS6133: [0m'of' is declared but its value is never read.
+
+[7m5[0m import { interval, Subscription, forkJoin, of } from 'rxjs';
+[7m [0m [91m                                           ~~[0m
+
+
+Error: [96msrc/app/pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component.ts[0m:[93m6[0m:[93m32[0m - [91merror[0m[90m TS6133: [0m'catchError' is declared but its value is never read.
+
+[7m6[0m import { startWith, switchMap, catchError } from 'rxjs/operators';
+[7m [0m [91m                               ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/components/opportunity-list/opportunity-list.component.ts[0m:[93m1[0m:[93m58[0m - [91merror[0m[90m TS6133: [0m'computed' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, signal, computed } from '@angular/core';
+[7m [0m [91m                                                         ~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.ts[0m:[93m1[0m:[93m21[0m - [91merror[0m[90m TS6133: [0m'Input' is declared but its value is never read.
+
+[7m1[0m import { Component, Input, Output, EventEmitter, OnInit, signal, computed } from '@angular/core';
+[7m [0m [91m                    ~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.ts[0m:[93m2[0m:[93m24[0m - [91merror[0m[90m TS6133: [0m'DatePipe' is declared but its value is never read.
+
+[7m2[0m import { CommonModule, DatePipe } from '@angular/common';
+[7m [0m [91m                       ~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.ts[0m:[93m7[0m:[93m1[0m - [91merror[0m[90m TS6133: [0m'Observable' is declared but its value is never read.
+
+[7m7[0m import { Observable } from 'rxjs';
+[7m [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.ts[0m:[93m68[0m:[93m13[0m - [91merror[0m[90m TS6138: [0mProperty 'http' is declared but its value is never read.
+
+[7m68[0m     private http: HttpClient
+[7m  [0m [91m            ~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/services/triangular-arbitrage.service.ts[0m:[93m3[0m:[93m31[0m - [91merror[0m[90m TS6133: [0m'BehaviorSubject' is declared but its value is never read.
+
+[7m3[0m import { Observable, Subject, BehaviorSubject } from 'rxjs';
+[7m [0m [91m                              ~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/services/triangular-arbitrage.service.ts[0m:[93m399[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'sendMessage' is declared but its value is never read.
+
+[7m399[0m   private sendMessage(message: any): void {
+[7m   [0m [91m          ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/services/triangular-arbitrage.service.ts[0m:[93m399[0m:[93m23[0m - [91merror[0m[90m TS6133: [0m'message' is declared but its value is never read.
+
+[7m399[0m   private sendMessage(message: any): void {
+[7m   [0m [91m                      ~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/triangular-arbitrage.component.ts[0m:[93m11[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'ScannerStatus' is declared but its value is never read.
+
+[7m11[0m   ScannerStatus,
+[7m  [0m [91m  ~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/pages/triangular-arbitrage/triangular-arbitrage.component.ts[0m:[93m229[0m:[93m16[0m - [91merror[0m[90m TS6133: [0m'stats' is declared but its value is never read.
+
+[7m229[0m         next: (stats) => {
+[7m   [0m [91m               ~~~~~[0m
+
+
+Error: [96msrc/app/services/auth.service.ts[0m:[93m422[0m:[93m28[0m - [91merror[0m[90m TS18048: [0m'payload' is possibly 'undefined'.
+
+[7m422[0m       const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+[7m   [0m [91m                           ~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bingx-user.service.ts[0m:[93m4[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { catchError, map, tap } from 'rxjs/operators';
+[7m [0m [91m                     ~~~[0m
+
+
+Error: [96msrc/app/services/bybit-funding-strategy.service.ts[0m:[93m11[0m:[93m1[0m - [91merror[0m[90m TS6133: [0m'getEndpointUrl' is declared but its value is never read.
+
+[7m11[0m import { getEndpointUrl } from '../config/app.config';
+[7m  [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-user.service.ts[0m:[93m2[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'HttpHeaders' is declared but its value is never read.
+
+[7m2[0m import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
+[7m [0m [91m                     ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-user.service.ts[0m:[93m4[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { catchError, map, tap } from 'rxjs/operators';
+[7m [0m [91m                     ~~~[0m
+
+
+Error: [96msrc/app/services/bybit-user.service.ts[0m:[93m400[0m:[93m19[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m400[0m     const coins = walletBalance.list[0].coin || [];
+[7m   [0m [91m                  ~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m4[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'retry' is declared but its value is never read.
+
+[7m4[0m import { catchError, retry, takeUntil, map, filter } from 'rxjs/operators';
+[7m [0m [91m                     ~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m4[0m:[93m40[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { catchError, retry, takeUntil, map, filter } from 'rxjs/operators';
+[7m [0m [91m                                       ~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m152[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'klineData$' is declared but its value is never read.
+
+[7m152[0m   private klineData$ = new Subject<CandlestickData>();
+[7m   [0m [91m          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m153[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'tickerData$' is declared but its value is never read.
+
+[7m153[0m   private tickerData$ = new Subject<TickerData>();
+[7m   [0m [91m          ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m154[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'orderbookData$' is declared but its value is never read.
+
+[7m154[0m   private orderbookData$ = new Subject<OrderbookData>();
+[7m   [0m [91m          ~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m155[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'tradeData$' is declared but its value is never read.
+
+[7m155[0m   private tradeData$ = new Subject<TradeData>();
+[7m   [0m [91m          ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m747[0m:[93m17[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m747[0m         spread: orderbookData.asks[0]?.price - orderbookData.bids[0]?.price
+[7m   [0m [91m                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit-websocket.service.ts[0m:[93m747[0m:[93m48[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m747[0m         spread: orderbookData.asks[0]?.price - orderbookData.bids[0]?.price
+[7m   [0m [91m                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m3[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'throwError' is declared but its value is never read.
+
+[7m3[0m import { Observable, throwError, of, combineLatest, BehaviorSubject } from 'rxjs';
+[7m [0m [91m                     ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m4[0m:[93m36[0m - [91merror[0m[90m TS6133: [0m'startWith' is declared but its value is never read.
+
+[7m4[0m import { catchError, map, timeout, startWith, take, switchMap } from 'rxjs/operators';
+[7m [0m [91m                                   ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m5[0m:[93m33[0m - [91merror[0m[90m TS6133: [0m'TickerData' is declared but its value is never read.
+
+[7m5[0m import { BybitWebSocketService, TickerData, OrderbookData, TradeData } from './bybit-websocket.service';
+[7m [0m [91m                                ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m5[0m:[93m45[0m - [91merror[0m[90m TS6133: [0m'OrderbookData' is declared but its value is never read.
+
+[7m5[0m import { BybitWebSocketService, TickerData, OrderbookData, TradeData } from './bybit-websocket.service';
+[7m [0m [91m                                            ~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m5[0m:[93m60[0m - [91merror[0m[90m TS6133: [0m'TradeData' is declared but its value is never read.
+
+[7m5[0m import { BybitWebSocketService, TickerData, OrderbookData, TradeData } from './bybit-websocket.service';
+[7m [0m [91m                                                           ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m164[0m:[93m36[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m164[0m       const timestampMs = parseInt(timestamp);
+[7m   [0m [91m                                   ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m169[0m:[93m26[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m169[0m         open: parseFloat(open),
+[7m   [0m [91m                         ~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m170[0m:[93m26[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m170[0m         high: parseFloat(high),
+[7m   [0m [91m                         ~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m171[0m:[93m25[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m171[0m         low: parseFloat(low),
+[7m   [0m [91m                        ~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m172[0m:[93m27[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m172[0m         close: parseFloat(close),
+[7m   [0m [91m                          ~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m173[0m:[93m28[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m173[0m         volume: parseFloat(volume),
+[7m   [0m [91m                           ~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m184[0m:[93m28[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m184[0m       return item.time !== arr[index - 1].time;
+[7m   [0m [91m                           ~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m196[0m:[93m23[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m196[0m       const current = finalData[i].time as number;
+[7m   [0m [91m                      ~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m197[0m:[93m24[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m197[0m       const previous = finalData[i - 1].time as number;
+[7m   [0m [91m                       ~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m248[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'string | undefined' is not assignable to type 'string | number'.
+  Type 'undefined' is not assignable to type 'string | number'.
+
+[7m248[0m         time,
+[7m   [0m [91m        ~~~~[0m
+
+  [96msrc/app/services/bybit.service.ts[0m:[93m32[0m:[93m3[0m
+    [7m32[0m   time: string | number; // Support both string (YYYY-MM-DD) and number (timestamp)
+    [7m  [0m [96m  ~~~~[0m
+    The expected type comes from property 'time' which is declared here on type 'CandlestickData'
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m341[0m:[93m19[0m - [91merror[0m[90m TS6133: [0m'error' is declared but its value is never read.
+
+[7m341[0m           error: (error) => {
+[7m   [0m [91m                  ~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m424[0m:[93m35[0m - [91merror[0m[90m TS18048: [0m'lastCandle' is possibly 'undefined'.
+
+[7m424[0m     const lastCandleTime = typeof lastCandle.time === 'number' ? lastCandle.time : parseInt(lastCandle.time);
+[7m   [0m [91m                                  ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m424[0m:[93m66[0m - [91merror[0m[90m TS18048: [0m'lastCandle' is possibly 'undefined'.
+
+[7m424[0m     const lastCandleTime = typeof lastCandle.time === 'number' ? lastCandle.time : parseInt(lastCandle.time);
+[7m   [0m [91m                                                                 ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m424[0m:[93m93[0m - [91merror[0m[90m TS18048: [0m'lastCandle' is possibly 'undefined'.
+
+[7m424[0m     const lastCandleTime = typeof lastCandle.time === 'number' ? lastCandle.time : parseInt(lastCandle.time);
+[7m   [0m [91m                                                                                            ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/bybit.service.ts[0m:[93m452[0m:[93m11[0m - [91merror[0m[90m TS6133: [0m'convertIntervalFormat' is declared but its value is never read.
+
+[7m452[0m   private convertIntervalFormat(interval: string): string {
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m246[0m:[93m13[0m - [91merror[0m[90m TS2322: [0mType '{ time: number; open: number | undefined; high: number | undefined; low: number | undefined; close: number | undefined; volume: number | undefined; }[]' is not assignable to type 'Bar[]'.
+  Type '{ time: number; open: number | undefined; high: number | undefined; low: number | undefined; close: number | undefined; volume: number | undefined; }' is not assignable to type 'Bar'.
+    Types of property 'open' are incompatible.
+      Type 'number | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+
+[7m246[0m       const bars: Bar[] = response.t.map((time: number, index: number) => ({
+[7m   [0m [91m            ~~~~[0m
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m401[0m:[93m136[0m - [91merror[0m[90m TS6133: [0m'onResetCacheNeededCallback' is declared but its value is never read.
+
+[7m401[0m       subscribeBars: (symbolInfo: LibrarySymbolInfo, resolution: string, onRealtimeCallback: (bar: Bar) => void, listenerGUID: string, onResetCacheNeededCallback?: () => void) => {
+[7m   [0m [91m                                                                                                                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m451[0m:[93m21[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m451[0m               time: response.t[lastIndex] * 1000, // Convert to milliseconds
+[7m   [0m [91m                    ~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m452[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+[7m452[0m               open: response.o![lastIndex],
+[7m   [0m [91m              ~~~~[0m
+
+  [96msrc/app/services/chart.service.ts[0m:[93m83[0m:[93m3[0m
+    [7m83[0m   open: number;
+    [7m  [0m [96m  ~~~~[0m
+    The expected type comes from property 'open' which is declared here on type 'Bar'
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m453[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+[7m453[0m               high: response.h![lastIndex],
+[7m   [0m [91m              ~~~~[0m
+
+  [96msrc/app/services/chart.service.ts[0m:[93m84[0m:[93m3[0m
+    [7m84[0m   high: number;
+    [7m  [0m [96m  ~~~~[0m
+    The expected type comes from property 'high' which is declared here on type 'Bar'
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m454[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+[7m454[0m               low: response.l![lastIndex],
+[7m   [0m [91m              ~~~[0m
+
+  [96msrc/app/services/chart.service.ts[0m:[93m85[0m:[93m3[0m
+    [7m85[0m   low: number;
+    [7m  [0m [96m  ~~~[0m
+    The expected type comes from property 'low' which is declared here on type 'Bar'
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m455[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+[7m455[0m               close: response.c![lastIndex],
+[7m   [0m [91m              ~~~~~[0m
+
+  [96msrc/app/services/chart.service.ts[0m:[93m86[0m:[93m3[0m
+    [7m86[0m   close: number;
+    [7m  [0m [96m  ~~~~~[0m
+    The expected type comes from property 'close' which is declared here on type 'Bar'
+
+
+Error: [96msrc/app/services/chart.service.ts[0m:[93m490[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'OperatorFunction<ChartDataResponse, number | undefined>' is not assignable to parameter of type 'OperatorFunction<ChartDataResponse, number>'.
+  Type 'number | undefined' is not assignable to type 'number'.
+    Type 'undefined' is not assignable to type 'number'.
+
+[7m490[0m       map(response => {
+[7m   [0m [91m      ~~~~~~~~~~~~~~~~~[0m
+[7m491[0m         if (response.s === 'ok' && response.c && response.c.length > 0) {
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m...[0m 
+[7m494[0m         throw new Error('No price data available');
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m495[0m       }),
+[7m   [0m [91m~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/exchange-credentials.service.ts[0m:[93m1[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'Signal' is declared but its value is never read.
+
+[7m1[0m import { Injectable, Signal, WritableSignal, signal, computed, effect } from '@angular/core';
+[7m [0m [91m                     ~~~~~~[0m
+
+
+Error: [96msrc/app/services/exchange-credentials.service.ts[0m:[93m1[0m:[93m30[0m - [91merror[0m[90m TS6133: [0m'WritableSignal' is declared but its value is never read.
+
+[7m1[0m import { Injectable, Signal, WritableSignal, signal, computed, effect } from '@angular/core';
+[7m [0m [91m                             ~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/exchange-credentials.service.ts[0m:[93m1[0m:[93m64[0m - [91merror[0m[90m TS6133: [0m'effect' is declared but its value is never read.
+
+[7m1[0m import { Injectable, Signal, WritableSignal, signal, computed, effect } from '@angular/core';
+[7m [0m [91m                                                               ~~~~~~[0m
+
+
+Error: [96msrc/app/services/exchange-credentials.service.ts[0m:[93m3[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'take' is declared but its value is never read.
+
+[7m3[0m import { Observable, take, throwError } from 'rxjs';
+[7m [0m [91m                     ~~~~[0m
+
+
+Error: [96msrc/app/services/funding-arbitrage.service.ts[0m:[93m2[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'HttpHeaders' is declared but its value is never read.
+
+[7m2[0m import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
+[7m [0m [91m                     ~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/funding-arbitrage.service.ts[0m:[93m4[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { catchError, map, tap } from 'rxjs/operators';
+[7m [0m [91m                     ~~~[0m
+
+
+Error: [96msrc/app/services/manual-trading.service.ts[0m:[93m4[0m:[93m27[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { tap, catchError, map, retry, switchMap, shareReplay } from 'rxjs/operators';
+[7m [0m [91m                          ~~~[0m
+
+
+Error: [96msrc/app/services/manual-trading.service.ts[0m:[93m4[0m:[93m32[0m - [91merror[0m[90m TS6133: [0m'retry' is declared but its value is never read.
+
+[7m4[0m import { tap, catchError, map, retry, switchMap, shareReplay } from 'rxjs/operators';
+[7m [0m [91m                               ~~~~~[0m
+
+
+Error: [96msrc/app/services/manual-trading.service.ts[0m:[93m4[0m:[93m39[0m - [91merror[0m[90m TS6133: [0m'switchMap' is declared but its value is never read.
+
+[7m4[0m import { tap, catchError, map, retry, switchMap, shareReplay } from 'rxjs/operators';
+[7m [0m [91m                                      ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/price-arbitrage.service.ts[0m:[93m26[0m:[93m3[0m - [91merror[0m[90m TS6133: [0m'isPriceArbitrageError' is declared but its value is never read.
+
+[7m26[0m   isPriceArbitrageError,
+[7m  [0m [91m  ~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m580[0m:[93m30[0m - [91merror[0m[90m TS18048: [0m'bestShort' is possibly 'undefined'.
+
+[7m580[0m       const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
+[7m   [0m [91m                             ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m580[0m:[93m71[0m - [91merror[0m[90m TS18048: [0m'bestLong' is possibly 'undefined'.
+
+[7m580[0m       const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
+[7m   [0m [91m                                                                      ~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m584[0m:[93m40[0m - [91merror[0m[90m TS18048: [0m'bestLong' is possibly 'undefined'.
+
+[7m584[0m       const bestLongPrice = parseFloat(bestLong.lastPrice);
+[7m   [0m [91m                                       ~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m585[0m:[93m41[0m - [91merror[0m[90m TS18048: [0m'bestShort' is possibly 'undefined'.
+
+[7m585[0m       const bestShortPrice = parseFloat(bestShort.lastPrice);
+[7m   [0m [91m                                        ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m619[0m:[93m49[0m - [91merror[0m[90m TS18048: [0m'bestLong' is possibly 'undefined'.
+
+[7m619[0m       const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
+[7m   [0m [91m                                                ~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m619[0m:[93m68[0m - [91merror[0m[90m TS18048: [0m'bestShort' is possibly 'undefined'.
+
+[7m619[0m       const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
+[7m   [0m [91m                                                                   ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m642[0m:[93m41[0m - [91merror[0m[90m TS18048: [0m'bestLong' is possibly 'undefined'.
+
+[7m642[0m       const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
+[7m   [0m [91m                                        ~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m643[0m:[93m42[0m - [91merror[0m[90m TS18048: [0m'bestShort' is possibly 'undefined'.
+
+[7m643[0m       const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
+[7m   [0m [91m                                         ~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m709[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'ExchangeFundingRate | undefined' is not assignable to type 'ExchangeFundingRate'.
+  Type 'undefined' is not assignable to type 'ExchangeFundingRate'.
+
+[7m709[0m         bestLong,
+[7m   [0m [91m        ~~~~~~~~[0m
+
+  [96msrc/app/models/public-funding-rate.model.ts[0m:[93m34[0m:[93m3[0m
+    [7m34[0m   bestLong: ExchangeFundingRate;         // Lowest (most negative) funding rate - open LONG here
+    [7m  [0m [96m  ~~~~~~~~[0m
+    The expected type comes from property 'bestLong' which is declared here on type 'FundingRateOpportunity'
+
+
+Error: [96msrc/app/services/public-funding-rates.service.ts[0m:[93m710[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'ExchangeFundingRate | undefined' is not assignable to type 'ExchangeFundingRate'.
+  Type 'undefined' is not assignable to type 'ExchangeFundingRate'.
+
+[7m710[0m         bestShort,
+[7m   [0m [91m        ~~~~~~~~~[0m
+
+  [96msrc/app/models/public-funding-rate.model.ts[0m:[93m35[0m:[93m3[0m
+    [7m35[0m   bestShort: ExchangeFundingRate;        // Highest (most positive) funding rate - open SHORT here
+    [7m  [0m [96m  ~~~~~~~~~[0m
+    The expected type comes from property 'bestShort' which is declared here on type 'FundingRateOpportunity'
+
+
+Error: [96msrc/app/services/symbol-info.service.ts[0m:[93m147[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m147[0m       return symbol.split('-')[0];
+[7m   [0m [91m      ~~~~~~[0m
+
+
+Error: [96msrc/app/services/symbol-info.service.ts[0m:[93m152[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m152[0m       return symbol.split('_')[0];
+[7m   [0m [91m      ~~~~~~[0m
+
+
+Error: [96msrc/app/services/trade-history.service.ts[0m:[93m2[0m:[93m41[0m - [91merror[0m[90m TS6133: [0m'HttpParams' is declared but its value is never read.
+
+[7m2[0m import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+[7m [0m [91m                                        ~~~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/trade-history.service.ts[0m:[93m4[0m:[93m22[0m - [91merror[0m[90m TS6133: [0m'map' is declared but its value is never read.
+
+[7m4[0m import { catchError, map, tap, finalize } from 'rxjs/operators';
+[7m [0m [91m                     ~~~[0m
+
+
+Error: [96msrc/app/services/translation.service.ts[0m:[93m2884[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'Language | undefined' is not assignable to type 'Language | null'.
+  Type 'undefined' is not assignable to type 'Language | null'.
+
+[7m2884[0m         return detectedLang;
+[7m    [0m [91m        ~~~~~~[0m
+
+
+Error: [96msrc/app/services/translation.service.ts[0m:[93m2907[0m:[93m44[0m - [91merror[0m[90m TS18048: [0m'language' is possibly 'undefined'.
+
+[7m2907[0m     const mappedLanguage = languageMapping[language.toLowerCase()];
+[7m    [0m [91m                                           ~~~~~~~~[0m
+
+
+Error: [96msrc/app/services/translation.service.ts[0m:[93m2922[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'LanguageOption | undefined' is not assignable to type 'LanguageOption'.
+  Type 'undefined' is not assignable to type 'LanguageOption'.
+
+[7m2922[0m     return this.availableLanguages.find(lang => lang.code === currentLang) || this.availableLanguages[0];
+[7m    [0m [91m    ~~~~~~[0m
+
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/app.component.css exceeded maximum budget. Budget 4.10 kB was not met by 2.71 kB with a total of 6.81 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/lightweight-chart/lightweight-chart.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 4.18 kB with a total of 8.27 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/profile/profile.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 20.82 kB with a total of 24.92 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/testing/api-tester/api-tester.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 5.22 kB with a total of 9.32 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading-platform-info-modal/trading-platform-info-modal.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 8.80 kB with a total of 12.89 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/arbitrage-chart/arbitrage-chart.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 51.94 kB with a total of 56.04 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/bot-config-form/bot-config-form.component.css exceeded maximum budget. Budget 4.10 kB was not met by 5.57 kB with a total of 9.67 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-rate-spread-chart/funding-rate-spread-chart.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 81 bytes with a total of 4.18 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-rates/funding-rates.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 74.23 kB with a total of 78.33 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-revenue/funding-revenue.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 5.96 kB with a total of 10.05 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/funding-spread-details/funding-spread-details.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.83 kB with a total of 5.93 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/order-form/order-form.component.css exceeded maximum budget. Budget 4.10 kB was not met by 7.29 kB with a total of 11.38 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/start-bybit-strategy-modal/start-bybit-strategy-modal.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.72 kB with a total of 5.82 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/trade-history/trade-history.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.52 kB with a total of 5.62 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/trading/trading-dashboard/trading-dashboard.component.css exceeded maximum budget. Budget 4.10 kB was not met by 3.94 kB with a total of 8.03 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/button/button.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 2.96 kB with a total of 7.05 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/dialog/dialog.component.css exceeded maximum budget. Budget 4.10 kB was not met by 1.50 kB with a total of 5.59 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/components/ui/dropdown/dropdown.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.16 kB with a total of 5.26 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/active-arbitrage-positions/active-arbitrage-positions.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 7.94 kB with a total of 12.03 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/arbitrage-funding/arbitrage-funding.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 30.90 kB with a total of 35.00 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 24.62 kB with a total of 28.71 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/execution-progress/execution-progress.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.64 kB with a total of 5.74 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/opportunity-list/opportunity-list.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 4.05 kB with a total of 8.15 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/opportunity-scanner/opportunity-scanner.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 6.14 kB with a total of 10.24 kB.
+
+Error: C:/Users/unpoi/WebstormProjects/BOT/frontend/src/app/pages/triangular-arbitrage/components/position-history/position-history.component.scss exceeded maximum budget. Budget 4.10 kB was not met by 1.64 kB with a total of 5.73 kB.
+
+[39m[22m

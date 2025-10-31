@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Use Node.js runtime instead of Edge runtime for fetch compatibility
+export const runtime = 'nodejs';
+
 /**
  * Public Bitget Funding Rates Proxy
  *
@@ -13,16 +16,23 @@ export async function GET(_request: NextRequest) {
     // Bitget requires productType parameter - we'll fetch USDT perpetuals
     const bitgetUrl = 'https://api.bitget.com/api/v2/mix/market/current-fund-rate?productType=USDT-FUTURES';
 
+    console.log('[Bitget] Fetching funding rates from:', bitgetUrl);
 
     const response = await fetch(bitgetUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0',
       },
+      // Add signal with timeout
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
+    console.log('[Bitget] Response status:', response.status);
+
     if (!response.ok) {
+      console.error('[Bitget] Request failed:', response.status, response.statusText);
       return NextResponse.json(
         { error: 'Failed to fetch Bitget funding rates', details: response.statusText },
         { status: response.status }
@@ -30,7 +40,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const data = await response.json();
-
+    console.log('[Bitget] Successfully fetched', data?.data?.length || 0, 'rates');
 
     return NextResponse.json(data, {
       headers: {
@@ -38,8 +48,17 @@ export async function GET(_request: NextRequest) {
       },
     });
   } catch (error: any) {
+    console.error('[Bitget] Error:', error);
+    console.error('[Bitget] Error stack:', error.stack);
+    console.error('[Bitget] Error cause:', error.cause);
+
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      {
+        error: 'Internal server error',
+        details: error.message,
+        cause: error.cause?.message || 'Unknown cause',
+        type: error.constructor.name
+      },
       { status: 500 }
     );
   }

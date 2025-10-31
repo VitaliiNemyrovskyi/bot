@@ -165,12 +165,12 @@
 
     <div class="auth-footer">
       @if (!showRegister()) {
-        <p>{{ translate('login.dontHaveAccount') }} 
-          <a (click)="toggleMode()" class="link">{{ translate('login.signUpHere') }}</a>
+        <p>{{ translate('login.dontHaveAccount') }}
+          <a (click)="toggleMode()" (keyup.enter)="toggleMode()" tabindex="0" class="link">{{ translate('login.signUpHere') }}</a>
         </p>
       } @else {
-        <p>{{ translate('login.alreadyHaveAccount') }} 
-          <a (click)="toggleMode()" class="link">{{ translate('login.signInHere') }}</a>
+        <p>{{ translate('login.alreadyHaveAccount') }}
+          <a (click)="toggleMode()" (keyup.enter)="toggleMode()" tabindex="0" class="link">{{ translate('login.signInHere') }}</a>
         </p>
       }
     </div>

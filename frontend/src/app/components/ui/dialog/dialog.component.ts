@@ -56,13 +56,13 @@ import { TranslationService } from '../../../services/translation.service';
   ]
 })
 export class DialogComponent implements OnInit, OnDestroy, OnChanges, AfterViewInit {
-  @Input() open: boolean = false;
-  @Input() title: string = '';
+  @Input() open = false;
+  @Input() title = '';
   @Input() size: 'small' | 'medium' | 'large' | 'xlarge' | 'fullscreen' = 'medium';
-  @Input() closable: boolean = true;
-  @Input() closeOnBackdrop: boolean = true;
-  @Input() showHeader: boolean = true;
-  @Input() showFooter: boolean = false;
+  @Input() closable = true;
+  @Input() closeOnBackdrop = true;
+  @Input() showHeader = true;
+  @Input() showFooter = false;
 
   @Output() openChange = new EventEmitter<boolean>();
   @Output() close = new EventEmitter<void>();
@@ -74,7 +74,7 @@ export class DialogComponent implements OnInit, OnDestroy, OnChanges, AfterViewI
 
   private previousActiveElement: HTMLElement | null = null;
   private focusableElements: HTMLElement[] = [];
-  private scrollbarWidth: number = 0;
+  private scrollbarWidth = 0;
 
   translate(key: string): string {
     return this.translationService.translate(key);

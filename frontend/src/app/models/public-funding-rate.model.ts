@@ -144,10 +144,10 @@ export interface SpreadStabilityMetrics {
   endTimestamp?: number;                 // End of analysis period (ms)
 
   // Historical data for charting
-  historicalData?: Array<{               // Array of spread data points with timestamps
+  historicalData?: {               // Array of spread data points with timestamps
     timestamp: number;                   // Timestamp in milliseconds
     spread: number;                      // Spread value as decimal (e.g., 0.0015)
-  }>;
+  }[];
 }
 
 export interface FundingRatesLoadState {

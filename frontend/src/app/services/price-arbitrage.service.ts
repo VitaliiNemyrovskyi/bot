@@ -345,7 +345,7 @@ export class PriceArbitrageService {
    * @param decimals Number of decimal places
    * @returns Formatted spread string (e.g., "1.50%")
    */
-  formatSpread(spread: number, decimals: number = 2): string {
+  formatSpread(spread: number, decimals = 2): string {
     return `${(spread * 100).toFixed(decimals)}%`;
   }
 
