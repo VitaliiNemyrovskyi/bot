@@ -45,6 +45,7 @@
 
         <div class="filter-group">
           <ui-dropdown
+            label="Strategy"
             [options]="strategyTypeOptions"
             [ngModel]="strategyTypeFilter()"
             (ngModelChange)="onStrategyTypeChange($event)"

@@ -1,4 +1,9 @@
 <div class="dropdown-wrapper" [class.dropdown-disabled]="disabled">
+  <!-- Label -->
+  @if (label) {
+    <label class="dropdown-label">{{ label }}</label>
+  }
+
   <!-- Dropdown Trigger -->
   <button
     type="button"

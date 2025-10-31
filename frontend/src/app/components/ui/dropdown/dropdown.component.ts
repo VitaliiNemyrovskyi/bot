@@ -53,13 +53,14 @@ export class DropdownComponent implements ControlValueAccessor {
   @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
 
   @Input() options: DropdownOption[] = [];
-  @Input() placeholder: string = 'Select an option';
-  @Input() searchable: boolean = true;
-  @Input() showClearButton: boolean = true;
-  @Input() disabled: boolean = false;
+  @Input() placeholder = 'Select an option';
+  @Input() label?: string;
+  @Input() searchable = true;
+  @Input() showClearButton = true;
+  @Input() disabled = false;
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
   @Input() width: 'normal' | 'medium' | 'wide' = 'normal';
-  @Input() searchPlaceholder: string = 'Search...';
+  @Input() searchPlaceholder = 'Search...';
 
   @Output() selectionChange = new EventEmitter<string>();
 

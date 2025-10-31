@@ -19,6 +19,7 @@ const BINGX_FUNDING_INTERVALS: Record<string, number> = {
   '0G-USDT': 1,
 
   // 4-hour intervals
+  'API3-USDT': 4,
   'COAI-USDT': 4,
   'DOG-USDT': 4,
   'BROCCOLIF3B-USDT': 4,
@@ -47,7 +48,7 @@ const BINGX_FUNDING_INTERVALS: Record<string, number> = {
  *
  * GET /api/bingx/public-funding-rates
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const now = new Date();
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);
@@ -129,10 +130,10 @@ export async function GET(request: NextRequest) {
       return prisma.publicFundingRate.upsert({
         where: {
           symbol_exchange: {
-            symbol,
+            symbol: symbol,
             exchange: 'BINGX',
           },
-        },
+        } as any,
         update: {
           fundingRate: parseFloat(item.lastFundingRate || '0'),
           nextFundingTime: new Date(item.nextFundingTime || Date.now()),
