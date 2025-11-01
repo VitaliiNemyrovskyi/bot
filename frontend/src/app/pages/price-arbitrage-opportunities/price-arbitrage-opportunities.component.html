@@ -249,7 +249,7 @@
                   @if (!isSpotFuturesMode()) {
                     <th (click)="setSortColumn('spreadPercent')" class="sortable">
                       Price Spread
-                      <br><small>(Futures - Spot)</small>
+                      <br><small>(Short - Long)</small>
                       <ui-icon
                         *ngIf="sortColumn() === 'spreadPercent'"
                         [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
@@ -351,8 +351,8 @@
                               {{ formatPercent(getPriceSpreadInfo(opp).spreadPercent, 2) }}
                             </span>
                           </div>
-                          <span class="spread-usdt" [title]="'Absolute difference: $' + getPriceSpreadInfo(opp).spreadUsdt.toFixed(2)">
-                            {{ getPriceSpreadInfo(opp).spreadUsdt >= 0 ? '+' : '' }}${{ getPriceSpreadInfo(opp).spreadUsdt.toFixed(2) }}
+                          <span class="spread-usdt" [title]="'Absolute difference: $' + getPriceSpreadInfo(opp).spreadUsdt.toFixed(6)">
+                            {{ getPriceSpreadInfo(opp).spreadUsdt >= 0 ? '+' : '' }}${{ getPriceSpreadInfo(opp).spreadUsdt.toFixed(6) }}
                           </span>
                         </div>
                       </td>
