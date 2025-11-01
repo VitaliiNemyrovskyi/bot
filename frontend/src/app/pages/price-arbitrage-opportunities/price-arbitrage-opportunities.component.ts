@@ -203,16 +203,15 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     return `${minutes}m ago`;
   });
 
-  // Check if spot-futures filter is active
-  isSpotFuturesMode = computed(() => {
-    return this.strategyTypeFilter() === 'spot_futures';
-  });
-
   // Check if funding farm filter is active
   isFundingFarmMode = computed(() => {
     return this.strategyTypeFilter() === 'funding_farm';
   });
 
+  // Check if spot+futures filter is active
+  isSpotFuturesMode = computed(() => {
+    return this.strategyTypeFilter() === 'spot_futures';
+  });
 
   // Computed filtered & sorted opportunities
   filteredOpportunities = computed(() => {
