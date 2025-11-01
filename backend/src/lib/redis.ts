@@ -43,13 +43,26 @@ class RedisService {
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,
         lazyConnect: true,
+        retryStrategy: (times) => {
+          // Stop retrying after 3 attempts
+          if (times > 3) {
+            console.warn('[Redis] Max retry attempts reached, giving up');
+            return null; // Stop retrying
+          }
+          // Wait 1 second between retries
+          return 1000;
+        },
+        reconnectOnError: () => false, // Don't auto-reconnect on errors
       });
 
       await this.client.connect();
 
       this.client.on('error', (err) => {
-        console.error('[Redis] Connection error:', err);
-        this.isConnected = false;
+        // Only log first error, not spam
+        if (this.isConnected) {
+          console.error('[Redis] Connection error:', err.message);
+          this.isConnected = false;
+        }
       });
 
       this.client.on('connect', () => {
@@ -66,6 +79,17 @@ class RedisService {
     } catch (error: any) {
       console.error('[Redis] Failed to connect:', error.message);
       this.isConnected = false;
+
+      // Clean up the client if connection failed
+      if (this.client) {
+        try {
+          await this.client.quit();
+        } catch (quitError) {
+          // Ignore quit errors
+        }
+        this.client = null;
+      }
+
       throw error;
     }
   }
