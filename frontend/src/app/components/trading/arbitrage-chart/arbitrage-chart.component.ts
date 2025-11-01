@@ -1827,8 +1827,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // For funding arbitrage: INVERTED logic compared to price arbitrage
     const isFavorable = side === 'long'
-      ? primaryPrice > hedgePrice  // LONG/SHORT: want higher primary (larger entry spread profit)
-      : primaryPrice < hedgePrice; // SHORT/LONG: want lower primary (larger entry spread profit)
+      ? primaryPrice < hedgePrice : primaryPrice > hedgePrice;
 
     return isFavorable ? 'favorable' : 'unfavorable';
   }

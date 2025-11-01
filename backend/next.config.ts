@@ -9,9 +9,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: false, // Enforce linting during build
   },
   serverExternalPackages: ['ccxt', 'ws'], // Exclude CCXT and WebSocket from bundling
-  experimental: {
-    instrumentationHook: true, // Enable instrumentation with Node.js runtime
-  },
+  // instrumentation.ts is enabled by default in Next.js 15, no need for experimental flag
 };
 
 export default nextConfig;
