@@ -356,18 +356,28 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     });
 
     // Initialize signals with form's initial values
-    this.primaryAmount.set(this.primaryOrderForm.get('quantity')?.value || 0);
-    this.primaryLeverage.set(this.primaryOrderForm.get('leverage')?.value || 1);
+    const initialQuantity = this.primaryOrderForm.get('quantity')?.value || 0;
+    const initialLeverage = this.primaryOrderForm.get('leverage')?.value || 1;
+    this.primaryAmount.set(initialQuantity);
+    this.primaryLeverage.set(initialLeverage);
+    console.log('[ArbitrageChart] Initial values - Quantity:', initialQuantity, 'Leverage:', initialLeverage);
 
     // Subscribe to primary form changes to update signals for profit calculator
     this.primaryOrderForm.get('quantity')?.valueChanges.subscribe(value => {
+      console.log('[ArbitrageChart] Quantity valueChanges triggered:', value);
       this.primaryAmount.set(value || 0);
-      console.log('[ArbitrageChart] Position size updated:', value);
     });
 
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe(value => {
+      console.log('[ArbitrageChart] Leverage valueChanges triggered:', value);
       this.primaryLeverage.set(value || 1);
-      console.log('[ArbitrageChart] Leverage updated:', value);
+    });
+
+    // Monitor signal changes with effect
+    effect(() => {
+      const amount = this.primaryAmount();
+      const leverage = this.primaryLeverage();
+      console.log('[ArbitrageChart] Signals updated - Amount:', amount, 'Leverage:', leverage);
     });
 
     // Get route parameters
@@ -3124,6 +3134,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Watch primary leverage changes
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe((value) => {
+      console.log('[ArbitrageChart] setupFormValidation - Leverage changed:', value,
+                  'locked:', this.orderParamsLocked(),
+                  'syncing:', this.isSyncingLeverage);
       if (this.orderParamsLocked() && !this.isSyncingLeverage) {
         this.isSyncingLeverage = true;
         this.hedgeOrderForm.patchValue({ leverage: value }, { emitEvent: false });
@@ -3195,6 +3208,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Watch hedge leverage changes
     this.hedgeOrderForm.get('leverage')?.valueChanges.subscribe((value) => {
+      console.log('[ArbitrageChart] Hedge leverage changed:', value,
+                  'locked:', this.orderParamsLocked(),
+                  'syncing:', this.isSyncingLeverage);
       if (this.orderParamsLocked() && !this.isSyncingLeverage) {
         this.isSyncingLeverage = true;
         this.primaryOrderForm.patchValue({ leverage: value }, { emitEvent: false });
