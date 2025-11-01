@@ -12,6 +12,7 @@ import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogCon
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
 import { DropdownComponent, DropdownOption } from '../../components/ui/dropdown/dropdown.component';
 import { InputComponent } from '../../components/ui/input/input.component';
+import { SliderComponent } from '../../components/ui/slider/slider.component';
 
 /**
  * Unified opportunity type that supports all strategies
@@ -71,6 +72,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
     FundingSpreadDetailsComponent,
     DropdownComponent,
     InputComponent,
+    SliderComponent,
   ],
   templateUrl: './price-arbitrage-opportunities.component.html',
   styleUrls: ['./price-arbitrage-opportunities.component.scss'],
@@ -118,12 +120,60 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   minCombinedScore = signal<number | null>(null);
   minFundingRate = signal<number | null>(null);
   minPriceSpread = signal<number | null>(null);
-  strategyTypeFilter = signal<'combined' | 'price_only' | 'spot_futures' | 'funding_farm'>('combined');
+  strategyTypeFilter = signal<'combined' | 'price_only' | 'funding_only' | 'spot_futures' | 'funding_farm'>('combined');
   selectedExchanges = signal<string[]>([]);
 
   // Sorting
   sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI' | 'volatility'>('combinedScore');
   sortDirection = signal<'asc' | 'desc'>('desc');
+
+  // Price Only strategy filters
+  filterByMaxFunding = signal<boolean>(false);
+  maxFundingValue = signal<number>(0.01); // Default: 1%
+
+  // Format slider value as percentage
+  formatSliderValue = (value: number): string => {
+    return this.formatPercent(value * 100, 3);
+  };
+
+  /**
+   * Helper function to get strategy-specific metric value
+   * Returns the appropriate metric based on the selected strategy filter
+   */
+  private getStrategyMetric(
+    opportunity: FundingRateOpportunity,
+    metric: 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI',
+    strategyFilter: string
+  ): number {
+    // Try to get from strategyMetrics first
+    if (opportunity.strategyMetrics) {
+      let strategyData: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; } | undefined;
+      switch (strategyFilter) {
+        case 'combined':
+          strategyData = opportunity.strategyMetrics.combined;
+          break;
+        case 'price_only':
+          strategyData = opportunity.strategyMetrics.priceOnly;
+          break;
+        case 'funding_only':
+          strategyData = opportunity.strategyMetrics.fundingOnly;
+          break;
+      }
+
+      if (strategyData && strategyData[metric] !== undefined) {
+        return strategyData[metric];
+      }
+    }
+
+    // Fallback to legacy fields
+    const legacyValue = opportunity[metric];
+    if (legacyValue !== undefined) {
+      return legacyValue;
+    }
+
+    // Ultimate fallback
+    return (opportunity.priceSpread || 0) * 100;
+  }
 
   // Current time for time-since-update display
   private currentTime = signal<number>(Date.now());
@@ -184,7 +234,26 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // (we'll compensate price difference with delta-neutral hedging)
       filtered = filtered.filter(o => o.maxFundingSpread && o.maxFundingSpread > 0);
     } else {
-      filtered = filtered.filter(o => o.strategyType === strategyFilter);
+      // Filter by strategy: check if opportunity has applicable strategy metrics
+      // Each opportunity can have multiple strategies calculated
+      filtered = filtered.filter(o => {
+        if (!o.strategyMetrics) {
+          // Fallback to legacy strategyType if strategyMetrics not available
+          return o.strategyType === strategyFilter;
+        }
+
+        // Check if opportunity has the selected strategy metrics
+        switch (strategyFilter) {
+          case 'combined':
+            return !!o.strategyMetrics.combined;
+          case 'price_only':
+            return !!o.strategyMetrics.priceOnly;
+          case 'funding_only':
+            return !!o.strategyMetrics.fundingOnly;
+          default:
+            return true;
+        }
+      });
     }
 
     // Filter by selected exchanges (case-insensitive comparison)
@@ -215,7 +284,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     const minScore = this.minCombinedScore();
     if (minScore !== null) {
       filtered = filtered.filter(o => {
-        const score = o.combinedScore !== undefined ? o.combinedScore : ((o.priceSpread || 0) * 100);
+        const score = this.getStrategyMetric(o, 'combinedScore', strategyFilter);
         return score >= minScore;
       });
     }
@@ -238,57 +307,86 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       });
     }
 
+    // Filter by maximum funding rate (for Price Only strategy)
+    // Only apply if Price Only strategy is selected AND filter is enabled
+    if (strategyFilter === 'price_only' && this.filterByMaxFunding()) {
+      const maxFunding = this.maxFundingValue();
+      filtered = filtered.filter(o => {
+        const fundingRate = Math.abs(o.maxFundingSpread || 0);
+        return fundingRate <= maxFunding;
+      });
+    }
+
     // Sort
     const column = this.sortColumn();
     const direction = this.sortDirection();
 
-    filtered.sort((a, b) => {
-      let aValue: number;
-      let bValue: number;
+    // Special handling for 'price_only' strategy: compound sorting
+    if (strategyFilter === 'price_only') {
+      filtered.sort((a, b) => {
+        // Primary: Sort by price spread (largest first - descending)
+        const aPriceSpread = (a.priceSpread || 0) * 100;
+        const bPriceSpread = (b.priceSpread || 0) * 100;
 
-      switch (column) {
-        case 'symbol':
-          return direction === 'asc'
-            ? a.symbol.localeCompare(b.symbol)
-            : b.symbol.localeCompare(a.symbol);
+        if (Math.abs(aPriceSpread - bPriceSpread) > 0.001) {
+          return bPriceSpread - aPriceSpread; // Descending (largest first)
+        }
 
-        case 'spreadPercent':
-          aValue = (a.priceSpread || 0) * 100;
-          bValue = (b.priceSpread || 0) * 100;
-          break;
+        // Secondary: Sort by funding rates (minimal first - ascending by absolute value)
+        const aFunding = Math.abs(a.maxFundingSpread || 0) * 100;
+        const bFunding = Math.abs(b.maxFundingSpread || 0) * 100;
+        return aFunding - bFunding; // Ascending (minimal first)
+      });
+    } else {
+      // Existing sorting logic for other strategies
+      filtered.sort((a, b) => {
+        let aValue: number;
+        let bValue: number;
 
-        case 'fundingDifferential':
-          aValue = (a.maxFundingSpread ?? 0) * 100;
-          bValue = (b.maxFundingSpread ?? 0) * 100;
-          break;
+        switch (column) {
+          case 'symbol':
+            return direction === 'asc'
+              ? a.symbol.localeCompare(b.symbol)
+              : b.symbol.localeCompare(a.symbol);
 
-        case 'combinedScore':
-          aValue = a.combinedScore ?? ((a.priceSpread || 0) * 100);
-          bValue = b.combinedScore ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'spreadPercent':
+            aValue = (a.priceSpread || 0) * 100;
+            bValue = (b.priceSpread || 0) * 100;
+            break;
 
-        case 'expectedDailyReturn':
-          aValue = a.expectedDailyReturn ?? ((a.priceSpread || 0) * 100);
-          bValue = b.expectedDailyReturn ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'fundingDifferential':
+            aValue = (a.maxFundingSpread ?? 0) * 100;
+            bValue = (b.maxFundingSpread ?? 0) * 100;
+            break;
 
-        case 'estimatedMonthlyROI':
-          aValue = a.estimatedMonthlyROI ?? ((a.priceSpread || 0) * 100);
-          bValue = b.estimatedMonthlyROI ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'combinedScore':
+            aValue = this.getStrategyMetric(a, 'combinedScore', strategyFilter);
+            bValue = this.getStrategyMetric(b, 'combinedScore', strategyFilter);
+            break;
 
-        case 'volatility':
-          aValue = a.volatility24h ?? 0;
-          bValue = b.volatility24h ?? 0;
-          break;
+          case 'expectedDailyReturn':
+            aValue = this.getStrategyMetric(a, 'expectedDailyReturn', strategyFilter);
+            bValue = this.getStrategyMetric(b, 'expectedDailyReturn', strategyFilter);
+            break;
 
-        default:
-          aValue = 0;
-          bValue = 0;
-      }
+          case 'estimatedMonthlyROI':
+            aValue = this.getStrategyMetric(a, 'estimatedMonthlyROI', strategyFilter);
+            bValue = this.getStrategyMetric(b, 'estimatedMonthlyROI', strategyFilter);
+            break;
 
-      return direction === 'asc' ? aValue - bValue : bValue - aValue;
-    });
+          case 'volatility':
+            aValue = a.volatility24h ?? 0;
+            bValue = b.volatility24h ?? 0;
+            break;
+
+          default:
+            aValue = 0;
+            bValue = 0;
+        }
+
+        return direction === 'asc' ? aValue - bValue : bValue - aValue;
+      });
+    }
 
     return filtered;
   });
@@ -590,6 +688,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     this.minPriceSpread.set(null);
     this.strategyTypeFilter.set('combined');
     this.selectedExchanges.set([...this.availableExchanges]); // Select all exchanges
+    this.filterByMaxFunding.set(false); // Clear Price Only filters
+    this.maxFundingValue.set(0.01); // Reset to default 1%
     this.saveExchangeFilters(); // Save cleared state to localStorage
   }
 

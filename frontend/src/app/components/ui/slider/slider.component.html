@@ -1,0 +1,33 @@
+<div class="ui-slider" [class.disabled]="disabled" [attr.data-size]="size">
+  @if (label || showValue) {
+    <div class="slider-header">
+      @if (label) {
+        <label class="slider-label">{{ label }}</label>
+      }
+      @if (showValue) {
+        <span class="slider-value">{{ getFormattedValue() }}</span>
+      }
+    </div>
+  }
+
+  <div class="slider-container">
+    <input
+      type="range"
+      class="slider-input"
+      [min]="min"
+      [max]="max"
+      [step]="step"
+      [value]="value()"
+      [disabled]="disabled"
+      (input)="onSliderChange($event)"
+      [style.--slider-percentage]="getPercentage() + '%'"
+    />
+  </div>
+
+  @if (showLabels) {
+    <div class="slider-labels">
+      <span class="label-min">{{ min }}</span>
+      <span class="label-max">{{ max }}</span>
+    </div>
+  }
+</div>

@@ -1,3 +1,4 @@
+You are a Senior Software developer
 ## Development Principles
 - Use TDD principles in development
 - Follow SOLID principles

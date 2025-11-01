@@ -103,6 +103,51 @@
         </div>
       </div>
 
+      <!-- Price Only Strategy Filters (Conditional) -->
+      @if (strategyTypeFilter() === 'price_only') {
+        <div class="price-only-filters-section">
+          <div class="price-only-filters-header">
+            <h3 class="price-only-filters-title">
+              <ui-icon name="tune" [size]="20"></ui-icon>
+              Price Only Strategy Filters
+            </h3>
+          </div>
+          <div class="price-only-filters-content">
+            <div class="filter-group checkbox-group">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="filterByMaxFunding"
+                  class="filter-checkbox"
+                />
+                <span class="checkbox-text">Filter by Max Funding Rate</span>
+              </label>
+              <span class="filter-hint">Exclude opportunities with funding rates above the threshold</span>
+            </div>
+
+            <div class="filter-group slider-group">
+              <ui-slider
+                [(ngModel)]="maxFundingValue"
+                [min]="0"
+                [max]="0.01"
+                [step]="0.0001"
+                [disabled]="!filterByMaxFunding()"
+                [label]="'Max Funding Rate'"
+                [showValue]="true"
+                [showLabels]="false"
+                [formatValue]="formatSliderValue"
+                size="medium"
+              ></ui-slider>
+              <div class="slider-custom-labels">
+                <span>0%</span>
+                <span>0.5%</span>
+                <span>1%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Exchanges Filter Panel -->
       <div class="exchanges-panel">
         <div class="exchanges-panel-header">

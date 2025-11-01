@@ -58,11 +58,34 @@ export interface FundingRateOpportunity {
   volatility24h?: number;                // Simple 24h volatility as decimal
   volatility24hFormatted?: string;       // Formatted volatility (e.g., "3.45%")
 
-  // Combined Strategy Metrics (price + funding)
-  combinedScore?: number;                // Combined score (price spread + funding for 7 days)
-  expectedDailyReturn?: number;          // Expected daily return (%) = price spread + funding × 3 - LEGACY
-  estimatedMonthlyROI?: number;          // Estimated monthly ROI (%) = price spread + funding × 90 - LEGACY
-  strategyType?: 'price_only' | 'funding_only' | 'combined' | 'spot_futures' | 'funding_farm'; // Strategy type
+  // Strategy Metrics - Each opportunity calculates metrics for ALL applicable strategies
+  // The dropdown filter determines which metrics to display, not which opportunities to show
+  strategyMetrics?: {
+    // Combined Strategy (if has both price AND funding)
+    combined?: {
+      combinedScore: number;             // Combined score (price spread + funding for 7 days)
+      expectedDailyReturn: number;       // Expected daily return (%) = price spread + funding × 3
+      estimatedMonthlyROI: number;       // Estimated monthly ROI (%) = price spread + funding × 90
+    };
+    // Price Only Strategy (if has price spread)
+    priceOnly?: {
+      combinedScore: number;             // Just the price spread
+      expectedDailyReturn: number;       // Just the price spread
+      estimatedMonthlyROI: number;       // Just the price spread
+    };
+    // Funding Only Strategy (if has funding spread)
+    fundingOnly?: {
+      combinedScore: number;             // Funding for 7 days
+      expectedDailyReturn: number;       // Daily funding return
+      estimatedMonthlyROI: number;       // Monthly funding return
+    };
+  };
+
+  // LEGACY FIELDS - kept for backward compatibility, will use the selected strategy's metrics
+  combinedScore?: number;                // LEGACY - use strategyMetrics instead
+  expectedDailyReturn?: number;          // LEGACY - use strategyMetrics instead
+  estimatedMonthlyROI?: number;          // LEGACY - use strategyMetrics instead
+  strategyType?: 'price_only' | 'funding_only' | 'combined' | 'spot_futures' | 'funding_farm'; // LEGACY - no longer used for classification
 
   // REALISTIC METRICS - based on historical data (NEW)
   realisticMetrics?: {

@@ -364,6 +364,102 @@
   }
 }
 
+// Price Only Strategy Filters Panel
+.price-only-filters-section {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background-color: var(--card-bg, white);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-left: 4px solid rgb(107, 114, 128); // Badge-price-only color
+
+  .price-only-filters-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+
+    .price-only-filters-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a1a);
+      margin: 0;
+
+      ui-icon {
+        color: rgb(107, 114, 128);
+      }
+    }
+  }
+
+  .price-only-filters-content {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+
+    .filter-group {
+      flex: 1;
+      min-width: 250px;
+
+      &.checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 0 1 auto;
+        min-width: auto;
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          cursor: pointer;
+          user-select: none;
+
+          .filter-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary-color, #3b82f6);
+          }
+
+          .checkbox-text {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-primary, #1a1a1a);
+          }
+        }
+
+        .filter-hint {
+          font-size: 0.8rem;
+          color: var(--text-secondary, #666);
+          font-style: italic;
+          margin-left: 1.95rem; // Align with checkbox text
+        }
+      }
+
+      &.slider-group {
+        flex: 1;
+        min-width: 300px;
+
+        .slider-custom-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          color: var(--text-secondary, #666);
+          margin-top: 0.5rem;
+          padding: 0 0.25rem;
+
+          span {
+            font-weight: 500;
+          }
+        }
+      }
+    }
+  }
+}
+
 // Table Container
 .table-container {
   background: var(--card-bg, white);
@@ -1112,6 +1208,41 @@
       }
     }
 
+    // Price Only filters dark mode
+    .price-only-filters-section {
+      background: var(--card-bg-dark, #1e1e1e);
+      border: none;
+      border-left: 4px solid rgb(107, 114, 128);
+
+      .price-only-filters-header {
+        border-bottom-color: var(--border-color-dark, #404040);
+
+        .price-only-filters-title {
+          color: var(--text-primary-dark, #f5f5f5);
+        }
+      }
+
+      .price-only-filters-content {
+        .checkbox-group {
+          .checkbox-label {
+            .checkbox-text {
+              color: var(--text-primary-dark, #f5f5f5);
+            }
+          }
+
+          .filter-hint {
+            color: var(--text-secondary-dark, #a0a0a0);
+          }
+        }
+
+        .slider-group {
+          .slider-custom-labels {
+            color: var(--text-secondary-dark, #a0a0a0);
+          }
+        }
+      }
+    }
+
     .table-container {
       background: var(--card-bg-dark, #1e1e1e);
       border: none;
@@ -1237,6 +1368,35 @@
     .exchange-checkbox {
       font-size: 0.7rem;
       padding: 0.25rem 0.5rem;
+    }
+  }
+
+  // Price Only filters mobile
+  .price-only-filters-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+
+    .price-only-filters-header {
+      .price-only-filters-title {
+        font-size: 0.9rem;
+      }
+    }
+
+    .price-only-filters-content {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+
+      .filter-group {
+        &.checkbox-group {
+          min-width: auto;
+        }
+
+        &.slider-group {
+          min-width: auto;
+          width: 100%;
+        }
+      }
     }
   }
 

@@ -655,48 +655,73 @@ export class PublicFundingRatesService {
         console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
       }
 
-      // 9. Combined Strategy Metrics (price spread + funding differential)
-      // Calculate combined score only if we have both price and funding data
+      // 9. Strategy Metrics Calculation
+      // Calculate metrics for ALL applicable strategies (not mutually exclusive)
+      // Each opportunity can have multiple strategies calculated
+
+      const strategyMetrics: {
+        combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
+        priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
+        fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
+      } = {};
+
+      // Convert to percentages for calculations (use different variable names to avoid redeclaration)
+      const priceSpreadPct = priceSpread * 100;
+      const fundingDifferentialPct = fundingSpread * 100;
+      const dailyFundingReturn = fundingDifferentialPct * 3; // 3 funding periods per day (every 8h)
+
+      // Combined Strategy: If has both price AND funding data
+      if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpread) > 0.0001) {
+        strategyMetrics.combined = {
+          // Expected daily return = price spread (one-time) + funding differential (3 times per day)
+          expectedDailyReturn: priceSpreadPct + dailyFundingReturn,
+          // Estimated monthly ROI = price spread (one-time) + funding for 30 days
+          estimatedMonthlyROI: priceSpreadPct + (dailyFundingReturn * 30),
+          // Combined score = immediate price spread + projected funding for 7 days
+          combinedScore: priceSpreadPct + (dailyFundingReturn * 7),
+        };
+      }
+
+      // Price Only Strategy: If has price spread
+      if (Math.abs(priceSpread) > 0.0001) {
+        strategyMetrics.priceOnly = {
+          combinedScore: priceSpreadPct,
+          expectedDailyReturn: priceSpreadPct,
+          estimatedMonthlyROI: priceSpreadPct,
+        };
+      }
+
+      // Funding Only Strategy: If has funding spread
+      if (Math.abs(fundingSpread) > 0.0001) {
+        strategyMetrics.fundingOnly = {
+          combinedScore: dailyFundingReturn * 7,
+          expectedDailyReturn: dailyFundingReturn,
+          estimatedMonthlyROI: dailyFundingReturn * 30,
+        };
+      }
+
+      // LEGACY FIELDS - determine default strategyType and metrics for backward compatibility
+      // Priority: combined > price_only > funding_only
+      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
       let combinedScore: number | undefined;
       let expectedDailyReturn: number | undefined;
       let estimatedMonthlyROI: number | undefined;
-      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
 
-      // Check if we have valid funding spread (not just price data)
-      if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpread) > 0.0001) {
-        // We have both funding and price data - calculate combined metrics
-
-        // Convert price spread to percentage
-        const priceSpreadPercent = priceSpread * 100;
-
-        // Funding differential per 8h period (as percentage)
-        const fundingDifferentialPercent = fundingSpread * 100;
-
-        // Expected daily return = price spread (one-time) + funding differential (3 times per day)
-        // Assumption: price convergence happens within 1 day
-        const dailyFundingReturn = fundingDifferentialPercent * 3; // 3 funding periods per day (every 8h)
-        expectedDailyReturn = priceSpreadPercent + dailyFundingReturn;
-
-        // Estimated monthly ROI = price spread (one-time) + funding for 30 days
-        estimatedMonthlyROI = priceSpreadPercent + (dailyFundingReturn * 30);
-
-        // Combined score = immediate price spread + projected funding for 7 days
-        combinedScore = priceSpreadPercent + (dailyFundingReturn * 7);
-
+      if (strategyMetrics.combined) {
         strategyType = 'combined';
-      } else if (Math.abs(priceSpread) > 0.0001) {
-        // We have price spread but minimal/no funding data
+        combinedScore = strategyMetrics.combined.combinedScore;
+        expectedDailyReturn = strategyMetrics.combined.expectedDailyReturn;
+        estimatedMonthlyROI = strategyMetrics.combined.estimatedMonthlyROI;
+      } else if (strategyMetrics.priceOnly) {
         strategyType = 'price_only';
-        combinedScore = priceSpread * 100; // Just the price spread
-        expectedDailyReturn = priceSpread * 100;
-        estimatedMonthlyROI = priceSpread * 100;
-      } else if (Math.abs(fundingSpread) > 0.0001) {
-        // We have funding but minimal/no price spread
+        combinedScore = strategyMetrics.priceOnly.combinedScore;
+        expectedDailyReturn = strategyMetrics.priceOnly.expectedDailyReturn;
+        estimatedMonthlyROI = strategyMetrics.priceOnly.estimatedMonthlyROI;
+      } else if (strategyMetrics.fundingOnly) {
         strategyType = 'funding_only';
-        const dailyFundingReturn = fundingSpread * 100 * 3;
-        combinedScore = dailyFundingReturn * 7;
-        expectedDailyReturn = dailyFundingReturn;
-        estimatedMonthlyROI = dailyFundingReturn * 30;
+        combinedScore = strategyMetrics.fundingOnly.combinedScore;
+        expectedDailyReturn = strategyMetrics.fundingOnly.expectedDailyReturn;
+        estimatedMonthlyROI = strategyMetrics.fundingOnly.estimatedMonthlyROI;
       }
 
       opportunities.push({
@@ -727,7 +752,9 @@ export class PublicFundingRatesService {
         openInterestFormatted,
         volatility24h,
         volatility24hFormatted,
-        // Combined Strategy Metrics
+        // Strategy Metrics - ALL applicable strategies calculated
+        strategyMetrics,
+        // LEGACY Combined Strategy Metrics - for backward compatibility
         combinedScore,
         expectedDailyReturn,
         estimatedMonthlyROI,

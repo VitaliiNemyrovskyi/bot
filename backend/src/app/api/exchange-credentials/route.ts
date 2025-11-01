@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = authResult.user.userId;
+    console.log('[API] User authenticated:', { userId, email: authResult.user.email });
 
     // Parse and validate request body
     const bodySchema = z.object({
@@ -191,8 +192,11 @@ export async function POST(request: NextRequest) {
     let body: SaveCredentialsRequest;
     try {
       const rawBody = await request.json();
+      console.log('[API] Received raw body:', JSON.stringify(rawBody, null, 2));
       body = bodySchema.parse(rawBody);
+      console.log('[API] Validated body:', JSON.stringify(body, null, 2));
     } catch (error: any) {
+      console.error('[API] Validation error:', error);
       return NextResponse.json(
         {
           success: false,
