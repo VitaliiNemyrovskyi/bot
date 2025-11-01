@@ -163,6 +163,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   primaryAmount = signal<number>(0);
   primaryLeverage = signal<number>(1);
 
+  // Monitor signal changes with effect (must be in field initializer for injection context)
+  private signalMonitor = effect(() => {
+    const amount = this.primaryAmount();
+    const leverage = this.primaryLeverage();
+    console.log('[ArbitrageChart] Signals updated - Amount:', amount, 'Leverage:', leverage);
+  });
+
   // Credentials validation
   hasPrimaryCredentials = signal<boolean>(false);
   hasHedgeCredentials = signal<boolean>(false);
@@ -371,13 +378,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe(value => {
       console.log('[ArbitrageChart] Leverage valueChanges triggered:', value);
       this.primaryLeverage.set(value || 1);
-    });
-
-    // Monitor signal changes with effect
-    effect(() => {
-      const amount = this.primaryAmount();
-      const leverage = this.primaryLeverage();
-      console.log('[ArbitrageChart] Signals updated - Amount:', amount, 'Leverage:', leverage);
     });
 
     // Get route parameters
