@@ -93,9 +93,21 @@ export class ArbitrageProfitCalculatorComponent {
   profitBreakdown = computed<ProfitBreakdown | null>(() => {
     const strategy = this._strategy();
     const positionSize = this._positionSize();
+    const leverage = this._leverage();
+    const primaryPrice = this._primaryPrice();
+    const hedgePrice = this._hedgePrice();
+
+    console.log('[ProfitCalculator] Computing breakdown:', {
+      strategy,
+      positionSize,
+      leverage,
+      primaryPrice,
+      hedgePrice
+    });
 
     // Return null if position size is invalid
     if (!positionSize || positionSize <= 0) {
+      console.log('[ProfitCalculator] Invalid position size, returning null');
       return null;
     }
 
@@ -113,6 +125,7 @@ export class ArbitrageProfitCalculatorComponent {
    */
   private calculateCombinedProfit(): ProfitBreakdown {
     const positionSize = this._positionSize();
+    const leverage = this._leverage();
     const primaryPrice = this._primaryPrice();
     const hedgePrice = this._hedgePrice();
     const primaryFundingRate = this._primaryFundingRate();
@@ -146,9 +159,15 @@ export class ArbitrageProfitCalculatorComponent {
     const hedgeFee = this.EXCHANGE_FEES[hedgeExchange] || 0.055;
     const totalFees = positionSize * (primaryFee + hedgeFee) * 2 / 100;
 
-    // 4. Calculate net profit
+    // 4. Calculate net profit and ROI
     const netProfit = dailyFundingIncome + entrySpreadProfit - totalFees;
-    const roi = (netProfit / positionSize) * 100;
+
+    // Calculate collateral (margin) based on leverage
+    // For 2 positions (long + short), total collateral is positionSize * 2 / leverage
+    const totalCollateral = (positionSize * 2) / leverage;
+
+    // ROI is profit relative to collateral, not position size
+    const roi = (netProfit / totalCollateral) * 100;
     const apy = roi * 365;
 
     return {
@@ -166,6 +185,7 @@ export class ArbitrageProfitCalculatorComponent {
    */
   private calculatePriceOnlyProfit(): ProfitBreakdown {
     const positionSize = this._positionSize();
+    const leverage = this._leverage();
     const primaryPrice = this._primaryPrice();
     const hedgePrice = this._hedgePrice();
     const primaryExchange = this._primaryExchange();
@@ -182,9 +202,15 @@ export class ArbitrageProfitCalculatorComponent {
     const hedgeFee = this.EXCHANGE_FEES[hedgeExchange] || 0.055;
     const totalFees = positionSize * (primaryFee + hedgeFee) * 2 / 100;
 
-    // 3. Calculate net profit
+    // 3. Calculate net profit and ROI
     const netProfit = spreadProfit - totalFees;
-    const roi = (netProfit / positionSize) * 100;
+
+    // Calculate collateral (margin) based on leverage
+    // For 2 positions (long + short), total collateral is positionSize * 2 / leverage
+    const totalCollateral = (positionSize * 2) / leverage;
+
+    // ROI is profit relative to collateral, not position size
+    const roi = (netProfit / totalCollateral) * 100;
 
     return {
       fundingIncome: 0, // Not applicable for price only

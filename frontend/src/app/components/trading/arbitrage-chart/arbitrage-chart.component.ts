@@ -362,10 +362,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Subscribe to primary form changes to update signals for profit calculator
     this.primaryOrderForm.get('quantity')?.valueChanges.subscribe(value => {
       this.primaryAmount.set(value || 0);
+      console.log('[ArbitrageChart] Position size updated:', value);
     });
 
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe(value => {
       this.primaryLeverage.set(value || 1);
+      console.log('[ArbitrageChart] Leverage updated:', value);
     });
 
     // Get route parameters
