@@ -831,10 +831,11 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     indicator: string;
     colorClass: string;
   } {
-    const spotPrice = this.getSpotPrice(opp);
-    const futuresPrice = this.getFuturesPrice(opp);
+    // Get prices directly from bestLong and bestShort
+    const bestLongPrice = opp.bestLong?.lastPrice ? parseFloat(opp.bestLong.lastPrice) : null;
+    const bestShortPrice = opp.bestShort?.lastPrice ? parseFloat(opp.bestShort.lastPrice) : null;
 
-    if (!spotPrice || !futuresPrice) {
+    if (!bestLongPrice || !bestShortPrice) {
       return {
         spread: 0,
         spreadPercent: 0,
@@ -845,18 +846,18 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       };
     }
 
-    const spreadUsdt = futuresPrice - spotPrice;
-    const spreadPercent = (spreadUsdt / spotPrice) * 100;
-
-    // Price spread between Best Long (buy) and Best Short (sell) exchanges
-    // spotPrice = bestLong.lastPrice (where we BUY - lower price)
-    // futuresPrice = bestShort.lastPrice (where we SELL - higher price)
+    // Price spread calculation between Best Long and Best Short exchanges
+    // bestLongPrice = price on exchange where we BUY (go LONG)
+    // bestShortPrice = price on exchange where we SELL (go SHORT)
     //
-    // FAVORABLE: futuresPrice > spotPrice (selling HIGH, buying LOW = profit)
-    // UNFAVORABLE: spotPrice > futuresPrice (would be buying HIGH, selling LOW = loss)
-    //
-    // Larger POSITIVE spread = more profit opportunity
-    const isFavorable = futuresPrice > spotPrice; // SELL price > BUY price is favorable
+    // For profitable arbitrage:
+    // - We want to BUY LOW on Best Long exchange
+    // - We want to SELL HIGH on Best Short exchange
+    // - FAVORABLE: bestShortPrice > bestLongPrice (sell high, buy low = profit)
+    // - Larger positive spread = more profit
+    const spreadUsdt = bestShortPrice - bestLongPrice;
+    const spreadPercent = (spreadUsdt / bestLongPrice) * 100;
+    const isFavorable = bestShortPrice > bestLongPrice;
 
     return {
       spread: opp.priceSpread || 0,
