@@ -1,0 +1,141 @@
+<div class="profit-calculator">
+  <!-- Header -->
+  <div class="calculator-header">
+    <span class="header-icon">📊</span>
+    <span class="header-title">Прогноз профіту (24 год)</span>
+  </div>
+
+  <!-- Content -->
+  <div class="calculator-content">
+    <!-- Loading / No Data State -->
+    <div *ngIf="!hasValidData()" class="empty-state">
+      <span class="empty-icon">⏳</span>
+      <p class="empty-text">Введіть розмір позиції для розрахунку</p>
+    </div>
+
+    <!-- Profit Breakdown -->
+    <div *ngIf="hasValidData() && profitBreakdown() as breakdown" class="profit-breakdown">
+
+      <!-- Combined Strategy: Show Funding + Entry Spread + Fees -->
+      <ng-container *ngIf="currentStrategy === 'combined'">
+
+        <!-- Funding Income -->
+        <div class="profit-item">
+          <div class="item-label">
+            <span class="item-icon">💰</span>
+            <span>Funding Income:</span>
+          </div>
+          <div class="item-value positive">
+            +${{ breakdown.fundingIncome.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- Entry Spread -->
+        <div class="profit-item">
+          <div class="item-label">
+            <span class="item-icon">📈</span>
+            <span>Entry Spread:</span>
+          </div>
+          <div class="item-value positive">
+            +${{ breakdown.entrySpread.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- Trading Fees -->
+        <div class="profit-item">
+          <div class="item-label">
+            <span class="item-icon">💸</span>
+            <span>Trading Fees:</span>
+          </div>
+          <div class="item-value negative">
+            -${{ breakdown.tradingFees.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider"></div>
+
+        <!-- Net Profit -->
+        <div class="profit-item net-profit">
+          <div class="item-label">
+            <span class="item-icon">✅</span>
+            <span>Net Profit:</span>
+          </div>
+          <div class="item-value" [ngClass]="isProfitable() ? 'positive' : 'negative'">
+            {{ breakdown.netProfit >= 0 ? '+' : '' }}${{ breakdown.netProfit.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- ROI and APY -->
+        <div class="metrics-row">
+          <div class="metric">
+            <span class="metric-label">ROI:</span>
+            <span class="metric-value" [ngClass]="isProfitable() ? 'positive' : 'negative'">
+              {{ breakdown.roi.toFixed(2) }}%
+            </span>
+          </div>
+          <div class="metric-separator">|</div>
+          <div class="metric">
+            <span class="metric-label">APY:</span>
+            <span class="metric-value" [ngClass]="isProfitable() ? 'positive' : 'negative'">
+              {{ breakdown.apy ? breakdown.apy.toFixed(0) + '%' : 'N/A' }}
+            </span>
+          </div>
+        </div>
+
+      </ng-container>
+
+      <!-- Price Only Strategy: Show only Price Spread + Fees -->
+      <ng-container *ngIf="currentStrategy === 'price_only'">
+
+        <!-- Price Spread -->
+        <div class="profit-item">
+          <div class="item-label">
+            <span class="item-icon">📈</span>
+            <span>Price Spread:</span>
+          </div>
+          <div class="item-value positive">
+            +${{ breakdown.entrySpread.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- Trading Fees -->
+        <div class="profit-item">
+          <div class="item-label">
+            <span class="item-icon">��</span>
+            <span>Trading Fees:</span>
+          </div>
+          <div class="item-value negative">
+            -${{ breakdown.tradingFees.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider"></div>
+
+        <!-- Net Profit -->
+        <div class="profit-item net-profit">
+          <div class="item-label">
+            <span class="item-icon">✅</span>
+            <span>Net Profit:</span>
+          </div>
+          <div class="item-value" [ngClass]="isProfitable() ? 'positive' : 'negative'">
+            {{ breakdown.netProfit >= 0 ? '+' : '' }}${{ breakdown.netProfit.toFixed(2) }}
+          </div>
+        </div>
+
+        <!-- ROI -->
+        <div class="metrics-row single">
+          <div class="metric">
+            <span class="metric-label">ROI:</span>
+            <span class="metric-value" [ngClass]="isProfitable() ? 'positive' : 'negative'">
+              {{ breakdown.roi.toFixed(2) }}%
+            </span>
+          </div>
+        </div>
+
+      </ng-container>
+
+    </div>
+  </div>
+</div>

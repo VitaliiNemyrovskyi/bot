@@ -15,6 +15,7 @@ import { ExchangeType } from '../../../models/exchange-credentials.model';
 import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.service';
 import { TradingSettingsService } from '../../../services/trading-settings.service';
 import { PublicFundingRatesService } from '../../../services/public-funding-rates.service';
+import { ArbitrageProfitCalculatorComponent } from '../arbitrage-profit-calculator/arbitrage-profit-calculator.component';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
 
@@ -111,7 +112,8 @@ interface ArbitragePosition {
     CardHeaderComponent,
     CardTitleComponent,
     CardContentComponent,
-    ButtonComponent
+    ButtonComponent,
+    ArbitrageProfitCalculatorComponent
   ],
   templateUrl: './arbitrage-chart.component.html',
   styleUrl: './arbitrage-chart.component.scss'
@@ -1761,9 +1763,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Parse float value
+   * Parse float value (for funding rates)
    */
-  parseFloat(value: string): number {
+  parseFloat(value: string | undefined): number {
+    if (!value) return 0;
     return parseFloat(value);
   }
 

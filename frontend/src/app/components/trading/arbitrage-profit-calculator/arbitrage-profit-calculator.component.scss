@@ -1,0 +1,246 @@
+.profit-calculator {
+  background: rgba(26, 26, 46, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+}
+
+.calculator-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  .header-icon {
+    font-size: 18px;
+  }
+
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.3px;
+  }
+}
+
+.calculator-content {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  gap: 8px;
+
+  .empty-icon {
+    font-size: 32px;
+    opacity: 0.5;
+  }
+
+  .empty-text {
+    margin: 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+  }
+}
+
+.profit-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+    padding: 6px 8px;
+  }
+
+  .item-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+
+    .item-icon {
+      font-size: 16px;
+    }
+  }
+
+  .item-value {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    transition: all 0.3s ease;
+
+    &.positive {
+      color: #10b981;
+    }
+
+    &.negative {
+      color: #ef4444;
+    }
+  }
+
+  &.net-profit {
+    margin-top: 4px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+
+    .item-label {
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .item-value {
+      font-size: 16px;
+      font-weight: 700;
+    }
+  }
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.1) 20%,
+    rgba(255, 255, 255, 0.1) 80%,
+    transparent
+  );
+  margin: 8px 0;
+}
+
+.metrics-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+
+  &.single {
+    justify-content: center;
+  }
+
+  .metric {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .metric-label {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 500;
+    }
+
+    .metric-value {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+
+      &.positive {
+        color: #10b981;
+      }
+
+      &.negative {
+        color: #ef4444;
+      }
+    }
+  }
+
+  .metric-separator {
+    color: rgba(255, 255, 255, 0.2);
+    font-weight: 300;
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.profit-item,
+.metrics-row {
+  animation: fadeIn 0.3s ease-out;
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .profit-calculator {
+    padding: 12px;
+  }
+
+  .calculator-header {
+    .header-title {
+      font-size: 13px;
+    }
+  }
+
+  .profit-item {
+    .item-label,
+    .item-value {
+      font-size: 12px;
+    }
+  }
+
+  .metrics-row {
+    flex-direction: column;
+    gap: 8px;
+
+    .metric-separator {
+      display: none;
+    }
+  }
+}
+
+// Print styles
+@media print {
+  .profit-calculator {
+    background: white;
+    border: 1px solid #ddd;
+    color: black;
+
+    .calculator-header .header-title,
+    .profit-item .item-label,
+    .profit-item .item-value,
+    .metrics-row .metric-label,
+    .metrics-row .metric-value {
+      color: black;
+    }
+  }
+}

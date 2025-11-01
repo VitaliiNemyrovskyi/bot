@@ -455,6 +455,23 @@
           </div>
 
         </div>
+
+        <!-- Profit Calculator Panel -->
+        @if (primaryData() && hedgeData()) {
+          <app-arbitrage-profit-calculator
+            [strategy]="strategy()"
+            [primaryExchange]="primaryExchange()"
+            [hedgeExchange]="hedgeExchange()"
+            [primaryPrice]="primaryData()!.price"
+            [hedgePrice]="hedgeData()!.price"
+            [primaryFundingRate]="parseFloat(primaryData()!.fundingRate)"
+            [hedgeFundingRate]="parseFloat(hedgeData()!.fundingRate)"
+            [fundingInterval]="primaryData()!.fundingInterval || 8"
+            [positionSize]="primaryOrderForm.get('amount')?.value || 0"
+            [leverage]="primaryOrderForm.get('leverage')?.value || 1"
+          />
+        }
+
         <div class="exchange-info-grid">
           <!-- Primary Exchange Column -->
           <div class="exchange-column primary-column">
