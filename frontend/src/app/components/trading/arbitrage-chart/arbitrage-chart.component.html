@@ -368,7 +368,7 @@
             </button>
 
             <div class="info-items">
-              @if (strategy() === 'combined') {
+              @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
                 <div class="info-item">
                   <span class="info-label">Funding</span>
                   <span class="info-value text-sm"
@@ -477,7 +477,7 @@
               }
 
               <!-- FUTURES MARKET: Show side selector and leverage -->
-              @if (strategy() === 'combined') {
+              @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
                 <div class="form-field">
                   <label class="form-label">Side</label>
                   <div class="side-selector">
@@ -615,7 +615,7 @@
 
           <!-- Sync Lock Button -->
           <div class="sync-lock-container">
-            @if (strategy() === 'combined') {
+            @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
               <button
                 type="button"
                 class="sync-lock-button"
