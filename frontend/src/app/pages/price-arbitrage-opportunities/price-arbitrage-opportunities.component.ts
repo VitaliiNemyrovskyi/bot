@@ -849,10 +849,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     const spreadUsdt = futuresPrice - spotPrice;
     const spreadPercent = (spreadUsdt / spotPrice) * 100;
 
-    // For funding arbitrage: LONG price > SHORT price is favorable (inverted from price arbitrage)
-    // spotPrice = bestLong (LONG position), futuresPrice = bestShort (SHORT position)
-    // We want LONG price > SHORT price for entry spread profit
-    const isFavorable = spotPrice > futuresPrice; // LONG > SHORT is favorable
+    // For FUNDING arbitrage (spot+futures):
+    // - Goal: profit from funding rates, NOT from price spread
+    // - Price spread is an ENTRY COST (we pay to enter at different prices)
+    // - SMALLER spread = BETTER (lower entry cost, more net profit from funding)
+    // - LARGER spread = WORSE (higher entry cost, less net profit)
+    // Thresholds: <0.1% excellent, 0.1-0.3% good, 0.3-0.5% acceptable, >0.5% poor
+    const absSpreadPercent = Math.abs(spreadPercent);
+    const isFavorable = absSpreadPercent < 0.3; // Small spread (<0.3%) is favorable
 
     return {
       spread: opp.priceSpread || 0,
