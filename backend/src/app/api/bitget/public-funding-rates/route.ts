@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest) {
         'User-Agent': 'Mozilla/5.0',
       },
       // Add signal with timeout
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(30000), // 30 second timeout
     });
 
     console.log('[Bitget] Response status:', response.status);

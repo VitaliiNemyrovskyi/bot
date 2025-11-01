@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     // Add timeout to prevent hanging
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
     try {
       var response = await fetch(gateioUrl, {

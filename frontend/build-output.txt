@@ -1,0 +1,44 @@
+- Generating browser application bundles (phase: setup)...
+✔ Browser application bundle generation complete.
+✔ Browser application bundle generation complete.
+- Copying assets...
+✔ Copying assets complete.
+- Generating index html...
+✔ Index html generation complete.
+
+[1mInitial chunk files[22m          [2m | [22m[1mNames[22m                                                                      [2m | [22m [1mRaw size[22m[2m | [22m[1mEstimated transfer size[22m
+[32mmain.e9210d74139782f7.js[39m     [2m | [22m[2mmain[22m                                                                       [2m | [22m[36m836.89 kB[39m[2m | [22m              [36m155.46 kB[39m
+[32mstyles.d91a9b2d1e6fad83.css[39m  [2m | [22m[2mstyles[22m                                                                     [2m | [22m  [36m7.70 kB[39m[2m | [22m                [36m1.81 kB[39m
+[32mruntime.42de5d1c18521ac6.js[39m  [2m | [22m[2mruntime[22m                                                                    [2m | [22m  [36m3.27 kB[39m[2m | [22m                [36m1.59 kB[39m
+[32mpolyfills.21afae7e0406fc11.js[39m[2m | [22m[2mpolyfills[22m                                                                  [2m | [22m[36m116 bytes[39m[2m | [22m               [36m91 bytes[39m
+
+[1m [22m                            [2m | [22m[1mInitial total[22m                                                              [2m | [22m[1m847.97 kB[22m[2m | [22m              [1m158.94 kB[22m
+
+[1mLazy chunk files[22m             [2m | [22m[1mNames[22m                                                                      [2m | [22m [1mRaw size[22m[2m | [22m[1mEstimated transfer size[22m
+[32m33.54142e4dccb9202f.js[39m       [2m | [22m[2mcomponents-trading-funding-rates-funding-rates-component[22m                   [2m | [22m[36m392.17 kB[39m[2m | [22m               [36m60.92 kB[39m
+[32m263.1327b0db5e40be0e.js[39m      [2m | [22m[2mcomponents-trading-arbitrage-chart-arbitrage-chart-component[22m               [2m | [22m[36m229.52 kB[39m[2m | [22m               [36m36.43 kB[39m
+[32m199.cd65522cf75d37dc.js[39m      [2m | [22m[2mcomponents-trading-bot-config-page-bot-config-page-component[22m               [2m | [22m[36m155.44 kB[39m[2m | [22m               [36m43.37 kB[39m
+[32m478.ef7ebd63bf181b6c.js[39m      [2m | [22m[2mcomponents-profile-profile-component[22m                                       [2m | [22m[36m141.30 kB[39m[2m | [22m               [36m22.96 kB[39m
+[32m214.71934780515c06ee.js[39m      [2m | [22m[2mpages-triangular-arbitrage-triangular-arbitrage-component[22m                  [2m | [22m[36m136.96 kB[39m[2m | [22m               [36m20.98 kB[39m
+[32m128.7c2df017715915c5.js[39m      [2m | [22m[2mpages-price-arbitrage-opportunities-price-arbitrage-opportunities-component[22m[2m | [22m [36m92.64 kB[39m[2m | [22m               [36m16.24 kB[39m
+[32m50.5d6632ef0df59886.js[39m       [2m | [22m[2mpages-arbitrage-funding-arbitrage-funding-component[22m                        [2m | [22m [36m72.90 kB[39m[2m | [22m               [36m13.55 kB[39m
+[32m417.a46a6ae65d80fd09.js[39m      [2m | [22m[2mcomponents-trading-trading-dashboard-trading-dashboard-component[22m           [2m | [22m [36m69.23 kB[39m[2m | [22m               [36m13.78 kB[39m
+[32m747.6941ffd69e907b9e.js[39m      [2m | [22m[2mcomponents-trading-bot-config-page-bot-config-page-component[22m               [2m | [22m [36m54.62 kB[39m[2m | [22m               [36m12.05 kB[39m
+[32m798.1a18e93cf5a4bd05.js[39m      [2m | [22m[2mcomponents-login-login-component[22m                                           [2m | [22m [36m46.68 kB[39m[2m | [22m                [36m9.43 kB[39m
+[32m110.f9bc803eaa49bfd4.js[39m      [2m | [22m[2mpages-active-arbitrage-positions-active-arbitrage-positions-component[22m      [2m | [22m [36m46.30 kB[39m[2m | [22m                [36m7.64 kB[39m
+[32m286.25eb9d6cab6a0efb.js[39m      [2m | [22m[2mcomponents-trading-funding-revenue-funding-revenue-component[22m               [2m | [22m [36m40.54 kB[39m[2m | [22m                [36m7.33 kB[39m
+[32m85.5a64494d415d8d01.js[39m       [2m | [22m[2mcomponents-trading-bot-config-page-bot-config-page-component[22m               [2m | [22m [36m39.15 kB[39m[2m | [22m                [36m7.71 kB[39m
+[32m663.019ae102ac7662d9.js[39m      [2m | [22m[2mcomponents-testing-api-tester-api-tester-component[22m                         [2m | [22m [36m31.01 kB[39m[2m | [22m                [36m7.08 kB[39m
+[32m669.f70619560e4c0c57.js[39m      [2m | [22m[2mpages-arbitrage-funding-arbitrage-funding-component[22m                        [2m | [22m [36m29.17 kB[39m[2m | [22m                [36m5.98 kB[39m
+[32m819.6c15c590ad6edfcd.js[39m      [2m | [22m[2mcomponents-trading-grid-bot-dashboard-grid-bot-dashboard-component[22m         [2m | [22m [36m26.08 kB[39m[2m | [22m                [36m5.34 kB[39m
+[32mcommon.b7bf4d74ed2e08bf.js[39m   [2m | [22m[2mcommon[22m                                                                     [2m | [22m [36m20.82 kB[39m[2m | [22m                [36m4.99 kB[39m
+[32m887.ba4a5cdfa36f22ba.js[39m      [2m | [22m[2mcomponents-trading-bot-config-page-bot-config-page-component[22m               [2m | [22m [36m17.37 kB[39m[2m | [22m                [36m4.44 kB[39m
+[32m539.c24f395e17e0b0d6.js[39m      [2m | [22m[2mpages-arbitrage-funding-arbitrage-funding-component[22m                        [2m | [22m [36m16.74 kB[39m[2m | [22m                [36m4.72 kB[39m
+[32m57.f1c66710f2384138.js[39m       [2m | [22m[2mcomponents-chart-demo-chart-demo-component[22m                                 [2m | [22m [36m16.25 kB[39m[2m | [22m                [36m3.93 kB[39m
+[32m686.ded1cc7ce8917a39.js[39m      [2m | [22m[2mcomponents-profile-profile-component[22m                                       [2m | [22m [36m15.40 kB[39m[2m | [22m                [36m3.55 kB[39m
+[32m205.a030e746b374fcd1.js[39m      [2m | [22m[2mcomponents-login-login-component[22m                                           [2m | [22m [36m14.15 kB[39m[2m | [22m                [36m3.23 kB[39m
+[32m70.7304ef6c14f100d9.js[39m       [2m | [22m[2mcomponents-trading-funding-rates-funding-rates-component[22m                   [2m | [22m  [36m8.78 kB[39m[2m | [22m                [36m2.30 kB[39m
+[32m865.3f3aebbbfa4ef18f.js[39m      [2m | [22m[2mcomponents-home-home-component[22m                                             [2m | [22m  [36m8.50 kB[39m[2m | [22m                [36m2.43 kB[39m
+[32m919.279e89ba5beababb.js[39m      [2m | [22m[2mcomponents-profile-profile-component[22m                                       [2m | [22m  [36m6.52 kB[39m[2m | [22m                [36m1.81 kB[39m
+
+Build at: 2025-11-01T09:57:18.957Z - Hash: 8cfbfc2b7ecaa65c - Time: 8180ms
