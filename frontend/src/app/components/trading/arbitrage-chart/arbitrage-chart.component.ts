@@ -159,6 +159,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   hedgeOrderForm!: FormGroup;
   isSubmittingOrder = signal<boolean>(false);
 
+  // Form values as signals for profit calculator
+  primaryAmount = signal<number>(0);
+  primaryLeverage = signal<number>(1);
+
   // Credentials validation
   hasPrimaryCredentials = signal<boolean>(false);
   hasHedgeCredentials = signal<boolean>(false);
@@ -349,6 +353,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       quantity: new FormControl(0, [Validators.required, Validators.min(0.001)]),
       graduatedParts: new FormControl(defaultGraduatedParts, [Validators.required, Validators.min(1), Validators.max(20)]),
       graduatedDelayMs: new FormControl(defaultGraduatedDelaySec, [Validators.required, Validators.min(0.1), Validators.max(60)])
+    });
+
+    // Initialize signals with form's initial values
+    this.primaryAmount.set(this.primaryOrderForm.get('quantity')?.value || 0);
+    this.primaryLeverage.set(this.primaryOrderForm.get('leverage')?.value || 1);
+
+    // Subscribe to primary form changes to update signals for profit calculator
+    this.primaryOrderForm.get('quantity')?.valueChanges.subscribe(value => {
+      this.primaryAmount.set(value || 0);
+    });
+
+    this.primaryOrderForm.get('leverage')?.valueChanges.subscribe(value => {
+      this.primaryLeverage.set(value || 1);
     });
 
     // Get route parameters

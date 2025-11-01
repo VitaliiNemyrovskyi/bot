@@ -467,8 +467,8 @@
             [primaryFundingRate]="parseFloat(primaryData()!.fundingRate)"
             [hedgeFundingRate]="parseFloat(hedgeData()!.fundingRate)"
             [fundingInterval]="primaryData()!.fundingInterval || 8"
-            [positionSize]="primaryOrderForm.get('amount')?.value || 0"
-            [leverage]="primaryOrderForm.get('leverage')?.value || 1"
+            [positionSize]="primaryAmount()"
+            [leverage]="primaryLeverage()"
           />
         }
 
