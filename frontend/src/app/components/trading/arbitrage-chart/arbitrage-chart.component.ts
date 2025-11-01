@@ -499,11 +499,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Then connect WebSockets for real-time updates
     this.connectWebSockets();
 
-    // Start interval to update cached "now" time every 10 seconds
+    // Start interval to update cached "now" time every 30 seconds
     // This prevents ExpressionChangedAfterItHasBeenCheckedError in formatTimestamp()
+    // Update less frequently to avoid change detection issues
     this.nowUpdateInterval = setInterval(() => {
-      this.cachedNow = new Date();
-    }, 10000); // Update every 10 seconds
+      // Defer the update to next tick to avoid change detection conflicts
+      setTimeout(() => {
+        this.cachedNow = new Date();
+      }, 0);
+    }, 30000); // Update every 30 seconds
   }
 
   ngOnDestroy(): void {
