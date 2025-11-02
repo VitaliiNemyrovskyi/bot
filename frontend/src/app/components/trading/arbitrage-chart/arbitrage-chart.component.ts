@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ElementRef, ViewChild, AfterViewInit, inject, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ElementRef, ViewChild, AfterViewInit, inject, effect, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormControl, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -16,6 +16,7 @@ import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.ser
 import { TradingSettingsService } from '../../../services/trading-settings.service';
 import { PublicFundingRatesService } from '../../../services/public-funding-rates.service';
 import { ArbitrageProfitCalculatorComponent } from '../arbitrage-profit-calculator/arbitrage-profit-calculator.component';
+import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
 
@@ -113,7 +114,8 @@ interface ArbitragePosition {
     CardTitleComponent,
     CardContentComponent,
     ButtonComponent,
-    ArbitrageProfitCalculatorComponent
+    ArbitrageProfitCalculatorComponent,
+    RelativeTimePipe
   ],
   templateUrl: './arbitrage-chart.component.html',
   styleUrl: './arbitrage-chart.component.scss'
@@ -162,13 +164,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   // Form values as signals for profit calculator
   primaryAmount = signal<number>(0);
   primaryLeverage = signal<number>(1);
-
-  // Monitor signal changes with effect (must be in field initializer for injection context)
-  private signalMonitor = effect(() => {
-    const amount = this.primaryAmount();
-    const leverage = this.primaryLeverage();
-    console.log('[ArbitrageChart] Signals updated - Amount:', amount, 'Leverage:', leverage);
-  });
 
   // Credentials validation
   hasPrimaryCredentials = signal<boolean>(false);
@@ -322,6 +317,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private symbolInfoService = inject(SymbolInfoService);
   private tradingSettings = inject(TradingSettingsService);
   private fundingRatesService = inject(PublicFundingRatesService);
+  private ngZone = inject(NgZone);
 
   constructor(
     private route: ActivatedRoute,
@@ -367,16 +363,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const initialLeverage = this.primaryOrderForm.get('leverage')?.value || 1;
     this.primaryAmount.set(initialQuantity);
     this.primaryLeverage.set(initialLeverage);
-    console.log('[ArbitrageChart] Initial values - Quantity:', initialQuantity, 'Leverage:', initialLeverage);
 
     // Subscribe to primary form changes to update signals for profit calculator
     this.primaryOrderForm.get('quantity')?.valueChanges.subscribe(value => {
-      console.log('[ArbitrageChart] Quantity valueChanges triggered:', value);
       this.primaryAmount.set(value || 0);
     });
 
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe(value => {
-      console.log('[ArbitrageChart] Leverage valueChanges triggered:', value);
       this.primaryLeverage.set(value || 1);
     });
 
@@ -530,15 +523,17 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Then connect WebSockets for real-time updates
     this.connectWebSockets();
 
-    // Start interval to update cached "now" time every 30 seconds
+    // Start interval to update cached "now" time every 60 seconds
     // This prevents ExpressionChangedAfterItHasBeenCheckedError in formatTimestamp()
-    // Update less frequently to avoid change detection issues
-    this.nowUpdateInterval = setInterval(() => {
-      // Defer the update to next tick to avoid change detection conflicts
-      setTimeout(() => {
+    // Run outside Angular's zone and don't trigger change detection
+    // The UI will update naturally when other events (WebSocket, user interaction) trigger change detection
+    this.ngZone.runOutsideAngular(() => {
+      this.nowUpdateInterval = setInterval(() => {
+        // Update the cached time without triggering change detection
+        // This prevents the ExpressionChangedAfterItHasBeenCheckedError
         this.cachedNow = new Date();
-      }, 0);
-    }, 30000); // Update every 30 seconds
+      }, 60000); // Update every 60 seconds
+    });
   }
 
   ngOnDestroy(): void {
@@ -1135,6 +1130,21 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           //   fundingRate,
           //   nextFundingTime
           // });
+        } else if (data.code !== undefined) {
+          // Handle BingX response codes
+          if (data.code === 0) {
+            // Subscription acknowledgment - ignore silently
+            // Format: { id: "...", code: 0, msg: "", dataType: "", data: null }
+            return;
+          } else {
+            // Error response from BingX
+            console.error(`[ArbitrageChart] BingX error response:`, {
+              code: data.code,
+              msg: data.msg,
+              id: data.id
+            });
+            return;
+          }
         } else {
           console.warn(`[ArbitrageChart] BingX message format not recognized:`, data);
         }
@@ -1184,35 +1194,60 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const fetchGateIOData = async () => {
       try {
         const url = '/api/gateio/public-funding-rates';
+        console.log(`[ArbitrageChart] Fetching Gate.io data from: ${url}`);
+
         const response = await this.http.get<any>(url).toPromise();
+        console.log(`[ArbitrageChart] Gate.io API response:`, response);
 
         if (response && Array.isArray(response)) {
+          console.log(`[ArbitrageChart] Gate.io returned ${response.length} symbols`);
+
           // Find our symbol in the response
           const normalizedSymbol = symbol.replace('USDT', '_USDT').replace('USDC', '_USDC');
-          const symbolData = response.find((item: any) => 
+          console.log(`[ArbitrageChart] Looking for symbol: ${normalizedSymbol} (original: ${symbol})`);
+
+          const symbolData = response.find((item: any) =>
             item.name === normalizedSymbol || item.symbol === normalizedSymbol
           );
 
           if (symbolData) {
-            const price = parseFloat(symbolData.last_price || symbolData.lastPrice || '0');
+            console.log(`[ArbitrageChart] Found symbol data:`, symbolData);
+
+            const price = parseFloat(symbolData.mark_price || symbolData.last_price || symbolData.lastPrice || '0');
             const fundingRate = symbolData.funding_rate || symbolData.fundingRate;
             const nextFundingTime = (symbolData.funding_next_apply || symbolData.nextFundingTime) * 1000; // Convert to ms
+            const fundingInterval = symbolData.fundingInterval; // e.g., "8h"
 
             if (price > 0) {
               console.log(`[ArbitrageChart] Gate.io data updated:`, {
                 symbol: normalizedSymbol,
                 price,
                 fundingRate,
-                nextFundingTime
+                nextFundingTime,
+                fundingInterval
               });
-              onUpdate(price, fundingRate, nextFundingTime);
+              onUpdate(price, fundingRate, nextFundingTime, fundingInterval);
+            } else {
+              console.warn(`[ArbitrageChart] Gate.io price is zero or invalid:`, price);
             }
           } else {
             console.warn(`[ArbitrageChart] Gate.io symbol not found: ${normalizedSymbol}`);
+            console.warn(`[ArbitrageChart] Available symbols:`, response.slice(0, 5).map((r: any) => r.name || r.symbol));
           }
+        } else if (response && typeof response === 'object' && 'error' in response) {
+          // Backend returned an error object
+          console.error('[ArbitrageChart] Gate.io API error response:', response.error);
+          this.toastService.error(`Gate.io API error: ${response.error}`);
+        } else {
+          console.warn('[ArbitrageChart] Gate.io API response format unexpected:', response);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('[ArbitrageChart] Gate.io API error:', error);
+        if (error.status) {
+          console.error(`[ArbitrageChart] HTTP ${error.status}: ${error.statusText}`);
+          console.error(`[ArbitrageChart] Error body:`, error.error);
+        }
+        this.toastService.error(`Gate.io API connection error: ${error.message || 'Unknown error'}`);
       }
     };
 
@@ -1325,7 +1360,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Tries multiple symbol format variations to find a match
    */
   private getFundingRate(exchange: string, symbol: string): { fundingRate?: string; nextFundingTime?: number; fundingInterval?: string } {
-    // Try multiple symbol format variations
+    // Build comprehensive list of symbol variations
     const symbolVariations = [
       symbol,                              // Original (e.g., "BTC-USDT" or "BTCUSDT")
       symbol.replace(/-/g, ''),           // Remove hyphens: BTC-USDT -> BTCUSDT
@@ -1335,11 +1370,24 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       symbol.replace(/-/g, '/'),          // Convert hyphens to slashes: BTC-USDT -> BTC/USDT
     ];
 
+    // Add BingX-specific normalization if this is BingX
+    if (exchange === 'BINGX') {
+      const bingxNormalized = this.normalizeSymbolForBingX(symbol);
+      if (!symbolVariations.includes(bingxNormalized)) {
+        symbolVariations.push(bingxNormalized);
+      }
+    }
+
+    // Try all variations
     for (const variant of symbolVariations) {
       const key = `${exchange}-${variant}`;
       const fundingData = this.fundingRatesMap.get(key);
       if (fundingData) {
-        console.log(`[ArbitrageChart] Found funding for ${exchange} symbol "${symbol}" using variant "${variant}"`);
+        // Only log once per symbol to reduce console spam
+        if (!this._loggedFundingSymbols.has(key)) {
+          console.log(`[ArbitrageChart] Found funding for ${exchange} symbol "${symbol}" using variant "${variant}"`);
+          this._loggedFundingSymbols.add(key);
+        }
         return {
           fundingRate: fundingData.fundingRate,
           nextFundingTime: fundingData.fundingTime,
@@ -1348,9 +1396,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // console.warn(`[ArbitrageChart] Funding rate not found for ${exchange} ${symbol} (tried ${symbolVariations.length} variants)`);
+    // Return empty - the caller will use default values
     return {};
   }
+
+  // Track logged symbols to avoid console spam
+  private _loggedFundingSymbols = new Set<string>();
 
   /**
    * Load historical price data for chart initialization
@@ -1481,7 +1532,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousPrimaryFundingTime = nextFundingTime;
     }
 
-    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing
+    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing, 4) default to 8h
     let fundingIntervalStr = fundingIntervalFromWS || this.primaryData().fundingIntervalStr;
 
     // If not from WebSocket, try to get from Map (from DB/API)
@@ -1490,11 +1541,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
         // console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.primaryExchange()}: ${fundingIntervalStr}`);
-      } else {
-        console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.primaryExchange()} ${this.symbol()}`);
       }
-    } else if (fundingIntervalFromWS) {
-      // console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.primaryExchange()}: ${fundingIntervalFromWS}`);
+    }
+
+    // Fallback to default if still not set
+    if (!fundingIntervalStr) {
+      fundingIntervalStr = '8h'; // Default for most exchanges
     }
 
     const updatedData = {
@@ -1579,7 +1631,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.previousHedgeFundingTime = nextFundingTime;
     }
 
-    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing
+    // Prioritize fundingInterval: 1) from WebSocket, 2) from DB/API Map, 3) keep existing, 4) default to 8h
     let fundingIntervalStr = fundingIntervalFromWS || this.hedgeData().fundingIntervalStr;
 
     // If not from WebSocket, try to get from Map (from DB/API)
@@ -1588,11 +1640,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (fundingData.fundingInterval) {
         fundingIntervalStr = fundingData.fundingInterval; // e.g., "8h", "4h", "1h" from DB
         // console.log(`[ArbitrageChart] Using fundingInterval from DB/API map for ${this.hedgeExchange()}: ${fundingIntervalStr}`);
-      } else {
-        console.warn(`[ArbitrageChart] fundingInterval not found in map for ${this.hedgeExchange()} ${this.symbol()}`);
       }
-    } else if (fundingIntervalFromWS) {
-      // console.log(`[ArbitrageChart] Using fundingInterval from WebSocket for ${this.hedgeExchange()}: ${fundingIntervalFromWS}`);
+    }
+
+    // Fallback to default if still not set
+    if (!fundingIntervalStr) {
+      fundingIntervalStr = '8h'; // Default for most exchanges
     }
 
     const updatedData = {
@@ -1893,6 +1946,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
+  }
+
+  /**
+   * Parse funding rate string to number and convert to percentage format
+   * API returns decimal format (e.g., "0.0001" for 0.01%)
+   * Calculator expects percentage format (e.g., 0.01 for 0.01%)
+   * Handles formats like "0.0001", "-0.0005", etc.
+   */
+  parseFundingRate(fundingRateStr: string): number {
+    const parsed = parseFloat(fundingRateStr);
+    // Convert decimal to percentage: 0.0001 → 0.01
+    const percentage = isNaN(parsed) ? 0 : parsed * 100;
+    console.log(`📊 [Chart] Parsing funding rate: "${fundingRateStr}" → ${parsed} → ${percentage}%`);
+    return percentage;
   }
 
   /**
@@ -2421,6 +2488,22 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
         // Transform backend positions to match our interface
         const positions: ArbitragePosition[] = response.data.map((pos: any) => {
+          // DEBUG: Log raw API data for debugging
+          console.log(`[ArbitrageChart] Position ${pos.positionId} raw API data:`, {
+            primary: {
+              exchange: pos.primary.exchange,
+              lastFundingPaid: pos.primary.lastFundingPaid,
+              totalFundingEarned: pos.primary.totalFundingEarned,
+              tradingFees: pos.primary.tradingFees
+            },
+            hedge: {
+              exchange: pos.hedge.exchange,
+              lastFundingPaid: pos.hedge.lastFundingPaid,
+              totalFundingEarned: pos.hedge.totalFundingEarned,
+              tradingFees: pos.hedge.tradingFees
+            }
+          });
+
           // Use actual data from backend (currently zeros until tracking is implemented)
           const primaryLastFunding = pos.primary.lastFundingPaid || 0;
           const primaryTotalFunding = pos.primary.totalFundingEarned || 0;
@@ -2429,6 +2512,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           const hedgeLastFunding = pos.hedge.lastFundingPaid || 0;
           const hedgeTotalFunding = pos.hedge.totalFundingEarned || 0;
           const hedgeFees = pos.hedge.tradingFees || 0;
+
+          console.log(`[ArbitrageChart] Position ${pos.positionId} after || 0:`, {
+            hedgeLastFunding,
+            hedgeTotalFunding
+          });
 
           const grossProfit = pos.grossProfit || 0;
           const netProfit = pos.netProfit || 0;
@@ -2574,11 +2662,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * Uses cached current time to avoid ExpressionChangedAfterItHasBeenCheckedError
    */
   formatTimestamp(date: Date): string {
-    // Use a cached "now" time that updates every second via interval
+    // Use a cached "now" time that updates every 60 seconds via interval (outside Angular zone)
     // This prevents the value from changing during Angular's change detection cycle
-    const now = this.cachedNow || new Date();
+    const now = this.cachedNow;
     const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
+
+    // Add a 5-second buffer to prevent boundary issues during change detection
+    // This ensures values don't flip between categories during Angular's dev mode double-check
+    const bufferedDiffMs = diffMs + 5000;
+    const diffMins = Math.floor(bufferedDiffMs / (1000 * 60));
 
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins} min ago`;
@@ -3095,6 +3187,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Watch primary quantity changes
     this.primaryOrderForm.get('quantity')?.valueChanges.subscribe((value) => {
+      this.primaryAmount.set(value || 0);
       this.validatePrimaryOrder();
 
       // Sync to hedge if locked and not already syncing
@@ -3134,14 +3227,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Watch primary leverage changes
     this.primaryOrderForm.get('leverage')?.valueChanges.subscribe((value) => {
-      console.log('[ArbitrageChart] setupFormValidation - Leverage changed:', value,
-                  'locked:', this.orderParamsLocked(),
-                  'syncing:', this.isSyncingLeverage);
+      this.primaryLeverage.set(value || 1);
       if (this.orderParamsLocked() && !this.isSyncingLeverage) {
         this.isSyncingLeverage = true;
         this.hedgeOrderForm.patchValue({ leverage: value }, { emitEvent: false });
         this.isSyncingLeverage = false;
-        console.log('[ArbitrageChart] Leverage synced from primary to hedge');
       }
     });
 

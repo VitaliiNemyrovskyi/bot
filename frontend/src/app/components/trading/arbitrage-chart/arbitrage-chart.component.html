@@ -125,7 +125,7 @@
                           {{ getStatusBadge(position.status).label }}
                         </span>
                       </td>
-                      <td class="timestamp">{{ formatTimestamp(position.startedAt) }}</td>
+                      <td class="timestamp">{{ position.startedAt | relativeTime }}</td>
                       <td class="actions">
                         <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" title="Set synchronized TP/SL">
                           TP/SL
@@ -372,8 +372,8 @@
                 <div class="info-item">
                   <span class="info-label">Funding</span>
                   <span class="info-value text-sm"
-                        [class.positive]="parseFloat(primaryData().fundingRate) > 0"
-                        [class.negative]="parseFloat(primaryData().fundingRate) < 0">
+                        [class.positive]="parseFundingRate(primaryData().fundingRate) > 0"
+                        [class.negative]="parseFundingRate(primaryData().fundingRate) < 0">
                     {{ primaryFormattedFunding() }}
                   </span>
                 </div>
@@ -424,8 +424,8 @@
               <div class="info-item">
                 <span class="info-label">Funding</span>
                 <span class="info-value text-sm"
-                      [class.positive]="parseFloat(hedgeData().fundingRate) > 0"
-                      [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
+                      [class.positive]="parseFundingRate(hedgeData().fundingRate) > 0"
+                      [class.negative]="parseFundingRate(hedgeData().fundingRate) < 0">
                   {{ hedgeFormattedFunding() }}
                 </span>
               </div>
@@ -457,20 +457,18 @@
         </div>
 
         <!-- Profit Calculator Panel -->
-        @if (primaryData() && hedgeData()) {
-          <app-arbitrage-profit-calculator
-            [strategy]="strategy()"
-            [primaryExchange]="primaryExchange()"
-            [hedgeExchange]="hedgeExchange()"
-            [primaryPrice]="primaryData()!.price"
-            [hedgePrice]="hedgeData()!.price"
-            [primaryFundingRate]="parseFloat(primaryData()!.fundingRate)"
-            [hedgeFundingRate]="parseFloat(hedgeData()!.fundingRate)"
-            [fundingInterval]="primaryData()!.fundingInterval || 8"
-            [positionSize]="primaryAmount()"
-            [leverage]="primaryLeverage()"
-          />
-        }
+        <app-arbitrage-profit-calculator
+          [strategy]="strategy()"
+          [primaryExchange]="primaryExchange()"
+          [hedgeExchange]="hedgeExchange()"
+          [primaryPrice]="primaryData().price || 0"
+          [hedgePrice]="hedgeData().price || 0"
+          [primaryFundingRate]="parseFundingRate(primaryData().fundingRate || '0')"
+          [hedgeFundingRate]="parseFundingRate(hedgeData().fundingRate || '0')"
+          [fundingInterval]="((primaryData().fundingInterval || 28800000) / 3600000)"
+          [positionSize]="primaryAmount()"
+          [leverage]="primaryLeverage()"
+        />
 
         <div class="exchange-info-grid">
           <!-- Primary Exchange Column -->
@@ -567,7 +565,12 @@
                 @if (!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
-                    <span class="error-text">{{ primaryValidation().error }}</span>
+                    <div class="error-content">
+                      <div class="error-text">{{ primaryValidation().error }}</div>
+                      @if (primaryValidation().suggestion) {
+                        <div class="suggestion-text">💡 {{ primaryValidation().suggestion }}</div>
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -741,7 +744,12 @@
                 @if (!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
-                    <span class="error-text">{{ hedgeValidation().error }}</span>
+                    <div class="error-content">
+                      <div class="error-text">{{ hedgeValidation().error }}</div>
+                      @if (hedgeValidation().suggestion) {
+                        <div class="suggestion-text">💡 {{ hedgeValidation().suggestion }}</div>
+                      }
+                    </div>
                   </div>
                 }
               </div>

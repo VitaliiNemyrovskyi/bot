@@ -178,7 +178,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   // Current time for time-since-update display
   private currentTime = signal<number>(Date.now());
   private timeUpdateInterval?: any;
-  private _debugLogged = false;
 
   // Modal for detailed spread stability metrics
   showDetailsModal = signal<boolean>(false);
@@ -398,14 +397,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     this.timeUpdateInterval = setInterval(() => {
       const now = Date.now();
       this.currentTime.set(now);
-      // DEBUG: Log every 10 seconds to check if time is correct
-      if (now % 10000 < 1000) {
-        console.error('[DEBUG currentTime]', {
-          now,
-          nowUTC: new Date(now).toISOString(),
-          nowLocal: new Date(now).toString()
-        });
-      }
     }, 1000);
 
     // Initial load
@@ -590,21 +581,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       ? nextFundingTime
       : (typeof nextFundingTime === 'string' ? new Date(nextFundingTime).getTime() : nextFundingTime.getTime());
     const diff = fundingTime - now;
-
-    // DEBUG
-    if (!this._debugLogged) {
-      this._debugLogged = true;
-      console.error('[DEBUG getSpotFuturesTimeToFunding]', {
-        nextFundingTime,
-        nextFundingTimeType: typeof nextFundingTime,
-        fundingTime,
-        fundingTimeUTC: new Date(fundingTime).toISOString(),
-        now,
-        nowUTC: new Date(now).toISOString(),
-        diff,
-        diffMinutes: Math.floor(diff / (1000 * 60))
-      });
-    }
 
     if (diff <= 0) return '0m';
 
@@ -1163,20 +1139,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     const now = this.currentTime();
     const diff = nextFundingTime - now;
-
-    // DEBUG: Log first call to see values
-    if (!this._debugLogged) {
-      this._debugLogged = true;
-      console.error('[DEBUG formatTimeToNextFunding]', {
-        nextFundingTime,
-        nextFundingTimeType: typeof nextFundingTime,
-        nextFundingTimeUTC: new Date(nextFundingTime).toISOString(),
-        now,
-        nowUTC: new Date(now).toISOString(),
-        diff,
-        diffMinutes: Math.floor(diff / (1000 * 60))
-      });
-    }
 
     if (diff <= 0) return '0m';
 

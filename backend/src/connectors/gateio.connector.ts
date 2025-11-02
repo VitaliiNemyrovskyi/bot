@@ -312,9 +312,18 @@ export class GateIOConnector extends BaseExchangeConnector {
 
     try {
       const positions = await this.gateioService.getPositions(contract);
-      const position = positions.find((p) => p.contract === contract);
 
-      if (!position || position.size === 0) {
+      // Find position - be flexible with matching to handle dual mode positions
+      // In dual mode, positions may have mode='dual_long' or 'dual_short'
+      const position = positions.find((p) => {
+        // Match by contract name
+        const contractMatches = p.contract === contract;
+        // Check if position has non-zero size
+        const hasSize = Math.abs(p.size || 0) > 0;
+        return contractMatches && hasSize;
+      });
+
+      if (!position || Math.abs(position.size || 0) === 0) {
         return {
           contract,
           size: 0,

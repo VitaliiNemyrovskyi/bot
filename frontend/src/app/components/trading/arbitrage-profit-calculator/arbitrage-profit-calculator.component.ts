@@ -18,43 +18,57 @@ interface ProfitBreakdown {
   styleUrls: ['./arbitrage-profit-calculator.component.scss']
 })
 export class ArbitrageProfitCalculatorComponent {
+  constructor() {
+    console.log('🎯 [Calculator] Component constructed!');
+  }
+
   @Input({ required: true }) set strategy(value: string) {
+    console.log('📝 [Input] strategy SET:', value);
     this._strategy.set(value);
   }
 
   @Input({ required: true }) set primaryExchange(value: string) {
+    console.log('📝 [Input] primaryExchange SET:', value);
     this._primaryExchange.set(value);
   }
 
   @Input({ required: true }) set hedgeExchange(value: string) {
+    console.log('📝 [Input] hedgeExchange SET:', value);
     this._hedgeExchange.set(value);
   }
 
   @Input({ required: true }) set primaryPrice(value: number) {
+    console.log('📝 [Input] primaryPrice SET:', value);
     this._primaryPrice.set(value);
   }
 
   @Input({ required: true }) set hedgePrice(value: number) {
+    console.log('📝 [Input] hedgePrice SET:', value);
     this._hedgePrice.set(value);
   }
 
   @Input({ required: true }) set primaryFundingRate(value: number) {
+    console.log('⚡ [Input] primaryFundingRate SET:', value, typeof value);
     this._primaryFundingRate.set(value);
   }
 
   @Input({ required: true }) set hedgeFundingRate(value: number) {
+    console.log('⚡ [Input] hedgeFundingRate SET:', value, typeof value);
     this._hedgeFundingRate.set(value);
   }
 
   @Input({ required: true }) set fundingInterval(value: number) {
+    console.log('📝 [Input] fundingInterval SET:', value);
     this._fundingInterval.set(value);
   }
 
   @Input({ required: true }) set positionSize(value: number) {
+    console.log('📝 [Input] positionSize SET:', value, '(will be set to:', value || 0, ')');
     this._positionSize.set(value || 0);
   }
 
   @Input() set leverage(value: number) {
+    console.log('📝 [Input] leverage SET:', value, '(will be set to:', value || 1, ')');
     this._leverage.set(value || 1);
   }
 
@@ -96,18 +110,21 @@ export class ArbitrageProfitCalculatorComponent {
     const leverage = this._leverage();
     const primaryPrice = this._primaryPrice();
     const hedgePrice = this._hedgePrice();
+    const primaryFundingRate = this._primaryFundingRate();
+    const hedgeFundingRate = this._hedgeFundingRate();
 
-    console.log('[ProfitCalculator] Computing breakdown:', {
+    console.log('🔥 [computed] Inputs:', {
       strategy,
       positionSize,
       leverage,
       primaryPrice,
-      hedgePrice
+      hedgePrice,
+      primaryFundingRate,
+      hedgeFundingRate
     });
 
     // Return null if position size is invalid
     if (!positionSize || positionSize <= 0) {
-      console.log('[ProfitCalculator] Invalid position size, returning null');
       return null;
     }
 
@@ -124,8 +141,9 @@ export class ArbitrageProfitCalculatorComponent {
    * Calculate profit for Combined strategy (Funding + Price)
    */
   private calculateCombinedProfit(): ProfitBreakdown {
-    const positionSize = this._positionSize();
+    const collateral = this._positionSize(); // User input = collateral (margin)
     const leverage = this._leverage();
+    const positionSize = collateral * leverage; // Real position size with leverage
     const primaryPrice = this._primaryPrice();
     const hedgePrice = this._hedgePrice();
     const primaryFundingRate = this._primaryFundingRate();
@@ -133,6 +151,16 @@ export class ArbitrageProfitCalculatorComponent {
     const fundingInterval = this._fundingInterval();
     const primaryExchange = this._primaryExchange();
     const hedgeExchange = this._hedgeExchange();
+
+    // DEBUG: Log funding rates
+    console.log('💰 [Calculator] Funding rates:', {
+      primaryFundingRate,
+      hedgeFundingRate,
+      fundingInterval,
+      positionSize,
+      collateral,
+      leverage
+    });
 
     // 1. Calculate funding income for 24 hours
     const fundingsPerDay = 24 / fundingInterval; // 3 payments (8h) or 6 payments (4h)
@@ -162,11 +190,10 @@ export class ArbitrageProfitCalculatorComponent {
     // 4. Calculate net profit and ROI
     const netProfit = dailyFundingIncome + entrySpreadProfit - totalFees;
 
-    // Calculate collateral (margin) based on leverage
-    // For 2 positions (long + short), total collateral is positionSize * 2 / leverage
-    const totalCollateral = (positionSize * 2) / leverage;
+    // Calculate collateral (margin) for 2 positions (long + short)
+    const totalCollateral = collateral * 2;
 
-    // ROI is profit relative to collateral, not position size
+    // ROI is profit relative to collateral
     const roi = (netProfit / totalCollateral) * 100;
     const apy = roi * 365;
 
@@ -184,8 +211,9 @@ export class ArbitrageProfitCalculatorComponent {
    * Calculate profit for Price Only strategy
    */
   private calculatePriceOnlyProfit(): ProfitBreakdown {
-    const positionSize = this._positionSize();
+    const collateral = this._positionSize(); // User input = collateral (margin)
     const leverage = this._leverage();
+    const positionSize = collateral * leverage; // Real position size with leverage
     const primaryPrice = this._primaryPrice();
     const hedgePrice = this._hedgePrice();
     const primaryExchange = this._primaryExchange();
@@ -205,11 +233,10 @@ export class ArbitrageProfitCalculatorComponent {
     // 3. Calculate net profit and ROI
     const netProfit = spreadProfit - totalFees;
 
-    // Calculate collateral (margin) based on leverage
-    // For 2 positions (long + short), total collateral is positionSize * 2 / leverage
-    const totalCollateral = (positionSize * 2) / leverage;
+    // Calculate collateral (margin) for 2 positions (long + short)
+    const totalCollateral = collateral * 2;
 
-    // ROI is profit relative to collateral, not position size
+    // ROI is profit relative to collateral
     const roi = (netProfit / totalCollateral) * 100;
 
     return {
