@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { CCXTService } from '@/lib/ccxt-service';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 /**
  * GET /api/arbitrage/historical-prices
@@ -113,7 +114,13 @@ async function fetchExchangeHistoricalData(
 
   const exchangeUpper = exchange.toUpperCase();
 
-  // Use CCXT for all exchanges - it provides unified interface
+  // Gate.io has issues with CCXT limit parameter - use direct API instead
+  if (exchangeUpper === 'GATEIO') {
+    console.log(`[Historical Prices] Using direct Gate.io API (CCXT incompatible)`);
+    return fetchGateIOKlines(symbol, interval, limit);
+  }
+
+  // Use CCXT for all other exchanges - it provides unified interface
   console.log(`[Historical Prices] Fetching ${exchangeUpper} data via CCXT`);
 
   try {
@@ -161,6 +168,10 @@ async function fetchExchangeHistoricalData(
         console.log(`[Historical Prices] Falling back to OKX public API`);
         return fetchOKXKlines(symbol, interval, limit);
 
+      case 'GATEIO':
+        console.log(`[Historical Prices] Falling back to Gate.io public API`);
+        return fetchGateIOKlines(symbol, interval, limit);
+
       default:
         console.error(`[Historical Prices] ${exchangeUpper} not supported and no fallback available`);
         return [];
@@ -184,7 +195,7 @@ async function fetchBybitKlines(
 
     console.log(`[Bybit Klines] Fetching from: ${url}`);
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, { timeout: 30000 });
     const data = await response.json();
 
     if (data.retCode !== 0) {
@@ -235,7 +246,7 @@ async function fetchBingXKlines(
     console.log(`[BingX Klines] Interval: ${interval} -> ${bingxInterval}`);
     console.log(`[BingX Klines] Fetching from: ${url}`);
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, { timeout: 30000 });
     const data = await response.json();
 
     console.log(`[BingX Klines] Response code: ${data.code}, msg: ${data.msg}`);
@@ -291,7 +302,7 @@ async function fetchMEXCKlines(
     console.log(`[MEXC Klines] Converted symbol: ${mexcSymbol}`);
     console.log(`[MEXC Klines] Fetching from: ${url}`);
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, { timeout: 30000 });
     const data = await response.json();
 
     console.log(`[MEXC Klines] Response:`, data.success, data.code);
@@ -326,14 +337,28 @@ async function fetchOKXKlines(
   limit: number
 ): Promise<Array<{ time: number; price: number }>> {
   try {
+    // Convert symbol format: BTCUSDT → BTC-USDT-SWAP or 0GUSDT → 0G-USDT-SWAP
+    let instId: string;
+    if (symbol.endsWith('USDT')) {
+      const base = symbol.slice(0, -4);
+      instId = `${base}-USDT-SWAP`;
+    } else if (symbol.endsWith('USDC')) {
+      const base = symbol.slice(0, -4);
+      instId = `${base}-USDC-SWAP`;
+    } else {
+      instId = symbol; // Fallback to original symbol
+    }
+
     // Map interval to OKX format
     const okxInterval = mapIntervalToOKX(interval);
 
-    const url = `https://www.okx.com/api/v5/market/candles?instId=${symbol}&bar=${okxInterval}&limit=${limit}`;
+    const url = `https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${okxInterval}&limit=${limit}`;
 
+    console.log(`[OKX Klines] Original symbol: ${symbol}`);
+    console.log(`[OKX Klines] Converted symbol: ${instId}`);
     console.log(`[OKX Klines] Fetching from: ${url}`);
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, { timeout: 30000 });
     const data = await response.json();
 
     if (data.code !== '0') {
@@ -354,6 +379,85 @@ async function fetchOKXKlines(
     console.error('[OKX Klines] Error:', error);
     return [];
   }
+}
+
+/**
+ * Fetch Gate.io historical klines (public API)
+ */
+async function fetchGateIOKlines(
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<Array<{ time: number; price: number }>> {
+  try {
+    // Convert symbol to Gate.io format (e.g., BTCUSDT -> BTC_USDT)
+    const gateioSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT');
+
+    // Map interval to Gate.io format
+    const gateioInterval = mapIntervalToGateIO(interval);
+
+    // Calculate timestamp range (Gate.io requires 'from' and 'to' parameters)
+    const now = Math.floor(Date.now() / 1000);
+    const intervalSeconds = getIntervalSeconds(interval);
+    const from = now - (limit * intervalSeconds);
+
+    const url = `https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract=${gateioSymbol}&interval=${gateioInterval}&from=${from}&to=${now}`;
+
+    console.log(`[Gate.io Klines] Original symbol: ${symbol}`);
+    console.log(`[Gate.io Klines] Converted symbol: ${gateioSymbol}`);
+    console.log(`[Gate.io Klines] Interval: ${interval} -> ${gateioInterval}`);
+    console.log(`[Gate.io Klines] Time range: ${from} to ${now} (${limit} candles)`);
+    console.log(`[Gate.io Klines] Fetching from: ${url}`);
+
+    const response = await fetchWithTimeout(url, { timeout: 60000 });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Gate.io Klines] API error response:`, errorText);
+      throw new Error(`Gate.io API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    console.log(`[Gate.io Klines] Data points received: ${data.length || 0}`);
+
+    if (!data || data.length === 0) {
+      console.warn(`[Gate.io Klines] No data returned for ${gateioSymbol}`);
+      return [];
+    }
+
+    // Convert Gate.io klines to our format
+    // Gate.io format: { t: timestamp, o: open, h: high, l: low, c: close, v: volume }
+    const klines = data.map((k: any) => ({
+      time: k.t, // Gate.io returns timestamp in seconds
+      price: parseFloat(k.c) // Close price
+    }));
+
+    console.log(`[Gate.io Klines] Successfully converted ${klines.length} klines`);
+    console.log(`[Gate.io Klines] First kline:`, klines[0]);
+    console.log(`[Gate.io Klines] Last kline:`, klines[klines.length - 1]);
+
+    return klines;
+
+  } catch (error) {
+    console.error('[Gate.io Klines] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Get interval in seconds
+ */
+function getIntervalSeconds(interval: string): number {
+  const map: { [key: string]: number } = {
+    '1m': 60,
+    '5m': 300,
+    '15m': 900,
+    '1h': 3600,
+    '4h': 14400,
+    '1d': 86400
+  };
+  return map[interval] || 3600;
 }
 
 /**
@@ -414,6 +518,21 @@ function mapIntervalToOKX(interval: string): string {
     '1d': '1D'
   };
   return map[interval] || '1H';
+}
+
+/**
+ * Map interval to Gate.io format
+ */
+function mapIntervalToGateIO(interval: string): string {
+  const map: { [key: string]: string } = {
+    '1m': '1m',
+    '5m': '5m',
+    '15m': '15m',
+    '1h': '1h',
+    '4h': '4h',
+    '1d': '1d'
+  };
+  return map[interval] || '1h';
 }
 
 /**
