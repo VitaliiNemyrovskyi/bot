@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { fetchWithTimeout } from './fetch-with-timeout';
 import {
   GateIOConfig,
   GateIOAccountInfo,
@@ -8,7 +9,6 @@ import {
   GateIOTicker,
   GateIOFundingRate,
   GateIOContract,
-  GateIOBalance,
   GateIOAccountBookEntry,
   GateIOMyTrade,
   GateIOPriceOrderRequest,
@@ -29,13 +29,11 @@ export class GateIOService {
   private apiKey: string;
   private apiSecret: string;
   private baseUrl: string;
-  private enableRateLimit: boolean;
 
   constructor(config: GateIOConfig) {
     // Trim API keys to remove any whitespace
     this.apiKey = config.apiKey.trim();
     this.apiSecret = config.apiSecret.trim();
-    this.enableRateLimit = config.enableRateLimit ?? true;
 
     // Gate.io Futures API base URL
     this.baseUrl = 'https://api.gateio.ws/api/v4/futures/usdt';
@@ -159,10 +157,11 @@ export class GateIOService {
     };
 
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method,
         headers,
         body: bodyString || undefined,
+        timeout: 30000, // 30 second timeout to prevent connection leaks
       });
 
       if (!response.ok) {
@@ -227,13 +226,14 @@ export class GateIOService {
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
         body: method === 'POST' ? JSON.stringify(params) : undefined,
+        timeout: 30000, // 30 second timeout to prevent connection leaks
       });
 
       if (!response.ok) {
@@ -301,9 +301,9 @@ export class GateIOService {
   async getPositions(contract?: string): Promise<GateIOPosition[]> {
     // console.log('[GateIOService] Fetching positions...', contract ? `for ${contract}` : '');
 
-    const params: Record<string, any> = {};
+    const params: Record<string, string> = {};
     if (contract) {
-      params.contract = contract;
+      params['contract'] = contract;
     }
 
     const data = await this.makeRequest<GateIOPosition[]>(
@@ -408,7 +408,7 @@ export class GateIOService {
    * Endpoint: POST /orders with close=true
    */
   async closePosition(contract: string): Promise<GateIOOrder> {
-    // console.log('[GateIOService] Closing position for:', contract);
+    console.log('[GateIOService] Closing position for:', contract);
 
     // Get current position to determine size
     const positions = await this.getPositions(contract);
@@ -423,8 +423,11 @@ export class GateIOService {
       contract,
       size: 0, // Size 0 with close=true means close entire position
       close: true,
+      price: "0", // CRITICAL: Gate.io requires price for ALL orders. For market orders (tif='ioc'), use "0"
       tif: 'ioc', // Immediate or cancel for market order
     };
+
+    console.log('[GateIOService] Closing position with body:', orderBody);
 
     const data = await this.makeRequest<GateIOOrder>(
       'POST',
@@ -433,7 +436,7 @@ export class GateIOService {
       orderBody
     );
 
-    // console.log('[GateIOService] Position closed:', data.id);
+    console.log('[GateIOService] Position closed successfully:', data.id);
 
     return data;
   }
@@ -582,7 +585,8 @@ export class GateIOService {
       throw new Error(`No ticker data found for ${contract}`);
     }
 
-    return data[0];
+    // Safe: we just checked that data has at least one element
+    return data[0]!;
   }
 
   /**
@@ -797,21 +801,21 @@ export class GateIOService {
   } = {}): Promise<GateIOAccountBookEntry[]> {
     // console.log('[GateIOService] Fetching account book with params:', params);
 
-    const queryParams: Record<string, any> = {
+    const queryParams: Record<string, string | number> = {
       limit: params.limit || 100,
     };
 
     if (params.contract) {
-      queryParams.contract = params.contract;
+      queryParams['contract'] = params.contract;
     }
     if (params.type) {
-      queryParams.type = params.type;
+      queryParams['type'] = params.type;
     }
     if (params.from) {
-      queryParams.from = params.from;
+      queryParams['from'] = params.from;
     }
     if (params.to) {
-      queryParams.to = params.to;
+      queryParams['to'] = params.to;
     }
 
     const result = await this.makeRequest<GateIOAccountBookEntry[]>(
@@ -843,19 +847,19 @@ export class GateIOService {
   }): Promise<GateIOMyTrade[]> {
     // console.log('[GateIOService] Fetching my trades with params:', params);
 
-    const queryParams: Record<string, any> = {
+    const queryParams: Record<string, string | number> = {
       contract: params.contract,
       limit: params.limit || 100,
     };
 
     if (params.order) {
-      queryParams.order = params.order;
+      queryParams['order'] = params.order;
     }
     if (params.from) {
-      queryParams.from = params.from;
+      queryParams['from'] = params.from;
     }
     if (params.to) {
-      queryParams.to = params.to;
+      queryParams['to'] = params.to;
     }
 
     const result = await this.makeRequest<GateIOMyTrade[]>(
@@ -976,7 +980,7 @@ export class GateIOService {
     };
 
     if (status) {
-      queryParams.status = status;
+      queryParams['status'] = status;
     }
 
     const data = await this.makeRequest<GateIOPriceOrder[]>(
