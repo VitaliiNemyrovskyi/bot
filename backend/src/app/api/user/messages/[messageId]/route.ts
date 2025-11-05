@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-
-// Mock data store for messages
-const mockMessages = new Map<string, {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  content: string;
-  read: boolean;
-  createdAt: Date;
-  actions?: any;
-  metadata?: any;
-}>();
+import prisma from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
@@ -32,7 +20,9 @@ export async function PATCH(
     const body = await request.json();
 
     // Find and verify message belongs to user
-    const message = mockMessages.get(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
 
     if (!message || message.userId !== authResult.user.userId) {
       return NextResponse.json(
@@ -41,12 +31,13 @@ export async function PATCH(
       );
     }
 
-    // Update message
-    if (body.read !== undefined) {
-      message.read = body.read;
-    }
-    mockMessages.set(messageId, message);
-    const updatedMessage = message;
+    // Update message in database
+    const updatedMessage = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        read: body.read !== undefined ? body.read : message.read,
+      },
+    });
 
     return NextResponse.json({
       id: updatedMessage.id,
@@ -85,7 +76,9 @@ export async function DELETE(
     const { messageId } = await params;
 
     // Find and verify message belongs to user
-    const message = mockMessages.get(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
 
     if (!message || message.userId !== authResult.user.userId) {
       return NextResponse.json(
@@ -94,8 +87,10 @@ export async function DELETE(
       );
     }
 
-    // Delete message
-    mockMessages.delete(messageId);
+    // Delete message from database
+    await prisma.message.delete({
+      where: { id: messageId },
+    });
 
     return NextResponse.json({ message: 'Message deleted successfully' });
   } catch (error: unknown) {

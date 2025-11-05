@@ -24,6 +24,7 @@ import { GateIOConnector } from '@/connectors/gateio.connector';
 import prisma from '@/lib/prisma';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import { ContractCalculator } from '@/lib/contract-calculator';
+import { UserMessageService } from '@/lib/user-message.service';
 
 export interface GraduatedEntryConfig {
   userId: string;
@@ -832,6 +833,14 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
                 partNumber: part,
               });
 
+              // Send notification to user
+              await UserMessageService.createPositionErrorMessage(
+                config.userId,
+                position.id,
+                userError,
+                config.symbol
+              );
+
               // STOP - don't open hedge position!
               return;
             }
@@ -916,6 +925,14 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               partNumber: part,
             });
 
+            // Send notification to user
+            await UserMessageService.createPositionErrorMessage(
+              config.userId,
+              position.id,
+              userError,
+              config.symbol
+            );
+
             return;
           }
         } else {
@@ -973,6 +990,14 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               exchange: 'primary',
               partNumber: part,
             });
+
+            // Send notification to user
+            await UserMessageService.createPositionErrorMessage(
+              config.userId,
+              position.id,
+              userError,
+              config.symbol
+            );
 
             return;
           }
@@ -1046,6 +1071,14 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
               exchange: 'hedge',
               partNumber: part,
             });
+
+            // Send notification to user
+            await UserMessageService.createPositionErrorMessage(
+              config.userId,
+              position.id,
+              userError,
+              config.symbol
+            );
 
             return;
           }
@@ -2088,6 +2121,15 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           },
         }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
       }
+
+      // Send notification to user
+      await UserMessageService.createPositionClosedMessage(
+        position.config.userId,
+        positionId,
+        reason,
+        position.config.symbol,
+        true // isEmergency
+      );
 
       // Remove from active positions
       this.positions.delete(positionId);

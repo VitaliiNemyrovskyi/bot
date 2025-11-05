@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-
-// Mock data store for messages
-const mockMessages = new Map<string, {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  content: string;
-  read: boolean;
-  createdAt: Date;
-  actions?: any;
-  metadata?: any;
-}>();
+import prisma from '@/lib/prisma';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -25,16 +13,16 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Mark all user's messages as read
-    let updatedCount = 0;
-    for (const [messageId, message] of mockMessages) {
-      if (message.userId === authResult.user.userId && !message.read) {
-        message.read = true;
-        mockMessages.set(messageId, message);
-        updatedCount++;
-      }
-    }
-    const result = { count: updatedCount };
+    // Mark all user's messages as read in database
+    const result = await prisma.message.updateMany({
+      where: {
+        userId: authResult.user.userId,
+        read: false,
+      },
+      data: {
+        read: true,
+      },
+    });
 
     return NextResponse.json({
       message: 'All messages marked as read',

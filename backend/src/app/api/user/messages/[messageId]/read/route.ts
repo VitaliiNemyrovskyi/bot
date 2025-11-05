@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-
-// Mock data store for messages
-const mockMessages = new Map<string, {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  content: string;
-  read: boolean;
-  createdAt: Date;
-  actions?: any;
-  metadata?: any;
-}>();
+import prisma from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
@@ -31,7 +19,9 @@ export async function PATCH(
     const { messageId } = await params;
 
     // Find and verify message belongs to user
-    const message = mockMessages.get(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
 
     if (!message || message.userId !== authResult.user.userId) {
       return NextResponse.json(
@@ -40,9 +30,11 @@ export async function PATCH(
       );
     }
 
-    // Mark message as read
-    message.read = true;
-    mockMessages.set(messageId, message);
+    // Mark message as read in database
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { read: true },
+    });
 
     return NextResponse.json({ message: 'Message marked as read' });
   } catch (error: unknown) {
