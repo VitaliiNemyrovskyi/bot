@@ -27,7 +27,7 @@ async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymb
     // Try to fetch from API first (most accurate, always fresh)
     const historyResponse = await fetchWithTimeout(
       EXCHANGE_ENDPOINTS.BINGX.FUNDING_RATE_HISTORY(bingxSymbol),
-      { timeout: 5000 }
+      { timeout: 10000 } // 10 second timeout for consistency
     );
     const historyData = await historyResponse.json();
 
@@ -62,8 +62,13 @@ async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymb
 
     // Ultimate fallback: 0 means unknown
     return 0;
-  } catch (error) {
-    console.error(`[BingX] Error calculating interval for ${bingxSymbol}:`, error);
+  } catch (error: any) {
+    // Log timeout as warning (not critical, we have fallback)
+    if (error.message?.includes('Request timeout')) {
+      console.warn(`[BingX] Timeout fetching history for ${bingxSymbol}, using fallback`);
+    } else {
+      console.error(`[BingX] Error calculating interval for ${bingxSymbol}:`, error);
+    }
 
     // Try database as last resort
     try {
