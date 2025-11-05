@@ -162,13 +162,13 @@ export class PublicFundingRatesService {
     // Build requests object dynamically based on selected exchanges
     const requests: Record<string, Observable<ExchangeFundingRate[]>> = {};
 
-    if (shouldFetch('BYBIT')) requests.bybit = this.fetchBybitFundingRates();
-    if (shouldFetch('BINGX')) requests.bingx = this.fetchBingXFundingRates();
-    if (shouldFetch('MEXC')) requests.mexc = this.fetchMEXCFundingRates();
-    if (shouldFetch('BINANCE')) requests.binance = this.fetchBinanceFundingRates();
-    if (shouldFetch('GATEIO')) requests.gateio = this.fetchGateIOFundingRates();
-    if (shouldFetch('BITGET')) requests.bitget = this.fetchBitgetFundingRates();
-    if (shouldFetch('OKX')) requests.okx = this.fetchOKXFundingRates();
+    if (shouldFetch('BYBIT')) requests['bybit'] = this.fetchBybitFundingRates();
+    if (shouldFetch('BINGX')) requests['bingx'] = this.fetchBingXFundingRates();
+    if (shouldFetch('MEXC')) requests['mexc'] = this.fetchMEXCFundingRates();
+    if (shouldFetch('BINANCE')) requests['binance'] = this.fetchBinanceFundingRates();
+    if (shouldFetch('GATEIO')) requests['gateio'] = this.fetchGateIOFundingRates();
+    if (shouldFetch('BITGET')) requests['bitget'] = this.fetchBitgetFundingRates();
+    if (shouldFetch('OKX')) requests['okx'] = this.fetchOKXFundingRates();
 
     const exchangeNames = Object.keys(requests).map(k => k.toUpperCase()).join(', ');
     console.log(`[PublicFundingRatesService] Fetching fresh data from: ${exchangeNames || 'NO EXCHANGES SELECTED'}`);
