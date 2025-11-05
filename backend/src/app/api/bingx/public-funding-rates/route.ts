@@ -1,37 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { EXCHANGE_ENDPOINTS } from '@/lib/exchange-api-endpoints';
+import { redisService } from '@/lib/redis';
 
 // Use Node.js runtime instead of Edge runtime for database access
 export const runtime = 'nodejs';
 
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 
+// In-memory cache for funding intervals (rarely change)
+const fundingIntervalCache = new Map<string, number>();
+
 /**
- * Known BingX funding intervals (updated from official announcements)
- * BingX API doesn't provide intervals directly, so we maintain this list
- * based on official announcements from BingX support pages
- *
- * Source: https://bingx.com/en/support/ (various funding rate adjustment announcements)
- * Last updated: 2025-10
- *
- * Note: Values are in hours (number) for database storage
+ * Calculate BingX funding interval dynamically from historical data
  */
-const BINGX_FUNDING_INTERVALS: Record<string, number> = {
-  // 1-hour intervals
-  'SVSA-USDT': 1,
-  '0G-USDT': 1,
+async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymbol: string): Promise<number> {
+  try {
+    // Check in-memory cache first (fastest)
+    const cacheKey = `BINGX-${normalizedSymbol}`;
+    const cached = fundingIntervalCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
-  // 4-hour intervals
-  'API3-USDT': 4,
-  'COAI-USDT': 4,
-  'DOG-USDT': 4,
-  'BROCCOLIF3B-USDT': 4,
-  'BR-USDT': 4,
-  'HEI-USDT': 4,
-  'SOLV-USDT': 4,
+    // Try to fetch from API first (most accurate, always fresh)
+    const historyResponse = await fetchWithTimeout(
+      EXCHANGE_ENDPOINTS.BINGX.FUNDING_RATE_HISTORY(bingxSymbol),
+      { timeout: 5000 }
+    );
+    const historyData = await historyResponse.json();
 
-  // Default: 8h for all others (BingX standard)
-};
+    if (historyData.code === 0 && historyData.data && historyData.data.length >= 2) {
+      // Calculate interval from first two records
+      // Use absolute value in case API returns records in different order
+      const timeDiff = Math.abs(historyData.data[0].fundingTime - historyData.data[1].fundingTime);
+      const hoursInterval = Math.round(timeDiff / (1000 * 60 * 60));
+
+      if (hoursInterval > 0 && hoursInterval <= 24) {
+        fundingIntervalCache.set(cacheKey, hoursInterval);
+        return hoursInterval;
+      }
+    }
+
+    // Fallback: Try to get from database if API fails
+    const existingRecord = await prisma.publicFundingRate.findFirst({
+      where: {
+        exchange: 'BINGX',
+        symbol: normalizedSymbol,
+      },
+      orderBy: {
+        timestamp: 'desc',
+      },
+    });
+
+    if (existingRecord && existingRecord.fundingInterval > 0) {
+      console.log(`[BingX] Using database fallback for ${normalizedSymbol}: ${existingRecord.fundingInterval}h`);
+      fundingIntervalCache.set(cacheKey, existingRecord.fundingInterval);
+      return existingRecord.fundingInterval;
+    }
+
+    // Ultimate fallback: 0 means unknown
+    return 0;
+  } catch (error) {
+    console.error(`[BingX] Error calculating interval for ${bingxSymbol}:`, error);
+
+    // Try database as last resort
+    try {
+      const existingRecord = await prisma.publicFundingRate.findFirst({
+        where: {
+          exchange: 'BINGX',
+          symbol: normalizedSymbol,
+        },
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+
+      if (existingRecord && existingRecord.fundingInterval > 0) {
+        console.log(`[BingX] Using database fallback after error for ${normalizedSymbol}`);
+        return existingRecord.fundingInterval;
+      }
+    } catch (dbError) {
+      console.error(`[BingX] Database fallback also failed for ${bingxSymbol}`);
+    }
+
+    return 0; // 0 means unknown
+  }
+}
 
 /**
  * Public BingX Funding Rates with DB Cache
@@ -53,10 +109,23 @@ const BINGX_FUNDING_INTERVALS: Record<string, number> = {
  */
 export async function GET(_request: NextRequest) {
   try {
+    // Step 1: Try Redis cache first (ultra-fast, ~5ms)
+    const cachedData = await redisService.getBulkFundingRates('BINGX');
+
+    if (cachedData) {
+      return NextResponse.json(cachedData.data, {
+        headers: {
+          'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+          'X-Data-Source': 'redis-cache',
+          'X-Cache-Age': Math.floor((Date.now() - cachedData.timestamp) / 1000).toString(),
+        },
+      });
+    }
+
     const now = new Date();
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);
 
-    // Step 1: Check if we have fresh data in DB
+    // Step 2: Check if we have fresh data in DB
     const cachedCount = await prisma.publicFundingRate.count({
       where: {
         exchange: 'BINGX',
@@ -67,7 +136,7 @@ export async function GET(_request: NextRequest) {
     });
 
 
-    // Step 2: If fresh data exists, return from DB
+    // Step 3: If fresh data exists, return from DB
     if (cachedCount > 0) {
       const cachedRates = await prisma.publicFundingRate.findMany({
         where: {
@@ -93,9 +162,14 @@ export async function GET(_request: NextRequest) {
           nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
           markPrice: rate.markPrice?.toString() || '0',
           indexPrice: rate.indexPrice?.toString() || '0',
-          fundingInterval: `${rate.fundingInterval}h`, // From DB
+          fundingInterval: rate.fundingInterval > 0 ? `${rate.fundingInterval}h` : '', // Empty if unknown
         })),
       };
+
+      // Store in Redis for next request (non-blocking)
+      redisService.cacheBulkFundingRates('BINGX', transformedData, CACHE_TTL_SECONDS).catch(err => {
+        console.error('[BingX] Failed to cache in Redis:', err.message);
+      });
 
       return NextResponse.json(transformedData, {
         headers: {
@@ -105,14 +179,15 @@ export async function GET(_request: NextRequest) {
       });
     }
 
-    // Step 3: No fresh data - fetch from BingX API
+    // Step 4: No fresh data - fetch from BingX API
 
     const bingxUrl = 'https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex';
-    const response = await fetch(bingxUrl, {
+    const response = await fetchWithTimeout(bingxUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      timeout: 10000, // 10 second timeout
     });
 
     if (!response.ok) {
@@ -123,12 +198,33 @@ export async function GET(_request: NextRequest) {
     }
 
     const rawData = await response.json();
-    const data = rawData.data || [];
+    const allData = rawData.data || [];
 
-    // Step 4: Upsert records (update existing or create new)
-    const upsertPromises = data.map((item: any) => {
+    // Step 4: Filter out non-trading or delisted contracts
+    // Only include contracts with valid mark price (indicates active trading)
+    const data = allData.filter((item: any) => {
+      // Filter out contracts without mark price (not trading)
+      if (!item.markPrice || parseFloat(item.markPrice) === 0) {
+        console.log(`[BingX] Skipping non-trading contract: ${item.symbol}`);
+        return false;
+      }
+      return true;
+    });
+
+    console.log(`[BingX] Filtered ${allData.length - data.length} non-trading contracts. Active: ${data.length}`);
+
+    // Step 5: Calculate funding intervals ONCE and cache them (FIX: No duplicate calls)
+    const symbolIntervalMap = new Map<string, number>();
+    for (const item of data) {
       const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
-      const fundingInterval = BINGX_FUNDING_INTERVALS[item.symbol] || 8; // Hours
+      const fundingInterval = await calculateBingXFundingInterval(item.symbol, symbol);
+      symbolIntervalMap.set(symbol, fundingInterval);
+    }
+
+    // Step 6: Upsert records using pre-calculated intervals
+    const upsertPromises = data.map(async (item: any) => {
+      const symbol = item.symbol.replace('-', '/');
+      const fundingInterval = symbolIntervalMap.get(symbol) || 0;
 
       return prisma.publicFundingRate.upsert({
         where: {
@@ -160,18 +256,23 @@ export async function GET(_request: NextRequest) {
 
     await Promise.all(upsertPromises);
 
-
-    // Step 5: Return transformed data with funding intervals
+    // Step 7: Return transformed data with pre-calculated funding intervals
     const enrichedData = {
       ...rawData,
       data: data.map((item: any) => {
-        const intervalHours = BINGX_FUNDING_INTERVALS[item.symbol] || 8;
+        const symbol = item.symbol.replace('-', '/');
+        const intervalHours = symbolIntervalMap.get(symbol) || 0;
         return {
           ...item,
-          fundingInterval: `${intervalHours}h`, // Convert to string format for API response
+          fundingInterval: intervalHours > 0 ? `${intervalHours}h` : '',
         };
       }),
     };
+
+    // Store in Redis for next request (non-blocking)
+    redisService.cacheBulkFundingRates('BINGX', enrichedData, CACHE_TTL_SECONDS).catch(err => {
+      console.error('[BingX] Failed to cache in Redis:', err.message);
+    });
 
     return NextResponse.json(enrichedData, {
       headers: {

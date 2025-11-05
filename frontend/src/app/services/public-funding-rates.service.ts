@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay } from 'rxjs';
+import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay, take, timeout } from 'rxjs';
 import { ExchangeFundingRate, FundingRateOpportunity, SpreadStabilityMetrics } from '../models/public-funding-rate.model';
 import { StatisticalUtilsService } from './statistical-utils.service';
 
@@ -23,17 +23,65 @@ export class PublicFundingRatesService {
     BINANCE: 0.04,  // 0.04% per trade × 4 = 0.16% total
     GATEIO: 0.05,   // 0.05% per trade × 4 = 0.20% total
     BITGET: 0.06,   // 0.06% per trade × 4 = 0.24% total
+    OKX: 0.05,      // 0.05% per trade × 4 = 0.20% total
   };
 
   // Cache for the funding rates observable to prevent duplicate HTTP requests
   private fundingRatesCache$?: Observable<FundingRateOpportunity[]>;
   private lastFetchTime = 0;
-  private readonly CACHE_DURATION_MS = 5000; // Cache for 5 seconds
+  private readonly CACHE_DURATION_MS = 0; // No cache - always fetch fresh data
 
   constructor(
     private http: HttpClient,
     private statisticalUtils: StatisticalUtilsService // PHASE2: Statistical calculations
   ) {}
+
+  /**
+   * Refresh funding rates by fetching directly from exchange APIs
+   * This provides real-time data when user opens a trading pair
+   *
+   * @param exchanges - Array of exchange names (e.g., ['GATEIO', 'BINGX'])
+   * @param symbol - Trading symbol (e.g., 'AVNTUSDT')
+   * @returns Observable of fresh funding rate data
+   */
+  refreshFundingRates(exchanges: string[], symbol: string): Observable<{
+    exchange: string;
+    symbol: string;
+    fundingRate: string;
+    nextFundingTime: number;
+    fundingInterval: string;
+  }[]> {
+    const url = `/api/arbitrage/refresh-funding-rate`;
+    const body = { exchanges, symbol };
+
+    console.log(`[PublicFundingRatesService] Refreshing funding rates from exchanges for ${exchanges.join(', ')} - ${symbol}`);
+
+    return this.http.post<{
+      success: boolean;
+      data: {
+        exchange: string;
+        symbol: string;
+        fundingRate: string;
+        nextFundingTime: number;
+        fundingInterval: string;
+      }[];
+      timestamp: string;
+    }>(url, body).pipe(
+      map(response => {
+        if (!response.success) {
+          console.error('[PublicFundingRatesService] API error:', response);
+          return [];
+        }
+
+        console.log(`[PublicFundingRatesService] Refreshed ${response.data.length} funding rates`);
+        return response.data;
+      }),
+      catchError(error => {
+        console.error('[PublicFundingRatesService] Error refreshing funding rates:', error);
+        return of([]);
+      })
+    );
+  }
 
   /**
    * Fetch funding rates for specific exchanges and symbol
@@ -112,6 +160,7 @@ export class PublicFundingRatesService {
       binance: this.fetchBinanceFundingRates(),
       gateio: this.fetchGateIOFundingRates(),
       bitget: this.fetchBitgetFundingRates(),
+      okx: this.fetchOKXFundingRates(),
     }).pipe(
       map(results => {
         // Combine all exchange data
@@ -122,6 +171,7 @@ export class PublicFundingRatesService {
           ...results.binance,
           ...results.gateio,
           ...results.bitget,
+          ...results.okx,
         ];
 
         // Calculate opportunities
@@ -141,27 +191,27 @@ export class PublicFundingRatesService {
   }
 
   /**
-   * Fetch funding rates from Bybit public API
-   * Endpoint: GET https://api.bybit.com/v5/market/tickers?category=linear
+   * Fetch funding rates from Bybit via backend proxy
+   * Backend proxies requests to bypass CORS restrictions and use Redis/DB cache
+   * Endpoint: GET /api/bybit/public-funding-rates
    * Documentation: https://bybit-exchange.github.io/docs/v5/market/tickers
    */
   private fetchBybitFundingRates(): Observable<ExchangeFundingRate[]> {
-    const url = 'https://api.bybit.com/v5/market/tickers?category=linear';
+    // Use backend proxy to bypass CORS and leverage Redis cache
+    const url = '/api/bybit/public-funding-rates';
 
     interface BybitResponse {
       retCode: number;
       retMsg: string;
       result?: {
+        category: string;
         list: {
           symbol: string;
           fundingRate: string;
-          lastPrice: string;
-          nextFundingTime: string;
-          fundingIntervalHour?: number;
-          turnover24h?: string;
-          openInterest?: string;
-          highPrice24h?: string;
-          lowPrice24h?: string;
+          fundingRateTimestamp: string;
+          fundingInterval: string;
+          markPrice: string;
+          indexPrice: string;
         }[];
       };
     }
@@ -174,26 +224,26 @@ export class PublicFundingRatesService {
         }
 
         const tickers = response.result.list;
-        console.log(`[Bybit] Fetched ${tickers.length} tickers`);
+        console.log(`[Bybit] Fetched ${tickers.length} tickers via proxy`);
 
         return tickers
-          .filter(t => t.symbol && t.fundingRate && t.lastPrice)
+          .filter(t => t.symbol && t.fundingRate && t.markPrice)
           .map(t => ({
             exchange: 'BYBIT',
             symbol: t.symbol.replace(/[\\/\-_:]/g, ''), // BTCUSDT
-            originalSymbol: t.symbol, // BTC/USDT:USDT
+            originalSymbol: t.symbol, // BTCUSDT
             fundingRate: t.fundingRate,
-            nextFundingTime: parseInt(t.nextFundingTime) || 0,
-            lastPrice: t.lastPrice,
-            fundingInterval: t.fundingIntervalHour ? `${t.fundingIntervalHour}h` : '8h', // Use API-provided interval
-            volume24h: t.turnover24h, // Bybit uses 'turnover24h' for volume in USDT
-            openInterest: t.openInterest,
-            high24h: t.highPrice24h,
-            low24h: t.lowPrice24h,
+            nextFundingTime: parseInt(t.fundingRateTimestamp) || 0,
+            lastPrice: t.markPrice,
+            fundingInterval: t.fundingInterval || '-', // From backend (e.g., "8h")
+            volume24h: undefined, // Not provided in premium index endpoint
+            openInterest: undefined, // Not provided in premium index endpoint
+            high24h: undefined,
+            low24h: undefined,
           } as ExchangeFundingRate));
       }),
       catchError((error: Error) => {
-        console.error('[Bybit] Failed to fetch funding rates:', error.message);
+        console.error('[Bybit] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
     );
@@ -235,7 +285,7 @@ export class PublicFundingRatesService {
             fundingRate: p.lastFundingRate,
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
             lastPrice: p.markPrice,
-            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
+            fundingInterval: p.fundingInterval || '-', // Dash if not available
             volume24h: '0', // Not provided in premium index endpoint
             openInterest: '0', // Not provided in premium index endpoint
             high24h: '0',
@@ -276,6 +326,7 @@ export class PublicFundingRatesService {
     }
 
     return this.http.get<BingXResponse>(url).pipe(
+      timeout(10000), // 10 second timeout
       map(response => {
         if (response.code !== 0 || !response.data) {
           console.error('[BingX] API error:', response.msg);
@@ -294,7 +345,7 @@ export class PublicFundingRatesService {
             fundingRate: p.lastFundingRate,
             nextFundingTime: parseInt(p.nextFundingTime) || 0,
             lastPrice: p.markPrice,
-            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
+            fundingInterval: p.fundingInterval || '-', // Dash if not available
             volume24h: p.volume24h,
             openInterest: p.openInterest,
             high24h: p.high24h,
@@ -358,7 +409,7 @@ export class PublicFundingRatesService {
             fundingRate: t.fundingRate.toString(),
             nextFundingTime: 0, // MEXC doesn't provide nextFundingTime in tickers
             lastPrice: t.lastPrice > 0 ? t.lastPrice.toString() : t.fairPrice.toString(),
-            fundingInterval: t.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
+            fundingInterval: t.fundingInterval || '-', // Dash if not available
             volume24h: t.volume24 ? t.volume24.toString() : undefined,
             openInterest: t.holdVol ? t.holdVol.toString() : undefined,
             high24h: t.high24Price ? t.high24Price.toString() : undefined,
@@ -417,7 +468,7 @@ export class PublicFundingRatesService {
             fundingRate: c.funding_rate,
             nextFundingTime: parseInt(c.funding_next_apply) * 1000 || 0, // Convert to ms
             lastPrice: c.last_price,
-            fundingInterval: c.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
+            fundingInterval: c.fundingInterval || '-', // Dash if not available
             volume24h: c.trade_size,
             openInterest: c.position_size,
             high24h: undefined,
@@ -474,7 +525,7 @@ export class PublicFundingRatesService {
             fundingRate: fr.fundingRate,
             nextFundingTime: parseInt(fr.nextUpdate) || 0,
             lastPrice: '0', // Bitget funding rate endpoint doesn't include price, will be 0
-            fundingInterval: fr.fundingRateInterval ? `${fr.fundingRateInterval}h` : '8h', // Use API-provided interval
+            fundingInterval: fr.fundingRateInterval ? `${fr.fundingRateInterval}h` : '-', // Dash if not available
             volume24h: undefined,
             openInterest: undefined,
             high24h: undefined,
@@ -483,6 +534,67 @@ export class PublicFundingRatesService {
       }),
       catchError((error: Error) => {
         console.error('[Bitget] Failed to fetch funding rates via proxy:', error.message);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Fetch funding rates from OKX via backend proxy
+   * Backend proxies requests to bypass CORS restrictions
+   * Endpoint: GET /api/okx/public-funding-rates
+   * Documentation: https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate
+   */
+  private fetchOKXFundingRates(): Observable<ExchangeFundingRate[]> {
+    // Use backend proxy to bypass CORS
+    const url = '/api/okx/public-funding-rates';
+
+    interface OKXResponse {
+      code: string;
+      msg?: string;
+      data: {
+        instType: string;
+        instId: string;
+        fundingRate: string;
+        nextFundingTime: string;
+        fundingInterval: string;
+        markPx: string;
+        indexPx: string;
+      }[];
+    }
+
+    return this.http.get<OKXResponse>(url).pipe(
+      take(1),      
+      map(response => {
+        if (response.code !== '0' || !response.data) {
+          console.error('[OKX] API error:', response.msg);
+          return [];
+        }
+
+        const fundingRates = response.data;
+        console.log(`[OKX] Fetched ${fundingRates.length} funding rates via proxy`);
+
+        return fundingRates
+          .filter(fr =>
+            fr.instId &&
+            fr.fundingRate !== undefined
+          )
+          .map(fr => ({
+            exchange: 'OKX',
+            symbol: fr.instId.replace(/[\\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
+            originalSymbol: fr.instId, // BTC-USDT
+            fundingRate: fr.fundingRate,
+            nextFundingTime: parseInt(fr.nextFundingTime) || 0,
+            lastPrice: fr.markPx || '0',
+            fundingInterval: fr.fundingInterval || '-', // Dash if not available
+            volume24h: undefined,
+            openInterest: undefined,
+            high24h: undefined,
+            low24h: undefined,
+          } as ExchangeFundingRate));
+      }),
+      catchError((error: Error) => {
+        console.error('[OKX] Failed to fetch funding rates via proxy:', error.message);
         return of([]);
       })
     );
@@ -516,7 +628,7 @@ export class PublicFundingRatesService {
    * Normalize funding rate to 8-hour interval for fair comparison
    * Different exchanges use different intervals (1h, 4h, 8h)
    */
-  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval = '8h'): number {
+  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval = '-'): number {
     const rate = parseFloat(fundingRate);
 
     // Normalization multipliers to convert to 8h interval
@@ -546,14 +658,15 @@ export class PublicFundingRatesService {
       }
 
       // Calculate funding interval from actual nextFundingTime (not hardcoded!)
-      if (!rate.fundingInterval && rate.nextFundingTime) {
-        rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
-      }
+      // if (!rate.fundingInterval && rate.nextFundingTime) {
+      //   rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
+      // }
 
       // Normalize funding rate to 8h interval using calculated interval
+      // If interval is unknown ('-'), no normalization applied (multiplier = 1)
       rate.fundingRateNormalized = this.normalizeFundingRateTo8h(
         rate.fundingRate,
-        rate.fundingInterval || '8h'
+        rate.fundingInterval || '-'
       );
 
       console.log(`[FundingInterval] ${rate.exchange} ${rate.symbol}: interval=${rate.fundingInterval}, nextFunding=${new Date(rate.nextFundingTime).toLocaleTimeString()}, rate=${rate.fundingRate}, normalized=${rate.fundingRateNormalized.toFixed(6)}`);
