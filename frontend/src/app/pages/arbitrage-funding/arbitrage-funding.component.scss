@@ -925,140 +925,629 @@
   color: #6b7280;
 }
 
-// Dark mode support
-@media (prefers-color-scheme: dark) {
+// Dark mode support using data-theme attribute (primary method)
+[data-theme="dark"] {
   .arbitrage-funding-page {
+    // Page header
     .page-header {
       .page-title {
-        color: var(--text-primary-dark, #f5f5f5);
+        color: var(--text-primary);
       }
 
       .page-subtitle {
-        color: var(--text-secondary-dark, #a0a0a0);
+        color: var(--text-secondary);
       }
     }
 
+    // Controls section
     .controls-section {
       .filters {
         .filter-group {
           label {
-            color: var(--text-secondary-dark, #a0a0a0);
+            color: var(--text-secondary);
           }
 
           .search-input,
           .number-input {
-            background: var(--input-bg-dark, #2a2a2a);
-            border-color: var(--border-color-dark, #404040);
-            color: var(--text-primary-dark, #f5f5f5);
+            background: var(--background-secondary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
 
             &:focus {
-              border-color: var(--primary-color, #3b82f6);
+              border-color: var(--primary-color);
+              box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+            }
+
+            &::placeholder {
+              color: var(--text-muted);
             }
           }
         }
 
         .exchange-filter-group {
           .exchange-chip {
-            background: var(--background-secondary-dark, #2a2a2a);
-            border-color: var(--border-color-dark, #404040);
-            color: var(--text-secondary-dark, #a0a0a0);
+            background: var(--background-secondary);
+            border-color: var(--border-color);
+            color: var(--text-secondary);
 
             &:hover {
-              background: var(--card-bg-dark, #1e1e1e);
-              border-color: var(--primary-color, #3b82f6);
-              color: var(--primary-color, #3b82f6);
+              background: var(--background-primary);
+              border-color: var(--primary-color);
+              color: var(--primary-color);
             }
 
             &.active {
-              background: var(--primary-color, #3b82f6);
-              border-color: var(--primary-color, #3b82f6);
+              background: var(--primary-color);
+              border-color: var(--primary-color);
               color: white;
+
+              &:hover {
+                background: var(--primary-hover);
+                border-color: var(--primary-hover);
+              }
             }
           }
 
           .exchange-actions {
-            border-left-color: var(--border-color-dark, #404040);
+            border-left-color: var(--border-color);
           }
 
           .btn-exchange-action {
-            border-color: var(--border-color-dark, #404040);
-            color: var(--text-secondary-dark, #a0a0a0);
+            border-color: var(--border-color);
+            color: var(--text-secondary);
+            background: transparent;
 
             &:hover {
-              background: var(--background-secondary-dark, #2a2a2a);
+              background: var(--background-secondary);
+              border-color: var(--primary-color);
+              color: var(--primary-color);
             }
+          }
+        }
+
+        .btn-clear {
+          background: rgba(239, 68, 68, 0.15);
+          color: #f87171;
+          border-color: rgba(239, 68, 68, 0.3);
+
+          &:hover {
+            background: rgba(239, 68, 68, 0.25);
           }
         }
       }
 
       .status-section {
         .last-updated {
-          color: var(--text-secondary-dark, #a0a0a0);
+          color: var(--text-secondary);
+        }
+
+        .btn-settings,
+        .btn-refresh {
+          &:hover:not(:disabled) {
+            transform: translateY(-1px);
+          }
         }
       }
     }
 
+    // Error message
+    .error-message {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+
+    // Loading container
+    .loading-container {
+      p {
+        color: var(--text-secondary);
+      }
+    }
+
+    // Table container
     .table-container {
-      background: var(--card-bg-dark, #1e1e1e);
-      border-color: var(--border-color-dark, #404040);
+      background: var(--background-primary);
+      border-color: var(--border-color);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 
       &::-webkit-scrollbar-track {
-        background: var(--scrollbar-track-dark, #2a2a2a);
+        background: var(--background-secondary);
       }
 
       &::-webkit-scrollbar-thumb {
-        background: var(--scrollbar-thumb-dark, #555);
+        background: var(--border-hover);
 
         &:hover {
-          background: var(--scrollbar-thumb-hover-dark, #777);
+          background: var(--text-muted);
         }
       }
 
       .results-count {
-        background: var(--card-header-bg-dark, #252525);
-        color: var(--text-secondary-dark, #a0a0a0);
+        background: var(--background-secondary);
+        border-bottom-color: var(--border-color);
+        color: var(--text-secondary);
       }
 
       .opportunities-table {
         thead {
-          background: var(--table-header-bg-dark, #252525);
+          background: var(--background-secondary);
+
+          tr {
+            border-bottom-color: var(--border-color);
+          }
 
           th {
-            color: var(--text-secondary-dark, #a0a0a0);
+            color: var(--text-secondary);
+
+            &.sortable {
+              &:hover {
+                color: var(--primary-color);
+              }
+            }
           }
         }
 
         tbody {
           .opportunity-row {
-            border-color: var(--border-color-dark, #404040);
+            border-bottom-color: var(--border-color);
 
             &:hover {
-              background: var(--row-hover-bg-dark, #252525);
+              background: var(--background-secondary);
             }
 
             td {
-              color: var(--text-primary-dark, #f5f5f5);
+              color: var(--text-primary);
+            }
+
+            // Best long/short cells
+            .best-long-cell,
+            .best-short-cell {
+              .best-exchange {
+                .exchange-name {
+                  color: var(--primary-color);
+
+                  &.clickable:hover {
+                    color: var(--primary-hover);
+                  }
+                }
+
+                .funding-rate {
+                  color: var(--text-secondary);
+                }
+
+                .price {
+                  color: var(--text-muted);
+                }
+
+                .time-to-funding {
+                  color: var(--text-muted);
+                }
+              }
+            }
+
+            // Price spread cell
+            .price-spread-cell {
+              .price-spread-info {
+                .spread-usdt {
+                  color: var(--text-secondary);
+                }
+              }
+            }
+
+            // Actions cell buttons
+            .actions-cell {
+              .btn-expand {
+                &:hover {
+                  background: var(--secondary-hover);
+                }
+
+                &.expanded {
+                  background: var(--primary-color);
+
+                  &:hover {
+                    background: var(--primary-hover);
+                  }
+                }
+              }
+
+              .btn-view-chart {
+                &:hover {
+                  background: var(--primary-hover);
+                  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+                }
+              }
+            }
+          }
+
+          // Expanded row
+          .expanded-row {
+            border-bottom-color: var(--border-color);
+          }
+
+          // Empty row
+          .empty-row {
+            .empty-cell {
+              p {
+                color: var(--text-secondary);
+              }
             }
           }
         }
       }
     }
+
+    // PHASE2: Spread Stability Analysis Section
+    .phase2-stability-section {
+      .section-title {
+        color: var(--text-primary);
+      }
+
+      .loading-metrics {
+        color: var(--text-secondary);
+      }
+
+      app-funding-rate-spread-chart {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      // Chart section
+      .chart-section {
+        border-color: var(--border-color);
+
+        .chart-controls {
+          .period-btn {
+            background: var(--background-secondary);
+            border-color: var(--border-color);
+            color: var(--text-secondary);
+
+            &:hover {
+              background: var(--background-primary);
+              border-color: var(--primary-color);
+              color: var(--primary-color);
+            }
+
+            &.active {
+              background: var(--primary-color);
+              border-color: var(--primary-color);
+              color: white;
+            }
+          }
+        }
+
+        .chart-container {
+          background: var(--background-primary);
+        }
+      }
+
+      // Metric cards
+      .metric-card {
+        border-color: var(--border-color);
+        background: linear-gradient(135deg, var(--background-primary) 0%, var(--background-secondary) 100%);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+
+        &:hover {
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+          border-color: var(--primary-color);
+        }
+
+        &::before {
+          background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
+        }
+
+        h5 {
+          color: var(--text-primary);
+          border-bottom-color: var(--border-color);
+        }
+
+        .metric-row {
+          .label {
+            color: var(--text-secondary);
+          }
+
+          .value {
+            color: var(--text-primary);
+          }
+
+          .badge {
+            &.badge-medium {
+              background: rgba(245, 158, 11, 0.2);
+              color: #fbbf24;
+              border: 1px solid rgba(245, 158, 11, 0.3);
+            }
+
+            &.badge-low {
+              background: rgba(239, 68, 68, 0.2);
+              color: #f87171;
+              border: 1px solid rgba(239, 68, 68, 0.3);
+            }
+          }
+        }
+      }
+
+      // Trend card
+      .trend-card {
+        .confidence-bar {
+          .label {
+            color: var(--text-secondary);
+          }
+
+          .bar-container {
+            background: var(--border-color);
+          }
+
+          .value {
+            color: var(--text-primary);
+          }
+        }
+      }
+
+      .no-data {
+        color: var(--text-secondary);
+      }
+    }
   }
 
-  .text-green-400 {
+  // Color classes adjustments for dark theme
+  .text-green-600 {
     color: #4ade80;
   }
 
-  .text-yellow-400 {
-    color: #facc15;
+  .text-yellow-600 {
+    color: #fbbf24;
   }
 
-  .text-red-400 {
+  .text-red-600 {
     color: #f87171;
   }
 
-  .text-gray-400 {
+  .text-gray-600 {
     color: #9ca3af;
+  }
+}
+
+// Settings Dialog Dark Theme Support
+[data-theme="dark"] {
+  .settings-overlay {
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .settings-modal {
+    background: var(--background-primary);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .settings-header {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .settings-body {
+    background: var(--background-secondary);
+
+    &::-webkit-scrollbar-track {
+      background: var(--background-tertiary);
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-hover);
+
+      &:hover {
+        background: var(--text-muted);
+      }
+    }
+  }
+
+  .settings-section {
+    background: var(--background-primary);
+    border-color: var(--border-color);
+
+    &:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .section-header {
+      border-bottom-color: var(--border-color);
+
+      .section-title {
+        color: var(--text-primary);
+      }
+    }
+  }
+
+  .settings-field {
+    .field-label {
+      color: var(--text-secondary);
+    }
+
+    .field-input {
+      background: var(--background-secondary);
+      border-color: var(--border-color);
+      color: var(--text-primary);
+
+      &::placeholder {
+        color: var(--text-muted);
+      }
+
+      &:hover {
+        border-color: var(--border-hover);
+        background: var(--background-primary);
+      }
+
+      &:focus {
+        border-color: var(--primary-color);
+        background: var(--background-primary);
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+      }
+    }
+
+    .field-help {
+      color: var(--text-muted);
+    }
+  }
+
+  .field-checkbox {
+    background: var(--background-secondary);
+    border-color: var(--border-color);
+
+    &:hover {
+      border-color: var(--border-hover);
+      background: var(--background-primary);
+    }
+
+    .checkbox-custom {
+      background: var(--background-primary);
+      border-color: var(--border-color);
+    }
+
+    .checkbox-label {
+      color: var(--text-primary);
+    }
+  }
+
+  .settings-footer {
+    background: var(--background-primary);
+    border-top-color: var(--border-color);
+  }
+}
+
+// Fallback: Dark mode support using prefers-color-scheme media query
+@media (prefers-color-scheme: dark) {
+  // Only apply if data-theme is not set
+  :root:not([data-theme]) {
+    .arbitrage-funding-page {
+      .page-header {
+        .page-title {
+          color: #f9fafb;
+        }
+
+        .page-subtitle {
+          color: #d1d5db;
+        }
+      }
+
+      .controls-section {
+        .filters {
+          .filter-group {
+            label {
+              color: #d1d5db;
+            }
+
+            .search-input,
+            .number-input {
+              background: #2d2d2d;
+              border-color: rgba(255, 255, 255, 0.1);
+              color: #f9fafb;
+
+              &:focus {
+                border-color: #3b82f6;
+              }
+            }
+          }
+
+          .exchange-filter-group {
+            .exchange-chip {
+              background: #2d2d2d;
+              border-color: rgba(255, 255, 255, 0.1);
+              color: #d1d5db;
+
+              &:hover {
+                background: #1e1e1e;
+                border-color: #3b82f6;
+                color: #3b82f6;
+              }
+
+              &.active {
+                background: #3b82f6;
+                border-color: #3b82f6;
+                color: white;
+              }
+            }
+
+            .exchange-actions {
+              border-left-color: rgba(255, 255, 255, 0.1);
+            }
+
+            .btn-exchange-action {
+              border-color: rgba(255, 255, 255, 0.1);
+              color: #d1d5db;
+
+              &:hover {
+                background: #2d2d2d;
+              }
+            }
+          }
+        }
+
+        .status-section {
+          .last-updated {
+            color: #d1d5db;
+          }
+        }
+      }
+
+      .table-container {
+        background: #1e1e1e;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        &::-webkit-scrollbar-track {
+          background: #2d2d2d;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: #555;
+
+          &:hover {
+            background: #777;
+          }
+        }
+
+        .results-count {
+          background: #252525;
+          color: #d1d5db;
+        }
+
+        .opportunities-table {
+          thead {
+            background: #252525;
+
+            th {
+              color: #d1d5db;
+            }
+          }
+
+          tbody {
+            .opportunity-row {
+              border-color: rgba(255, 255, 255, 0.1);
+
+              &:hover {
+                background: #252525;
+              }
+
+              td {
+                color: #f9fafb;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    .text-green-400 {
+      color: #4ade80;
+    }
+
+    .text-yellow-400 {
+      color: #facc15;
+    }
+
+    .text-red-400 {
+      color: #f87171;
+    }
+
+    .text-gray-400 {
+      color: #9ca3af;
+    }
   }
 }
 
