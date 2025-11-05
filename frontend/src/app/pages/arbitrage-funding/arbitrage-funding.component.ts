@@ -213,7 +213,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
       .pipe(
         startWith(0), // Load immediately
-        switchMap(() => this.fundingRatesService.getFundingRatesOpportunities())
+        switchMap(() => this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()))
       )
       .subscribe({
         next: (opportunities) => {
@@ -247,7 +247,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.error.set(null);
 
-    this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+    this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()).subscribe({
       next: (opportunities) => {
         this.opportunities.set(opportunities);
         this.error.set(null);
@@ -296,6 +296,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       selected.add(exchange);
     }
     this.selectedExchanges.set(selected);
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**
@@ -303,6 +305,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
    */
   selectAllExchanges(): void {
     this.selectedExchanges.set(new Set(this.availableExchanges()));
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**
@@ -310,6 +314,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
    */
   deselectAllExchanges(): void {
     this.selectedExchanges.set(new Set());
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**

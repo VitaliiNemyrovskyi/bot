@@ -2,11 +2,11 @@ import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, inje
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { interval, Subscription, forkJoin, of } from 'rxjs';
-import { startWith, switchMap, catchError } from 'rxjs/operators';
+import { Subscription, take } from 'rxjs';
 import { PublicFundingRatesService } from '../../services/public-funding-rates.service';
 import { FundingRateOpportunity } from '../../models/public-funding-rate.model';
-import { IconComponent } from '../../components/ui/icon/icon.component';
+import { ArbitrageNavigationService } from '../../services/arbitrage-navigation.service';
+import { ArbitrageDataStorageService } from '../../services/arbitrage-data-storage.service';
 import { ButtonComponent } from '../../components/ui/button/button.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
@@ -58,22 +58,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 @Component({
   selector: 'app-price-arbitrage-opportunities',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    RouterModule,
-    IconComponent,
-    ButtonComponent,
-    DialogComponent,
-    DialogHeaderComponent,
-    DialogTitleComponent,
-    DialogContentComponent,
-    DialogFooterComponent,
-    FundingSpreadDetailsComponent,
-    DropdownComponent,
-    InputComponent,
-    SliderComponent,
-  ],
+  imports: [CommonModule, FormsModule, RouterModule, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingSpreadDetailsComponent, DropdownComponent, InputComponent, SliderComponent],
   templateUrl: './price-arbitrage-opportunities.component.html',
   styleUrls: ['./price-arbitrage-opportunities.component.scss'],
   encapsulation: ViewEncapsulation.None
@@ -82,6 +67,8 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   private fundingRatesService = inject(PublicFundingRatesService);
   private router = inject(Router);
+  private navigationService = inject(ArbitrageNavigationService);
+  private dataStorage = inject(ArbitrageDataStorageService);
 
   // State
   opportunities = signal<UnifiedOpportunity[]>([]);
@@ -97,15 +84,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     fundingDataAvailable: boolean;
   } | null>(null);
 
-  // Auto-refresh
+  // Auto-refresh (disabled)
   private refreshSubscription?: Subscription;
-  private readonly REFRESH_INTERVAL_MS = 30 * 1000; // 30 seconds
 
   // LocalStorage keys
   private readonly SELECTED_EXCHANGES_KEY = 'priceArbitrage_selectedExchanges';
 
   // Available exchanges
-  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET'];
+  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET', 'OKX'];
 
   // Strategy type dropdown options
   strategyTypeOptions: DropdownOption[] = [
@@ -402,16 +388,17 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     // Initial load
     this.loadOpportunities();
 
-    // Setup auto-refresh
-    this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
-      .pipe(
-        startWith(0),
-        switchMap(() => {
-          this.loadOpportunities();
-          return [];
-        })
-      )
-      .subscribe();
+    // Auto-refresh disabled to prevent data flickering
+    // User can manually refresh using the refresh button
+    // this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
+    //   .pipe(
+    //     startWith(0),
+    //     switchMap(() => {
+    //       this.loadOpportunities();
+    //       return [];
+    //     })
+    //   )
+    //   .subscribe();
   }
 
   ngOnDestroy(): void {
@@ -434,7 +421,9 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     if (strategyFilter === 'spot_futures') {
       // Load spot + futures opportunities (filter for positive funding only)
-      this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+      // Convert selectedExchanges array to Set for service
+      const exchangesSet = new Set(this.selectedExchanges());
+      this.fundingRatesService.getFundingRatesOpportunities(exchangesSet).subscribe({
         next: (allOpportunities: FundingRateOpportunity[]) => {
           // Filter: only show coins with positive funding rate on at least one exchange
           const spotFuturesOpportunities = allOpportunities
@@ -464,6 +453,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             .filter(opp => opp !== null) as UnifiedOpportunity[];
 
           this.opportunities.set(spotFuturesOpportunities);
+          this.dataStorage.setOpportunities(spotFuturesOpportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -475,9 +465,12 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       });
     } else {
       // Load cross-exchange opportunities (existing behavior)
-      this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+      // Convert selectedExchanges array to Set for service
+      const exchangesSet = new Set(this.selectedExchanges());
+      this.fundingRatesService.getFundingRatesOpportunities(exchangesSet).pipe(take(1)).subscribe({
         next: (opportunities: FundingRateOpportunity[]) => {
           this.opportunities.set(opportunities as UnifiedOpportunity[]);
+          this.dataStorage.setOpportunities(opportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -712,6 +705,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       this.selectedExchanges.set([...current, exchange]);
     }
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -727,6 +722,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   selectAllExchanges(): void {
     this.selectedExchanges.set([...this.availableExchanges]);
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -735,6 +732,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   deselectAllExchanges(): void {
     this.selectedExchanges.set([]);
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -817,7 +816,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
         spreadPercent: 0,
         spreadUsdt: 0,
         isFavorable: false,
-        indicator: '⚪',
+        indicator: '',
         colorClass: 'neutral'
       };
     }
@@ -840,7 +839,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       spreadPercent,
       spreadUsdt,
       isFavorable,
-      indicator: isFavorable ? '🟢' : '🔴',
+      indicator: '',
       colorClass: isFavorable ? 'favorable' : 'unfavorable'
     };
   }
@@ -963,7 +962,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     console.log('[PriceArbitrageOpportunities] Starting position for:', opportunity.symbol);
 
     // Determine strategy type based on current filter
-    const strategy = this.strategyTypeFilter();
+    // Use 'price_only' as default if filter is 'all'
+    const strategy = this.strategyTypeFilter() || 'price_only';
 
     if (strategy === 'spot_futures') {
       // For spot_futures strategy (spot + futures)
@@ -972,6 +972,22 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // Use bestShort exchange (highest funding rate) for futures
       const futuresExchange = graduatedOpp.bestShort?.exchange || '';
       const spotExchange = graduatedOpp.bestLong?.exchange || futuresExchange; // TODO: use actual spot exchange
+
+      // Extract funding intervals from exchange data
+      const fundingOpp = this.asFundingRateOpportunity(graduatedOpp);
+      const primaryInterval = fundingOpp?.bestLong?.fundingInterval ? this.parseFundingInterval(fundingOpp.bestLong.fundingInterval) : null;
+      const hedgeInterval = fundingOpp?.bestShort?.fundingInterval ? this.parseFundingInterval(fundingOpp.bestShort.fundingInterval) : null;
+
+      // Store navigation data in service
+      this.navigationService.setNavigationData({
+        symbol: graduatedOpp.symbol,
+        primaryExchange: spotExchange,
+        hedgeExchange: futuresExchange,
+        primaryFundingInterval: primaryInterval,
+        hedgeFundingInterval: hedgeInterval,
+        strategy: 'spot_futures'
+      });
+
       this.router.navigate([
         '/arbitrage/chart',
         graduatedOpp.symbol,
@@ -984,6 +1000,20 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // Use effective exchanges (respects user's dropdown selection)
       const longExchange = this.getEffectiveLongExchange(opportunity);
       const shortExchange = this.getEffectiveShortExchange(opportunity);
+
+      // Extract funding intervals from exchange data
+      const primaryInterval = longExchange?.fundingInterval ? this.parseFundingInterval(longExchange.fundingInterval) : null;
+      const hedgeInterval = shortExchange?.fundingInterval ? this.parseFundingInterval(shortExchange.fundingInterval) : null;
+
+      // Store navigation data in service
+      this.navigationService.setNavigationData({
+        symbol: opportunity.symbol,
+        primaryExchange: longExchange.exchange,
+        hedgeExchange: shortExchange.exchange,
+        primaryFundingInterval: primaryInterval,
+        hedgeFundingInterval: hedgeInterval,
+        strategy
+      });
 
       // Navigate to arbitrage chart with symbol, exchanges, and strategy
       // Format: /arbitrage/chart/:symbol/:longExchange/:shortExchange/:strategy
@@ -1325,6 +1355,22 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       dailyReturn,
       monthlyROI
     };
+  }
+
+  /**
+   * Parse funding interval string to number
+   * Converts "8h", "4h", "1h" to 8, 4, 1
+   */
+  private parseFundingInterval(interval: string): number | null {
+    if (!interval) return null;
+
+    // Extract number from string like "8h", "4h", "1h"
+    const match = interval.match(/(\d+)/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+
+    return null;
   }
 
   /**

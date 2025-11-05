@@ -131,13 +131,16 @@ export class PublicFundingRatesService {
   }
 
   /**
-   * Fetch funding rates from all supported exchanges
+   * Fetch funding rates from selected exchanges
    * Returns array of opportunities sorted by funding spread
    *
    * IMPORTANT: This method implements request caching to prevent duplicate HTTP requests.
    * Multiple subscriptions within 5 seconds will share the same cached Observable.
+   *
+   * @param selectedExchanges - Set of exchange names to fetch (e.g., new Set(['BYBIT', 'BINGX']))
+   *                           If not provided or empty, fetches from all exchanges
    */
-  getFundingRatesOpportunities(): Observable<FundingRateOpportunity[]> {
+  getFundingRatesOpportunities(selectedExchanges?: Set<string>): Observable<FundingRateOpportunity[]> {
     const now = Date.now();
     const cacheExpired = (now - this.lastFetchTime) > this.CACHE_DURATION_MS;
 
@@ -148,31 +151,42 @@ export class PublicFundingRatesService {
       return this.fundingRatesCache$;
     }
 
-    // Cache expired or doesn't exist - create new observable
-    console.log('[PublicFundingRatesService] Fetching fresh data from all exchanges...');
+    // Determine which exchanges to fetch from
+    const shouldFetch = (exchange: string) => {
+      if (!selectedExchanges || selectedExchanges.size === 0) {
+        return true; // Fetch all if no filter specified
+      }
+      return selectedExchanges.has(exchange.toUpperCase());
+    };
+
+    // Build requests object dynamically based on selected exchanges
+    const requests: Record<string, Observable<ExchangeFundingRate[]>> = {};
+
+    if (shouldFetch('BYBIT')) requests.bybit = this.fetchBybitFundingRates();
+    if (shouldFetch('BINGX')) requests.bingx = this.fetchBingXFundingRates();
+    if (shouldFetch('MEXC')) requests.mexc = this.fetchMEXCFundingRates();
+    if (shouldFetch('BINANCE')) requests.binance = this.fetchBinanceFundingRates();
+    if (shouldFetch('GATEIO')) requests.gateio = this.fetchGateIOFundingRates();
+    if (shouldFetch('BITGET')) requests.bitget = this.fetchBitgetFundingRates();
+    if (shouldFetch('OKX')) requests.okx = this.fetchOKXFundingRates();
+
+    const exchangeNames = Object.keys(requests).map(k => k.toUpperCase()).join(', ');
+    console.log(`[PublicFundingRatesService] Fetching fresh data from: ${exchangeNames || 'NO EXCHANGES SELECTED'}`);
     this.lastFetchTime = now;
 
-    // Fetch from all exchanges in parallel
-    this.fundingRatesCache$ = forkJoin({
-      bybit: this.fetchBybitFundingRates(),
-      bingx: this.fetchBingXFundingRates(),
-      mexc: this.fetchMEXCFundingRates(),
-      binance: this.fetchBinanceFundingRates(),
-      gateio: this.fetchGateIOFundingRates(),
-      bitget: this.fetchBitgetFundingRates(),
-      okx: this.fetchOKXFundingRates(),
-    }).pipe(
+    // If no exchanges selected, return empty array immediately
+    if (Object.keys(requests).length === 0) {
+      console.log('[PublicFundingRatesService] No exchanges selected, returning empty array');
+      return of([]);
+    }
+
+    // Fetch from selected exchanges in parallel
+    this.fundingRatesCache$ = forkJoin(requests).pipe(
       map(results => {
         // Combine all exchange data
-        const allRates: ExchangeFundingRate[] = [
-          ...results.bybit,
-          ...results.bingx,
-          ...results.mexc,
-          ...results.binance,
-          ...results.gateio,
-          ...results.bitget,
-          ...results.okx,
-        ];
+        const allRates: ExchangeFundingRate[] = Object.values(results).flat();
+
+        console.log(`[PublicFundingRatesService] Received ${allRates.length} funding rates from ${Object.keys(requests).length} exchanges`);
 
         // Calculate opportunities
         return this.calculateOpportunities(allRates);
