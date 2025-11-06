@@ -5,14 +5,13 @@ import { Router, RouterModule } from '@angular/router';
 import { Subscription, take } from 'rxjs';
 import { PublicFundingRatesService } from '../../services/public-funding-rates.service';
 import { FundingRateOpportunity } from '../../models/public-funding-rate.model';
-import { ArbitrageNavigationService } from '../../services/arbitrage-navigation.service';
-import { ArbitrageDataStorageService } from '../../services/arbitrage-data-storage.service';
 import { ButtonComponent } from '../../components/ui/button/button.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
 import { DropdownComponent, DropdownOption } from '../../components/ui/dropdown/dropdown.component';
 import { InputComponent } from '../../components/ui/input/input.component';
 import { SliderComponent } from '../../components/ui/slider/slider.component';
+import { IconComponent } from '../../components/ui/icon/icon.component';
 
 /**
  * Unified opportunity type that supports all strategies
@@ -58,7 +57,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 @Component({
   selector: 'app-price-arbitrage-opportunities',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingSpreadDetailsComponent, DropdownComponent, InputComponent, SliderComponent],
+  imports: [CommonModule, FormsModule, RouterModule, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingSpreadDetailsComponent, DropdownComponent, InputComponent, SliderComponent, IconComponent],
   templateUrl: './price-arbitrage-opportunities.component.html',
   styleUrls: ['./price-arbitrage-opportunities.component.scss'],
   encapsulation: ViewEncapsulation.None
@@ -67,9 +66,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   private fundingRatesService = inject(PublicFundingRatesService);
   private router = inject(Router);
-  private navigationService = inject(ArbitrageNavigationService);
-  private dataStorage = inject(ArbitrageDataStorageService);
-
+    
   // State
   opportunities = signal<UnifiedOpportunity[]>([]);
   isLoading = signal<boolean>(false);
@@ -453,7 +450,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             .filter(opp => opp !== null) as UnifiedOpportunity[];
 
           this.opportunities.set(spotFuturesOpportunities);
-          this.dataStorage.setOpportunities(spotFuturesOpportunities);
+          // this.dataStorage.setOpportunities(spotFuturesOpportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -470,7 +467,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       this.fundingRatesService.getFundingRatesOpportunities(exchangesSet).pipe(take(1)).subscribe({
         next: (opportunities: FundingRateOpportunity[]) => {
           this.opportunities.set(opportunities as UnifiedOpportunity[]);
-          this.dataStorage.setOpportunities(opportunities);
+          // this.dataStorage.setOpportunities(opportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -979,14 +976,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       const hedgeInterval = fundingOpp?.bestShort?.fundingInterval ? this.parseFundingInterval(fundingOpp.bestShort.fundingInterval) : null;
 
       // Store navigation data in service
-      this.navigationService.setNavigationData({
-        symbol: graduatedOpp.symbol,
-        primaryExchange: spotExchange,
-        hedgeExchange: futuresExchange,
-        primaryFundingInterval: primaryInterval,
-        hedgeFundingInterval: hedgeInterval,
-        strategy: 'spot_futures'
-      });
+      // this.navigationService.setNavigationData({
+      //   symbol: graduatedOpp.symbol,
+      //   primaryExchange: spotExchange,
+      //   hedgeExchange: futuresExchange,
+      //   primaryFundingInterval: primaryInterval,
+      //   hedgeFundingInterval: hedgeInterval,
+      //   strategy: 'spot_futures'
+      // });
 
       this.router.navigate([
         '/arbitrage/chart',
@@ -1006,14 +1003,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       const hedgeInterval = shortExchange?.fundingInterval ? this.parseFundingInterval(shortExchange.fundingInterval) : null;
 
       // Store navigation data in service
-      this.navigationService.setNavigationData({
-        symbol: opportunity.symbol,
-        primaryExchange: longExchange.exchange,
-        hedgeExchange: shortExchange.exchange,
-        primaryFundingInterval: primaryInterval,
-        hedgeFundingInterval: hedgeInterval,
-        strategy
-      });
+      // this.navigationService.setNavigationData({
+      //   symbol: opportunity.symbol,
+      //   primaryExchange: longExchange.exchange,
+      //   hedgeExchange: shortExchange.exchange,
+      //   primaryFundingInterval: primaryInterval,
+      //   hedgeFundingInterval: hedgeInterval,
+      //   strategy
+      // });
 
       // Navigate to arbitrage chart with symbol, exchanges, and strategy
       // Format: /arbitrage/chart/:symbol/:longExchange/:shortExchange/:strategy

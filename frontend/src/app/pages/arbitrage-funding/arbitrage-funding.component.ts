@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject } from '@angular/core';import { IconComponent } from '../../components/ui/icon/icon.component';
+
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -30,7 +31,8 @@ import { FundingSpreadDetailsComponent } from '../../components/trading/funding-
 @Component({
   selector: 'app-arbitrage-funding',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingRateSpreadChartComponent, FundingSpreadDetailsComponent],
+  imports: [
+    IconComponent,CommonModule, FormsModule, RouterModule, CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingRateSpreadChartComponent, FundingSpreadDetailsComponent],
   templateUrl: './arbitrage-funding.component.html',
   styleUrls: ['./arbitrage-funding.component.scss'],
   encapsulation: ViewEncapsulation.None,
