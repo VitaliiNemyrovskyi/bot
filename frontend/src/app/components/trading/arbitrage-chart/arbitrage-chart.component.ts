@@ -10,12 +10,14 @@ import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from '
 import { AuthService } from '../../../services/auth.service';
 import { ThemeService } from '../../../services/theme.service';
 import { ToastService } from '../../../services/toast.service';
+import { TranslationService } from '../../../services/translation.service';
 import { ExchangeCredentialsService } from '../../../services/exchange-credentials.service';
 import { ExchangeType } from '../../../models/exchange-credentials.model';
 import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.service';
 import { TradingSettingsService } from '../../../services/trading-settings.service';
 import { PublicFundingRatesService } from '../../../services/public-funding-rates.service';
 import { ArbitrageProfitCalculatorComponent } from '../arbitrage-profit-calculator/arbitrage-profit-calculator.component';
+import { SignalConfigModalComponent } from '../signal-config-modal/signal-config-modal.component';
 import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
@@ -98,6 +100,34 @@ interface ArbitragePosition {
 }
 
 /**
+ * Signal configuration for automated monitoring
+ */
+interface SignalConfig {
+  quantity: number;
+  leverage: number;
+  minPriceSpreadPercent: number;
+  primaryExchange: string;
+  hedgeExchange: string;
+  strategy: string;
+  minFundingSpreadPercent?: number;
+  primarySide?: 'long' | 'short';
+  hedgeSide?: 'long' | 'short';
+}
+
+/**
+ * Real-time price update from signal monitoring
+ */
+interface SignalPriceUpdate {
+  priceConditionMet: boolean;
+  priceSpreadUsdt: number;
+  priceSpreadPercent: number;
+  primaryPrice: number;
+  hedgePrice: number;
+  fundingSpreadPercent?: number;
+  fundingConditionMet?: boolean;
+}
+
+/**
  * Arbitrage Chart Component
  *
  * Displays comparative charts for arbitrage opportunities between two exchanges
@@ -115,6 +145,7 @@ interface ArbitragePosition {
     CardContentComponent,
     ButtonComponent,
     ArbitrageProfitCalculatorComponent,
+    SignalConfigModalComponent,
     RelativeTimePipe
   ],
   templateUrl: './arbitrage-chart.component.html',
@@ -155,6 +186,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   spreadPercent = signal<string>('0.0000');
   fundingSpread = signal<number>(0); // Funding rate spread in percentage
   primarySide = signal<'long' | 'short'>('long'); // Track primary side for price spread calculation
+
+  // Signal monitoring
+  activeSignalConfig = signal<SignalConfig | null>(null);
+  signalPriceUpdate = signal<SignalPriceUpdate | null>(null);
+  showSignalConfigModal = signal<boolean>(false);
+  hasActiveSignal = computed(() => this.activeSignalConfig() !== null);
+  editingSignalId = signal<string | null>(null);
+  editingSignalConfig = signal<SignalConfig | null>(null);
 
   // Order forms
   primaryOrderForm!: FormGroup;
@@ -313,6 +352,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private authService = inject(AuthService);
   private themeService = inject(ThemeService);
   private toastService = inject(ToastService);
+  private translationService = inject(TranslationService);
   private credentialsService = inject(ExchangeCredentialsService);
   private symbolInfoService = inject(SymbolInfoService);
   private tradingSettings = inject(TradingSettingsService);
@@ -3441,6 +3481,156 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (!validationResult.valid) {
       console.warn(`[ArbitrageChart] Hedge order validation failed:`, validationResult);
     }
+  }
+
+  /**
+   * Translation helper method
+   */
+  protected t(key: string): string {
+    return this.translationService.translate(key);
+  }
+
+  /**
+   * Signal Monitoring Methods
+   */
+
+  /**
+   * Edit active signal configuration
+   */
+  editSignalConfig(): void {
+    console.log('[ArbitrageChart] Edit signal config');
+    // TODO: Implement edit signal config modal
+    this.toastService.show('Редагування сигналу ще не реалізовано', 'info');
+  }
+
+  /**
+   * Open modal to configure and start signal monitoring
+   */
+  openSignalConfigModal(): void {
+    console.log('[ArbitrageChart] Open signal config modal');
+    this.showSignalConfigModal.set(true);
+  }
+
+  /**
+   * Close signal config modal
+   */
+  closeSignalConfigModal(): void {
+    console.log('[ArbitrageChart] Close signal config modal');
+    this.showSignalConfigModal.set(false);
+  }
+
+  /**
+   * Handle signal config save from modal
+   */
+  async onSignalConfigSave(config: SignalConfig): Promise<void> {
+    console.log('[ArbitrageChart] Signal config saved:', config);
+    this.showSignalConfigModal.set(false);
+
+    try {
+      // Call backend API to start signal monitoring
+      const response = await lastValueFrom(
+        this.http.post(getEndpointUrl('arbitrage', 'signal/start'), config)
+      );
+
+      this.toastService.show('Сигнал успішно створено', 'success');
+      this.activeSignalConfig.set(config);
+    } catch (error: unknown) {
+      console.error('[ArbitrageChart] Failed to start signal:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Невідома помилка';
+      this.toastService.show(`Помилка створення сигналу: ${errorMessage}`, 'error');
+    }
+  }
+
+  /**
+   * Stop active signal monitoring
+   */
+  async stopSignal(): Promise<void> {
+    const config = this.activeSignalConfig();
+    if (!config) {
+      return;
+    }
+
+    try {
+      // Call backend API to stop signal
+      await lastValueFrom(
+        this.http.post(getEndpointUrl('arbitrage', 'signal/stop'), {})
+      );
+
+      this.toastService.show('Сигнал зупинено', 'success');
+      this.activeSignalConfig.set(null);
+      this.signalPriceUpdate.set(null);
+    } catch (error: unknown) {
+      console.error('[ArbitrageChart] Failed to stop signal:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Невідома помилка';
+      this.toastService.show(`Помилка зупинки сигналу: ${errorMessage}`, 'error');
+    }
+  }
+
+  /**
+   * Parse funding interval to hours from ExchangeData
+   * Uses fundingInterval (ms) if available, otherwise fundingIntervalStr
+   */
+  parseFundingIntervalToHours(data: ExchangeData): number | null {
+    // First try to use fundingInterval in milliseconds
+    if (data.fundingInterval !== undefined) {
+      return data.fundingInterval / (1000 * 60 * 60); // Convert ms to hours
+    }
+
+    // Otherwise try to parse fundingIntervalStr
+    if (data.fundingIntervalStr) {
+      const match = data.fundingIntervalStr.match(/^(\d+)h$/);
+      if (match) {
+        return parseInt(match[1], 10);
+      }
+    }
+
+    // No funding interval data available
+    return null;
+  }
+
+  /**
+   * Get maximum funding interval between primary and hedge
+   * Returns hours, or 0 if no data available
+   */
+  getMaxFundingInterval(): number {
+    const primary = this.parseFundingIntervalToHours(this.primaryData());
+    const hedge = this.parseFundingIntervalToHours(this.hedgeData());
+
+    // Filter out null values and get max
+    const intervals = [primary, hedge].filter((val): val is number => val !== null);
+    return intervals.length > 0 ? Math.max(...intervals) : 0;
+  }
+
+  /**
+   * Calculate price spread progress percentage for progress bar
+   * Returns 0-100 based on current spread vs target spread
+   */
+  getPriceSpreadProgress(): number {
+    const config = this.activeSignalConfig();
+    const update = this.signalPriceUpdate();
+
+    if (!config || !update) {
+      return 0;
+    }
+
+    const progress = (update.priceSpreadPercent / config.minPriceSpreadPercent) * 100;
+    return Math.min(Math.max(progress, 0), 100);
+  }
+
+  /**
+   * Calculate funding spread progress percentage for progress bar
+   * Returns 0-100 based on current funding spread vs target spread
+   */
+  getFundingSpreadProgress(): number {
+    const config = this.activeSignalConfig();
+    const update = this.signalPriceUpdate();
+
+    if (!config || !update || !config.minFundingSpreadPercent || update.fundingSpreadPercent === undefined) {
+      return 0;
+    }
+
+    const progress = (update.fundingSpreadPercent / config.minFundingSpreadPercent) * 100;
+    return Math.min(Math.max(progress, 0), 100);
   }
 
 
