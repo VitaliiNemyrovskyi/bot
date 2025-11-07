@@ -297,6 +297,57 @@ class RedisService {
   }
 
   /**
+   * Cache bulk funding rates for an exchange
+   * Key format: bulk-funding:{exchange}
+   *
+   * Used by public funding rate endpoints to cache entire response
+   * for ultra-fast subsequent requests (~5ms vs ~200ms)
+   */
+  async cacheBulkFundingRates(exchange: string, data: any, ttlSeconds: number): Promise<void> {
+    if (!this.isReady()) {
+      console.warn('[Redis] Not connected, skipping bulk cache');
+      return;
+    }
+
+    try {
+      const key = `bulk-funding:${exchange.toUpperCase()}`;
+      const cacheData = JSON.stringify({
+        data,
+        timestamp: Date.now(),
+      });
+
+      await this.client!.setex(key, ttlSeconds, cacheData);
+    } catch (error: any) {
+      console.error(`[Redis] Error caching bulk funding rates for ${exchange}:`, error.message);
+    }
+  }
+
+  /**
+   * Get cached bulk funding rates for an exchange
+   *
+   * @returns Object with data and timestamp, or null if not cached
+   */
+  async getBulkFundingRates(exchange: string): Promise<{ data: any; timestamp: number } | null> {
+    if (!this.isReady()) {
+      return null;
+    }
+
+    try {
+      const key = `bulk-funding:${exchange.toUpperCase()}`;
+      const cached = await this.client!.get(key);
+
+      if (!cached) {
+        return null;
+      }
+
+      return JSON.parse(cached);
+    } catch (error: any) {
+      console.error(`[Redis] Error getting bulk funding rates for ${exchange}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Disconnect from Redis
    */
   async disconnect(): Promise<void> {

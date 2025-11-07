@@ -54,8 +54,8 @@ export async function GET(_request: NextRequest) {
     const enrichedData = premiumData.map((premium: any) => ({
       ...premium,
       fundingInterval: intervalMap.has(premium.symbol)
-        ? `${intervalMap.get(premium.symbol)}h`
-        : '8h', // Default to 8h
+        ? intervalMap.get(premium.symbol)
+        : 0, // 0 means unknown
     }));
 
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "start-dev.cmd",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,10 +11,12 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test-wallet": "tsx test-wallet-balance.ts",
-    "test-bingx": "tsx test-bingx-connector.ts"
+    "test-bingx": "tsx test-bingx-connector.ts",
+    "dev:next": "next dev"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",
+    "@types/node-cron": "^3.0.11",
     "bcryptjs": "^2.4.3",
     "bybit-api": "^4.3.1",
     "ccxt": "^4.5.11",
@@ -25,9 +27,11 @@
     "mexc-futures-sdk": "^1.5.1",
     "next": "15.5.2",
     "node-cache": "^5.1.2",
+    "node-cron": "^4.2.1",
     "protobufjs": "^7.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "undici": "^7.16.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
@@ -49,6 +53,6 @@
     "tailwindcss": "^4",
     "ts-jest": "^29.4.4",
     "tsx": "^4.20.5",
-    "typescript": "^5"
+    "typescript": "5.9.3"
   }
 }

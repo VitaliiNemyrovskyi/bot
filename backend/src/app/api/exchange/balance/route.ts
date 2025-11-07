@@ -3,7 +3,7 @@
  * Get account balance for a specific exchange
  *
  * Query params:
- * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET
+ * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET | BINANCE | OKX
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -67,6 +67,18 @@ export async function GET(request: NextRequest) {
         break;
       case 'BYBIT':
         balance = await getBybitBalance(credentials.apiKey, credentials.apiSecret);
+        break;
+      case 'BINANCE':
+        balance = await getBinanceBalance(credentials.apiKey, credentials.apiSecret);
+        break;
+      case 'OKX':
+        if (!credentials.passphrase || credentials.passphrase.trim() === '') {
+          return NextResponse.json(
+            { success: false, error: 'OKX requires a passphrase. Please add your OKX API passphrase in settings.' },
+            { status: 400 }
+          );
+        }
+        balance = await getOKXBalance(credentials.apiKey, credentials.apiSecret, credentials.passphrase.trim());
         break;
       case 'GATEIO':
         balance = await getGateIOBalance(credentials.apiKey, credentials.apiSecret);
@@ -281,6 +293,92 @@ async function getMEXCBalance(apiKey: string, apiSecret: string, authToken?: str
     };
   } catch (error: any) {
     console.error('[MEXC] Error getting balance:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get Binance Futures balance
+ */
+async function getBinanceBalance(apiKey: string, apiSecret: string): Promise<ExchangeBalance | null> {
+  try {
+    // Create Binance futures exchange instance using CCXT
+    const exchange = new ccxt.binance({
+      apiKey,
+      secret: apiSecret,
+      enableRateLimit: true,
+      options: {
+        defaultType: 'future',  // Use USDⓈ-M Futures
+        adjustForTimeDifference: true,
+      },
+    });
+
+    // Fetch USDT perpetual futures balance
+    const balance = await exchange.fetchBalance();
+
+    // Extract USDT balance
+    const usdtTotal = balance.total?.USDT || 0;
+    const usdtFree = balance.free?.USDT || 0;
+    const usdtUsed = balance.used?.USDT || 0;
+
+    console.log(`[Binance] USDT Futures Balance:`, {
+      total: usdtTotal,
+      free: usdtFree,
+      used: usdtUsed,
+    });
+
+    return {
+      exchange: 'BINANCE',
+      totalBalance: usdtTotal.toString(),
+      availableBalance: usdtFree.toString(),
+      usedBalance: usdtUsed.toString(),
+      currency: 'USDT',
+    };
+  } catch (error: any) {
+    console.error('[Binance] Error getting balance:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get OKX Futures balance
+ */
+async function getOKXBalance(apiKey: string, apiSecret: string, passphrase?: string | null): Promise<ExchangeBalance | null> {
+  try {
+    // Create OKX exchange instance using CCXT
+    const exchange = new ccxt.okx({
+      apiKey,
+      secret: apiSecret,
+      password: passphrase || '',
+      enableRateLimit: true,
+      options: {
+        defaultType: 'swap',  // USDT perpetual swaps
+      },
+    });
+
+    // Fetch USDT perpetual swap balance
+    const balance = await exchange.fetchBalance({ type: 'swap' });
+
+    // Extract USDT balance
+    const usdtTotal = balance.total?.USDT || 0;
+    const usdtFree = balance.free?.USDT || 0;
+    const usdtUsed = balance.used?.USDT || 0;
+
+    console.log(`[OKX] USDT Swap Balance:`, {
+      total: usdtTotal,
+      free: usdtFree,
+      used: usdtUsed,
+    });
+
+    return {
+      exchange: 'OKX',
+      totalBalance: usdtTotal.toString(),
+      availableBalance: usdtFree.toString(),
+      usedBalance: usdtUsed.toString(),
+      currency: 'USDT',
+    };
+  } catch (error: any) {
+    console.error('[OKX] Error getting balance:', error.message);
     throw error;
   }
 }

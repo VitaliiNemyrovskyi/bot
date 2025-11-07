@@ -16,6 +16,7 @@ let graduatedEntryArbitrageService: any = null;
 let fundingTrackerService: any = null;
 let liquidationMonitorService: any = null;
 let fundingRateCollector: any = null;
+let fundingIntervalScheduler: any = null;
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
@@ -68,6 +69,11 @@ export async function register() {
       fundingRateCollector.start();
       console.log('[Instrumentation] Funding rate collector service started');
 
+      // Initialize funding interval scheduler for hourly updates of all exchanges
+      const fundingIntervalSchedulerModule = await import('@/services/funding-interval-scheduler.service');
+      fundingIntervalScheduler = fundingIntervalSchedulerModule.startFundingIntervalScheduler();
+      console.log('[Instrumentation] Funding interval scheduler started (hourly updates at :00)');
+
       servicesInitialized = true;
 
       // Setup graceful shutdown handlers
@@ -88,6 +94,11 @@ function setupGracefulShutdown() {
 
     try {
       // Stop all services
+      if (fundingIntervalScheduler) {
+        console.log('[Instrumentation] Stopping funding interval scheduler...');
+        fundingIntervalScheduler.stop();
+      }
+
       if (fundingRateCollector) {
         console.log('[Instrumentation] Stopping funding rate collector...');
         fundingRateCollector.stop();

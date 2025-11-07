@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         symbol: rate.symbol.replace('/', '-'), // BTC/USDT → BTC-USDT
         fundingRate: rate.fundingRate.toString(),
         fundingTime: Math.floor(rate.nextFundingTime.getTime()),
-        fundingInterval: `${rate.fundingInterval}h`, // From DB
+        fundingInterval: rate.fundingInterval, // Pure number from DB
       }));
 
       return NextResponse.json(
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       symbol: rate.symbol.replace('/', '-'), // BTC/USDT → BTC-USDT
       fundingRate: rate.fundingRate.toString(),
       fundingTime: Math.floor(rate.nextFundingTime.getTime()),
-      fundingInterval: `${rate.fundingInterval}h`, // From DB
+      fundingInterval: rate.fundingInterval, // Pure number from DB
     }));
 
     // 4. Return response

@@ -184,7 +184,8 @@ export async function POST(request: NextRequest) {
       }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
-      authToken: z.string().optional(), // Browser session token for MEXC
+      authToken: z.string().optional(), // Browser session token for MEXC, OR passphrase for OKX/Bitget
+      passphrase: z.string().optional(), // Passphrase for OKX/Bitget (will be stored in authToken)
       label: z.string().optional(),
       isActive: z.boolean().optional(),
     });
@@ -211,11 +212,16 @@ export async function POST(request: NextRequest) {
 
     // Save credentials (includes validation)
     try {
+      // For OKX and Bitget, store passphrase in authToken field
+      const authTokenValue = (body.exchange === 'OKX' || body.exchange === 'BITGET')
+        ? body.passphrase
+        : body.authToken;
+
       const result = await ExchangeCredentialsService.saveCredentials(userId, {
         exchange: body.exchange,
         apiKey: body.apiKey,
         apiSecret: body.apiSecret,
-        authToken: body.authToken, // Browser session token for MEXC
+        authToken: authTokenValue, // Browser session token for MEXC, OR passphrase for OKX/Bitget
         label: body.label,
         isActive: body.isActive ?? true, // Default to true for new credentials
       });

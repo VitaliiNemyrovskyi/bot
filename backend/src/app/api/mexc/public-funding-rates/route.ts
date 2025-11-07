@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         data: cachedRates.map(rate => ({
           symbol: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
           fundingRate: rate.fundingRate,
-          fundingInterval: rate.fundingInterval > 0 ? `${rate.fundingInterval}h` : 'unknown',
+          fundingInterval: rate.fundingInterval,
           nextFundingTime: rate.nextFundingTime.getTime(),
         })),
       };
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     // Step 4: Upsert records (update existing or create new)
     const upsertPromises = fundingRates.map((rate: any) => {
       const symbol = rate.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
-      const fundingIntervalHours = rate.collectCycle || 8; // Use actual collectCycle or default to 8h
+      const fundingIntervalHours = rate.collectCycle || 0; // Use actual collectCycle
 
       return prisma.publicFundingRate.upsert({
         where: {
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
       data: fundingRates.map((rate: any) => ({
         symbol: rate.symbol, // BTC_USDT format
         fundingRate: rate.fundingRate,
-        fundingInterval: rate.collectCycle ? `${rate.collectCycle}h` : '8h',
+        fundingInterval: rate.collectCycle || 0,
         nextFundingTime: rate.nextSettleTime || 0,
       })),
     };

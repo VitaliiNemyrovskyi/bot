@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
             symbol: rate.symbol.replace('/', ''), // BTC/USDT → BTCUSDT
             fundingRate: rate.fundingRate.toString(),
             fundingRateTimestamp: Math.floor(rate.nextFundingTime.getTime()).toString(),
-            fundingInterval: `${rate.fundingInterval}h`, // From DB
+            fundingInterval: rate.fundingInterval, // Pure number from DB
             markPrice: rate.markPrice?.toString() || '0',
             indexPrice: rate.indexPrice?.toString() || '0',
           })),
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
 
       // Parse funding interval from API
       // fundingIntervalHour can be a number or string like "8", "1", "4"
-      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
+      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '0');
 
       // Convert symbol format: BTCUSDT → BTC/USDT
       const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
         ...rawData.result,
         list: data.map((item: any) => ({
           ...item,
-          fundingInterval: `${parseInt(item.fundingIntervalHour || '8')}h`,
+          fundingInterval: parseInt(item.fundingIntervalHour || '0'), // Pure number
         })),
       },
     };

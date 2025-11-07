@@ -42,12 +42,12 @@ export async function GET(_request: NextRequest) {
     const data = await response.json();
     console.log('[Bitget] Successfully fetched', data?.data?.length || 0, 'rates');
 
-    // Add unified fundingInterval format (e.g., "8h")
+    // Add unified fundingInterval format (pure number)
     const enrichedData = {
       ...data,
       data: data?.data?.map((item: any) => ({
         ...item,
-        fundingInterval: item.fundingRateInterval ? `${item.fundingRateInterval}h` : '8h',
+        fundingInterval: item.fundingRateInterval || 0,
       })) || []
     };
 

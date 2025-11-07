@@ -312,14 +312,14 @@ export async function GET(request: NextRequest) {
                 const fundingRateDecimal = parseFloat(fundingRateRaw.toString());
                 const fundingRatePercent = fundingRateDecimal * 100;
 
-                // Get symbol and normalize it (remove all separators)
+                // Get interval from fundingInterval field (all endpoints now provide this)
                 const symbolRaw = r.symbol || r.name;
                 if (!symbolRaw) return;
 
                 const normalizedSymbol = symbolRaw.replace(/-/g, '').replace(/_/g, '');
 
-                // Get interval from fundingInterval field (all endpoints now provide this)
-                const interval = r.fundingInterval || '8h'; // Default to 8h if not provided
+                // Get interval from fundingInterval field (pure number in hours)
+                const interval = r.fundingInterval || 0; // 0 means unknown
 
                 symbolFundingMap.set(normalizedSymbol, { rate: fundingRatePercent, interval });
               }

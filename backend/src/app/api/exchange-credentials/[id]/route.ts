@@ -203,14 +203,14 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { label, apiKey, apiSecret, authToken, isActive } = body;
+    const { label, apiKey, apiSecret, authToken, passphrase, isActive } = body;
 
     // Validate that at least one field is provided
-    if (label === undefined && apiKey === undefined && apiSecret === undefined && authToken === undefined && isActive === undefined) {
+    if (label === undefined && apiKey === undefined && apiSecret === undefined && authToken === undefined && passphrase === undefined && isActive === undefined) {
       return NextResponse.json(
         {
           success: false,
-          error: 'At least one field (label, apiKey, apiSecret, authToken, isActive) must be provided',
+          error: 'At least one field (label, apiKey, apiSecret, authToken, passphrase, isActive) must be provided',
           code: CredentialErrorCode.VALIDATION_ERROR,
           timestamp: new Date().toISOString(),
         },
@@ -219,11 +219,51 @@ export async function PATCH(
     }
 
     try {
+      // Get existing credential to check exchange type
+      const existingCredential = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
+      if (!existingCredential) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Credential not found',
+            code: CredentialErrorCode.NOT_FOUND,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 }
+        );
+      }
+
+      // For OKX and Bitget, if passphrase is provided, store it in authToken field
+      // If neither passphrase nor authToken is provided, don't update authToken (keep existing)
+      const isOkxOrBitget = existingCredential.exchange === 'OKX' || existingCredential.exchange === 'BITGET';
+      let authTokenValue: string | undefined = undefined;
+
+      if (isOkxOrBitget) {
+        // For OKX/Bitget: use passphrase if provided, otherwise don't update authToken
+        if (passphrase !== undefined) {
+          authTokenValue = passphrase;
+        }
+        // If passphrase is undefined, authTokenValue stays undefined = don't update
+      } else {
+        // For other exchanges: use authToken if provided
+        if (authToken !== undefined) {
+          authTokenValue = authToken;
+        }
+      }
+
+      // Build update object with only defined fields
+      const updateData: { label?: string; apiKey?: string; apiSecret?: string; authToken?: string; isActive?: boolean } = {};
+      if (label !== undefined) updateData.label = label;
+      if (apiKey !== undefined) updateData.apiKey = apiKey;
+      if (apiSecret !== undefined) updateData.apiSecret = apiSecret;
+      if (authTokenValue !== undefined) updateData.authToken = authTokenValue;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
       // Update credential
       const updated = await ExchangeCredentialsService.updateCredential(
         userId,
         credentialId,
-        { label, apiKey, apiSecret, authToken, isActive }
+        updateData
       );
 
       return NextResponse.json(

@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
           symbol: rate.symbol,
           fundingRate: rate.fundingRate.toString(),
           nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-          fundingInterval: `${rate.fundingInterval}h`,
+          fundingInterval: rate.fundingInterval,
         }));
 
         // Combine direct results with DB data
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
       symbol: rate.symbol,
       fundingRate: rate.fundingRate.toString(),
       nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-      fundingInterval: `${rate.fundingInterval}h`,
+      fundingInterval: rate.fundingInterval,
     }));
 
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RestClientV5 } from 'bybit-api';
 import { BingXService } from '@/lib/bingx';
 import { MEXCService } from '@/lib/mexc';
+import ccxt from 'ccxt';
 
 /**
  * POST /api/exchange-credentials/test
@@ -10,7 +11,7 @@ import { MEXCService } from '@/lib/mexc';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { exchange, apiKey, apiSecret, authToken } = body;
+    const { exchange, apiKey, apiSecret, authToken, passphrase } = body;
 
     // Validate required fields
     if (!exchange || !apiKey || !apiSecret) {
@@ -103,27 +104,152 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (exchange.toUpperCase() === 'BINANCE') {
-      // Binance validation - return success with note
-      return NextResponse.json({
-        success: true,
-        message: 'API credentials are valid (validation not yet implemented for this exchange)',
-        data: {
-          exchange: 'BINANCE',
-          note: 'Full credential validation will be implemented in a future update',
-        },
-        timestamp: new Date().toISOString(),
-      });
+      // Test Binance credentials using CCXT
+      try {
+        const binanceExchange = new ccxt.binance({
+          apiKey,
+          secret: apiSecret,
+          enableRateLimit: true,
+          options: {
+            defaultType: 'future',  // Use USDⓈ-M Futures
+            adjustForTimeDifference: true,
+          },
+        });
+
+        // Test by fetching balance - this will validate the credentials
+        const balance = await binanceExchange.fetchBalance();
+
+        // Extract USDT balance info
+        const usdtTotal = balance.total?.USDT || 0;
+        const usdtFree = balance.free?.USDT || 0;
+
+        console.log('[BINANCE] Credentials validated successfully');
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          accountPreview: {
+            totalBalance: usdtTotal.toString(),
+            availableBalance: usdtFree.toString(),
+            currency: 'USDT',
+            accountType: 'futures',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('Binance API validation error:', error);
+
+        // Handle Binance-specific errors
+        const errorMsg = error.message || '';
+
+        if (errorMsg.includes('Invalid API-key') || errorMsg.includes('Signature') || errorMsg.includes('Authentication')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key or secret is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
     } else if (exchange.toUpperCase() === 'OKX') {
-      // OKX validation would go here
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Not implemented',
-          message: 'OKX credential validation is not yet implemented',
-          code: 'NOT_IMPLEMENTED',
-        },
-        { status: 501 }
-      );
+      // Validate OKX requires passphrase
+      if (!passphrase || passphrase.trim() === '') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Missing passphrase',
+            message: 'OKX requires a passphrase. Please provide your OKX API passphrase.',
+            code: 'MISSING_PASSPHRASE',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Test OKX credentials
+      try {
+        const okxExchange = new ccxt.okx({
+          apiKey,
+          secret: apiSecret,
+          password: passphrase.trim(),
+          enableRateLimit: true,
+          options: {
+            defaultType: 'swap',  // USDT perpetual swaps
+          },
+        });
+
+        // Test by fetching balance - this will validate the credentials
+        const balance = await okxExchange.fetchBalance({ type: 'swap' });
+
+        // Extract USDT balance info
+        const usdtTotal = balance.total?.USDT || 0;
+        const usdtFree = balance.free?.USDT || 0;
+
+        console.log('[OKX] Credentials validated successfully');
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          accountPreview: {
+            totalBalance: usdtTotal.toString(),
+            availableBalance: usdtFree.toString(),
+            currency: 'USDT',
+            accountType: 'swap',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('OKX API validation error:', error);
+
+        // Handle OKX-specific errors
+        const errorMsg = error.message || '';
+
+        if (errorMsg.includes('Invalid API Key') || errorMsg.includes('Invalid sign') || errorMsg.includes('Authentication')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key, secret, or passphrase is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('Passphrase')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid passphrase',
+              message: 'The provided passphrase is incorrect',
+              code: 'INVALID_PASSPHRASE',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
     } else if (exchange.toUpperCase() === 'BINGX') {
       // Test BingX credentials
       const bingxService = new BingXService({
@@ -232,17 +358,149 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-    } else if (exchange.toUpperCase() === 'GATEIO' || exchange.toUpperCase() === 'BITGET') {
-      // Gate.io and Bitget validation
-      return NextResponse.json({
-        success: true,
-        message: 'API credentials are valid (validation not yet implemented for this exchange)',
-        data: {
-          exchange: exchange.toUpperCase(),
-          note: 'Full credential validation will be implemented in a future update',
-        },
-        timestamp: new Date().toISOString(),
-      });
+    } else if (exchange.toUpperCase() === 'GATEIO') {
+      // Test Gate.io credentials using CCXT
+      try {
+        const gateioExchange = new ccxt.gate({
+          apiKey,
+          secret: apiSecret,
+          enableRateLimit: true,
+        });
+
+        // Test by fetching balance - this will validate the credentials
+        const balance = await gateioExchange.fetchBalance({ type: 'swap' });
+
+        // Extract USDT balance info
+        const usdtTotal = balance.total?.USDT || 0;
+        const usdtFree = balance.free?.USDT || 0;
+
+        console.log('[GATEIO] Credentials validated successfully');
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          accountPreview: {
+            totalBalance: usdtTotal.toString(),
+            availableBalance: usdtFree.toString(),
+            currency: 'USDT',
+            accountType: 'swap',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('Gate.io API validation error:', error);
+
+        // Handle Gate.io-specific errors
+        const errorMsg = error.message || '';
+
+        if (errorMsg.includes('USER_NOT_FOUND') || errorMsg.includes('please transfer funds first')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Futures account not activated',
+              message: 'Gate.io futures account not activated. Please transfer funds to your Gate.io futures account first to activate it.',
+              code: 'ACCOUNT_NOT_ACTIVATED',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('Invalid') || errorMsg.includes('Authentication')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key or secret is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
+    } else if (exchange.toUpperCase() === 'BITGET') {
+      // Validate Bitget requires passphrase
+      if (!passphrase || passphrase.trim() === '') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Missing passphrase',
+            message: 'Bitget requires a passphrase. Please provide your Bitget API passphrase.',
+            code: 'MISSING_PASSPHRASE',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Test Bitget credentials using CCXT
+      try {
+        const bitgetExchange = new ccxt.bitget({
+          apiKey,
+          secret: apiSecret,
+          password: passphrase.trim(),
+          enableRateLimit: true,
+          options: {
+            defaultType: 'swap',  // USDT perpetual swaps
+          },
+        });
+
+        // Test by fetching balance - this will validate the credentials
+        const balance = await bitgetExchange.fetchBalance({ type: 'swap' });
+
+        // Extract USDT balance info
+        const usdtTotal = balance.total?.USDT || 0;
+        const usdtFree = balance.free?.USDT || 0;
+
+        console.log('[BITGET] Credentials validated successfully');
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          accountPreview: {
+            totalBalance: usdtTotal.toString(),
+            availableBalance: usdtFree.toString(),
+            currency: 'USDT',
+            accountType: 'swap',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('Bitget API validation error:', error);
+
+        // Handle Bitget-specific errors
+        const errorMsg = error.message || '';
+
+        if (errorMsg.includes('Invalid') || errorMsg.includes('Authentication') || errorMsg.includes('Signature')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key or secret is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
     } else {
       return NextResponse.json(
         {

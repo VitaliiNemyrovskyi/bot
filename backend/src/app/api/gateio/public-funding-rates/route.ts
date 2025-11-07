@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         name: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
         funding_rate: rate.fundingRate.toString(),
         funding_interval: rate.fundingInterval * 3600, // Hours → seconds (GateIO format)
-        fundingInterval: `${rate.fundingInterval}h`, // Unified format: "8h"
+        fundingInterval: rate.fundingInterval, // Pure number
         funding_next_apply: Math.floor(rate.nextFundingTime.getTime() / 1000),
         mark_price: rate.markPrice?.toString() || '0',
         index_price: rate.indexPrice?.toString() || '0',
@@ -144,8 +144,8 @@ export async function GET(request: NextRequest) {
     const transformedData = data.map((contract: any) => ({
       ...contract,
       fundingInterval: contract.funding_interval
-        ? `${contract.funding_interval / 3600}h`
-        : '8h', // Unified format: "8h"
+        ? contract.funding_interval / 3600
+        : 0, // Pure number
     }));
 
     return NextResponse.json(transformedData, {

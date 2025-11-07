@@ -12,86 +12,78 @@ const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 // In-memory cache for funding intervals (rarely change)
 const fundingIntervalCache = new Map<string, number>();
 
+// Valid funding intervals (hours) - only these values are allowed
+const VALID_FUNDING_INTERVALS = [1, 4, 8];
+
 /**
  * Calculate BingX funding interval dynamically from historical data
+ * NO FALLBACKS TO DEFAULTS - Always get from API
  */
 async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymbol: string): Promise<number> {
-  try {
-    // Check in-memory cache first (fastest)
-    const cacheKey = `BINGX-${normalizedSymbol}`;
-    const cached = fundingIntervalCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    // Try to fetch from API first (most accurate, always fresh)
-    const historyResponse = await fetchWithTimeout(
-      EXCHANGE_ENDPOINTS.BINGX.FUNDING_RATE_HISTORY(bingxSymbol),
-      { timeout: 10000 } // 10 second timeout for consistency
-    );
-    const historyData = await historyResponse.json();
-
-    if (historyData.code === 0 && historyData.data && historyData.data.length >= 2) {
-      // Calculate interval from first two records
-      // Use absolute value in case API returns records in different order
-      const timeDiff = Math.abs(historyData.data[0].fundingTime - historyData.data[1].fundingTime);
-      const hoursInterval = Math.round(timeDiff / (1000 * 60 * 60));
-
-      if (hoursInterval > 0 && hoursInterval <= 24) {
-        fundingIntervalCache.set(cacheKey, hoursInterval);
-        return hoursInterval;
-      }
-    }
-
-    // Fallback: Try to get from database if API fails
-    const existingRecord = await prisma.publicFundingRate.findFirst({
-      where: {
-        exchange: 'BINGX',
-        symbol: normalizedSymbol,
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-    });
-
-    if (existingRecord && existingRecord.fundingInterval > 0) {
-      console.log(`[BingX] Using database fallback for ${normalizedSymbol}: ${existingRecord.fundingInterval}h`);
-      fundingIntervalCache.set(cacheKey, existingRecord.fundingInterval);
-      return existingRecord.fundingInterval;
-    }
-
-    // Ultimate fallback: 0 means unknown
-    return 0;
-  } catch (error: any) {
-    // Log timeout as warning (not critical, we have fallback)
-    if (error.message?.includes('Request timeout')) {
-      console.warn(`[BingX] Timeout fetching history for ${bingxSymbol}, using fallback`);
-    } else {
-      console.error(`[BingX] Error calculating interval for ${bingxSymbol}:`, error);
-    }
-
-    // Try database as last resort
-    try {
-      const existingRecord = await prisma.publicFundingRate.findFirst({
-        where: {
-          exchange: 'BINGX',
-          symbol: normalizedSymbol,
-        },
-        orderBy: {
-          timestamp: 'desc',
-        },
-      });
-
-      if (existingRecord && existingRecord.fundingInterval > 0) {
-        console.log(`[BingX] Using database fallback after error for ${normalizedSymbol}`);
-        return existingRecord.fundingInterval;
-      }
-    } catch (dbError) {
-      console.error(`[BingX] Database fallback also failed for ${bingxSymbol}`);
-    }
-
-    return 0; // 0 means unknown
+  // Check in-memory cache first (fastest)
+  const cacheKey = `BINGX-${normalizedSymbol}`;
+  const cached = fundingIntervalCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
+
+  // Fetch from API - this is the ONLY source of truth
+  const historyResponse = await fetchWithTimeout(
+    EXCHANGE_ENDPOINTS.BINGX.FUNDING_RATE_HISTORY(bingxSymbol),
+    { timeout: 10000 } // 10 second timeout for consistency
+  );
+  const historyData = await historyResponse.json();
+
+  if (historyData.code !== 0 || !historyData.data || historyData.data.length < 3) {
+    throw new Error(`BingX API returned insufficient data for ${bingxSymbol}: ${historyData.msg || 'unknown error'}`);
+  }
+
+  // Analyze multiple records to find the actual funding collection interval
+  // BingX may return intermediate updates, so we need to look for the pattern
+  const intervals: number[] = [];
+
+  // Calculate intervals between consecutive records (analyze up to 10 records)
+  const recordsToAnalyze = Math.min(10, historyData.data.length);
+  for (let i = 0; i < recordsToAnalyze - 1; i++) {
+    const timeDiff = Math.abs(historyData.data[i].fundingTime - historyData.data[i + 1].fundingTime);
+    const hours = Math.round(timeDiff / (1000 * 60 * 60));
+
+    // Only consider valid intervals
+    if (VALID_FUNDING_INTERVALS.includes(hours)) {
+      intervals.push(hours);
+    }
+  }
+
+  if (intervals.length === 0) {
+    throw new Error(`Could not determine valid funding interval for ${bingxSymbol} from ${recordsToAnalyze} records`);
+  }
+
+  // Find the most common interval (mode)
+  const intervalCounts = new Map<number, number>();
+  for (const interval of intervals) {
+    intervalCounts.set(interval, (intervalCounts.get(interval) || 0) + 1);
+  }
+
+  // Get the interval with highest frequency
+  let mostCommonInterval = 0;
+  let maxCount = 0;
+  for (const [interval, count] of intervalCounts.entries()) {
+    if (count > maxCount) {
+      maxCount = count;
+      mostCommonInterval = interval;
+    }
+  }
+
+  if (mostCommonInterval === 0) {
+    throw new Error(`Could not determine funding interval for ${bingxSymbol}: no valid pattern found`);
+  }
+
+  // Log the analysis for debugging
+  console.log(`[BingX] ${normalizedSymbol}: Analyzed ${intervals.length} intervals, most common: ${mostCommonInterval}h (${maxCount}/${intervals.length} records)`);
+
+  // Cache and return
+  fundingIntervalCache.set(cacheKey, mostCommonInterval);
+  return mostCommonInterval;
 }
 
 /**
@@ -167,7 +159,7 @@ export async function GET(_request: NextRequest) {
           nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
           markPrice: rate.markPrice?.toString() || '0',
           indexPrice: rate.indexPrice?.toString() || '0',
-          fundingInterval: rate.fundingInterval > 0 ? `${rate.fundingInterval}h` : '', // Empty if unknown
+          fundingInterval: rate.fundingInterval, // Pure number: 0 means unknown
         })),
       };
 
@@ -218,18 +210,61 @@ export async function GET(_request: NextRequest) {
 
     console.log(`[BingX] Filtered ${allData.length - data.length} non-trading contracts. Active: ${data.length}`);
 
-    // Step 5: Calculate funding intervals ONCE and cache them (FIX: No duplicate calls)
-    const symbolIntervalMap = new Map<string, number>();
-    for (const item of data) {
-      const symbol = item.symbol.replace('-', '/'); // BTC-USDT → BTC/USDT
-      const fundingInterval = await calculateBingXFundingInterval(item.symbol, symbol);
-      symbolIntervalMap.set(symbol, fundingInterval);
+    // Step 5: Get existing intervals from DB
+    const existingRates = await prisma.publicFundingRate.findMany({
+      where: {
+        exchange: 'BINGX',
+      },
+      select: {
+        symbol: true,
+        fundingInterval: true,
+      },
+    });
+
+    const intervalMap = new Map<string, number>();
+    for (const rate of existingRates) {
+      intervalMap.set(rate.symbol, rate.fundingInterval);
     }
 
-    // Step 6: Upsert records using pre-calculated intervals
+    // Step 6: Identify symbols with missing intervals (interval=0 or not in DB)
+    const symbolsNeedingInterval: Array<{ bingxSymbol: string; normalizedSymbol: string }> = [];
+    for (const item of data) {
+      const normalizedSymbol = item.symbol.replace('-', '/');
+      const existingInterval = intervalMap.get(normalizedSymbol);
+
+      // Only calculate if interval is 0 or symbol is new
+      if (!existingInterval || existingInterval === 0) {
+        symbolsNeedingInterval.push({
+          bingxSymbol: item.symbol,
+          normalizedSymbol,
+        });
+      }
+    }
+
+    // Step 7: Calculate missing intervals in small batches (10 at a time) to avoid memory crash
+    if (symbolsNeedingInterval.length > 0) {
+      console.log(`[BingX] Calculating intervals for ${symbolsNeedingInterval.length} symbols in batches of 10...`);
+      const batchSize = 10;
+
+      for (let i = 0; i < symbolsNeedingInterval.length; i += batchSize) {
+        const batch = symbolsNeedingInterval.slice(i, i + batchSize);
+        const batchPromises = batch.map(async ({ bingxSymbol, normalizedSymbol }) => {
+          const interval = await calculateBingXFundingInterval(bingxSymbol, normalizedSymbol);
+          if (interval > 0) {
+            intervalMap.set(normalizedSymbol, interval);
+            console.log(`[BingX] Calculated interval for ${normalizedSymbol}: ${interval}h`);
+          }
+        });
+
+        // Wait for batch to complete before starting next batch
+        await Promise.all(batchPromises);
+      }
+    }
+
+    // Step 8: Upsert records with calculated or existing intervals
     const upsertPromises = data.map(async (item: any) => {
       const symbol = item.symbol.replace('-', '/');
-      const fundingInterval = symbolIntervalMap.get(symbol) || 0;
+      const fundingInterval = intervalMap.get(symbol) || 0;
 
       return prisma.publicFundingRate.upsert({
         where: {
@@ -261,15 +296,15 @@ export async function GET(_request: NextRequest) {
 
     await Promise.all(upsertPromises);
 
-    // Step 7: Return transformed data with pre-calculated funding intervals
+    // Step 9: Return transformed data with fresh or existing intervals
     const enrichedData = {
       ...rawData,
       data: data.map((item: any) => {
         const symbol = item.symbol.replace('-', '/');
-        const intervalHours = symbolIntervalMap.get(symbol) || 0;
+        const intervalHours = intervalMap.get(symbol) || 0;
         return {
           ...item,
-          fundingInterval: intervalHours > 0 ? `${intervalHours}h` : '',
+          fundingInterval: intervalHours, // Pure number: 0 means unknown
         };
       }),
     };
