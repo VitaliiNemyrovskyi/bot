@@ -15,6 +15,40 @@ const fundingIntervalCache = new Map<string, number>();
 // Valid funding intervals (hours) - only these values are allowed
 const VALID_FUNDING_INTERVALS = [1, 4, 8];
 
+// TTL for funding interval recalculation (7 days in milliseconds)
+const INTERVAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Calculate the actual funding interval by comparing nextFundingTime with current time
+ * This is used to verify if stored interval matches real-time schedule
+ */
+function calculateRealTimeInterval(nextFundingTime: Date): number {
+  const now = Date.now();
+  const nextTime = nextFundingTime.getTime();
+
+  // If nextFundingTime is in the past, can't calculate
+  if (nextTime <= now) {
+    return 0;
+  }
+
+  const hoursUntilNext = Math.round((nextTime - now) / (1000 * 60 * 60));
+
+  // Find the closest valid interval
+  let closestInterval = 0;
+  let minDiff = Infinity;
+
+  for (const validInterval of VALID_FUNDING_INTERVALS) {
+    const diff = Math.abs(hoursUntilNext - validInterval);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestInterval = validInterval;
+    }
+  }
+
+  // Only return if difference is less than 1 hour (otherwise schedule doesn't match)
+  return minDiff < 1 ? closestInterval : 0;
+}
+
 /**
  * Calculate BingX funding interval dynamically from historical data
  * NO FALLBACKS TO DEFAULTS - Always get from API
@@ -210,7 +244,7 @@ export async function GET(_request: NextRequest) {
 
     console.log(`[BingX] Filtered ${allData.length - data.length} non-trading contracts. Active: ${data.length}`);
 
-    // Step 5: Get existing intervals from DB
+    // Step 5: Get existing intervals and timestamps from DB
     const existingRates = await prisma.publicFundingRate.findMany({
       where: {
         exchange: 'BINGX',
@@ -218,6 +252,8 @@ export async function GET(_request: NextRequest) {
       select: {
         symbol: true,
         fundingInterval: true,
+        nextFundingTime: true,
+        timestamp: true, // For TTL check
       },
     });
 
@@ -226,33 +262,82 @@ export async function GET(_request: NextRequest) {
       intervalMap.set(rate.symbol, rate.fundingInterval);
     }
 
-    // Step 6: Identify symbols with missing intervals (interval=0 or not in DB)
-    const symbolsNeedingInterval: Array<{ bingxSymbol: string; normalizedSymbol: string }> = [];
+    // Create map with full rate data for advanced checks
+    const rateDetailsMap = new Map<string, { interval: number; nextFundingTime: Date; timestamp: Date }>();
+    for (const rate of existingRates) {
+      rateDetailsMap.set(rate.symbol, {
+        interval: rate.fundingInterval,
+        nextFundingTime: rate.nextFundingTime,
+        timestamp: rate.timestamp,
+      });
+    }
+
+    // Step 6: Identify symbols needing interval calculation (HYBRID TTL + ACTUALITY CHECK)
+    const symbolsNeedingInterval: Array<{ bingxSymbol: string; normalizedSymbol: string; reason: string }> = [];
     for (const item of data) {
       const normalizedSymbol = item.symbol.replace('-', '/');
       const existingInterval = intervalMap.get(normalizedSymbol);
+      const rateDetails = rateDetailsMap.get(normalizedSymbol);
 
-      // Only calculate if interval is 0 or symbol is new
+      let needsCalculation = false;
+      let reason = '';
+
+      // Check 1: Interval is 0 or symbol is new
       if (!existingInterval || existingInterval === 0) {
+        needsCalculation = true;
+        reason = 'interval=0 or new symbol';
+      }
+      // Check 2: TTL check - interval older than 7 days
+      else if (rateDetails && (Date.now() - rateDetails.timestamp.getTime()) > INTERVAL_TTL_MS) {
+        needsCalculation = true;
+        reason = 'TTL expired (>7 days)';
+      }
+      // Check 3: Actuality check - does stored interval match real-time schedule?
+      else if (rateDetails) {
+        const realTimeInterval = calculateRealTimeInterval(new Date(item.nextFundingTime));
+        if (realTimeInterval > 0 && realTimeInterval !== existingInterval) {
+          needsCalculation = true;
+          reason = `schedule mismatch (stored: ${existingInterval}h, actual: ${realTimeInterval}h)`;
+        }
+      }
+
+      if (needsCalculation) {
         symbolsNeedingInterval.push({
           bingxSymbol: item.symbol,
           normalizedSymbol,
+          reason,
         });
       }
     }
 
     // Step 7: Calculate missing intervals in small batches (10 at a time) to avoid memory crash
     if (symbolsNeedingInterval.length > 0) {
-      console.log(`[BingX] Calculating intervals for ${symbolsNeedingInterval.length} symbols in batches of 10...`);
-      const batchSize = 10;
+      console.log(`[BingX] Hybrid check: ${symbolsNeedingInterval.length} symbols need recalculation`);
 
+      // Show reasons breakdown
+      const reasonCounts = new Map<string, number>();
+      for (const { reason } of symbolsNeedingInterval) {
+        reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+      }
+      console.log('[BingX] Recalculation reasons:');
+      for (const [reason, count] of reasonCounts.entries()) {
+        console.log(`  - ${reason}: ${count} symbols`);
+      }
+
+      const batchSize = 10;
       for (let i = 0; i < symbolsNeedingInterval.length; i += batchSize) {
         const batch = symbolsNeedingInterval.slice(i, i + batchSize);
-        const batchPromises = batch.map(async ({ bingxSymbol, normalizedSymbol }) => {
-          const interval = await calculateBingXFundingInterval(bingxSymbol, normalizedSymbol);
-          if (interval > 0) {
-            intervalMap.set(normalizedSymbol, interval);
-            console.log(`[BingX] Calculated interval for ${normalizedSymbol}: ${interval}h`);
+        const batchPromises = batch.map(async ({ bingxSymbol, normalizedSymbol, reason }) => {
+          try {
+            const interval = await calculateBingXFundingInterval(bingxSymbol, normalizedSymbol);
+            if (interval > 0) {
+              intervalMap.set(normalizedSymbol, interval);
+              console.log(`[BingX] ${normalizedSymbol}: ${interval}h (${reason})`);
+            }
+          } catch (error) {
+            // Skip symbols that don't have enough historical data - better to skip than use default
+            console.warn(`[BingX] Skipping ${normalizedSymbol}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            // Don't add to intervalMap - this symbol will be skipped in final output
           }
         });
 
