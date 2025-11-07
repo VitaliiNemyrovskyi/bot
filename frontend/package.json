@@ -45,6 +45,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "fantasticon": "^3.0.0",
     "icon-font-generator": "^2.1.11",
     "jasmine-core": "~5.1.0",
     "karma": "~6.4.0",
@@ -53,6 +54,7 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "typescript": "~5.4.5",
-    "typescript-eslint": "^8.46.2"
+    "typescript-eslint": "^8.46.2",
+    "webfont": "^11.2.26"
   }
 }
