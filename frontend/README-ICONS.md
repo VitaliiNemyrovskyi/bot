@@ -1,5 +1,13 @@
 # UI Icons System
 
+## Джерело іконок: Material Symbols (Google)
+
+Проект використовує професійні іконки **Material Symbols** від Google у filled стилі.
+- 2,500+ іконок доступні
+- Filled формат (оптимізовані для шрифтів)
+- Apache 2.0 License (безкоштовно)
+- Підтримка від Google
+
 ## Генерація іконкового шрифту
 
 ### Крок 1: Встановлення залежностей
@@ -9,30 +17,33 @@ cd frontend
 npm install
 ```
 
+Це встановить `@material-symbols/svg-400` та інструменти для генерації шрифтів.
+
 ### Крок 2: Генерація шрифту
 
 ```bash
-node generate-icon-font.js
+node generate-webfont.js
 ```
 
 Це створить:
-- `src/assets/fonts/ui-icons.woff2`
-- `src/assets/fonts/ui-icons.woff`
-- `src/assets/fonts/ui-icons.ttf`
+- `src/assets/fonts/ui-icons.woff2` (3KB)
+- `src/assets/fonts/ui-icons.woff` (3.8KB)
+- `src/assets/fonts/ui-icons.ttf` (6.4KB)
 - `src/assets/fonts/ui-icons.css`
 
 ### Крок 3: Додавання нових іконок
 
-1. Додайте SVG файл до `src/assets/icons/`
-2. Назва файлу стане назвою іконки (наприклад, `my-icon.svg` → `my-icon`)
-3. Запустіть `node generate-icon-font.js` для регенерації шрифту
+1. Знайдіть іконку на https://fonts.google.com/icons (стиль: Filled)
+2. Додайте маппінг у `copy-material-icons.js`
+3. Запустіть `node copy-material-icons.js` для копіювання SVG
+4. Запустіть `node generate-webfont.js` для регенерації шрифту
 
 ### Вимоги до SVG файлів
 
-- Розмір viewBox: `0 0 24 24`
-- Використовуйте `stroke="currentColor"` для кольору
-- Не використовуйте fill (або використовуйте `fill="none"`)
-- Всі шляхи повинні бути outline (не stroke)
+- **ВАЖЛИВО**: Використовуйте **fill-based** іконки (не stroke!)
+- Розмір viewBox: може бути будь-яким (Material Symbols: `0 -960 960 960`)
+- Іконки мають бути як `<path d="..."/>` без `stroke` атрибутів
+- Material Symbols автоматично відповідають цим вимогам
 
 ## Використання іконок
 

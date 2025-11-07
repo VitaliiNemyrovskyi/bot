@@ -39,6 +39,7 @@
     "@angular-eslint/template-parser": "^18.0.0",
     "@angular/cli": "^18.0.0",
     "@angular/compiler-cli": "^18.0.0",
+    "@material-symbols/svg-400": "^0.39.1",
     "@types/jasmine": "~5.1.0",
     "@types/node": "^22.0.0",
     "@types/pako": "^2.0.4",
