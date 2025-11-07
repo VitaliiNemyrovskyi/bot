@@ -4,6 +4,7 @@ import { MEXCService } from '@/lib/mexc';
 import { AuthService } from '@/lib/auth';
 import { CoinGeckoService } from '@/lib/coingecko';
 import { CCXTService } from '@/lib/ccxt-service';
+import { calculateCombinedFundingSpread, normalizeFundingRateTo1h } from '@shared/lib';
 // CCXT migration for funding rates API
 
 /**
@@ -151,49 +152,8 @@ async function fetchExchangeFundingRates(
  *
  * Returns pure number (hours) - no "h" suffix
  */
-function getDefaultFundingInterval(exchange: string): number {
-  const intervals: Record<string, number> = {
-    'BINANCE': 8,
-    'BYBIT': 8,
-    'BINGX': 8,
-    'OKX': 8,
-    'GATEIO': 8, // Confirmed via API: funding_interval=28800 seconds
-    'MEXC': 8, // Confirmed via API: collectCycle=8 hours
-  };
-
-  return intervals[exchange.toUpperCase()] || 0;
-}
-
-/**
- * Normalize funding rate to 8-hour interval for fair comparison
- *
- * Different exchanges use different funding intervals:
- * - Most exchanges: 8 hours (3 times per day)
- * - Some exchanges: 4 hours (6 times per day)
- * - Some exchanges: 1 hour (24 times per day)
- *
- * Example: If Exchange A has 2% funding every 8h and Exchange B has 1.5% funding every 1h:
- * - Exchange A: 2% per 8h (normalized: 2%)
- * - Exchange B: 1.5% per 1h (normalized: 1.5% * 8 = 12% per 8h)
- *
- * Without normalization, we might think A is better (2% > 1.5%), but actually B pays 12% per 8h period!
- *
- * @param fundingRate - Original funding rate as string (e.g., "0.0001")
- * @param fundingIntervalHours - Funding interval in hours (e.g., 8, 4, 1)
- * @returns Normalized funding rate to 8h interval as number
- */
-function normalizeFundingRateTo8h(fundingRate: string, fundingIntervalHours: number): number {
-  const rate = parseFloat(fundingRate);
-
-  // Normalization multiplier: convert to 8h interval
-  // If interval is 0 (unknown), use 1x multiplier (no normalization)
-  const multiplier = fundingIntervalHours > 0 ? (8 / fundingIntervalHours) : 1;
-  const normalizedRate = rate * multiplier;
-
-  console.log(`[FundingNormalization] ${fundingRate} (${fundingIntervalHours}h) → ${normalizedRate.toFixed(6)} (8h normalized), multiplier: ${multiplier}x`);
-
-  return normalizedRate;
-}
+// Removed - unused function (getDefaultFundingInterval)
+// Removed - old normalizeFundingRateTo8h function - now using shared library normalizeFundingRateTo1h instead
 
 /**
  * GET /api/arbitrage/funding-rates
@@ -464,8 +424,8 @@ export async function GET(request: NextRequest) {
         const fundingIntervalHours = rate.fundingIntervalFromApi;
         console.log(`[FundingInterval] ${result.exchange} ${rate.symbol}: Using API interval: ${fundingIntervalHours}h`);
 
-        // Normalize funding rate to 8h interval for backend sorting only
-        const normalizedFundingRate = normalizeFundingRateTo8h(rate.fundingRate, fundingIntervalHours);
+        // Normalize funding rate to 1h interval using centralized calculation
+        const normalizedFundingRate = normalizeFundingRateTo1h(parseFloat(rate.fundingRate), fundingIntervalHours);
 
         // Debug log for verification
         const nextTime = new Date(rate.nextFundingTime);
@@ -568,8 +528,20 @@ export async function GET(request: NextRequest) {
       // Calculate absolute price difference in USDT
       const priceSpreadUsdt = hedgePrice - primaryPrice;
 
-      // Calculate funding spread (difference between normalized rates)
-      const fundingSpread = hedgeExchange.fundingRateNormalized - primaryExchange.fundingRateNormalized;
+      // Calculate funding spread using centralized calculation
+      const spreadCalc = calculateCombinedFundingSpread(
+        {
+          rate: primaryExchange.fundingRateNormalized,
+          intervalHours: 1, // Already normalized to 1h
+          exchange: primaryExchange.exchange,
+        },
+        {
+          rate: hedgeExchange.fundingRateNormalized,
+          intervalHours: 1, // Already normalized to 1h
+          exchange: hedgeExchange.exchange,
+        }
+      );
+      const fundingSpread = spreadCalc.spreadPerHour;
       const fundingSpreadPercent = fundingSpread * 100;
 
       // Log detailed spread calculation

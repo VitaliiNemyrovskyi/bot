@@ -12,6 +12,7 @@ import { DropdownComponent, DropdownOption } from '../../components/ui/dropdown/
 import { InputComponent } from '../../components/ui/input/input.component';
 import { SliderComponent } from '../../components/ui/slider/slider.component';
 import { IconComponent } from '../../components/ui/icon/icon.component';
+import { calculateCombinedFundingSpread } from '@shared/lib';
 
 /**
  * Unified opportunity type that supports all strategies
@@ -1296,7 +1297,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     if (!longExchange || !shortExchange) return null;
 
-    // Calculate funding spread using normalized rates
+    // Calculate funding spread using normalized rates and centralized calculation
     const longRate = longExchange.fundingRateNormalized !== undefined
       ? longExchange.fundingRateNormalized
       : parseFloat(longExchange.fundingRate);
@@ -1305,11 +1306,25 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       ? shortExchange.fundingRateNormalized
       : parseFloat(shortExchange.fundingRate);
 
-    const fundingSpread = shortRate - longRate;
+    // Use centralized spread calculation function
+    const spreadResult = calculateCombinedFundingSpread(
+      {
+        rate: longRate,
+        intervalHours: 1, // Already normalized to 1h
+        exchange: longExchange.exchange,
+      },
+      {
+        rate: shortRate,
+        intervalHours: 1, // Already normalized to 1h
+        exchange: shortExchange.exchange,
+      }
+    );
+
+    const fundingSpread = spreadResult.spreadPerHour;
     const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
 
     // Estimated APR (gross)
-    const fundingPeriodsPerYear = 3 * 365; // 8h intervals (normalized)
+    const fundingPeriodsPerYear = 3 * 365; // 3 funding periods per day (8h intervals), normalized to 1h
     const estimatedAPR = fundingSpread * fundingPeriodsPerYear;
     const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
 

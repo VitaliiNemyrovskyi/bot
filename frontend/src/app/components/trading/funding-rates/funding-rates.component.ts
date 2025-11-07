@@ -21,6 +21,7 @@ import { StartBybitStrategyModalComponent, StartBybitStrategyModalData } from '.
 import { BybitFundingStrategyService } from '../../../services/bybit-funding-strategy.service';
 import { ActiveStrategy } from '../../../models/bybit-funding-strategy.model';
 import { getEndpointUrl } from '../../../config/app.config';
+import { calculateCombinedFundingSpread } from '@shared/lib';
 
 /**
  * Ticker data interface (Linear/Inverse)
@@ -2704,15 +2705,29 @@ export class FundingRatesComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Calculate funding spread between PRIMARY (bestLong) and HEDGE (bestShort)
-   * Returns the absolute difference in funding rates
+   * Calculate funding spread between PRIMARY (bestLong) and HEDGE (bestShort) using centralized calculation
+   * Uses the combined arbitrage formula from shared library
    */
   private calculateFundingSpread(bestLongRate: string, bestShortRate: string): { spread: number; spreadPercent: string } {
     const longRate = parseFloat(bestLongRate || '0');
     const shortRate = parseFloat(bestShortRate || '0');
 
-    // Calculate the absolute difference
-    const spread = Math.abs(longRate - shortRate);
+    // Use centralized spread calculation function
+    // Rates are assumed to be normalized to 1h already from the backend
+    const spreadResult = calculateCombinedFundingSpread(
+      {
+        rate: longRate,
+        intervalHours: 1, // Rates from backend are normalized to 1h
+        exchange: 'long', // Placeholder exchange name
+      },
+      {
+        rate: shortRate,
+        intervalHours: 1, // Rates from backend are normalized to 1h
+        exchange: 'short', // Placeholder exchange name
+      }
+    );
+
+    const spread = spreadResult.spreadPerHour;
     const spreadPercent = (spread * 100).toFixed(4);
 
     return {

@@ -24,7 +24,10 @@
     "useDefineForClassFields": false,
     "noUncheckedIndexedAccess": false,
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "paths": {
+      "@shared/lib": ["../shared/lib"]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

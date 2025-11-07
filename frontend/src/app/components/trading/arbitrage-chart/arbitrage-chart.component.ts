@@ -21,6 +21,7 @@ import { SignalConfigModalComponent } from '../signal-config-modal/signal-config
 import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
+import { calculateCombinedFundingSpread } from '@shared/lib';
 
 interface ExchangeData {
   exchange: string;
@@ -1770,8 +1771,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Calculate funding rate spread (difference between funding rates)
-   * Also automatically set optimal sides based on funding rates
+   * Calculate funding rate spread using centralized calculation
+   * Normalizes rates to 1h intervals and determines optimal sides
    */
   private calculateFundingSpread(): void {
     const primaryRateStr = this.primaryData().fundingRate;
@@ -1782,31 +1783,38 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const hedgeRate = (hedgeRateStr && hedgeRateStr !== 'null') ? parseFloat(hedgeRateStr) : NaN;
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
-      // Calculate NET funding profit based on actual positions
-      // Get current sides
-      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
-      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+      // Get funding intervals in hours
+      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
+      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
 
-      // Calculate actual cash flow for each position
-      // LONG: receives when rate is negative (shorts pay longs), pays when positive
-      // SHORT: pays when rate is negative, receives when positive
-      const primaryCashFlow = primarySide === 'long' ? -primaryRate : primaryRate;
-      const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRate : hedgeRate;
+      // Use centralized calculation with normalization
+      const spreadResult = calculateCombinedFundingSpread(
+        {
+          rate: primaryRate,
+          intervalHours: primaryIntervalHours,
+          exchange: this.primaryExchange(),
+        },
+        {
+          rate: hedgeRate,
+          intervalHours: hedgeIntervalHours,
+          exchange: this.hedgeExchange(),
+        }
+      );
 
-      // NET funding profit = sum of both cash flows
-      const netFundingProfit = primaryCashFlow + hedgeCashFlow;
-      this.fundingSpread.set(netFundingProfit);
+      // Set the spread value from centralized calculation
+      this.fundingSpread.set(spreadResult.spreadPerHour);
 
-      // Automatically set optimal sides based on funding rates
-      this.setOptimalSides(primaryRate, hedgeRate);
+      // Automatically set optimal sides based on centralized calculation result
+      this.setOptimalSidesFromSpreadResult(spreadResult);
     } else {
-      // If either rate is unavailable, set spread to 0 or NaN
+      // If either rate is unavailable, set spread to NaN
       this.fundingSpread.set(NaN);
     }
   }
 
   /**
-   * Recalculate funding spread based on current sides and funding rates
+   * Recalculate funding spread using centralized calculation
+   * Called when user manually changes position sides
    */
   private recalculateFundingSpread(): void {
     const primaryRateStr = this.primaryData().fundingRate;
@@ -1816,32 +1824,45 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const hedgeRate = (hedgeRateStr && hedgeRateStr !== 'null') ? parseFloat(hedgeRateStr) : NaN;
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
-      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
-      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+      // Get funding intervals in hours
+      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
+      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
 
-      const primaryCashFlow = primarySide === 'long' ? -primaryRate : primaryRate;
-      const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRate : hedgeRate;
+      // Use centralized calculation with normalization
+      const spreadResult = calculateCombinedFundingSpread(
+        {
+          rate: primaryRate,
+          intervalHours: primaryIntervalHours,
+          exchange: this.primaryExchange(),
+        },
+        {
+          rate: hedgeRate,
+          intervalHours: hedgeIntervalHours,
+          exchange: this.hedgeExchange(),
+        }
+      );
 
-      const netFundingProfit = primaryCashFlow + hedgeCashFlow;
-      this.fundingSpread.set(netFundingProfit);
+      // Set the spread value from centralized calculation
+      this.fundingSpread.set(spreadResult.spreadPerHour);
 
       console.log('[ArbitrageChart] Funding spread recalculated:', {
-        primaryRate,
-        hedgeRate,
-        primarySide,
-        hedgeSide,
-        netFundingProfit: (netFundingProfit * 100).toFixed(4) + '%'
+        primaryExchange: spreadResult.primaryExchange,
+        hedgeExchange: spreadResult.hedgeExchange,
+        primaryRatePerHour: (spreadResult.primaryRatePerHour * 100).toFixed(4) + '%',
+        hedgeRatePerHour: (spreadResult.hedgeRatePerHour * 100).toFixed(4) + '%',
+        spreadPerHour: (spreadResult.spreadPerHour * 100).toFixed(4) + '%',
+        isProfitable: spreadResult.isProfitable
       });
     }
   }
 
   /**
-   * Automatically set optimal position sides based on funding rates
-   * Higher funding rate -> Short (receive more or pay less)
-   * Lower funding rate -> Long (receive more or pay less)
+   * Set optimal position sides based on centralized spread calculation result
+   * Uses normalized rates to determine which exchange should be LONG vs SHORT
+   * In combined strategy: primary (larger |normalized|) = LONG, hedge = SHORT
    * Only applies automatic selection if user hasn't manually chosen sides
    */
-  private setOptimalSides(primaryRate: number, hedgeRate: number): void {
+  private setOptimalSidesFromSpreadResult(spreadResult: { primaryExchange: string; hedgeExchange: string; primaryRatePerHour: number; hedgeRatePerHour: number }): void {
     // Don't override manual user selection
     if (this.hasManualSideSelection) {
       console.log('[ArbitrageChart] Skipping automatic side selection - user has manually selected sides');
@@ -1851,25 +1872,36 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Prevent side synchronization during automatic setting
     this.isSyncingSide = true;
 
-    if (primaryRate > hedgeRate) {
-      // Primary has higher funding rate -> Primary = Short, Hedge = Long
-      this.primaryOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
-      this.hedgeOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
-      this.primarySide.set('short');
-    } else {
-      // Hedge has higher funding rate (or equal) -> Primary = Long, Hedge = Short
+    // The centralized calculation determined which exchange is primary (LONG) and which is hedge (SHORT)
+    // Check if component's primaryExchange matches the calculation's primaryExchange
+    const componentPrimaryIsCalculationPrimary =
+      this.primaryExchange().toUpperCase() === spreadResult.primaryExchange.toUpperCase();
+
+    if (componentPrimaryIsCalculationPrimary) {
+      // Component's primary = calculation's primary → LONG
+      // Component's hedge = calculation's hedge → SHORT
       this.primaryOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
       this.hedgeOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
       this.primarySide.set('long');
+    } else {
+      // Component's primary = calculation's hedge → SHORT
+      // Component's hedge = calculation's primary → LONG
+      this.primaryOrderForm.patchValue({ side: 'short' }, { emitEvent: false });
+      this.hedgeOrderForm.patchValue({ side: 'long' }, { emitEvent: false });
+      this.primarySide.set('short');
     }
 
     this.isSyncingSide = false;
 
-    console.log('[ArbitrageChart] Optimal sides set based on funding rates:', {
-      primaryRate,
-      hedgeRate,
+    console.log('[ArbitrageChart] Optimal sides set from centralized calculation:', {
+      calculationPrimary: spreadResult.primaryExchange,
+      calculationHedge: spreadResult.hedgeExchange,
+      componentPrimary: this.primaryExchange(),
+      componentHedge: this.hedgeExchange(),
       primarySide: this.primaryOrderForm.get('side')?.value,
-      hedgeSide: this.hedgeOrderForm.get('side')?.value
+      hedgeSide: this.hedgeOrderForm.get('side')?.value,
+      primaryRatePerHour: (spreadResult.primaryRatePerHour * 100).toFixed(4) + '%',
+      hedgeRatePerHour: (spreadResult.hedgeRatePerHour * 100).toFixed(4) + '%'
     });
   }
 
