@@ -107,7 +107,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   selectedExchanges = signal<string[]>([]);
 
   // Sorting
-  sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI' | 'volatility'>('combinedScore');
+  sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'expectedDailyReturn' | 'volatility'>('fundingDifferential');
   sortDirection = signal<'asc' | 'desc'>('desc');
 
   // Price Only strategy filters
@@ -340,19 +340,9 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             bValue = (b.maxFundingSpread ?? 0) * 100;
             break;
 
-          case 'combinedScore':
-            aValue = this.getStrategyMetric(a, 'combinedScore', strategyFilter);
-            bValue = this.getStrategyMetric(b, 'combinedScore', strategyFilter);
-            break;
-
           case 'expectedDailyReturn':
             aValue = this.getStrategyMetric(a, 'expectedDailyReturn', strategyFilter);
             bValue = this.getStrategyMetric(b, 'expectedDailyReturn', strategyFilter);
-            break;
-
-          case 'estimatedMonthlyROI':
-            aValue = this.getStrategyMetric(a, 'estimatedMonthlyROI', strategyFilter);
-            bValue = this.getStrategyMetric(b, 'estimatedMonthlyROI', strategyFilter);
             break;
 
           case 'volatility':
@@ -483,7 +473,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Set sorting column
    */
-  setSortColumn(column: 'symbol' | 'spreadPercent' | 'fundingDifferential' | 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI' | 'volatility'): void {
+  setSortColumn(column: 'symbol' | 'spreadPercent' | 'fundingDifferential' | 'expectedDailyReturn' | 'volatility'): void {
     if (this.sortColumn() === column) {
       // Toggle direction
       this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
@@ -1358,10 +1348,15 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
    * Parse funding interval string to number
    * Converts "8h", "4h", "1h" to 8, 4, 1
    */
-  private parseFundingInterval(interval: string): number | null {
-    if (!interval) return null;
+  private parseFundingInterval(interval: string | number): number | null {
+    if (!interval && interval !== 0) return null;
 
-    // Extract number from string like "8h", "4h", "1h"
+    // If already a number, return it
+    if (typeof interval === 'number') {
+      return interval > 0 ? interval : null;
+    }
+
+    // If string, extract number from string like "8h", "4h", "1h"
     const match = interval.match(/(\d+)/);
     if (match && match[1]) {
       return parseInt(match[1], 10);

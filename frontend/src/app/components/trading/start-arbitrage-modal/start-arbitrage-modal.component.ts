@@ -21,8 +21,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatIconModule } from '@angular/material/icon';
 
+import { IconComponent } from '../../ui/icon/icon.component';
 import { PriceArbitrageService } from '../../../services/price-arbitrage.service';
 import { TranslationService } from '../../../services/translation.service';
 import { PriceArbitrageOpportunity, StartPriceArbitrageParams } from '../../../models/price-arbitrage.model';
@@ -46,7 +46,7 @@ export interface StartArbitrageDialogData {
     MatProgressSpinnerModule,
     MatExpansionModule,
     MatTooltipModule,
-    MatIconModule
+    IconComponent
   ],
   templateUrl: './start-arbitrage-modal.component.html',
   styleUrls: ['./start-arbitrage-modal.component.scss']

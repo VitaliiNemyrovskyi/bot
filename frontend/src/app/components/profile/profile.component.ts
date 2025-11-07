@@ -20,6 +20,7 @@ import { take } from 'rxjs/operators';
 import { TradingPlatformInfoModalComponent } from '../trading-platform-info-modal/trading-platform-info-modal.component';
 import { ConfirmationModalComponent } from '../ui/confirmation-modal/confirmation-modal.component';
 import { ButtonComponent } from '../ui/button/button.component';
+import { IconComponent } from '../ui/icon/icon.component';
 
 interface Tab {
   id: string;
@@ -46,7 +47,7 @@ interface MessageActionLocal {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink, TradingPlatformInfoModalComponent, ConfirmationModalComponent, ButtonComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink, TradingPlatformInfoModalComponent, ConfirmationModalComponent, ButtonComponent, IconComponent],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss'
 })
@@ -82,7 +83,7 @@ export class ProfileComponent implements OnInit {
   // Exchange Credentials State
   credentials = signal<ExchangeCredential[]>([]);
   editingCredentialId = signal<string | null>(null);
-  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string; authToken?: string }>({});
+  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string; authToken?: string; passphrase?: string }>({});
   showAddCredentialModal = signal<boolean>(false);
   testingConnectionId = signal<string | null>(null);
   deletingCredentialId = signal<string | null>(null);
@@ -183,6 +184,7 @@ export class ProfileComponent implements OnInit {
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
       authToken: [''], // Browser session token for MEXC
+      passphrase: [''], // Passphrase for OKX
       label: ['', [Validators.maxLength(50)]]
     });
 
@@ -337,17 +339,34 @@ export class ProfileComponent implements OnInit {
 
   /**
    * Start editing a credential row
+   * Fetches full credential details including decrypted sensitive fields
    */
   startEditCredential(credential: ExchangeCredential): void {
     this.editingCredentialId.set(credential.id);
-    this.editFormData.set({
-      label: credential.label,
-      apiKey: '',  // Empty string means "keep current"
-      apiSecret: '',  // Empty string means "keep current"
-      authToken: '',  // Empty string means "keep current"
-      // Store original values for canceling
-      _originalLabel: credential.label
-    } as any);
+
+    // Fetch full credential details from backend (includes decrypted authToken)
+    this.exchangeCredentialsService.getCredentialById(credential.id).pipe(take(1)).subscribe({
+      next: (fullCredential: any) => {
+        // For OKX and Bitget, passphrase is stored in authToken field
+        // Map it back to passphrase field for display/editing
+        const isOkxOrBitget = fullCredential.exchange === 'OKX' || fullCredential.exchange === 'BITGET';
+
+        this.editFormData.set({
+          label: fullCredential.label,
+          apiKey: fullCredential.apiKey || '',  // Show decrypted API key
+          apiSecret: '',  // Empty string means "keep current" - don't show for security
+          authToken: isOkxOrBitget ? '' : (fullCredential.authToken || ''),  // For MEXC, show authToken; for OKX/Bitget, use passphrase field instead
+          passphrase: isOkxOrBitget ? (fullCredential.authToken || '') : '',  // For OKX/Bitget, show passphrase (from authToken)
+          // Store original values for canceling
+          _originalLabel: fullCredential.label
+        } as any);
+      },
+      error: (err) => {
+        console.error('Failed to fetch credential details:', err);
+        this.showToast('Failed to load credential details. Please try again.', 'error');
+        this.editingCredentialId.set(null);
+      }
+    });
   }
 
   /**
@@ -390,7 +409,8 @@ export class ProfileComponent implements OnInit {
       exchange: credential.exchange,
       apiKey: apiKey,
       apiSecret: apiSecret,
-      authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined
+      authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined,
+      passphrase: editData.passphrase && editData.passphrase.trim() !== '' ? editData.passphrase.trim() : undefined
     };
 
     this.testingConnectionId.set(credential.id);
@@ -446,6 +466,11 @@ export class ProfileComponent implements OnInit {
     // Include authToken only if it was changed (non-empty)
     if (editData.authToken && editData.authToken.trim() !== '') {
       updateRequest.authToken = editData.authToken.trim();
+    }
+
+    // Include passphrase only if it was changed (non-empty)
+    if (editData.passphrase && editData.passphrase.trim() !== '') {
+      updateRequest.passphrase = editData.passphrase.trim();
     }
 
     // Set saving state
@@ -608,7 +633,8 @@ export class ProfileComponent implements OnInit {
       exchange: this.newCredentialForm.value.exchange,
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
-      authToken: this.newCredentialForm.value.authToken || undefined
+      authToken: this.newCredentialForm.value.authToken || undefined,
+      passphrase: this.newCredentialForm.value.passphrase || undefined
     };
 
     this.testingConnectionId.set('new');
@@ -646,6 +672,7 @@ export class ProfileComponent implements OnInit {
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
       authToken: this.newCredentialForm.value.authToken || undefined,
+      passphrase: this.newCredentialForm.value.passphrase || undefined,
       label: this.newCredentialForm.value.label || undefined,
       isActive: true // Set new credentials as active by default
     };

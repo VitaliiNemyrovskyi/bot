@@ -1356,10 +1356,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.fundingRatesMap.clear();
       fundingRates.forEach(rate => {
         const key = `${rate.exchange}-${rate.symbol}`;
+
+        // Convert fundingInterval to string format if it's a number (e.g., 8 -> "8h")
+        let fundingIntervalStr: string | undefined;
+        if (typeof rate.fundingInterval === 'number') {
+          fundingIntervalStr = `${rate.fundingInterval}h`;
+        } else if (typeof rate.fundingInterval === 'string') {
+          fundingIntervalStr = rate.fundingInterval;
+        }
+
         this.fundingRatesMap.set(key, {
           fundingRate: rate.fundingRate,
           fundingTime: rate.nextFundingTime,
-          fundingInterval: rate.fundingInterval // e.g., "8h", "4h", "1h" - from DB
+          fundingInterval: fundingIntervalStr // e.g., "8h", "4h", "1h" - from DB
         });
 
         console.log(`[ArbitrageChart] Stored funding rate: ${key}`, {
@@ -1584,9 +1593,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Fallback to default if still not set
+    // Show unknown instead of assuming 8h (never use hardcoded defaults)
     if (!fundingIntervalStr) {
-      fundingIntervalStr = '8h'; // Default for most exchanges
+      fundingIntervalStr = '-'; // Show unknown if not available from API
+      console.warn(`[ArbitrageChart] No funding interval available for exchange`);
     }
 
     const updatedData = {
@@ -1683,9 +1693,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Fallback to default if still not set
+    // Show unknown instead of assuming 8h (never use hardcoded defaults)
     if (!fundingIntervalStr) {
-      fundingIntervalStr = '8h'; // Default for most exchanges
+      fundingIntervalStr = '-'; // Show unknown if not available from API
+      console.warn(`[ArbitrageChart] No funding interval available for exchange`);
     }
 
     const updatedData = {

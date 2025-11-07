@@ -9,10 +9,7 @@
           class="user-avatar-xl"
         />
         <ui-button variant="ghost" className="avatar-edit-btn" (clicked)="changeAvatar()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
-            <path d="m18.5 2.5 a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2"/>
-          </svg>
+          <ui-icon name="edit" [size]="16"></ui-icon>
         </ui-button>
       </div>
       <div class="user-basic-info">
@@ -30,11 +27,7 @@
     </div>
     <div class="profile-header-actions">
       <ui-button variant="tertiary" className="logout-btn" (clicked)="logout()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
+        <ui-icon name="logout" [size]="16"></ui-icon>
         {{ translate('dashboard.logout') }}
       </ui-button>
     </div>
@@ -236,10 +229,7 @@
           <div class="platforms-header">
             <h3>{{ translate('profile.tradingPlatforms') }}</h3>
             <ui-button variant="primary" (clicked)="openAddCredentialModal()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              </svg>
+              <ui-icon name="plus" [size]="16"></ui-icon>
               {{ translate('profile.addNewCredential') }}
             </ui-button>
           </div>
@@ -308,14 +298,11 @@
                             />
                             <ui-button type="button" variant="ghost" className="toggle-visibility-btn-small"
                                     (clicked)="toggleApiKeyVisibility(credential.id)" tabindex="-1">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                @if (showApiSecret()[credential.id + '_key']) {
-                                  <path d="M12 5C7 5 2.73 8.11 1 12.5 2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" stroke="currentColor" stroke-width="2"/>
-                                  <circle cx="12" cy="12.5" r="2.5" fill="currentColor"/>
-                                } @else {
-                                  <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" fill="currentColor"/>
-                                }
-                              </svg>
+                              @if (showApiSecret()[credential.id + '_key']) {
+                                <ui-icon name="eye" [size]="16"></ui-icon>
+                              } @else {
+                                <ui-icon name="eye-off" [size]="16"></ui-icon>
+                              }
                             </ui-button>
                           </div>
                         } @else {
@@ -337,14 +324,11 @@
                               />
                               <ui-button type="button" variant="ghost" className="toggle-visibility-btn-small"
                                       (clicked)="toggleApiSecretVisibility(credential.id)" tabindex="-1">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                  @if (showApiSecret()[credential.id + '_secret']) {
-                                    <path d="M12 5C7 5 2.73 8.11 1 12.5 2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" stroke="currentColor" stroke-width="2"/>
-                                    <circle cx="12" cy="12.5" r="2.5" fill="currentColor"/>
-                                  } @else {
-                                    <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" fill="currentColor"/>
-                                  }
-                                </svg>
+                                @if (showApiSecret()[credential.id + '_secret']) {
+                                  <ui-icon name="eye" [size]="16"></ui-icon>
+                                } @else {
+                                  <ui-icon name="eye-off" [size]="16"></ui-icon>
+                                }
                               </ui-button>
                             </div>
                             @if (credential.exchange === 'MEXC') {
@@ -360,6 +344,24 @@
                                   rows="2"
                                   style="font-family: monospace; font-size: 11px; resize: vertical;"
                                 ></textarea>
+                              </div>
+                            }
+                            @if (credential.exchange === 'OKX' || credential.exchange === 'BITGET') {
+                              <div class="passphrase-field" style="margin-top: 8px;">
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">
+                                  {{ translate('profile.passphrase') }} <span class="required">*</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  class="edit-input"
+                                  [value]="$any(editFormData()).passphrase || ''"
+                                  (input)="updateEditField('passphrase', $any($event.target).value)"
+                                  [placeholder]="translate('profile.enterPassphrase')"
+                                  style="font-family: monospace; font-size: 11px;"
+                                />
+                                <small style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">
+                                  {{ credential.exchange }} API Passphrase (leave empty to keep current)
+                                </small>
                               </div>
                             }
                           </div>
@@ -428,10 +430,7 @@
                               (clicked)="startEditCredential(credential)"
                               [title]="translate('button.edit')"
                             >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
-                                <path d="m18.5 2.5 a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2"/>
-                              </svg>
+                              <ui-icon name="edit" [size]="16"></ui-icon>
                             </ui-button>
                             <ui-button
                               variant="danger"
@@ -440,10 +439,7 @@
                               [disabled]="deletingCredentialId() === credential.id"
                               [title]="translate('button.delete')"
                             >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2"/>
-                              </svg>
+                              <ui-icon name="trash" [size]="16"></ui-icon>
                             </ui-button>
                           </div>
                         }
@@ -454,9 +450,7 @@
               </table>
             } @else {
               <div class="empty-state">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2a5 5 0 0 1 5 5v3h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2V7a5 5 0 0 1 5-5z" stroke="currentColor" stroke-width="2"/>
-                </svg>
+                <ui-icon name="lock" [size]="64"></ui-icon>
                 <h4>{{ translate('profile.noCredentials') }}</h4>
                 <p>{{ translate('profile.noCredentialsDesc') }}</p>
                 <ui-button variant="primary" (clicked)="openAddCredentialModal()">
@@ -492,10 +486,7 @@
                 <div class="modal-header">
                   <h3>{{ translate('profile.addNewCredential') }}</h3>
                   <ui-button variant="ghost" className="modal-close-btn" (clicked)="closeAddCredentialModal()">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                      <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
+                    <ui-icon name="close" [size]="24"></ui-icon>
                   </ui-button>
                 </div>
 
@@ -558,15 +549,9 @@
                         tabindex="-1"
                       >
                         @if (showApiSecret()['new']) {
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
-                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-                          </svg>
+                          <ui-icon name="eye" [size]="20"></ui-icon>
                         } @else {
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2"/>
-                            <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2"/>
-                          </svg>
+                          <ui-icon name="eye-off" [size]="20"></ui-icon>
                         }
                       </ui-button>
                     </div>
@@ -589,6 +574,25 @@
                         <strong>{{ translate('profile.mexcAuthTokenInfo') }}</strong><br>
                         {{ translate('profile.mexcAuthTokenDesc') }}
                       </small>
+                    </div>
+                  }
+
+                  <!-- Passphrase (OKX and BITGET) -->
+                  @if (newCredentialForm.get('exchange')?.value === 'OKX' || newCredentialForm.get('exchange')?.value === 'BITGET') {
+                    <div class="form-field">
+                      <label>{{ translate('profile.passphrase') }} <span class="required">*</span></label>
+                      <input
+                        type="password"
+                        formControlName="passphrase"
+                        [placeholder]="translate('profile.enterPassphrase')"
+                      />
+                      <small class="field-hint">
+                        <strong>{{ newCredentialForm.get('exchange')?.value }} API Passphrase</strong><br>
+                        {{ newCredentialForm.get('exchange')?.value }} requires a passphrase in addition to API key and secret. You created this passphrase when generating your API keys.
+                      </small>
+                      @if (newCredentialForm.get('passphrase')?.invalid && newCredentialForm.get('passphrase')?.touched) {
+                        <span class="field-error">{{ translate('profile.passphraseRequired') }}</span>
+                      }
                     </div>
                   }
 

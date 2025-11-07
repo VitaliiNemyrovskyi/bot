@@ -7,11 +7,12 @@ import { ThemeService } from './services/theme.service';
 import { ThemeToggleComponent } from './components/ui/theme-toggle/theme-toggle.component';
 import { ButtonComponent } from './components/ui/button/button.component';
 import { ToastContainerComponent } from './components/ui/tooltip/tooltip.component';
+import { IconComponent } from './components/ui/icon/icon.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, ThemeToggleComponent, ButtonComponent, ToastContainerComponent],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, ThemeToggleComponent, ButtonComponent, ToastContainerComponent, IconComponent],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })

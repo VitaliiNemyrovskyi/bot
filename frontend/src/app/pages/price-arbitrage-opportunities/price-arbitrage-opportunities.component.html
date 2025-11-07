@@ -268,26 +268,10 @@
                     [size]="16"
                   ></ui-icon>
                 </th>
-                <th (click)="setSortColumn('combinedScore')" class="sortable">
-                  Score
-                  <ui-icon
-                    *ngIf="sortColumn() === 'combinedScore'"
-                    [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
-                    [size]="16"
-                  ></ui-icon>
-                </th>
                 <th (click)="setSortColumn('expectedDailyReturn')" class="sortable">
                   Daily Return
                   <ui-icon
                     *ngIf="sortColumn() === 'expectedDailyReturn'"
-                    [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
-                    [size]="16"
-                  ></ui-icon>
-                </th>
-                <th (click)="setSortColumn('estimatedMonthlyROI')" class="sortable">
-                  Monthly ROI
-                  <ui-icon
-                    *ngIf="sortColumn() === 'estimatedMonthlyROI'"
                     [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
                     [size]="16"
                   ></ui-icon>
@@ -310,7 +294,6 @@
                   <th>Best Funding<br><small>(Long Spot + Short Futures)</small></th>
                   <th>Best Short<br><small>(Short Only)</small></th>
                 }
-                <th>Strategy</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -380,20 +363,6 @@
                     </ng-template>
                   </td>
 
-                  <!-- Combined Score -->
-                  <td class="combined-score-cell">
-                    <span class="metric-value metric-highlight" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultCombinedScore">
-                      {{ formatPercent(recalculated.combinedScore) }}
-                    </span>
-                    <ng-template #defaultCombinedScore>
-                      @if (opp.combinedScore !== undefined) {
-                        <span class="metric-value metric-highlight">{{ formatPercent(opp.combinedScore) }}</span>
-                      } @else {
-                        <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
-                      }
-                    </ng-template>
-                  </td>
-
                   <!-- Daily Return -->
                   <td class="daily-return-cell">
                     <span class="metric-value" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultDailyReturn">
@@ -424,42 +393,6 @@
                         </div>
                       } @else if (opp.expectedDailyReturn !== undefined) {
                         <span class="metric-value">{{ formatPercent(opp.expectedDailyReturn) }}</span>
-                      } @else {
-                        <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
-                      }
-                    </ng-template>
-                  </td>
-
-                  <!-- Monthly ROI -->
-                  <td class="monthly-roi-cell">
-                    <span class="metric-value metric-highlight" *ngIf="getRecalculatedMetrics(opp); let recalculated; else defaultMonthlyROI">
-                      {{ formatPercent(recalculated.monthlyROI) }}
-                    </span>
-                    <ng-template #defaultMonthlyROI>
-                      @if (opp.realisticMetrics) {
-                        <div class="metric-realistic">
-                          <span class="metric-value metric-highlight"
-                                [title]="'Realistic: ' + formatPercent(opp.realisticMetrics.monthlyROI.realistic) + ' | Range: ' + formatPercent(opp.realisticMetrics.monthlyROI.pessimistic) + ' - ' + formatPercent(opp.realisticMetrics.monthlyROI.optimistic)">
-                            {{ formatPercent(opp.realisticMetrics.monthlyROI.realistic) }}
-                          </span>
-                          <span class="metric-range"
-                                [title]="'Based on ' + (opp.realisticMetrics.dataPoints || 0) + ' historical data points over ' + (opp.realisticMetrics.historicalPeriodDays || 7) + ' days'">
-                            <small class="range-pessimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.pessimistic, 1) }}</small>
-                            <small class="range-separator">-</small>
-                            <small class="range-optimistic">{{ formatPercent(opp.realisticMetrics.monthlyROI.optimistic, 1) }}</small>
-                          </span>
-                          @if (opp.realisticMetrics.confidence) {
-                            <span class="confidence-badge"
-                                  [class.high]="opp.realisticMetrics.confidence >= 70"
-                                  [class.medium]="opp.realisticMetrics.confidence >= 40 && opp.realisticMetrics.confidence < 70"
-                                  [class.low]="opp.realisticMetrics.confidence < 40"
-                                  [title]="'Confidence: ' + opp.realisticMetrics.confidence + '/100 (based on historical data quality)'">
-                              {{ opp.realisticMetrics.confidence }}%
-                            </span>
-                          }
-                        </div>
-                      } @else if (opp.estimatedMonthlyROI !== undefined) {
-                        <span class="metric-value metric-highlight">{{ formatPercent(opp.estimatedMonthlyROI) }}</span>
                       } @else {
                         <span class="metric-value">{{ formatPercent((opp.priceSpread || 0) * 100) }}</span>
                       }
@@ -561,20 +494,6 @@
                       }
                     </td>
                   }
-
-                  <!-- Strategy Type -->
-                  <td class="strategy-cell">
-                    <span class="badge" [ngClass]="getStrategyBadgeClass(opp.strategyType || 'price_only')">
-                      {{ getStrategyTypeText(opp.strategyType || 'price_only') }}
-                    </span>
-                    @if (asFundingRateOpportunity(opp); as fundingOpp) {
-                      @if (fundingOpp.recommendedStrategy === 'spot-futures') {
-                        <span class="badge badge-recommendation" title="Spot-Futures арбітраж рекомендується для максимального прибутку">
-                          💡 SF
-                        </span>
-                      }
-                    }
-                  </td>
 
                   <!-- Actions -->
                   <td class="actions-cell">

@@ -69,6 +69,7 @@ export interface CreateExchangeCredentialRequest {
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC futures trading)
+  passphrase?: string; // Passphrase (required for OKX)
   label?: string;
   isActive?: boolean; // Optional flag to set credential as active (defaults to true)
 }
@@ -82,6 +83,7 @@ export interface UpdateExchangeCredentialRequest {
   apiKey?: string;
   apiSecret?: string;
   authToken?: string; // Browser session token (for MEXC)
+  passphrase?: string; // Passphrase (required for OKX)
   isActive?: boolean;  // Set active status (true/false) - no automatic deactivation of others
 }
 
@@ -116,6 +118,7 @@ export interface TestConnectionRequest {
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC)
+  passphrase?: string; // Passphrase (required for OKX)
 }
 
 /**
