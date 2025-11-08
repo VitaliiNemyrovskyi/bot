@@ -22,6 +22,7 @@ interface SymbolInfo {
   qtyPrecision: number;
   maxOrderQty?: number;
   maxLeverage?: number;
+  quantoMultiplier?: number; // Gate.io quanto multiplier - quantity must be multiple of this
 }
 
 /**
@@ -399,9 +400,15 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
         return null;
       }
 
+      // CRITICAL: Gate.io uses quanto_multiplier for contract-to-base-currency conversion
+      // Example: AIA_USDT has quanto_multiplier=10, meaning 1 contract = 10 AIA
+      // We MUST multiply minOrderQty and qtyStep by quanto_multiplier to get values in base currency
+      const quantoMultiplier = parseFloat(contract.quanto_multiplier || '1');
+
       console.log(`[Gate.io] Found contract for ${symbol}:`, {
         order_size_min: contract.order_size_min,
         order_size_max: contract.order_size_max,
+        quanto_multiplier: contract.quanto_multiplier,
         order_price_round: contract.order_price_round,
         mark_price_round: contract.mark_price_round,
         leverage_max: contract.leverage_max,
@@ -411,16 +418,22 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
       const pricePrecision = contract.mark_price_round ? contract.mark_price_round.split('.')[1]?.length || 2 : 2;
       const qtyPrecision = contract.order_size_min ? Math.abs(Math.log10(parseFloat(contract.order_size_min))) : 3;
 
+      // Convert contract sizes to base currency amounts by multiplying with quanto_multiplier
+      const minOrderQtyInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+      const qtyStepInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+      const maxOrderQtyInBaseCurrency = contract.order_size_max ? parseFloat(contract.order_size_max) * quantoMultiplier : undefined;
+
       return {
         symbol: contract.name,
         exchange: 'GATEIO',
-        minOrderQty: parseFloat(contract.order_size_min || '1'),
+        minOrderQty: minOrderQtyInBaseCurrency,
         minOrderValue: undefined,
-        qtyStep: parseFloat(contract.order_size_min || '1'),
+        qtyStep: qtyStepInBaseCurrency,
         pricePrecision: parseInt(pricePrecision.toString()),
         qtyPrecision: Math.ceil(qtyPrecision),
-        maxOrderQty: contract.order_size_max ? parseFloat(contract.order_size_max) : undefined,
+        maxOrderQty: maxOrderQtyInBaseCurrency,
         maxLeverage: contract.leverage_max ? parseInt(contract.leverage_max) : undefined,
+        quantoMultiplier: quantoMultiplier,
       };
     } catch (fetchError: any) {
       clearTimeout(timeout);
