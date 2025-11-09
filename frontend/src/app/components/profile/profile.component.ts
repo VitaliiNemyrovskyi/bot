@@ -184,8 +184,23 @@ export class ProfileComponent implements OnInit {
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
       authToken: [''], // Browser session token for MEXC
-      passphrase: [''], // Passphrase for OKX
+      passphrase: [''], // Passphrase for OKX and Bitget
       label: ['', [Validators.maxLength(50)]]
+    });
+
+    // Add dynamic validation for passphrase when exchange changes
+    this.newCredentialForm.get('exchange')?.valueChanges.subscribe((exchange: string) => {
+      const passphraseControl = this.newCredentialForm.get('passphrase');
+
+      if (exchange === 'OKX' || exchange === 'BITGET') {
+        // Make passphrase required for OKX and Bitget
+        passphraseControl?.setValidators([Validators.required]);
+      } else {
+        // Remove required validator for other exchanges
+        passphraseControl?.clearValidators();
+      }
+
+      passphraseControl?.updateValueAndValidity();
     });
 
     this.selectedLanguage = this.translationService.currentLanguage();
