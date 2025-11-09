@@ -1166,6 +1166,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         };
         break;
 
+      case 'BITGET':
+        // Bitget WebSocket for futures tickers
+        wsUrl = 'wss://ws.bitget.com/v2/ws/public';
+        subscribeMessage = {
+          op: 'subscribe',
+          args: [{
+            instType: 'USDT-FUTURES',
+            channel: 'ticker',
+            instId: symbol
+          }]
+        };
+        console.log(`[ArbitrageChart] BITGET subscribing to ${symbol}`);
+        break;
+
       case 'GATEIO':
         // Gate.io doesn't have public WebSocket for funding rates
         // Use REST API data from our backend instead
@@ -1202,6 +1216,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.mexcPingIntervals.set(exchange, pingInterval);
         // console.log(`[ArbitrageChart] MEXC ping interval started (15s)`);
       }
+
+      // For BITGET, start ping interval to keep connection alive
+      // Bitget requires ping every 30 seconds
+      if (exchange === 'BITGET') {
+        const pingInterval = setInterval(() => {
+          if (!this.isDestroyed && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+            // console.log(`[ArbitrageChart] BITGET Ping sent`);
+          }
+        }, 30000); // Send ping every 30 seconds
+
+        this.mexcPingIntervals.set(exchange, pingInterval);
+      }
     };
 
     ws.onmessage = async (event) => {
@@ -1232,6 +1259,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             ws.send('Pong');
             // console.log(`[ArbitrageChart] BingX Pong sent`);
           }
+          return;
+        }
+
+        // Handle BITGET Pong response (server responds to our ping)
+        if (exchange === 'BITGET' && messageData === 'pong') {
+          // console.log(`[ArbitrageChart] BITGET Pong received`);
           return;
         }
 
@@ -1441,6 +1474,44 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           price = parseFloat(data.data[0].last);
           fundingRate = data.data[0].fundingRate;
           nextFundingTime = parseInt(data.data[0].nextFundingTime);
+        }
+        break;
+
+      case 'BITGET':
+        // Bitget WebSocket v2 format: { action: "snapshot", arg: {...}, data: [{...}] }
+        if (data.action && data.data && data.data.length > 0) {
+          const tickerData = data.data[0];
+
+          // 'last' = last traded price
+          if (tickerData.last) {
+            price = parseFloat(tickerData.last);
+          }
+
+          // Funding rate and next funding time
+          if (tickerData.fundingRate) {
+            fundingRate = tickerData.fundingRate;
+          }
+          if (tickerData.nextFundingTime) {
+            // Bitget provides timestamp in milliseconds
+            nextFundingTime = parseInt(tickerData.nextFundingTime);
+          }
+
+          console.log(`[ArbitrageChart] BITGET ticker parsed:`, {
+            instId: tickerData.instId,
+            price,
+            fundingRate,
+            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined
+          });
+        } else if (data.event) {
+          // Handle subscription events (subscribe, error, etc.)
+          if (data.event === 'subscribe') {
+            console.log(`[ArbitrageChart] BITGET subscription confirmed:`, data);
+          } else if (data.event === 'error') {
+            console.error(`[ArbitrageChart] BITGET subscription error:`, data);
+          }
+          return;
+        } else {
+          console.warn(`[ArbitrageChart] BITGET message format not recognized:`, data);
         }
         break;
     }
@@ -1754,6 +1825,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           }));
           this.primarySeries.setData(primaryData);
           console.log('[ArbitrageChart] Primary series data set');
+
+          // Initialize lastPrimaryCandle with the last historical data point
+          // This ensures WebSocket updates continue from where historical data ended
+          const lastHistoricalPoint = primaryHistory[primaryHistory.length - 1];
+          this.lastPrimaryCandle = {
+            time: lastHistoricalPoint.time,
+            price: lastHistoricalPoint.price
+          };
+          console.log(`[ArbitrageChart] Initialized lastPrimaryCandle: time=${new Date(lastHistoricalPoint.time * 1000).toISOString()}, price=${lastHistoricalPoint.price}`);
         }
 
         if (!this.isDestroyed && this.hedgeSeries && hedgeHistory.length > 0) {
@@ -1763,6 +1843,15 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           }));
           this.hedgeSeries.setData(hedgeData);
           console.log('[ArbitrageChart] Hedge series data set');
+
+          // Initialize lastHedgeCandle with the last historical data point
+          // This ensures WebSocket updates continue from where historical data ended
+          const lastHistoricalPoint = hedgeHistory[hedgeHistory.length - 1];
+          this.lastHedgeCandle = {
+            time: lastHistoricalPoint.time,
+            price: lastHistoricalPoint.price
+          };
+          console.log(`[ArbitrageChart] Initialized lastHedgeCandle: time=${new Date(lastHistoricalPoint.time * 1000).toISOString()}, price=${lastHistoricalPoint.price}`);
         }
 
         // Fit chart to show all historical data
