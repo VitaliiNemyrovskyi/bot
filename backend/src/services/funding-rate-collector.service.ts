@@ -26,6 +26,7 @@ export class FundingRateCollectorService {
     'AVAX/USDT',
     'DOT/USDT',
     'LINK/USDT',
+    'RIVER/USDT',
   ];
 
   // Exchanges to track
@@ -34,6 +35,7 @@ export class FundingRateCollectorService {
     Exchange.BYBIT,
     Exchange.BINANCE,
     Exchange.GATEIO,
+    Exchange.BITGET,
     Exchange.OKX,
   ];
 
@@ -127,6 +129,9 @@ export class FundingRateCollectorService {
           break;
         case Exchange.OKX:
           fundingData = await this.fetchOKXFunding(symbol);
+          break;
+        case Exchange.BITGET:
+          fundingData = await this.fetchBitgetFunding(symbol);
           break;
         default:
           console.log(`[FundingRateCollector] ${exchange} not implemented yet`);
@@ -539,6 +544,88 @@ export class FundingRateCollectorService {
           }
         } else {
           console.error(`[FundingRateCollector] OKX fetch error for ${symbol} (attempt ${attempt}/${maxRetries}):`, error.message);
+          if (attempt === maxRetries) return null;
+        }
+
+        if (attempt < maxRetries) {
+          await this.delay(1000);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Fetch funding rate from Bitget
+   */
+  private async fetchBitgetFunding(symbol: string): Promise<{
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  } | null> {
+    const maxRetries = 2;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Bitget uses format like BTCUSDT (no separator)
+        const bitgetSymbol = symbol.replace('/', '');
+
+        const response = await fetch('https://api.bitget.com/api/v2/mix/market/current-fund-rate?productType=USDT-FUTURES', {
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          // @ts-ignore - Node.js fetch options
+          family: 4
+        });
+
+        if (!response.ok) {
+          console.warn(`[FundingRateCollector] Bitget API returned ${response.status} for ${symbol}`);
+          return null;
+        }
+
+        const data = await response.json();
+
+        if (data.code !== '00000' || !data.data) {
+          console.warn(`[FundingRateCollector] Bitget API error: ${data.msg || 'Unknown error'}`);
+          return null;
+        }
+
+        // Find symbol in response
+        const fundingInfo = data.data.find((item: any) => item.symbol === bitgetSymbol);
+
+        if (!fundingInfo) {
+          // Symbol not found - this is OK, not all symbols are available on all exchanges
+          return null;
+        }
+
+        // Parse funding interval (Bitget returns string like "4")
+        const intervalHours = parseInt(fundingInfo.fundingRateInterval || '8');
+
+        return {
+          fundingRate: parseFloat(fundingInfo.fundingRate || '0'),
+          nextFundingTime: new Date(parseInt(fundingInfo.nextUpdate || '0')),
+          fundingInterval: intervalHours,
+          markPrice: undefined, // Bitget doesn't provide mark price in funding rate API
+          indexPrice: undefined,
+        };
+      } catch (error: any) {
+        if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+          console.warn(`[FundingRateCollector] Bitget API timeout for ${symbol} (attempt ${attempt}/${maxRetries})`);
+          if (attempt === maxRetries) return null;
+        } else if (error.code === 'ENOTFOUND') {
+          console.warn(`[FundingRateCollector] Bitget API DNS resolution failed for ${symbol} (attempt ${attempt}/${maxRetries})`);
+          if (attempt < maxRetries) {
+            await this.delay(2000);
+          } else {
+            return null;
+          }
+        } else {
+          console.error(`[FundingRateCollector] Bitget fetch error for ${symbol} (attempt ${attempt}/${maxRetries}):`, error.message);
           if (attempt === maxRetries) return null;
         }
 

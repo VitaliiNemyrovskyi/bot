@@ -1318,12 +1318,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private handleExchangeMessage(
     exchange: string,
     data: any,
-    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string, timestamp?: number) => void
   ): void {
     let price: number | null = null;
     let fundingRate: string | undefined;
     let nextFundingTime: number | undefined;
     let fundingInterval: string | undefined;
+    let timestamp: number | undefined;
 
     switch (exchange) {
       case 'BYBIT':
@@ -1344,6 +1345,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
           price = parseFloat(data.data.lastPrice);
           fundingRate = data.data.fundingRate;
+
+          // Extract timestamp from Bybit message (in milliseconds)
+          if (data.ts) {
+            timestamp = typeof data.ts === 'string' ? parseInt(data.ts) : Number(data.ts);
+          }
 
           // Validate price is a valid number
           if (isNaN(price) || price <= 0) {
@@ -1386,9 +1392,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         break;
 
       case 'BINANCE':
-        // Binance mark price stream format: { e: "markPriceUpdate", s: "BTCUSDT", p: "47000.00", r: "0.0001", T: timestamp }
+        // Binance mark price stream format: { e: "markPriceUpdate", s: "BTCUSDT", p: "47000.00", r: "0.0001", T: timestamp, E: eventTime }
         if (data.e === 'markPriceUpdate' && data.p) {
           price = parseFloat(data.p); // 'p' = mark price
+
+          // Extract event timestamp (in milliseconds)
+          if (data.E) {
+            timestamp = typeof data.E === 'string' ? parseInt(data.E) : Number(data.E);
+          }
 
           // Funding rate and next funding time
           if (data.r !== undefined) {
@@ -1414,6 +1425,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         if (data.dataType && data.dataType.includes('@ticker') && data.data) {
           const tickerData = data.data;
           price = parseFloat(tickerData.c); // 'c' = close/last price
+
+          // Extract timestamp from BingX message (in milliseconds)
+          if (tickerData.E) {
+            timestamp = typeof tickerData.E === 'string' ? parseInt(tickerData.E) : Number(tickerData.E);
+          }
 
           // Debug logging
           // console.log(`[ArbitrageChart] BingX price parsed:`, {
@@ -1454,8 +1470,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       case 'MEXC':
         if (data.channel === 'push.ticker' && data.data) {
-          // MEXC format: { channel: "push.ticker", data: { lastPrice, fundingRate, ... } }
+          // MEXC format: { channel: "push.ticker", data: { lastPrice, fundingRate, ... }, ts: timestamp }
           price = parseFloat(data.data.lastPrice);
+
+          // Extract timestamp from MEXC message (in milliseconds)
+          if (data.ts) {
+            timestamp = typeof data.ts === 'string' ? parseInt(data.ts) : Number(data.ts);
+          }
 
           // Convert funding rate to string (MEXC returns numeric fundingRate)
           if (data.data.fundingRate !== undefined && data.data.fundingRate !== null) {
@@ -1474,17 +1495,27 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           price = parseFloat(data.data[0].last);
           fundingRate = data.data[0].fundingRate;
           nextFundingTime = parseInt(data.data[0].nextFundingTime);
+
+          // Extract timestamp from OKX message (in milliseconds)
+          if (data.data[0].ts) {
+            timestamp = typeof data.data[0].ts === 'string' ? parseInt(data.data[0].ts) : Number(data.data[0].ts);
+          }
         }
         break;
 
       case 'BITGET':
-        // Bitget WebSocket v2 format: { action: "snapshot", arg: {...}, data: [{...}] }
+        // Bitget WebSocket v2 format: { action: "snapshot", arg: {...}, data: [{...}], ts: timestamp }
         if (data.action && data.data && data.data.length > 0) {
           const tickerData = data.data[0];
 
           // 'last' = last traded price
           if (tickerData.last) {
             price = parseFloat(tickerData.last);
+          }
+
+          // Extract timestamp from Bitget message (in milliseconds)
+          if (data.ts) {
+            timestamp = typeof data.ts === 'string' ? parseInt(data.ts) : Number(data.ts);
           }
 
           // Funding rate and next funding time
@@ -1517,8 +1548,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     if (price !== null && price > 0) {
-      // console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime, fundingInterval });
-      onUpdate(price, fundingRate, nextFundingTime, fundingInterval);
+      // console.log(`[ArbitrageChart] ${exchange} calling onUpdate with:`, { price, fundingRate, nextFundingTime, fundingInterval, timestamp });
+      onUpdate(price, fundingRate, nextFundingTime, fundingInterval, timestamp);
     } else {
       console.warn(`[ArbitrageChart] ${exchange} price invalid or zero:`, price);
     }
@@ -1903,7 +1934,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Update primary exchange data
    */
-  private updatePrimaryData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string): void {
+  private updatePrimaryData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string, wsTimestamp?: number): void {
     // Guard against updates after component destruction
     if (this.isDestroyed || !this.chart || !this.primarySeries) {
       return;
@@ -1969,8 +2000,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     this.primaryData.set(updatedData);
 
-    // Get current timestamp in seconds and round to timeframe interval
-    const currentTimestamp = Math.floor(Date.now() / 1000);
+    // Get timestamp in seconds and round to timeframe interval
+    // Use WebSocket timestamp if available, otherwise fall back to local time
+    const currentTimestamp = wsTimestamp
+      ? Math.floor(wsTimestamp / 1000) // Convert ms to seconds if from WebSocket
+      : Math.floor(Date.now() / 1000);  // Fall back to local time
     const roundedTime = this.roundTimeToInterval(currentTimestamp);
 
     // Check if this is a new candle period
@@ -2024,7 +2058,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   /**
    * Update hedge exchange data
    */
-  private updateHedgeData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string): void {
+  private updateHedgeData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string, wsTimestamp?: number): void {
     // Guard against updates after component destruction
     if (this.isDestroyed || !this.chart || !this.hedgeSeries) {
       return;
@@ -2076,8 +2110,11 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       console.warn(`[ArbitrageChart] No funding interval available for exchange`);
     }
 
-    // Get current timestamp in seconds and round to timeframe interval
-    const currentTimestamp = Math.floor(Date.now() / 1000);
+    // Get timestamp in seconds and round to timeframe interval
+    // Use WebSocket timestamp if available, otherwise fall back to local time
+    const currentTimestamp = wsTimestamp
+      ? Math.floor(wsTimestamp / 1000) // Convert ms to seconds if from WebSocket
+      : Math.floor(Date.now() / 1000);  // Fall back to local time
     const roundedTime = this.roundTimeToInterval(currentTimestamp);
 
     // Check if this is a new candle period
