@@ -24,7 +24,7 @@ import { ActivePositionsComponent, ActivePosition as ActivePositionInterface, Po
 import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
-import { calculateCombinedFundingSpread } from '@shared/lib';
+import { calculateCombinedFundingSpread, calculateFundingSpreadWithCustomSides } from '@shared/lib';
 
 interface ExchangeData {
   exchange: string;
@@ -943,12 +943,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     });
 
     this.chart.subscribeCrosshairMove(param => {
-      console.log('[ArbitrageChart] Crosshair moved:', {
-        hasPoint: !!param.point,
-        hasTime: !!param.time,
-        pointX: param.point?.x,
-        pointY: param.point?.y
-      });
       // Hide tooltip if cursor is not on the chart or no data point
       if (!param.point || !param.time || param.point.x < 0 || param.point.y < 0) {
         toolTip.style.display = 'none';
@@ -1622,7 +1616,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.updatePrimaryData(
           this.primaryData().price || 0,
           primaryData.fundingRate,
-          primaryData.nextFundingTime
+          primaryData.nextFundingTime,
+          primaryData.fundingInterval // Pass funding interval from API
         );
       }
 
@@ -1633,7 +1628,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.updateHedgeData(
           this.hedgeData().price || 0,
           hedgeData.fundingRate,
-          hedgeData.nextFundingTime
+          hedgeData.nextFundingTime,
+          hedgeData.fundingInterval // Pass funding interval from API
         );
       }
     } catch (error) {
@@ -2063,8 +2059,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
       // Get funding intervals in hours
-      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
-      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
+      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData());
+      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData());
+
+      // Validate funding intervals are available
+      if (primaryIntervalHours === null || hedgeIntervalHours === null) {
+        console.warn('[ArbitrageChart] Funding interval data unavailable:', {
+          primaryExchange: this.primaryExchange(),
+          hedgeExchange: this.hedgeExchange(),
+          primaryInterval: primaryIntervalHours,
+          hedgeInterval: hedgeIntervalHours
+        });
+        this.fundingSpread.set(NaN);
+        return;
+      }
 
       // Automatically set optimal sides if user hasn't manually selected
       if (!this.hasManualSideSelection) {
@@ -2083,8 +2091,37 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.setOptimalSidesFromSpreadResult(spreadResult);
       }
 
-      // Calculate actual spread based on current (possibly user-selected) positions
-      this.calculateActualFundingSpread(primaryRate, primaryIntervalHours, hedgeRate, hedgeIntervalHours);
+      // Calculate actual spread using shared function with current user-selected positions
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+      const spreadResult = calculateFundingSpreadWithCustomSides(
+        {
+          rate: primaryRate,
+          intervalHours: primaryIntervalHours,
+          exchange: this.primaryExchange(),
+        },
+        {
+          rate: hedgeRate,
+          intervalHours: hedgeIntervalHours,
+          exchange: this.hedgeExchange(),
+        },
+        primarySide,
+        hedgeSide
+      );
+
+      this.fundingSpread.set(spreadResult.spreadPerHour);
+
+      console.log('[ArbitrageChart] Funding spread calculated using shared function:', {
+        primaryExchange: this.primaryExchange(),
+        hedgeExchange: this.hedgeExchange(),
+        primarySide,
+        hedgeSide,
+        primaryRatePerHour: (spreadResult.primaryRatePerHour * 100).toFixed(4) + '%',
+        hedgeRatePerHour: (spreadResult.hedgeRatePerHour * 100).toFixed(4) + '%',
+        spreadPerHour: spreadResult.spreadPercentFormatted,
+        isProfitable: spreadResult.isProfitable
+      });
     } else {
       // If either rate is unavailable, set spread to NaN
       this.fundingSpread.set(NaN);
@@ -2104,65 +2141,54 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (!isNaN(primaryRate) && !isNaN(hedgeRate)) {
       // Get funding intervals in hours
-      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
-      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
+      const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData());
+      const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData());
 
-      // Calculate actual spread based on current user-selected positions
-      this.calculateActualFundingSpread(primaryRate, primaryIntervalHours, hedgeRate, hedgeIntervalHours);
+      // Validate funding intervals are available
+      if (primaryIntervalHours === null || hedgeIntervalHours === null) {
+        console.warn('[ArbitrageChart] Funding interval data unavailable for recalculation:', {
+          primaryExchange: this.primaryExchange(),
+          hedgeExchange: this.hedgeExchange(),
+          primaryInterval: primaryIntervalHours,
+          hedgeInterval: hedgeIntervalHours
+        });
+        this.fundingSpread.set(NaN);
+        return;
+      }
+
+      // Get current user-selected sides
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+      // Calculate actual spread using shared function with current user-selected positions
+      const spreadResult = calculateFundingSpreadWithCustomSides(
+        {
+          rate: primaryRate,
+          intervalHours: primaryIntervalHours,
+          exchange: this.primaryExchange(),
+        },
+        {
+          rate: hedgeRate,
+          intervalHours: hedgeIntervalHours,
+          exchange: this.hedgeExchange(),
+        },
+        primarySide,
+        hedgeSide
+      );
+
+      this.fundingSpread.set(spreadResult.spreadPerHour);
+
+      console.log('[ArbitrageChart] Funding spread recalculated using shared function:', {
+        primaryExchange: this.primaryExchange(),
+        hedgeExchange: this.hedgeExchange(),
+        primarySide,
+        hedgeSide,
+        primaryRatePerHour: (spreadResult.primaryRatePerHour * 100).toFixed(4) + '%',
+        hedgeRatePerHour: (spreadResult.hedgeRatePerHour * 100).toFixed(4) + '%',
+        spreadPerHour: spreadResult.spreadPercentFormatted,
+        isProfitable: spreadResult.isProfitable
+      });
     }
-  }
-
-  /**
-   * Calculate actual funding spread based on current user-selected positions
-   *
-   * Cash flow logic:
-   * - LONG position: cash flow = -ratePerHour (negative rate = positive income, positive rate = cost)
-   * - SHORT position: cash flow = +ratePerHour (negative rate = cost, positive rate = income)
-   * - Net funding profit = primaryCashFlow + hedgeCashFlow
-   *
-   * @param primaryRate - Primary exchange funding rate
-   * @param primaryIntervalHours - Primary exchange funding interval in hours
-   * @param hedgeRate - Hedge exchange funding rate
-   * @param hedgeIntervalHours - Hedge exchange funding interval in hours
-   */
-  private calculateActualFundingSpread(
-    primaryRate: number,
-    primaryIntervalHours: number,
-    hedgeRate: number,
-    hedgeIntervalHours: number
-  ): void {
-    // Normalize rates to 1h
-    const primaryRatePerHour = primaryRate / primaryIntervalHours;
-    const hedgeRatePerHour = hedgeRate / hedgeIntervalHours;
-
-    // Get current user-selected sides
-    const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
-    const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
-
-    // Calculate actual cash flow based on positions
-    // LONG: earn when rate is negative (shorts pay longs), pay when positive
-    // SHORT: pay when rate is negative, earn when positive
-    const primaryCashFlow = primarySide === 'long' ? -primaryRatePerHour : primaryRatePerHour;
-    const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRatePerHour : hedgeRatePerHour;
-
-    // Net funding profit from both positions
-    const netFundingProfit = primaryCashFlow + hedgeCashFlow;
-
-    // Set the actual spread based on user's selected positions
-    this.fundingSpread.set(netFundingProfit);
-
-    console.log('[ArbitrageChart] Actual funding spread calculated:', {
-      primaryExchange: this.primaryExchange(),
-      hedgeExchange: this.hedgeExchange(),
-      primarySide,
-      hedgeSide,
-      primaryRatePerHour: (primaryRatePerHour * 100).toFixed(4) + '%',
-      hedgeRatePerHour: (hedgeRatePerHour * 100).toFixed(4) + '%',
-      primaryCashFlow: (primaryCashFlow * 100).toFixed(4) + '%',
-      hedgeCashFlow: (hedgeCashFlow * 100).toFixed(4) + '%',
-      netFundingProfit: (netFundingProfit * 100).toFixed(4) + '%',
-      isProfitable: netFundingProfit > 0
-    });
   }
 
   /**
@@ -2350,7 +2376,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const parsed = parseFloat(fundingRateStr);
     // Convert decimal to percentage: 0.0001 → 0.01
     const percentage = isNaN(parsed) ? 0 : parsed * 100;
-    console.log(`📊 [Chart] Parsing funding rate: "${fundingRateStr}" → ${parsed} → ${percentage}%`);
+    // console.log(`📊 [Chart] Parsing funding rate: "${fundingRateStr}" → ${parsed} → ${percentage}%`);
     return percentage;
   }
 
