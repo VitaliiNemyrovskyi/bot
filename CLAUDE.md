@@ -15,8 +15,9 @@ You are a Senior Software developer and crypto trading expert
   - NEVER use `startTime` with `/openApi/swap/v2/user/income` endpoint
   - Always test with symbol variants ("FUSDT" vs "F-USDT")
   - Full backend restart required after changes to `funding-tracker.service.ts`
-  - always check data structure between backed, frontend or third party API
+  - always check data types and structure between backed, frontend or third party API
   - never use hardcoded default values
   - always add untracked files to GIT
   - hardcoded values or fallbacks are forbbiden
   - calculate funding spread using shared utilities
+  - all comments should be in English

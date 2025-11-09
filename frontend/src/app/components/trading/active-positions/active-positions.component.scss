@@ -64,9 +64,14 @@
 }
 
 .position-id-cell {
-  display: flex;
-  align-items: center;
   gap: 0.5rem;
+
+  .exchange-info {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+  }
 
   .expand-btn {
     background: none;
@@ -100,8 +105,9 @@
 .exchange-cell {
   .exchange-info {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
   }
 
   .exchange-name {
@@ -172,7 +178,6 @@
 }
 
 .actions-cell {
-  display: flex;
   gap: 0.5rem;
 
   .action-btn {
@@ -185,6 +190,15 @@
 
     &:hover {
       background-color: var(--hover-overlay);
+    }
+
+    &.delete-btn {
+      border-color: var(--danger-color);
+      color: var(--danger-color);
+
+      &:hover {
+        background-color: var(--danger-light);
+      }
     }
   }
 }
@@ -275,5 +289,53 @@
   &.enabled {
     background-color: var(--success-light);
     color: var(--success-dark);
+  }
+}
+
+.error-banner {
+  background-color: var(--danger-light);
+  border: 2px solid var(--danger-color);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+
+  .error-icon-large {
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+
+  .error-content {
+    flex: 1;
+
+    h4 {
+      margin: 0 0 0.75rem 0;
+      color: var(--danger-dark);
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0.5rem 0;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      line-height: 1.5;
+
+      strong {
+        font-weight: 600;
+        color: var(--danger-dark);
+      }
+    }
+
+    .error-note {
+      margin-top: 0.75rem;
+      padding: 0.5rem;
+      background-color: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
   }
 }

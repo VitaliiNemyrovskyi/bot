@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { websocketManager } from './websocket-manager.service';
 import prisma from '@/lib/prisma';
 import { calculateFundingSpread } from '@/lib/funding-spread.utils';
-import { calculatePriceSpread } from '@/lib/price-spread.utils';
+import { calculatePriceSpread } from '@shared/lib';
 
 export interface SignalConfig {
   id: string;
@@ -696,9 +696,11 @@ export class SignalMonitorService {
       primaryData.price,
       hedgeData.price,
       signal.primarySide,
-      signal.hedgeSide
+      signal.hedgeSide,
+      signal.primaryExchange,
+      signal.hedgeExchange
     );
-    const priceSpread = priceSpreadResult.spreadUsdt;
+    const priceSpread = priceSpreadResult.spreadAbsolute;
     const priceSpreadPercent = priceSpreadResult.spreadPercent;
 
     // Check price spread condition (WITHOUT absolute value - must be positive)

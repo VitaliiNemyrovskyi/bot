@@ -16,12 +16,12 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <span
-      class="material-symbols-outlined"
+    <i
+      class="material-icons"
       [class.spinning]="class.includes('spinning')"
       [style.font-size.px]="size"
       [attr.aria-hidden]="true"
-    >{{ getIconName() }}</span>
+    >{{ getIconName() }}</i>
   `,
   styles: [`
     :host {
@@ -30,11 +30,12 @@ import { CommonModule } from '@angular/common';
       justify-content: center;
     }
 
-    .material-symbols-outlined {
+    .material-icons {
       user-select: none;
+      display: inline-block;
     }
 
-    .material-symbols-outlined.spinning {
+    .material-icons.spinning {
       animation: spin 1s linear infinite;
     }
 
@@ -54,7 +55,7 @@ export class IconComponent {
   @Input() class = '';
 
   getIconName(): string {
-    // Map custom icon names to Material Symbols
+    // Map custom icon names to Material Icons
     const iconMap: Record<string, string> = {
       'spinner': 'autorenew',
       'trash': 'delete',
@@ -64,6 +65,27 @@ export class IconComponent {
       'chevron-down': 'expand_more',
       'clipboard': 'content_copy',
       'user': 'person',
+      'clear': 'clear',
+      'close': 'close',
+      'info': 'info',
+      'plus': 'add',
+      'edit': 'edit',
+      'logout': 'logout',
+      'play_arrow': 'play_arrow',
+      'filter': 'filter_list',
+      'show_chart': 'show_chart',
+      'trending_up': 'trending_up',
+      'trending_down': 'trending_down',
+      'chart': 'bar_chart',
+      'analytics': 'analytics',
+      'settings': 'settings',
+      'tune': 'tune',
+      'lock': 'lock',
+      'list': 'list',
+      'swap_horiz': 'swap_horiz',
+      'schedule': 'schedule',
+      'arrow_upward': 'arrow_upward',
+      'arrow_downward': 'arrow_downward',
     };
 
     return iconMap[this.name] || this.name;

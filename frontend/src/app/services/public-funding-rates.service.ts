@@ -188,7 +188,6 @@ export class PublicFundingRatesService {
         // Combine all exchange data
         const allRates: ExchangeFundingRate[] = Object.values(results).flat();
         console.log(`[PublicFundingRatesService] Received ${allRates.length} funding rates from ${Object.keys(requests).length} exchanges`);
-
         // Calculate opportunities
         return this.calculateOpportunities(allRates);
       }),

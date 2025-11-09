@@ -364,6 +364,16 @@ export class GateIOSpotConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get all positions or positions for a specific symbol (N/A for SPOT)
+   * Returns empty array since SPOT markets don't have positions
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    // SPOT markets don't have positions - return empty array
+    console.log(`[GateIOSpotConnector] getPositions called for ${symbol || 'all'} - SPOT markets have no positions`);
+    return [];
+  }
+
+  /**
    * Get order status
    */
   async getOrderStatus(orderId: string): Promise<any> {

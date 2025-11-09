@@ -24,7 +24,7 @@ import { ActivePositionsComponent, ActivePosition as ActivePositionInterface, Po
 import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
-import { calculateCombinedFundingSpread, calculateFundingSpreadWithCustomSides } from '@shared/lib';
+import { calculateCombinedFundingSpread, calculateFundingSpreadWithCustomSides, calculatePriceSpread } from '@shared/lib';
 
 interface ExchangeData {
   exchange: string;
@@ -968,10 +968,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         return;
       }
 
-      // Calculate spread
-      const absoluteSpread = Math.abs(primaryPrice - hedgePrice);
-      const avgPrice = (primaryPrice + hedgePrice) / 2;
-      const spreadPercent = (absoluteSpread / avgPrice) * 100;
+      // Calculate spread using shared function (position-aware)
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+      const spreadResult = calculatePriceSpread(
+        primaryPrice,
+        hedgePrice,
+        primarySide,
+        hedgeSide,
+        this.primaryExchange(),
+        this.hedgeExchange()
+      );
 
       // Update tooltip content
       const primaryPriceEl = document.getElementById('tooltip-primary-price');
@@ -982,8 +990,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       if (primaryPriceEl) primaryPriceEl.textContent = `$${primaryPrice.toFixed(6)}`;
       if (hedgePriceEl) hedgePriceEl.textContent = `$${hedgePrice.toFixed(6)}`;
-      if (absoluteSpreadEl) absoluteSpreadEl.textContent = `$${absoluteSpread.toFixed(6)}`;
-      if (percentSpreadEl) percentSpreadEl.textContent = `${spreadPercent.toFixed(4)}%`;
+      if (absoluteSpreadEl) absoluteSpreadEl.textContent = `$${spreadResult.spreadAbsolute.toFixed(6)}`;
+      if (percentSpreadEl) percentSpreadEl.textContent = `${spreadResult.spreadPercent.toFixed(4)}%`;
 
       // Format timestamp
       if (timeEl && param.time) {
@@ -1126,7 +1134,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         wsUrl = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`;
         // BINANCE doesn't require subscription message - connection is stream-specific
         subscribeMessage = null;
-        console.log(`[ArbitrageChart] BINANCE symbol: ${symbol} -> stream: ${symbol.toLowerCase()}@markPrice@1s`);
         break;
 
       case 'BINGX':
@@ -1378,14 +1385,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             fundingInterval = data.data.fundingInterval;
           }
 
-          // console.log(`[ArbitrageChart] BYBIT ticker parsed (${data.type || 'unknown'}):`, {
-          //   rawLastPrice: data.data.lastPrice,
-          //   parsedPrice: price,
-          //   rawNextFundingTime: data.data.nextFundingTime,
-          //   nextFundingTime: nextFundingTime,
-          //   fundingRate: fundingRate,
-          //   fundingInterval: fundingInterval
-          // });
         } else {
           console.warn(`[ArbitrageChart] BYBIT message format not recognized:`, data);
         }
@@ -2180,18 +2179,30 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Calculate price spread
+   * Calculate price spread using shared calculation logic
+   * Considers LONG/SHORT position sides for accurate spread calculation
    */
   private calculateSpread(): void {
     const primary = this.primaryData().price;
     const hedge = this.hedgeData().price;
 
     if (primary > 0 && hedge > 0) {
-      const spreadValue = Math.abs(primary - hedge);
-      const spreadPct = ((spreadValue / primary) * 100).toFixed(4);
+      // Get current user-selected position sides
+      const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+      const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
 
-      this.spread.set(spreadValue);
-      this.spreadPercent.set(spreadPct);
+      // Calculate price spread using shared function
+      const spreadResult = calculatePriceSpread(
+        primary,
+        hedge,
+        primarySide,
+        hedgeSide,
+        this.primaryExchange(),
+        this.hedgeExchange()
+      );
+
+      this.spread.set(spreadResult.spreadAbsolute);
+      this.spreadPercent.set(spreadResult.spreadPercent.toFixed(4));
     }
 
     // Also calculate funding spread
@@ -2573,7 +2584,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Format funding information in compact format: rate / time / interval
-   * Example: -0.6869% / 02:30 / 8h
+   * Example: -0.6869% / 02:30:45 / 8h
    */
   formatFundingInfo(rate: string, nextFundingTime: number, fundingIntervalStr?: string): string {
     if (!rate && (!nextFundingTime || nextFundingTime === 0)) return 'N/A';
@@ -2587,18 +2598,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Format time remaining as HH:MM
+    // Format time remaining as HH:MM:SS
     let timeFormatted = 'N/A';
     if (nextFundingTime && nextFundingTime > 0) {
       const now = Date.now();
       const remaining = nextFundingTime - now;
 
       if (remaining <= 0) {
-        timeFormatted = '00:00';
+        timeFormatted = '00:00:00';
       } else {
         const hours = Math.floor(remaining / (1000 * 60 * 60));
         const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-        timeFormatted = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+        timeFormatted = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
       }
     }
 

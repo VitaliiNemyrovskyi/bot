@@ -28,6 +28,7 @@ export interface PositionSide {
   stopLoss?: number;
   takeProfit?: number;
   unrealizedProfit?: number;
+  errorMessage?: string;
 }
 
 export interface ActivePosition {
@@ -211,5 +212,37 @@ export class ActivePositionsComponent implements OnChanges {
 
   t(key: string): string {
     return this.translationService.translate(key);
+  }
+
+  deletePosition(positionId: string): void {
+    if (!confirm('Ви впевнені, що хочете видалити цю позицію? Це незворотня дія.')) {
+      return;
+    }
+
+    // Call API to delete position from database
+    fetch(`/api/arbitrage/graduated-entry/${positionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to delete position');
+        }
+        return response.json();
+      })
+      .then(() => {
+        // Remove from local array
+        const index = this.positions.findIndex(p => p.positionId === positionId);
+        if (index !== -1) {
+          this.positions.splice(index, 1);
+        }
+        alert('Позицію успішно видалено');
+      })
+      .catch(error => {
+        console.error('Error deleting position:', error);
+        alert('Помилка при видаленні позиції: ' + error.message);
+      });
   }
 }

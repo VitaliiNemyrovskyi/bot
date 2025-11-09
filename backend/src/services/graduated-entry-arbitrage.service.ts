@@ -1287,6 +1287,38 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     position.primaryStatus = 'completed';
     position.hedgeStatus = 'completed';
 
+    // CRITICAL CHECK: Verify that orders were actually filled before proceeding
+    if (position.primaryFilledQuantity === 0 || position.hedgeFilledQuantity === 0) {
+      console.error(`[GraduatedEntry] ${position.id} - 🚨 CRITICAL: No orders filled`);
+      console.error(`[GraduatedEntry] ${position.id} - Primary filled: ${position.primaryFilledQuantity}, Hedge filled: ${position.hedgeFilledQuantity}`);
+
+      const errorMsg = position.primaryFilledQuantity === 0 && position.hedgeFilledQuantity === 0
+        ? 'No orders were filled on either exchange. Please check exchange API credentials and account balances.'
+        : position.primaryFilledQuantity === 0
+        ? `No orders filled on ${config.primaryExchange}. Please check API credentials and account balance.`
+        : `No orders filled on ${config.hedgeExchange}. Please check API credentials and account balance.`;
+
+      // Update position status to ERROR
+      if (position.dbId) {
+        await prisma.graduatedEntryPosition.update({
+          where: { id: position.dbId },
+          data: {
+            status: 'ERROR',
+            errorMessage: errorMsg,
+            primaryStatus: position.primaryFilledQuantity === 0 ? 'error' : 'completed',
+            hedgeStatus: position.hedgeFilledQuantity === 0 ? 'error' : 'completed',
+            primaryErrorMessage: position.primaryFilledQuantity === 0 ? errorMsg : undefined,
+            hedgeErrorMessage: position.hedgeFilledQuantity === 0 ? errorMsg : undefined,
+          },
+        });
+      }
+
+      // Remove from active positions map
+      this.positions.delete(position.id);
+
+      throw new Error(`Position creation failed: ${errorMsg}`);
+    }
+
     // Fetch actual entry prices from both exchanges
     let primaryEntryPrice: number | null = null;
     let hedgeEntryPrice: number | null = null;
@@ -1294,33 +1326,61 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
     try {
       console.log(`[GraduatedEntry] ${position.id} - Fetching entry prices from exchanges...`);
 
-      // Fetch primary position to get actual entry price
-      const primaryPosition = await this.getExchangePosition(
-        position.primaryConnector,
-        config.symbol,
-        config.primaryExchange
-      );
+      // Retry logic - exchanges may have delay in showing new positions
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 2000; // 2 seconds
 
-      if (primaryPosition) {
-        primaryEntryPrice = primaryPosition.entryPrice;
-        console.log(`[GraduatedEntry] ${position.id} - Primary entry price: ${primaryEntryPrice}`);
-      } else {
-        console.warn(`[GraduatedEntry] ${position.id} - Could not fetch primary position entry price`);
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 1) {
+          console.log(`[GraduatedEntry] ${position.id} - Retry ${attempt}/${MAX_RETRIES} after ${RETRY_DELAY_MS}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        }
+
+        // Fetch primary position to get actual entry price
+        const primaryPosition = await this.getExchangePosition(
+          position.primaryConnector,
+          config.symbol,
+          config.primaryExchange
+        );
+
+        // Fetch hedge position to get actual entry price
+        const hedgePosition = await this.getExchangePosition(
+          position.hedgeConnector,
+          config.symbol,
+          config.hedgeExchange
+        );
+
+        if (primaryPosition && primaryPosition.entryPrice > 0) {
+          primaryEntryPrice = primaryPosition.entryPrice;
+          console.log(`[GraduatedEntry] ${position.id} - Primary entry price: ${primaryEntryPrice}`);
+        }
+
+        if (hedgePosition && hedgePosition.entryPrice > 0) {
+          hedgeEntryPrice = hedgePosition.entryPrice;
+          console.log(`[GraduatedEntry] ${position.id} - Hedge entry price: ${hedgeEntryPrice}`);
+        }
+
+        // If both prices found, break early
+        if (primaryEntryPrice && hedgeEntryPrice) {
+          console.log(`[GraduatedEntry] ${position.id} - ✓ Both entry prices found on attempt ${attempt}`);
+          break;
+        }
+
+        // Log what's still missing
+        if (!primaryEntryPrice) {
+          console.warn(`[GraduatedEntry] ${position.id} - Still missing primary entry price (attempt ${attempt}/${MAX_RETRIES})`);
+        }
+        if (!hedgeEntryPrice) {
+          console.warn(`[GraduatedEntry] ${position.id} - Still missing hedge entry price (attempt ${attempt}/${MAX_RETRIES})`);
+        }
       }
 
-      // Fetch hedge position to get actual entry price
-      const hedgePosition = await this.getExchangePosition(
-        position.hedgeConnector,
-        config.symbol,
-        config.hedgeExchange
-      );
-
-      if (hedgePosition) {
-        hedgeEntryPrice = hedgePosition.entryPrice;
-        console.log(`[GraduatedEntry] ${position.id} - Hedge entry price: ${hedgeEntryPrice}`);
-      } else {
-        console.warn(`[GraduatedEntry] ${position.id} - Could not fetch hedge position entry price`);
+      // Final check
+      if (!primaryEntryPrice || !hedgeEntryPrice) {
+        console.error(`[GraduatedEntry] ${position.id} - Failed to get entry prices after ${MAX_RETRIES} attempts`);
+        console.error(`[GraduatedEntry] ${position.id} - Primary: ${primaryEntryPrice}, Hedge: ${hedgeEntryPrice}`);
       }
+
     } catch (error: any) {
       console.error(`[GraduatedEntry] ${position.id} - Error fetching entry prices:`, error.message);
       // Continue anyway - entry prices will be null but position will still be monitored
@@ -1363,7 +1423,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       console.error(`[GraduatedEntry] ${position.id} - 🚨 CRITICAL: Cannot set TP/SL - entry prices not available`);
       console.error(`[GraduatedEntry] ${position.id} - PRIMARY entry: ${primaryEntryPrice}, HEDGE entry: ${hedgeEntryPrice}`);
 
-      // Update position status to ERROR
+      // Save whatever entry prices we have to database before marking as ERROR
       if (position.dbId) {
         await prisma.graduatedEntryPosition.update({
           where: { id: position.dbId },
@@ -1373,6 +1433,11 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
             hedgeStatus: 'error',
             primaryErrorMessage: 'Entry prices not available for TP/SL setup',
             hedgeErrorMessage: 'Entry prices not available for TP/SL setup',
+            // Save whatever entry prices we got (might be partial)
+            primaryEntryPrice,
+            hedgeEntryPrice,
+            primaryTradingFees,
+            hedgeTradingFees,
           },
         });
       }

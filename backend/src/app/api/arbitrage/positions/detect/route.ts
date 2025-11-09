@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
-import { BingXConnector } from '@/connectors/bingx.connector';
-import { GateIOConnector } from '@/connectors/gateio.connector';
-import { BybitConnector } from '@/connectors/bybit.connector';
+import { ExchangeConnectorFactory } from '@/connectors/exchange.factory';
 import { BaseExchangeConnector } from '@/connectors/base-exchange.connector';
 import prisma from '@/lib/prisma';
 import { PriceArbitrageStatus } from '@prisma/client';
@@ -276,7 +274,9 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Get appropriate exchange connector
+ * Get appropriate exchange connector using the factory
+ * Supports all custom connectors (BYBIT, BINGX, MEXC, GATEIO)
+ * and CCXT exchanges (BITGET, BINANCE, OKX, KUCOIN, etc.)
  */
 function getConnector(
   exchange: string,
@@ -285,19 +285,14 @@ function getConnector(
   isTestnet: boolean,
   authToken?: string | null
 ): BaseExchangeConnector {
-  const exchangeUpper = exchange.toUpperCase();
-
-  switch (exchangeUpper) {
-    case 'BINGX':
-      return new BingXConnector(apiKey, apiSecret);
-    case 'BYBIT':
-      return new BybitConnector(apiKey, apiSecret);
-    case 'GATEIO':
-    case 'GATE':
-      return new GateIOConnector(apiKey, apiSecret);
-    default:
-      throw new Error(`Unsupported exchange: ${exchange}`);
-  }
+  return ExchangeConnectorFactory.create(
+    exchange,
+    apiKey,
+    apiSecret,
+    undefined, // userId
+    undefined, // credentialId
+    authToken || undefined
+  );
 }
 
 /**
@@ -471,10 +466,13 @@ async function createPositionFromExchangeData(
     switch (exchangeUpper) {
       case 'BINGX': return 0.0004; // 0.04% taker fee
       case 'BYBIT': return 0.0006; // 0.06% taker fee
+      case 'BITGET': return 0.0006; // 0.06% taker fee
       case 'GATEIO':
       case 'GATE': return 0.0005; // 0.05% taker fee
       case 'BINANCE': return 0.0004; // 0.04% taker fee
       case 'OKX': return 0.0008; // 0.08% taker fee
+      case 'MEXC': return 0.0006; // 0.06% taker fee
+      case 'KUCOIN': return 0.001; // 0.1% taker fee
       default: return 0.0005; // Default 0.05%
     }
   };

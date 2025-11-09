@@ -28,13 +28,23 @@ export {
   SpreadStrategyType,
 } from './funding-spread-types';
 
+export type {
+  PriceSpreadResult,
+} from './price-spread-calculator';
+
 // ===== CALCULATION FUNCTIONS =====
 export {
   calculateFundingSpread,
   calculateCombinedFundingSpread,
   calculatePriceOnlyFundingSpread,
+  calculateFundingSpreadWithCustomSides,
   normalizeFundingRateTo1h,
 } from './funding-spread-calculator';
+
+export {
+  calculatePriceSpread,
+  formatPriceSpreadPercent,
+} from './price-spread-calculator';
 
 // ===== FORMATTING FUNCTIONS =====
 export {

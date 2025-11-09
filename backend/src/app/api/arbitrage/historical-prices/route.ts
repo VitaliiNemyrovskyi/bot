@@ -126,6 +126,12 @@ async function fetchExchangeHistoricalData(
     return fetchBingXKlines(symbol, interval, limit);
   }
 
+  // Bybit has a 1000 candle limit per request - use direct API to handle multiple requests
+  if (exchangeUpper === 'BYBIT') {
+    console.log(`[Historical Prices] Using direct Bybit API (supports multiple requests for limit > 1000)`);
+    return fetchBybitKlines(symbol, interval, limit);
+  }
+
   // Use CCXT for all other exchanges - it provides unified interface
   console.log(`[Historical Prices] Fetching ${exchangeUpper} data via CCXT`);
 
@@ -187,6 +193,7 @@ async function fetchExchangeHistoricalData(
 
 /**
  * Fetch Bybit historical klines (public API)
+ * Bybit has a limit of 1000 candles per request, so we make multiple requests if needed
  */
 async function fetchBybitKlines(
   symbol: string,
@@ -197,26 +204,92 @@ async function fetchBybitKlines(
     // Map interval to Bybit format
     const bybitInterval = mapIntervalToBybit(interval);
 
-    const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}`;
+    const BYBIT_MAX_LIMIT = 1000;
+    const allKlines: Array<{ time: number; price: number }> = [];
 
-    console.log(`[Bybit Klines] Fetching from: ${url}`);
+    // If limit <= 1000, single request
+    if (limit <= BYBIT_MAX_LIMIT) {
+      console.log(`[Bybit Klines] Fetching ${limit} candles in single request`);
+      const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}`;
 
-    const response = await fetchWithTimeout(url, { timeout: 30000 });
-    const data = await response.json();
+      const response = await fetchWithTimeout(url, { timeout: 60000 });
+      const data = await response.json();
 
-    if (data.retCode !== 0) {
-      throw new Error(`Bybit API error: ${data.retMsg}`);
+      if (data.retCode !== 0) {
+        throw new Error(`Bybit API error: ${data.retMsg}`);
+      }
+
+      if (!data.result || !data.result.list || data.result.list.length === 0) {
+        return [];
+      }
+
+      const klines = data.result.list.map((k: any) => ({
+        time: Math.floor(parseInt(k[0]) / 1000),
+        price: parseFloat(k[4])
+      }));
+
+      return klines.reverse();
     }
 
-    // Convert Bybit klines to our format
-    // Bybit format: [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
-    const klines = data.result.list.map((k: any) => ({
-      time: Math.floor(parseInt(k[0]) / 1000), // Convert ms to seconds
-      price: parseFloat(k[4]) // Close price
-    }));
+    // Multiple requests needed for limit > 1000
+    console.log(`[Bybit Klines] Requested ${limit} candles, making multiple requests (max ${BYBIT_MAX_LIMIT} per request)`);
 
-    // Bybit returns newest first, so reverse to get oldest first
-    return klines.reverse();
+    const intervalSeconds = getIntervalSeconds(interval);
+    const numRequests = Math.ceil(limit / BYBIT_MAX_LIMIT);
+
+    console.log(`[Bybit Klines] Will make ${numRequests} requests to fetch ${limit} candles`);
+
+    // Bybit API accepts startTime and limit
+    // Start from oldest data and move forward
+    const now = Math.floor(Date.now() / 1000);
+    const oldestTime = now - (limit * intervalSeconds);
+
+    for (let i = 0; i < numRequests; i++) {
+      const requestLimit = Math.min(BYBIT_MAX_LIMIT, limit - (i * BYBIT_MAX_LIMIT));
+
+      // Calculate startTime for this batch (in milliseconds)
+      const startTime = (oldestTime + (i * BYBIT_MAX_LIMIT * intervalSeconds)) * 1000;
+      const endTime = startTime + (requestLimit * intervalSeconds * 1000);
+
+      const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&start=${startTime}&end=${endTime}&limit=${requestLimit}`;
+
+      console.log(`[Bybit Klines] Request ${i + 1}/${numRequests}: fetching ${requestLimit} candles from ${new Date(startTime).toISOString()}`);
+
+      try {
+        const response = await fetchWithTimeout(url, { timeout: 60000 });
+        const data = await response.json();
+
+        if (data.retCode !== 0) {
+          console.error(`[Bybit Klines] Request ${i + 1} failed:`, data.retMsg);
+          break;
+        }
+
+        if (data.result && data.result.list && data.result.list.length > 0) {
+          const batch = data.result.list.map((k: any) => ({
+            time: Math.floor(parseInt(k[0]) / 1000),
+            price: parseFloat(k[4])
+          }));
+
+          // Bybit returns newest first, so reverse
+          allKlines.push(...batch.reverse());
+          console.log(`[Bybit Klines] Request ${i + 1} successful: ${batch.length} candles received`);
+        } else {
+          console.warn(`[Bybit Klines] Request ${i + 1} returned no data`);
+        }
+
+        // Small delay between requests to avoid rate limits
+        if (i < numRequests - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+      } catch (requestError: any) {
+        console.error(`[Bybit Klines] Request ${i + 1} error:`, requestError.message);
+        break;
+      }
+    }
+
+    console.log(`[Bybit Klines] Total candles fetched: ${allKlines.length} (requested: ${limit})`);
+    return allKlines;
 
   } catch (error) {
     console.error('[Bybit Klines] Error:', error);
@@ -248,7 +321,7 @@ async function fetchBingXKlines(
       console.log(`[BingX Klines] Fetching ${limit} candles in single request`);
       const url = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${bingxSymbol}&interval=${bingxInterval}&limit=${limit}`;
 
-      const response = await fetchWithTimeout(url, { timeout: 30000 });
+      const response = await fetchWithTimeout(url, { timeout: 60000 }); // 60 second timeout for historical data
       const data = await response.json();
 
       if (data.code !== 0) {
@@ -285,21 +358,28 @@ async function fetchBingXKlines(
 
       console.log(`[BingX Klines] Request ${i + 1}/${numRequests}: fetching ${requestLimit} candles from ${new Date(startTime).toISOString()}`);
 
-      const response = await fetchWithTimeout(url, { timeout: 30000 });
-      const data = await response.json();
+      try {
+        const response = await fetchWithTimeout(url, { timeout: 60000 }); // 60 second timeout for historical data
+        const data = await response.json();
 
-      if (data.code !== 0) {
-        console.error(`[BingX Klines] Request ${i + 1} failed:`, data.msg);
-        break; // Stop on error, return what we have
-      }
+        if (data.code !== 0) {
+          console.error(`[BingX Klines] Request ${i + 1} failed:`, data.msg);
+          break; // Stop on error, return what we have
+        }
 
-      if (data.data && data.data.length > 0) {
-        const batch = data.data.map((k: any) => ({
-          time: Math.floor(k.time / 1000),
-          price: parseFloat(k.close)
-        }));
-        allKlines.push(...batch);
-        console.log(`[BingX Klines] Request ${i + 1} fetched ${batch.length} candles`);
+        if (data.data && data.data.length > 0) {
+          const batch = data.data.map((k: any) => ({
+            time: Math.floor(k.time / 1000),
+            price: parseFloat(k.close)
+          }));
+          allKlines.push(...batch);
+          console.log(`[BingX Klines] Request ${i + 1} fetched ${batch.length} candles`);
+        }
+      } catch (requestError: any) {
+        console.error(`[BingX Klines] Request ${i + 1} timeout/error:`, requestError.message);
+        // Return partial data collected so far
+        console.log(`[BingX Klines] Returning ${allKlines.length} candles collected before timeout`);
+        break;
       }
 
       // Small delay between requests to avoid rate limiting
@@ -346,7 +426,7 @@ async function fetchMEXCKlines(
     console.log(`[MEXC Klines] Converted symbol: ${mexcSymbol}`);
     console.log(`[MEXC Klines] Fetching from: ${url}`);
 
-    const response = await fetchWithTimeout(url, { timeout: 30000 });
+    const response = await fetchWithTimeout(url, { timeout: 60000 }); // 60 second timeout for historical data
     const data = await response.json();
 
     console.log(`[MEXC Klines] Response:`, data.success, data.code);
@@ -402,7 +482,7 @@ async function fetchOKXKlines(
     console.log(`[OKX Klines] Converted symbol: ${instId}`);
     console.log(`[OKX Klines] Fetching from: ${url}`);
 
-    const response = await fetchWithTimeout(url, { timeout: 30000 });
+    const response = await fetchWithTimeout(url, { timeout: 60000 }); // 60 second timeout for historical data
     const data = await response.json();
 
     if (data.code !== '0') {

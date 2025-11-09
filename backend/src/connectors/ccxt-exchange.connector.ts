@@ -328,6 +328,48 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get all positions or positions for a specific symbol
+   *
+   * @param symbol - Optional trading pair to filter by
+   * @returns Array of positions
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (!this.isInitialized) {
+      throw new Error(`${this.exchangeName} connector not initialized`);
+    }
+
+    try {
+      let positions: any[];
+
+      if (symbol) {
+        // Fetch positions for specific symbol
+        const normalizedSymbol = this.normalizeSymbol(symbol);
+        positions = await this.exchange.fetchPositions([normalizedSymbol]);
+      } else {
+        // Fetch all positions
+        positions = await this.exchange.fetchPositions();
+      }
+
+      // Filter out zero-size positions
+      const activePositions = positions.filter((p: any) => {
+        const contracts = Math.abs(parseFloat(p.contracts || p.info?.size || '0'));
+        return contracts > 0;
+      });
+
+      console.log(`[CCXTConnector] Positions retrieved:`, {
+        total: positions.length,
+        active: activePositions.length,
+        symbol: symbol || 'all',
+      });
+
+      return activePositions;
+    } catch (error: any) {
+      console.error(`[CCXTConnector] Error getting positions:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get order status
    *
    * @param orderId - Order ID

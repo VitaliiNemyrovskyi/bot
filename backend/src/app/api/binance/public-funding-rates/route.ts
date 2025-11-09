@@ -22,8 +22,9 @@ const CACHE_TTL_SECONDS = 30;
  * - /fapi/v1/fundingInfo - Funding interval hours (1h, 4h, 8h)
  */
 export async function GET(_request: NextRequest) {
+  const requestStartTime = Date.now();
+
   try {
-    const requestStartTime = Date.now();
     console.log(`[Binance] ⏱️ Request started at ${new Date().toISOString()}`);
 
     // Check Redis cache first

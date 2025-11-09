@@ -331,6 +331,94 @@ export function formatFundingRateNormalized(rate: number, intervalHours: number)
 }
 
 /**
+ * Calculate funding spread with user-specified position sides
+ *
+ * This function allows for custom side selection (LONG/SHORT) per exchange,
+ * unlike calculateCombinedFundingSpread which always uses optimal sides.
+ *
+ * Cash Flow Logic:
+ * - LONG position on negative funding rate = EARN |rate| (shorts pay longs)
+ * - LONG position on positive funding rate = PAY rate (longs pay shorts)
+ * - SHORT position on negative funding rate = PAY |rate| (shorts pay longs)
+ * - SHORT position on positive funding rate = EARN rate (longs pay shorts)
+ *
+ * Formula:
+ * - LONG cash flow = -ratePerHour (negative rate becomes positive income)
+ * - SHORT cash flow = +ratePerHour (negative rate becomes negative cost)
+ * - Net profit = primaryCashFlow + hedgeCashFlow
+ *
+ * @param primaryExchange - Primary exchange funding rate data
+ * @param hedgeExchange - Hedge exchange funding rate data
+ * @param primarySide - Position side for primary exchange ('long' | 'short')
+ * @param hedgeSide - Position side for hedge exchange ('long' | 'short')
+ * @returns Complete spread calculation result with actual sides
+ * @throws Error if inputs are invalid
+ *
+ * @example
+ * // User chose Gate.io LONG, Bybit SHORT
+ * const result = calculateFundingSpreadWithCustomSides(
+ *   { rate: -0.008, intervalHours: 1, exchange: 'GATEIO' },
+ *   { rate: -0.004, intervalHours: 8, exchange: 'BYBIT' },
+ *   'long',
+ *   'short'
+ * );
+ * // Result shows actual profit for this specific configuration
+ */
+export function calculateFundingSpreadWithCustomSides(
+  primaryExchange: FundingRateInput,
+  hedgeExchange: FundingRateInput,
+  primarySide: 'long' | 'short',
+  hedgeSide: 'long' | 'short'
+): FundingSpreadResult {
+  // ===== STEP 1: INPUT VALIDATION =====
+  if (!primaryExchange || !hedgeExchange) {
+    throw new Error('Both exchanges are required for spread calculation');
+  }
+
+  if (primaryExchange.intervalHours <= 0 || hedgeExchange.intervalHours <= 0) {
+    throw new Error(
+      `Invalid funding intervals: ${primaryExchange.exchange}=${primaryExchange.intervalHours}h, ${hedgeExchange.exchange}=${hedgeExchange.intervalHours}h`
+    );
+  }
+
+  // ===== STEP 2: NORMALIZE TO 1-HOUR TIMEFRAME =====
+  const primaryRatePerHour = normalizeFundingRateTo1h(
+    primaryExchange.rate,
+    primaryExchange.intervalHours
+  );
+  const hedgeRatePerHour = normalizeFundingRateTo1h(
+    hedgeExchange.rate,
+    hedgeExchange.intervalHours
+  );
+
+  // ===== STEP 3: CALCULATE CASH FLOW BASED ON POSITION SIDES =====
+  // LONG position: cash flow = -rate (negative rate = positive income)
+  // SHORT position: cash flow = +rate (negative rate = negative cost)
+  const primaryCashFlow = primarySide === 'long' ? -primaryRatePerHour : primaryRatePerHour;
+  const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRatePerHour : hedgeRatePerHour;
+
+  // ===== STEP 4: CALCULATE NET FUNDING PROFIT =====
+  const spreadPerHour = primaryCashFlow + hedgeCashFlow;
+
+  // ===== STEP 5: FORMAT RESULT =====
+  const spreadPercent = spreadPerHour * 100;
+  const spreadPercentFormatted = `${spreadPercent.toFixed(3)}%`;
+  const isProfitable = spreadPerHour > 0;
+
+  return {
+    spreadPerHour,
+    spreadPercentFormatted,
+    primaryExchange: primaryExchange.exchange,
+    hedgeExchange: hedgeExchange.exchange,
+    primaryRatePerHour,
+    hedgeRatePerHour,
+    primaryInterval: primaryExchange.intervalHours,
+    hedgeInterval: hedgeExchange.intervalHours,
+    isProfitable,
+  };
+}
+
+/**
  * Determine color class for funding rate display
  *
  * Color scheme:

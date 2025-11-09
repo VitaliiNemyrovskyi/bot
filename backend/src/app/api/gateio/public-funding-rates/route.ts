@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        signal: AbortSignal.timeout(10000), // 10 second timeout
+        signal: AbortSignal.timeout(30000), // 30 second timeout (Gate.io API can be slow)
       });
 
       if (!response.ok) {
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       if (fetchError.name === 'AbortError' || fetchError.name === 'TimeoutError') {
         console.error(`[GateIO API] Request timeout after ${totalTime}ms`);
         return NextResponse.json(
-          { error: 'Gate.io API timeout', details: 'Request took longer than 10 seconds' },
+          { error: 'Gate.io API timeout', details: 'Request took longer than 30 seconds' },
           { status: 504 }
         );
       }
