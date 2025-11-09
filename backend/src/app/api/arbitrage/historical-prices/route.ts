@@ -120,6 +120,12 @@ async function fetchExchangeHistoricalData(
     return fetchGateIOKlines(symbol, interval, limit);
   }
 
+  // BingX has a 1440 candle limit per request - use direct API to handle multiple requests
+  if (exchangeUpper === 'BINGX') {
+    console.log(`[Historical Prices] Using direct BingX API (supports multiple requests for limit > 1440)`);
+    return fetchBingXKlines(symbol, interval, limit);
+  }
+
   // Use CCXT for all other exchanges - it provides unified interface
   console.log(`[Historical Prices] Fetching ${exchangeUpper} data via CCXT`);
 
@@ -220,6 +226,7 @@ async function fetchBybitKlines(
 
 /**
  * Fetch BingX historical klines (public API)
+ * BingX has a limit of 1440 candles per request, so we make multiple requests if needed
  */
 async function fetchBingXKlines(
   symbol: string,
@@ -233,47 +240,84 @@ async function fetchBingXKlines(
     // Map interval to BingX format
     const bingxInterval = mapIntervalToBingX(interval);
 
-    // BingX has a maximum limit of 1440 data points
-    const cappedLimit = Math.min(limit, 1440);
-    if (limit > 1440) {
-      console.warn(`[BingX Klines] Requested limit ${limit} exceeds BingX maximum of 1440, capping to 1440`);
+    const BINGX_MAX_LIMIT = 1440;
+    const allKlines: Array<{ time: number; price: number }> = [];
+
+    // If limit <= 1440, single request
+    if (limit <= BINGX_MAX_LIMIT) {
+      console.log(`[BingX Klines] Fetching ${limit} candles in single request`);
+      const url = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${bingxSymbol}&interval=${bingxInterval}&limit=${limit}`;
+
+      const response = await fetchWithTimeout(url, { timeout: 30000 });
+      const data = await response.json();
+
+      if (data.code !== 0) {
+        throw new Error(`BingX API error: ${data.msg}`);
+      }
+
+      if (!data.data || data.data.length === 0) {
+        return [];
+      }
+
+      return data.data.map((k: any) => ({
+        time: Math.floor(k.time / 1000),
+        price: parseFloat(k.close)
+      }));
     }
 
-    const url = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${bingxSymbol}&interval=${bingxInterval}&limit=${cappedLimit}`;
+    // Multiple requests needed for limit > 1440
+    console.log(`[BingX Klines] Requested ${limit} candles, making multiple requests (max ${BINGX_MAX_LIMIT} per request)`);
 
-    console.log(`[BingX Klines] Original symbol: ${symbol}`);
-    console.log(`[BingX Klines] Converted symbol: ${bingxSymbol}`);
-    console.log(`[BingX Klines] Interval: ${interval} -> ${bingxInterval}`);
-    console.log(`[BingX Klines] Fetching from: ${url}`);
+    const intervalSeconds = getIntervalSeconds(interval);
+    const numRequests = Math.ceil(limit / BINGX_MAX_LIMIT);
 
-    const response = await fetchWithTimeout(url, { timeout: 30000 });
-    const data = await response.json();
+    console.log(`[BingX Klines] Will make ${numRequests} requests to fetch ${limit} candles`);
 
-    console.log(`[BingX Klines] Response code: ${data.code}, msg: ${data.msg}`);
-    console.log(`[BingX Klines] Data points received: ${data.data?.length || 0}`);
+    for (let i = 0; i < numRequests; i++) {
+      const requestLimit = Math.min(BINGX_MAX_LIMIT, limit - (i * BINGX_MAX_LIMIT));
 
-    if (data.code !== 0) {
-      console.error(`[BingX Klines] API error response:`, data);
-      throw new Error(`BingX API error: ${data.msg}`);
+      // Calculate startTime for this batch
+      // BingX returns newest candles first, so we need to go back in time
+      const now = Math.floor(Date.now() / 1000);
+      const startTime = (now - ((i + 1) * BINGX_MAX_LIMIT * intervalSeconds)) * 1000; // Convert to ms
+
+      const url = `https://open-api.bingx.com/openApi/swap/v2/quote/klines?symbol=${bingxSymbol}&interval=${bingxInterval}&limit=${requestLimit}&startTime=${startTime}`;
+
+      console.log(`[BingX Klines] Request ${i + 1}/${numRequests}: fetching ${requestLimit} candles from ${new Date(startTime).toISOString()}`);
+
+      const response = await fetchWithTimeout(url, { timeout: 30000 });
+      const data = await response.json();
+
+      if (data.code !== 0) {
+        console.error(`[BingX Klines] Request ${i + 1} failed:`, data.msg);
+        break; // Stop on error, return what we have
+      }
+
+      if (data.data && data.data.length > 0) {
+        const batch = data.data.map((k: any) => ({
+          time: Math.floor(k.time / 1000),
+          price: parseFloat(k.close)
+        }));
+        allKlines.push(...batch);
+        console.log(`[BingX Klines] Request ${i + 1} fetched ${batch.length} candles`);
+      }
+
+      // Small delay between requests to avoid rate limiting
+      if (i < numRequests - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
 
-    if (!data.data || data.data.length === 0) {
-      console.warn(`[BingX Klines] No data returned for ${bingxSymbol}`);
-      return [];
-    }
+    // Sort by time (oldest first) and remove duplicates
+    const uniqueKlines = Array.from(
+      new Map(allKlines.map(k => [k.time, k])).values()
+    ).sort((a, b) => a.time - b.time);
 
-    // Convert BingX klines to our format
-    // BingX format: { time, open, high, low, close, volume }
-    const klines = data.data.map((k: any) => ({
-      time: Math.floor(k.time / 1000), // Convert ms to seconds
-      price: parseFloat(k.close)
-    }));
+    console.log(`[BingX Klines] Successfully fetched total ${uniqueKlines.length} candles (requested ${limit})`);
+    console.log(`[BingX Klines] First kline:`, uniqueKlines[0]);
+    console.log(`[BingX Klines] Last kline:`, uniqueKlines[uniqueKlines.length - 1]);
 
-    console.log(`[BingX Klines] Successfully converted ${klines.length} klines`);
-    console.log(`[BingX Klines] First kline:`, klines[0]);
-    console.log(`[BingX Klines] Last kline:`, klines[klines.length - 1]);
-
-    return klines;
+    return uniqueKlines;
 
   } catch (error) {
     console.error('[BingX Klines] Error:', error);

@@ -14,6 +14,7 @@ export interface SymbolInfo {
   qtyPrecision: number;
   maxOrderQty?: number;
   maxLeverage?: number;
+  quantoMultiplier?: number; // Gate.io quanto multiplier - quantity must be multiple of this
 }
 
 @Injectable({
@@ -128,6 +129,24 @@ export class SymbolInfoService {
         error: `Quantity per part must be a multiple of ${symbolInfo.qtyStep} ${coinSymbol}`,
         suggestion: `Adjust total quantity to ${(roundedQtyPerPart * graduatedParts).toFixed(symbolInfo.qtyPrecision)} ${coinSymbol}`
       };
+    }
+
+    // Check quanto multiplier (Gate.io specific)
+    if (symbolInfo.quantoMultiplier && symbolInfo.quantoMultiplier > 0) {
+      const remainder = totalQuantity % symbolInfo.quantoMultiplier;
+      if (remainder !== 0) {
+        const coinSymbol = this.extractCoinSymbol(symbolInfo.symbol);
+        const nextValidQty = Math.ceil(totalQuantity / symbolInfo.quantoMultiplier) * symbolInfo.quantoMultiplier;
+        const prevValidQty = Math.floor(totalQuantity / symbolInfo.quantoMultiplier) * symbolInfo.quantoMultiplier;
+
+        return {
+          valid: false,
+          error: `Quantity must be a multiple of ${symbolInfo.quantoMultiplier} ${coinSymbol} (quanto multiplier requirement)`,
+          suggestion: prevValidQty >= symbolInfo.minOrderQty
+            ? `Use ${prevValidQty} ${coinSymbol} or ${nextValidQty} ${coinSymbol}`
+            : `Use ${nextValidQty} ${coinSymbol}`
+        };
+      }
     }
 
     return { valid: true };

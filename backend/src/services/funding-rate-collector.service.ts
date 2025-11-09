@@ -119,7 +119,15 @@ export class FundingRateCollectorService {
         case Exchange.BYBIT:
           fundingData = await this.fetchBybitFunding(symbol);
           break;
-        // Add other exchanges as needed
+        case Exchange.BINANCE:
+          fundingData = await this.fetchBinanceFunding(symbol);
+          break;
+        case Exchange.GATEIO:
+          fundingData = await this.fetchGateIOFunding(symbol);
+          break;
+        case Exchange.OKX:
+          fundingData = await this.fetchOKXFunding(symbol);
+          break;
         default:
           console.log(`[FundingRateCollector] ${exchange} not implemented yet`);
           return;
@@ -186,7 +194,15 @@ export class FundingRateCollectorService {
       // BingX uses different symbol format
       const bingxSymbol = symbol.replace('/', '-');
 
-      const response = await fetch(`https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex?symbol=${bingxSymbol}`);
+      const response = await fetch(`https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex?symbol=${bingxSymbol}`, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!response.ok) {
+        console.warn(`[FundingRateCollector] BingX API returned ${response.status} for ${symbol}`);
+        return null;
+      }
+
       const data = await response.json();
 
       if (data.code !== 0 || !data.data) {
@@ -202,8 +218,14 @@ export class FundingRateCollectorService {
         markPrice: parseFloat(fundingInfo.markPrice || '0'),
         indexPrice: parseFloat(fundingInfo.indexPrice || '0'),
       };
-    } catch (error) {
-      console.error(`[FundingRateCollector] BingX fetch error for ${symbol}:`, error);
+    } catch (error: any) {
+      if (error.code === 'ENOTFOUND') {
+        console.warn(`[FundingRateCollector] BingX API unreachable (DNS error) - network issue or regional blocking`);
+      } else if (error.name === 'AbortError') {
+        console.warn(`[FundingRateCollector] BingX API timeout for ${symbol}`);
+      } else {
+        console.error(`[FundingRateCollector] BingX fetch error for ${symbol}:`, error);
+      }
       return null;
     }
   }
@@ -221,7 +243,15 @@ export class FundingRateCollectorService {
     try {
       const bybitSymbol = symbol.replace('/', '');
 
-      const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${bybitSymbol}`);
+      const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${bybitSymbol}`, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!response.ok) {
+        console.warn(`[FundingRateCollector] Bybit API returned ${response.status} for ${symbol}`);
+        return null;
+      }
+
       const data = await response.json();
 
       if (data.retCode !== 0 || !data.result?.list?.[0]) {
@@ -237,8 +267,188 @@ export class FundingRateCollectorService {
         markPrice: parseFloat(ticker.markPrice || '0'),
         indexPrice: parseFloat(ticker.indexPrice || '0'),
       };
-    } catch (error) {
-      console.error(`[FundingRateCollector] Bybit fetch error for ${symbol}:`, error);
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        console.warn(`[FundingRateCollector] Bybit API timeout for ${symbol}`);
+      } else if (error.code === 'ENOTFOUND') {
+        console.warn(`[FundingRateCollector] Bybit API unreachable (DNS error) - network issue or regional blocking`);
+      } else {
+        console.error(`[FundingRateCollector] Bybit fetch error for ${symbol}:`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Fetch funding rate from Binance
+   */
+  private async fetchBinanceFunding(symbol: string): Promise<{
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  } | null> {
+    try {
+      // Binance uses different symbol format (no slash)
+      const binanceSymbol = symbol.replace('/', '');
+
+      const response = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!response.ok) {
+        console.warn(`[FundingRateCollector] Binance API returned ${response.status} for ${symbol}`);
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (!data || !data.symbol) {
+        return null;
+      }
+
+      return {
+        fundingRate: parseFloat(data.lastFundingRate || '0'),
+        nextFundingTime: new Date(data.nextFundingTime),
+        fundingInterval: 8, // Binance has 8-hour funding
+        markPrice: parseFloat(data.markPrice || '0'),
+        indexPrice: parseFloat(data.indexPrice || '0'),
+      };
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        console.warn(`[FundingRateCollector] Binance API timeout for ${symbol}`);
+      } else if (error.code === 'ENOTFOUND') {
+        console.warn(`[FundingRateCollector] Binance API unreachable (DNS error) - network issue or regional blocking`);
+      } else {
+        console.error(`[FundingRateCollector] Binance fetch error for ${symbol}:`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Fetch funding rate from Gate.io
+   */
+  private async fetchGateIOFunding(symbol: string): Promise<{
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  } | null> {
+    try {
+      // Gate.io uses underscore format
+      const gateioSymbol = symbol.replace('/', '_');
+
+      const response = await fetch('https://api.gateio.ws/api/v4/futures/usdt/contracts', {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!response.ok) {
+        console.warn(`[FundingRateCollector] Gate.io API returned ${response.status} for ${symbol}`);
+        return null;
+      }
+
+      const contracts = await response.json();
+
+      // Find the contract for this symbol
+      const contract = contracts.find((c: any) => c.name === gateioSymbol);
+
+      if (!contract) {
+        return null;
+      }
+
+      // Skip if funding_interval is missing - NO DEFAULTS ALLOWED
+      if (!contract.funding_interval || contract.funding_interval === 0) {
+        throw new Error(`Gate.io contract missing funding_interval (defaults forbidden by user)`);
+      }
+
+      return {
+        fundingRate: parseFloat(contract.funding_rate || '0'),
+        nextFundingTime: new Date(contract.funding_next_apply * 1000),
+        fundingInterval: contract.funding_interval / 3600, // Seconds to hours
+        markPrice: parseFloat(contract.mark_price || '0'),
+        indexPrice: parseFloat(contract.index_price || '0'),
+      };
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        console.warn(`[FundingRateCollector] Gate.io API timeout for ${symbol}`);
+      } else if (error.code === 'ENOTFOUND') {
+        console.warn(`[FundingRateCollector] Gate.io API unreachable (DNS error) - network issue or regional blocking`);
+      } else {
+        console.error(`[FundingRateCollector] Gate.io fetch error for ${symbol}:`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Fetch funding rate from OKX
+   */
+  private async fetchOKXFunding(symbol: string): Promise<{
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  } | null> {
+    try {
+      // OKX uses format like BTC-USDT-SWAP
+      const base = symbol.split('/')[0];
+      const okxSymbol = `${base}-USDT-SWAP`;
+
+      const response = await fetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${okxSymbol}`, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!response.ok) {
+        console.warn(`[FundingRateCollector] OKX API returned ${response.status} for ${symbol}`);
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '0' || !data.data || data.data.length === 0) {
+        return null;
+      }
+
+      const fundingInfo = data.data[0];
+
+      // Get mark price from ticker
+      const tickerResponse = await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${okxSymbol}`, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (!tickerResponse.ok) {
+        console.warn(`[FundingRateCollector] OKX ticker API returned ${tickerResponse.status} for ${symbol}`);
+      }
+
+      const tickerData = await tickerResponse.json();
+
+      const markPrice = tickerData.code === '0' && tickerData.data?.[0]
+        ? parseFloat(tickerData.data[0].last || '0')
+        : 0;
+
+      const indexPrice = tickerData.code === '0' && tickerData.data?.[0]
+        ? parseFloat(tickerData.data[0].idxPx || '0')
+        : 0;
+
+      return {
+        fundingRate: parseFloat(fundingInfo.fundingRate || '0'),
+        nextFundingTime: new Date(parseInt(fundingInfo.nextFundingTime)),
+        fundingInterval: 8, // OKX has 8-hour funding
+        markPrice,
+        indexPrice,
+      };
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        console.warn(`[FundingRateCollector] OKX API timeout for ${symbol}`);
+      } else if (error.code === 'ENOTFOUND') {
+        console.warn(`[FundingRateCollector] OKX API unreachable (DNS error) - network issue or regional blocking`);
+      } else {
+        console.error(`[FundingRateCollector] OKX fetch error for ${symbol}:`, error);
+      }
       return null;
     }
   }

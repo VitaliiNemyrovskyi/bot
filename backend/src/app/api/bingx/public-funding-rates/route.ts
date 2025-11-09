@@ -64,12 +64,26 @@ async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymb
   // Fetch from API - this is the ONLY source of truth
   const historyResponse = await fetchWithTimeout(
     EXCHANGE_ENDPOINTS.BINGX.FUNDING_RATE_HISTORY(bingxSymbol),
-    { timeout: 10000 } // 10 second timeout for consistency
+    { timeout: 20000 } // 20 second timeout (BingX is slow)
   );
   const historyData = await historyResponse.json();
 
-  if (historyData.code !== 0 || !historyData.data || historyData.data.length < 3) {
-    throw new Error(`BingX API returned insufficient data for ${bingxSymbol}: ${historyData.msg || 'unknown error'}`);
+  if (historyData.code !== 0 || !historyData.data || historyData.data.length < 2) {
+    // Provide detailed error message based on the response
+    let errorMsg = historyData.msg || 'no error message provided';
+    const dataLength = historyData.data?.length || 0;
+
+    if (historyData.code === 100001) {
+      errorMsg = 'symbol not found or delisted';
+    } else if (historyData.code === 80012) {
+      errorMsg = 'invalid symbol format';
+    } else if (dataLength === 0) {
+      errorMsg = 'no funding rate history available (symbol may be delisted or never had funding)';
+    } else if (dataLength < 2) {
+      errorMsg = `only ${dataLength} funding record available (need at least 2 to calculate interval)`;
+    }
+
+    throw new Error(`BingX API error for ${bingxSymbol} (code: ${historyData.code}): ${errorMsg}`);
   }
 
   // Analyze multiple records to find the actual funding collection interval
@@ -139,16 +153,24 @@ async function calculateBingXFundingInterval(bingxSymbol: string, normalizedSymb
  * GET /api/bingx/public-funding-rates
  */
 export async function GET(_request: NextRequest) {
+  const requestStartTime = Date.now();
+  console.log(`[BingX] ⏱️ Request started at ${new Date().toISOString()}`);
+
   try {
     // Step 1: Try Redis cache first (ultra-fast, ~5ms)
+    const redisStartTime = Date.now();
     const cachedData = await redisService.getBulkFundingRates('BINGX');
+    console.log(`[BingX] Redis cache check took ${Date.now() - redisStartTime}ms`);
 
     if (cachedData) {
+      const totalTime = Date.now() - requestStartTime;
+      console.log(`[BingX] ✅ Served from Redis cache in ${totalTime}ms`);
       return NextResponse.json(cachedData.data, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'redis-cache',
           'X-Cache-Age': Math.floor((Date.now() - cachedData.timestamp) / 1000).toString(),
+          'X-Response-Time': `${totalTime}ms`,
         },
       });
     }
@@ -157,6 +179,7 @@ export async function GET(_request: NextRequest) {
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);
 
     // Step 2: Check if we have fresh data in DB
+    const dbCheckStartTime = Date.now();
     const cachedCount = await prisma.publicFundingRate.count({
       where: {
         exchange: 'BINGX',
@@ -165,10 +188,12 @@ export async function GET(_request: NextRequest) {
         },
       },
     });
+    console.log(`[BingX] DB cache check took ${Date.now() - dbCheckStartTime}ms (found ${cachedCount} records)`);
 
 
     // Step 3: If fresh data exists, return from DB
     if (cachedCount > 0) {
+      const dbFetchStartTime = Date.now();
       const cachedRates = await prisma.publicFundingRate.findMany({
         where: {
           exchange: 'BINGX',
@@ -181,6 +206,7 @@ export async function GET(_request: NextRequest) {
         },
         distinct: ['symbol'], // Get latest record per symbol
       });
+      console.log(`[BingX] DB fetch took ${Date.now() - dbFetchStartTime}ms`);
 
 
       // Transform DB format to BingX API format
@@ -202,23 +228,29 @@ export async function GET(_request: NextRequest) {
         console.error('[BingX] Failed to cache in Redis:', err.message);
       });
 
+      const totalTime = Date.now() - requestStartTime;
+      console.log(`[BingX] ✅ Served from DB cache in ${totalTime}ms`);
+
       return NextResponse.json(transformedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
+          'X-Response-Time': `${totalTime}ms`,
         },
       });
     }
 
     // Step 4: No fresh data - fetch from BingX API
+    console.log(`[BingX] No fresh cache, fetching from API...`);
 
+    const apiFetchStartTime = Date.now();
     const bingxUrl = 'https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex';
     const response = await fetchWithTimeout(bingxUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      timeout: 10000, // 10 second timeout
+      timeout: 20000, // 20 second timeout (BingX is known to be slow)
     });
 
     if (!response.ok) {
@@ -230,9 +262,11 @@ export async function GET(_request: NextRequest) {
 
     const rawData = await response.json();
     const allData = rawData.data || [];
+    console.log(`[BingX] API fetch took ${Date.now() - apiFetchStartTime}ms (received ${allData.length} symbols)`);
 
     // Step 4: Filter out non-trading or delisted contracts
     // Only include contracts with valid mark price (indicates active trading)
+    const filterStartTime = Date.now();
     const data = allData.filter((item: any) => {
       // Filter out contracts without mark price (not trading)
       if (!item.markPrice || parseFloat(item.markPrice) === 0) {
@@ -241,10 +275,11 @@ export async function GET(_request: NextRequest) {
       }
       return true;
     });
-
+    console.log(`[BingX] Filtering took ${Date.now() - filterStartTime}ms`);
     console.log(`[BingX] Filtered ${allData.length - data.length} non-trading contracts. Active: ${data.length}`);
 
     // Step 5: Get existing intervals and timestamps from DB
+    const dbIntervalFetchStartTime = Date.now();
     const existingRates = await prisma.publicFundingRate.findMany({
       where: {
         exchange: 'BINGX',
@@ -256,6 +291,7 @@ export async function GET(_request: NextRequest) {
         timestamp: true, // For TTL check
       },
     });
+    console.log(`[BingX] DB interval fetch took ${Date.now() - dbIntervalFetchStartTime}ms (${existingRates.length} records)`);
 
     const intervalMap = new Map<string, number>();
     for (const rate of existingRates) {
@@ -273,6 +309,7 @@ export async function GET(_request: NextRequest) {
     }
 
     // Step 6: Identify symbols needing interval calculation (HYBRID TTL + ACTUALITY CHECK)
+    const checkStartTime = Date.now();
     const symbolsNeedingInterval: Array<{ bingxSymbol: string; normalizedSymbol: string; reason: string }> = [];
     for (const item of data) {
       const normalizedSymbol = item.symbol.replace('-', '/');
@@ -309,10 +346,11 @@ export async function GET(_request: NextRequest) {
         });
       }
     }
+    console.log(`[BingX] Hybrid check took ${Date.now() - checkStartTime}ms`);
 
-    // Step 7: Calculate missing intervals in small batches (10 at a time) to avoid memory crash
+    // Step 7: Calculate missing intervals in batches (20 at a time) to avoid memory crash
     if (symbolsNeedingInterval.length > 0) {
-      console.log(`[BingX] Hybrid check: ${symbolsNeedingInterval.length} symbols need recalculation`);
+      console.log(`[BingX] 🔄 Hybrid check: ${symbolsNeedingInterval.length} symbols need recalculation`);
 
       // Show reasons breakdown
       const reasonCounts = new Map<string, number>();
@@ -324,9 +362,18 @@ export async function GET(_request: NextRequest) {
         console.log(`  - ${reason}: ${count} symbols`);
       }
 
-      const batchSize = 10;
+      const intervalCalcStartTime = Date.now();
+      const batchSize = 20; // Increased from 10 to 20
+      const totalBatches = Math.ceil(symbolsNeedingInterval.length / batchSize);
+      console.log(`[BingX] Processing ${totalBatches} batches of ${batchSize} symbols each...`);
+
       for (let i = 0; i < symbolsNeedingInterval.length; i += batchSize) {
+        const batchNumber = Math.floor(i / batchSize) + 1;
+        const batchStartTime = Date.now();
+
         const batch = symbolsNeedingInterval.slice(i, i + batchSize);
+        console.log(`[BingX] 📦 Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} symbols...`);
+
         const batchPromises = batch.map(async ({ bingxSymbol, normalizedSymbol, reason }) => {
           try {
             const interval = await calculateBingXFundingInterval(bingxSymbol, normalizedSymbol);
@@ -343,10 +390,18 @@ export async function GET(_request: NextRequest) {
 
         // Wait for batch to complete before starting next batch
         await Promise.all(batchPromises);
+
+        const batchTime = Date.now() - batchStartTime;
+        console.log(`[BingX] ✅ Batch ${batchNumber}/${totalBatches} completed in ${(batchTime / 1000).toFixed(1)}s`);
       }
+
+      const totalCalcTime = Date.now() - intervalCalcStartTime;
+      console.log(`[BingX] ⏱️ Total interval calculation time: ${(totalCalcTime / 1000).toFixed(1)}s (${totalCalcTime}ms)`);
     }
 
     // Step 8: Upsert records with calculated or existing intervals
+    const upsertStartTime = Date.now();
+    console.log(`[BingX] Saving ${data.length} records to database...`);
     const upsertPromises = data.map(async (item: any) => {
       const symbol = item.symbol.replace('-', '/');
       const fundingInterval = intervalMap.get(symbol) || 0;
@@ -380,8 +435,10 @@ export async function GET(_request: NextRequest) {
     });
 
     await Promise.all(upsertPromises);
+    console.log(`[BingX] Database upsert took ${Date.now() - upsertStartTime}ms`);
 
     // Step 9: Return transformed data with fresh or existing intervals
+    const transformStartTime = Date.now();
     const enrichedData = {
       ...rawData,
       data: data.map((item: any) => {
@@ -394,18 +451,28 @@ export async function GET(_request: NextRequest) {
       }),
     };
 
+    console.log(`[BingX] Data transformation took ${Date.now() - transformStartTime}ms`);
+
     // Store in Redis for next request (non-blocking)
     redisService.cacheBulkFundingRates('BINGX', enrichedData, CACHE_TTL_SECONDS).catch(err => {
       console.error('[BingX] Failed to cache in Redis:', err.message);
     });
 
+    const totalTime = Date.now() - requestStartTime;
+    const intervalsCalculated = symbolsNeedingInterval?.length || 0;
+    console.log(`[BingX] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);
+    console.log(`[BingX] 📊 Summary: ${data.length} symbols, ${intervalsCalculated} intervals calculated`);
+
     return NextResponse.json(enrichedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',
+        'X-Response-Time': `${totalTime}ms`,
       },
     });
   } catch (error: any) {
+    const totalTime = Date.now() - requestStartTime;
+    console.error(`[BingX] ❌ Request failed after ${totalTime}ms:`, error.message);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

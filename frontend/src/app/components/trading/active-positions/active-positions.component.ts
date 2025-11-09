@@ -1,299 +1,215 @@
+import { Component, Input, OnChanges, SimpleChanges, Output, EventEmitter, computed, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { IconComponent } from '../../ui/icon/icon.component';
+import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
+import { TranslationService } from '../../../services/translation.service';
+
 /**
- * Active Price Arbitrage Positions Component
+ * Active Positions Component
  *
- * Displays and manages active price arbitrage positions across exchanges.
- * Features:
- * - Real-time position monitoring
- * - Unrealized P&L calculations
- * - Position close functionality
- * - Status filtering
- * - Responsive table layout
+ * Displays active arbitrage positions with real-time P&L calculations
  */
 
-import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { interval, Subscription } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+export interface PositionSide {
+  exchange: string;
+  environment: string;
+  side: 'LONG' | 'SHORT' | 'long' | 'short';
+  leverage: number;
+  quantity: number;
+  filledQuantity?: number;
+  entryPrice?: number;
+  currentPrice?: number;
+  tradingFees: number;
+  lastFundingPaid: number;
+  totalFundingEarned: number;
+  liquidationPrice?: number;
+  proximityRatio?: number;
+  inDanger?: boolean;
+  stopLoss?: number;
+  takeProfit?: number;
+  unrealizedProfit?: number;
+}
 
-import { PriceArbitrageService } from '../../../services/price-arbitrage.service';
-import { TranslationService } from '../../../services/translation.service';
-import {
-  PriceArbitragePositionDTO,
-  PriceArbitrageStatus,
-  calculateHoldingTime,
-  formatPnlDisplay
-} from '../../../models/price-arbitrage.model';
-
-import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
-import { ButtonComponent } from '../../ui/button/button.component';
-import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../ui/dialog/dialog.component';
+export interface ActivePosition {
+  positionId: string;
+  symbol: string;
+  primary: PositionSide;
+  hedge: PositionSide;
+  status: string;
+  startedAt: Date;
+  completedAt?: Date;
+  grossProfit: number;
+  netProfit: number;
+  monitoring?: {
+    enabled: boolean;
+    status: string;
+    lastCheck?: Date;
+  };
+  errorMessage?: string;
+  fundingUpdateCount?: number;
+  graduatedEntry: {
+    parts: number;
+    delayMs: number;
+  };
+}
 
 @Component({
   selector: 'app-active-positions',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    CardComponent,
-    CardHeaderComponent,
-    CardTitleComponent,
-    CardContentComponent,
-    ButtonComponent,
-    DialogComponent,
-    DialogHeaderComponent,
-    DialogTitleComponent,
-    DialogContentComponent,
-    DialogFooterComponent
-  ],
+  imports: [CommonModule, IconComponent, RelativeTimePipe],
   templateUrl: './active-positions.component.html',
-  styleUrl: './active-positions.component.scss'
+  styleUrls: ['./active-positions.component.scss']
 })
-export class ActivePositionsComponent implements OnInit, OnDestroy {
-  private priceArbitrageService = inject(PriceArbitrageService);
-  private translationService = inject(TranslationService);
+export class ActivePositionsComponent implements OnChanges {
+  @Input() positions: ActivePosition[] = [];
+  @Input() set primaryPrice(value: number) {
+    this.primaryPriceSignal.set(value);
+  }
+  @Input() set hedgePrice(value: number) {
+    this.hedgePriceSignal.set(value);
+  }
 
-  // State signals
-  positions = signal<PriceArbitragePositionDTO[]>([]);
-  isLoading = signal<boolean>(false);
-  error = signal<string | null>(null);
-  selectedStatus = signal<'ALL' | PriceArbitrageStatus>(PriceArbitrageStatus.ACTIVE);
+  @Output() syncTpSlClick = new EventEmitter<string>();
+  @Output() toggleMonitoringClick = new EventEmitter<ActivePosition>();
+  @Output() stopPositionClick = new EventEmitter<string>();
 
-  // Close confirmation dialog
-  showCloseDialog = signal<boolean>(false);
-  positionToClose = signal<PriceArbitragePositionDTO | null>(null);
-  isClosing = signal<boolean>(false);
+  private expandedRows = signal<Set<string>>(new Set());
+  private primaryPriceSignal = signal<number>(0);
+  private hedgePriceSignal = signal<number>(0);
 
-  // Auto-refresh subscription
-  private refreshSubscription?: Subscription;
-  private readonly REFRESH_INTERVAL = 5000; // 5 seconds
+  enhancedPositions = computed(() => {
+    const primaryPrice = this.primaryPriceSignal();
+    const hedgePrice = this.hedgePriceSignal();
 
-  // Computed properties
-  filteredPositions = computed(() => {
-    const status = this.selectedStatus();
-    const allPositions = this.positions();
-
-    if (status === 'ALL') {
-      return allPositions;
+    if (!this.positions || this.positions.length === 0) {
+      return [];
     }
 
-    return allPositions.filter(p => p.status === status);
+    try {
+      const enhanced = this.positions.map((pos) => {
+        try {
+          return this.calculateRealTimePnL(pos, primaryPrice, hedgePrice);
+        } catch (error) {
+          console.error('[ActivePositions] Error calculating P&L:', error);
+          return pos; // Return original position if calculation fails
+        }
+      });
+      return enhanced;
+    } catch (error) {
+      console.error('[ActivePositions] Error in enhancedPositions computed:', error);
+      return this.positions; // Return original positions if error
+    }
   });
 
-  activeCount = computed(() =>
-    this.positions().filter(p => p.status === PriceArbitrageStatus.ACTIVE).length
-  );
+  constructor(private translationService: TranslationService) {}
 
-  completedCount = computed(() =>
-    this.positions().filter(p => p.status === PriceArbitrageStatus.COMPLETED).length
-  );
-
-  errorCount = computed(() =>
-    this.positions().filter(p => p.status === PriceArbitrageStatus.ERROR).length
-  );
-
-  ngOnInit(): void {
-    this.loadPositions();
-    this.startAutoRefresh();
-  }
-
-  ngOnDestroy(): void {
-    this.stopAutoRefresh();
-  }
-
-  /**
-   * Load positions from API
-   */
-  loadPositions(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
-
-    const status = this.selectedStatus() === 'ALL' ? undefined : this.selectedStatus();
-
-    this.priceArbitrageService.getPositions(status as PriceArbitrageStatus | undefined)
-      .subscribe({
-        next: (positions) => {
-          this.positions.set(positions);
-          this.isLoading.set(false);
-        },
-        error: (err) => {
-          console.error('Error loading positions:', err);
-          this.error.set(err.message || 'Failed to load positions');
-          this.isLoading.set(false);
-        }
-      });
-  }
-
-  /**
-   * Start auto-refresh interval
-   */
-  private startAutoRefresh(): void {
-    this.refreshSubscription = interval(this.REFRESH_INTERVAL)
-      .pipe(
-        switchMap(() => {
-          const status = this.selectedStatus() === 'ALL' ? undefined : this.selectedStatus();
-          return this.priceArbitrageService.getPositions(status as PriceArbitrageStatus | undefined);
-        })
-      )
-      .subscribe({
-        next: (positions) => {
-          this.positions.set(positions);
-        },
-        error: (err) => {
-          console.error('Error refreshing positions:', err);
-        }
-      });
-  }
-
-  /**
-   * Stop auto-refresh
-   */
-  private stopAutoRefresh(): void {
-    if (this.refreshSubscription) {
-      this.refreshSubscription.unsubscribe();
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['primaryPrice'] || changes['hedgePrice']) {
+      this.enhancedPositions();
     }
   }
 
-  /**
-   * Change status filter
-   */
-  changeStatusFilter(status: 'ALL' | PriceArbitrageStatus): void {
-    this.selectedStatus.set(status);
-    this.loadPositions();
-  }
+  private calculateRealTimePnL(position: ActivePosition, primaryPriceInput: number, hedgePriceInput: number): ActivePosition {
+    const enhanced = { ...position };
 
-  /**
-   * Open close confirmation dialog
-   */
-  openCloseDialog(position: PriceArbitragePositionDTO): void {
-    this.positionToClose.set(position);
-    this.showCloseDialog.set(true);
-  }
+    const primaryPrice = primaryPriceInput > 0 ? primaryPriceInput : (position.primary.currentPrice || position.primary.entryPrice || 0);
+    const hedgePrice = hedgePriceInput > 0 ? hedgePriceInput : (position.hedge.currentPrice || position.hedge.entryPrice || 0);
 
-  /**
-   * Cancel close dialog
-   */
-  cancelClose(): void {
-    this.showCloseDialog.set(false);
-    this.positionToClose.set(null);
-  }
+    const primaryEntryPrice = position.primary.entryPrice || 0;
+    const primaryQty = position.primary.filledQuantity || position.primary.quantity || 0;
 
-  /**
-   * Confirm and close position
-   */
-  confirmClose(): void {
-    const position = this.positionToClose();
-    if (!position) return;
+    const hedgeEntryPrice = position.hedge.entryPrice || 0;
+    const hedgeQty = position.hedge.filledQuantity || position.hedge.quantity || 0;
 
-    this.isClosing.set(true);
-
-    this.priceArbitrageService.closePosition(position.id)
-      .subscribe({
-        next: (result) => {
-          console.log('Position closed successfully:', result);
-
-          // Update the position in the list
-          const updatedPositions = this.positions().map(p =>
-            p.id === position.id ? result.position : p
-          );
-          this.positions.set(updatedPositions);
-
-          // Close dialog
-          this.showCloseDialog.set(false);
-          this.positionToClose.set(null);
-          this.isClosing.set(false);
-
-          // Show success notification (you can implement toast notifications)
-          alert(`Position closed successfully! Total P&L: $${result.totalPnl.toFixed(2)}`);
-        },
-        error: (err) => {
-          console.error('Error closing position:', err);
-          this.isClosing.set(false);
-          alert(`Failed to close position: ${err.message}`);
-        }
-      });
-  }
-
-  /**
-   * Calculate unrealized P&L for display
-   */
-  getUnrealizedPnl(position: PriceArbitragePositionDTO): number {
-    return this.priceArbitrageService.calculateUnrealizedPnl(position);
-  }
-
-  /**
-   * Get P&L display with color coding
-   */
-  getPnlDisplay(position: PriceArbitragePositionDTO) {
-    const pnl = this.getUnrealizedPnl(position);
-    return formatPnlDisplay(pnl);
-  }
-
-  /**
-   * Get holding time display
-   */
-  getHoldingTimeDisplay(position: PriceArbitragePositionDTO): string {
-    if (!position.openedAt) return 'N/A';
-    return calculateHoldingTime(position.openedAt).formatted;
-  }
-
-  /**
-   * Get current spread display
-   */
-  getCurrentSpreadDisplay(position: PriceArbitragePositionDTO): string {
-    if (position.currentSpreadPercent !== undefined) {
-      return `${position.currentSpreadPercent.toFixed(4)}%`;
+    // Calculate unrealized P&L WITHOUT leverage (leverage only affects margin, not absolute P&L)
+    let primaryUnrealizedPnl = 0;
+    if (primaryEntryPrice > 0 && primaryQty > 0) {
+      const side = position.primary.side.toUpperCase();
+      if (side === 'LONG') {
+        // LONG: profit when price goes up
+        primaryUnrealizedPnl = (primaryPrice - primaryEntryPrice) * primaryQty;
+      } else {
+        // SHORT: profit when price goes down
+        primaryUnrealizedPnl = (primaryEntryPrice - primaryPrice) * primaryQty;
+      }
     }
-    return 'N/A';
-  }
 
-  /**
-   * Get entry spread display
-   */
-  getEntrySpreadDisplay(position: PriceArbitragePositionDTO): string {
-    return `${position.entrySpreadPercent.toFixed(4)}%`;
-  }
-
-  /**
-   * Get status badge class
-   */
-  getStatusClass(status: PriceArbitrageStatus): string {
-    switch (status) {
-      case PriceArbitrageStatus.ACTIVE:
-        return 'status-active';
-      case PriceArbitrageStatus.COMPLETED:
-        return 'status-completed';
-      case PriceArbitrageStatus.ERROR:
-        return 'status-error';
-      case PriceArbitrageStatus.PENDING:
-        return 'status-pending';
-      case PriceArbitrageStatus.CANCELLED:
-        return 'status-cancelled';
-      default:
-        return 'status-unknown';
+    let hedgeUnrealizedPnl = 0;
+    if (hedgeEntryPrice > 0 && hedgeQty > 0) {
+      const side = position.hedge.side.toUpperCase();
+      if (side === 'LONG') {
+        hedgeUnrealizedPnl = (hedgePrice - hedgeEntryPrice) * hedgeQty;
+      } else {
+        hedgeUnrealizedPnl = (hedgeEntryPrice - hedgePrice) * hedgeQty;
+      }
     }
+
+    enhanced.primary = { ...position.primary, unrealizedProfit: primaryUnrealizedPnl, currentPrice: primaryPrice };
+    enhanced.hedge = { ...position.hedge, unrealizedProfit: hedgeUnrealizedPnl, currentPrice: hedgePrice };
+
+    const totalFunding = (position.primary.totalFundingEarned || 0) + (position.hedge.totalFundingEarned || 0);
+    const totalFees = (position.primary.tradingFees || 0) + (position.hedge.tradingFees || 0);
+
+    // Entry spread profit: difference in entry prices between exchanges
+    // For arbitrage: buy cheap (primary), sell expensive (hedge)
+    // Entry profit = (hedge entry price - primary entry price) * quantity
+    let entrySpreadProfit = 0;
+    if (position.primary.side.toUpperCase() === 'LONG') {
+      // Primary LONG (bought), Hedge SHORT (sold)
+      entrySpreadProfit = (hedgeEntryPrice - primaryEntryPrice) * primaryQty;
+    } else {
+      // Primary SHORT (sold), Hedge LONG (bought)
+      entrySpreadProfit = (primaryEntryPrice - hedgeEntryPrice) * primaryQty;
+    }
+
+    // Gross profit = entry spread + unrealized P&L from both positions + funding
+    const grossProfit = entrySpreadProfit + primaryUnrealizedPnl + hedgeUnrealizedPnl + totalFunding;
+    const netProfit = grossProfit - totalFees;
+
+    enhanced.grossProfit = grossProfit;
+    enhanced.netProfit = netProfit;
+
+    return enhanced;
   }
 
-  /**
-   * Translation helper
-   */
-  translate(key: string): string {
+  toggleRowExpansion(positionId: string): void {
+    const expanded = new Set(this.expandedRows());
+    if (expanded.has(positionId)) {
+      expanded.delete(positionId);
+    } else {
+      expanded.add(positionId);
+    }
+    this.expandedRows.set(expanded);
+  }
+
+  isRowExpanded(positionId: string): boolean {
+    return this.expandedRows().has(positionId);
+  }
+
+  getStatusBadge(status: string): { label: string; class: string } {
+    const upperStatus = status.toUpperCase();
+    const map: Record<string, { label: string; class: string }> = {
+      'ACTIVE': { label: 'Active', class: 'status-active' },
+      'INITIALIZING': { label: 'Initializing', class: 'status-initializing' },
+      'EXECUTING': { label: 'Executing', class: 'status-executing' },
+      'COMPLETED': { label: 'Completed', class: 'status-completed' },
+      'ERROR': { label: 'Error', class: 'status-error' },
+      'LIQUIDATED': { label: 'Liquidated', class: 'status-liquidated' },
+      'CANCELLED': { label: 'Cancelled', class: 'status-cancelled' },
+    };
+    return map[upperStatus] || { label: status, class: 'status-unknown' };
+  }
+
+  formatCurrency(value: number | undefined): string {
+    if (value === undefined || value === null) return '0.0000';
+    return value.toFixed(4);
+  }
+
+  hasFundingData(position: ActivePosition): boolean {
+    return (position.fundingUpdateCount || 0) > 0;
+  }
+
+  t(key: string): string {
     return this.translationService.translate(key);
-  }
-
-  /**
-   * Format price for display
-   */
-  formatPrice(price: number): string {
-    return `$${price.toFixed(2)}`;
-  }
-
-  /**
-   * Format P&L for display
-   */
-  formatPnl(pnl: number | undefined): string {
-    if (pnl === undefined || pnl === null) return 'N/A';
-    const sign = pnl >= 0 ? '+' : '';
-    return `${sign}$${pnl.toFixed(2)}`;
   }
 }

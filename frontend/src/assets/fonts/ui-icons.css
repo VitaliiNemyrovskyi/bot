@@ -1,11 +1,12 @@
 @font-face {
   font-family: 'ui-icons';
-  src: url('./ui-icons.woff2') format('woff2'),
-       url('./ui-icons.woff') format('woff'),
-       url('./ui-icons.ttf') format('truetype');
+  src: url('/assets/fonts/ui-icons.woff2') format('woff2'),
+       url('/assets/fonts/ui-icons.woff') format('woff'),
+       url('/assets/fonts/ui-icons.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
-  font-display: block;
+  /* Use 'swap' to prevent FOUC (Flash of Unstyled Content) */
+  font-display: swap;
 }
 
 .ui-icon {

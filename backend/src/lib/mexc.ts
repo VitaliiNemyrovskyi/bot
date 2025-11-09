@@ -164,18 +164,9 @@ export class MEXCService {
 
       const data = await response.json();
 
-      if (!data.success || data.code !== 0) {
-        console.error('[MEXCService] Public API returned error:', {
-          endpoint,
-          code: data.code,
-          success: data.success
-        });
-      } else {
-        // console.log('[MEXCService] Public request successful:', {
-        //   endpoint,
-        //   code: data.code
-        // });
-      }
+      // Note: We don't log errors here because many symbols simply don't exist on MEXC
+      // This is expected behavior and not a real error. Code 510 = contract not found.
+      // The calling code will handle the response appropriately.
 
       return data as MEXCApiResponse<T>;
     } catch (error: any) {

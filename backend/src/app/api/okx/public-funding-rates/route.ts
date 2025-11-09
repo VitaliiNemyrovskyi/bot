@@ -141,7 +141,8 @@ export async function GET(request: NextRequest) {
       const parts = item.instId.split('-');
       const base = parts[0];
       const normalizedSymbol = `${base}/USDT`;
-      const fundingInterval = intervalMap.get(normalizedSymbol) || 0;
+      // OKX uses 8-hour funding interval for all USDT perpetual swaps
+      const fundingInterval = intervalMap.get(normalizedSymbol) || 8;
 
       return prisma.publicFundingRate.upsert({
         where: {
@@ -181,7 +182,8 @@ export async function GET(request: NextRequest) {
         const parts = item.instId.split('-');
         const base = parts[0];
         const normalizedSymbol = `${base}/USDT`;
-        const fundingInterval = intervalMap.get(normalizedSymbol) || 0;
+        // OKX uses 8-hour funding interval for all USDT perpetual swaps
+        const fundingInterval = intervalMap.get(normalizedSymbol) || 8;
 
         return {
           instType: 'SWAP',

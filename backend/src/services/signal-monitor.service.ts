@@ -711,11 +711,12 @@ export class SignalMonitorService {
 
     // Calculate funding spread if both rates are available
     if (signal.strategy === 'combined' && signal.minFundingSpreadPercent !== undefined) {
-      // Only calculate if both funding rates are available
-      if (primaryData.fundingRate !== null && hedgeData.fundingRate !== null) {
-        // Get funding intervals (default to 8h if not available)
-        const primaryInterval = primaryData.fundingInterval || 8;
-        const hedgeInterval = hedgeData.fundingInterval || 8;
+      // Only calculate if both funding rates AND intervals are available
+      if (primaryData.fundingRate !== null && hedgeData.fundingRate !== null &&
+          primaryData.fundingInterval && hedgeData.fundingInterval) {
+        // Get funding intervals - NO DEFAULTS (forbidden by user)
+        const primaryInterval = primaryData.fundingInterval;
+        const hedgeInterval = hedgeData.fundingInterval;
 
         // Funding rates from API are in decimal format (0.0001 = 0.01%)
         // Calculate hourly funding spread using utility function

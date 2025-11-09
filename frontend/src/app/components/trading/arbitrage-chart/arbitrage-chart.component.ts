@@ -16,8 +16,11 @@ import { ExchangeType } from '../../../models/exchange-credentials.model';
 import { SymbolInfoService, SymbolInfo } from '../../../services/symbol-info.service';
 import { TradingSettingsService } from '../../../services/trading-settings.service';
 import { PublicFundingRatesService } from '../../../services/public-funding-rates.service';
+import { FundingArbitrageDataStorageService } from '../../../services/funding-arbitrage-data-storage.service';
+import { PriceArbitrageService } from '../../../services/price-arbitrage.service';
 import { ArbitrageProfitCalculatorComponent } from '../arbitrage-profit-calculator/arbitrage-profit-calculator.component';
 import { SignalConfigModalComponent } from '../signal-config-modal/signal-config-modal.component';
+import { ActivePositionsComponent, ActivePosition as ActivePositionInterface, PositionSide } from '../active-positions/active-positions.component';
 import { RelativeTimePipe } from '../../../pipes/relative-time.pipe';
 import { getEndpointUrl, buildUrlWithQuery } from '../../../config/app.config';
 import * as pako from 'pako';
@@ -41,6 +44,7 @@ interface ArbitragePosition {
     side: string;
     leverage: number;
     quantity: number;
+    filledQuantity?: number;       // Filled quantity for this position
     environment: string;
     // Funding data
     lastFundingPaid?: number;      // Last paid funding in USDT
@@ -64,6 +68,7 @@ interface ArbitragePosition {
     side: string;
     leverage: number;
     quantity: number;
+    filledQuantity?: number;       // Filled quantity for this position
     environment: string;
     // Funding data
     lastFundingPaid?: number;      // Last paid funding in USDT
@@ -86,11 +91,13 @@ interface ArbitragePosition {
     parts: number;
     delayMs: number;
   };
+  completedAt?: Date;              // When the position was completed
   startedAt: Date;
   status: string;
   errorMessage?: string;           // Error message for failed positions
   // Financial metrics
   grossProfit?: number;            // Total funding earned (primary + hedge)
+  fundingUpdateCount?: number;     // Number of funding updates received
   netProfit?: number;              // Gross profit - fees
   // Liquidation monitoring status
   monitoring?: {
@@ -147,6 +154,7 @@ interface SignalPriceUpdate {
     ButtonComponent,
     ArbitrageProfitCalculatorComponent,
     SignalConfigModalComponent,
+    ActivePositionsComponent,
     RelativeTimePipe
   ],
   templateUrl: './arbitrage-chart.component.html',
@@ -154,6 +162,7 @@ interface SignalPriceUpdate {
 })
 export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('chartContainer', { static: false }) chartContainer!: ElementRef;
+  @ViewChild('chartTooltip', { static: false }) chartTooltip!: ElementRef;
 
   // Route parameters
   symbol = signal<string>('');
@@ -253,6 +262,69 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     return filtered;
   });
 
+  // Transform positions for the new ActivePositionsComponent
+  transformedPositions = computed(() => {
+    const filtered = this.filteredActivePositions();
+    console.log('[ArbitrageChart] Filtered positions for transform:', filtered.length);
+    console.log('[ArbitrageChart] Primary price:', this.primaryData().price);
+    console.log('[ArbitrageChart] Hedge price:', this.hedgeData().price);
+    const transformed = filtered.map(pos => {
+      const transformedPos: ActivePositionInterface = {
+        positionId: pos.positionId,
+        symbol: pos.symbol,
+        primary: {
+          exchange: pos.primary.exchange,
+          environment: pos.primary.environment,
+          side: pos.primary.side as 'LONG' | 'SHORT' | 'long' | 'short',
+          leverage: pos.primary.leverage,
+          quantity: pos.primary.quantity,
+          filledQuantity: pos.primary.filledQuantity,
+          entryPrice: pos.primary.entryPrice,
+          currentPrice: pos.primary.currentPrice,
+          tradingFees: pos.primary.tradingFees || 0,
+          lastFundingPaid: pos.primary.lastFundingPaid || 0,
+          totalFundingEarned: pos.primary.totalFundingEarned || 0,
+          liquidationPrice: pos.primary.liquidationPrice,
+          proximityRatio: pos.primary.proximityRatio,
+          inDanger: pos.primary.inDanger,
+          stopLoss: pos.primary.stopLoss,
+          takeProfit: pos.primary.takeProfit,
+          unrealizedProfit: pos.primary.unrealizedProfit,
+        },
+        hedge: {
+          exchange: pos.hedge.exchange,
+          environment: pos.hedge.environment,
+          side: pos.hedge.side as 'LONG' | 'SHORT' | 'long' | 'short',
+          leverage: pos.hedge.leverage,
+          quantity: pos.hedge.quantity,
+          filledQuantity: pos.hedge.filledQuantity,
+          entryPrice: pos.hedge.entryPrice,
+          currentPrice: pos.hedge.currentPrice,
+          tradingFees: pos.hedge.tradingFees || 0,
+          lastFundingPaid: pos.hedge.lastFundingPaid || 0,
+          totalFundingEarned: pos.hedge.totalFundingEarned || 0,
+          liquidationPrice: pos.hedge.liquidationPrice,
+          proximityRatio: pos.hedge.proximityRatio,
+          inDanger: pos.hedge.inDanger,
+          stopLoss: pos.hedge.stopLoss,
+          takeProfit: pos.hedge.takeProfit,
+          unrealizedProfit: pos.hedge.unrealizedProfit,
+        },
+        status: pos.status,
+        startedAt: pos.startedAt,
+        completedAt: pos.completedAt,
+        grossProfit: pos.grossProfit || 0,
+        netProfit: pos.netProfit || 0,
+        monitoring: pos.monitoring,
+        errorMessage: pos.errorMessage,
+        fundingUpdateCount: pos.fundingUpdateCount,
+        graduatedEntry: pos.graduatedEntry,
+      };
+      return transformedPos;
+    });
+    console.log('[ArbitrageChart] Transformed positions:', transformed.length);
+    return transformed;
+  });
   // Expanded rows state (set of position IDs)
   expandedRows = signal<Set<string>>(new Set());
 
@@ -359,6 +431,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private tradingSettings = inject(TradingSettingsService);
   private fundingRatesService = inject(PublicFundingRatesService);
   private ngZone = inject(NgZone);
+  private fundingDataStorage = inject(FundingArbitrageDataStorageService);
+  private priceArbitrageService = inject(PriceArbitrageService);
 
   constructor(
     private route: ActivatedRoute,
@@ -428,6 +502,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         strategy: this.strategy()
       });
 
+      // Update funding data storage selection state
+      this.fundingDataStorage.updateSelectionState(
+        this.symbol(),
+        this.primaryExchange(),
+        this.hedgeExchange()
+      );
+
       // Adjust form for spot_futures strategy
       if (this.strategy() === 'spot_futures') {
         this.adjustFormsForSpotFutures();
@@ -447,7 +528,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       // Check credentials for both exchanges
       this.checkExchangeCredentials();
 
-      // Load active positions
+      // Check for existing positions on exchanges and import if found
+      // IMPORTANT: detectAndImportExistingPosition calls loadPriceArbitragePositions() internally after import
+      this.detectAndImportExistingPosition();
+
+      // Load active positions (will be called again after import if position is detected)
+      // This ensures positions are loaded even if no import happens
       this.loadActivePositions();
 
       // Load account balances
@@ -804,6 +890,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Handle window resize with ResizeObserver (better than window.addEventListener)
     this.setupResizeHandler();
+
+    // Setup crosshair tooltip
+    this.setupCrosshairTooltip();
   }
 
   /**
@@ -827,6 +916,119 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (this.chartContainer?.nativeElement) {
       this.resizeObserver.observe(this.chartContainer.nativeElement);
     }
+  }
+
+  /**
+   * Setup crosshair tooltip for displaying spread information
+   */
+  private setupCrosshairTooltip(): void {
+    console.log('[ArbitrageChart] Setting up tooltip...', {
+      chart: !!this.chart,
+      primarySeries: !!this.primarySeries,
+      hedgeSeries: !!this.hedgeSeries,
+      chartTooltip: !!this.chartTooltip
+    });
+
+    if (!this.chart || !this.primarySeries || !this.hedgeSeries || !this.chartTooltip) {
+      console.warn('[ArbitrageChart] Cannot setup tooltip: missing required elements');
+      return;
+    }
+
+    const toolTip = this.chartTooltip.nativeElement as HTMLElement;
+    const container = this.chartContainer.nativeElement as HTMLElement;
+
+    console.log('[ArbitrageChart] Tooltip elements found:', {
+      toolTipElement: !!toolTip,
+      containerElement: !!container
+    });
+
+    this.chart.subscribeCrosshairMove(param => {
+      console.log('[ArbitrageChart] Crosshair moved:', {
+        hasPoint: !!param.point,
+        hasTime: !!param.time,
+        pointX: param.point?.x,
+        pointY: param.point?.y
+      });
+      // Hide tooltip if cursor is not on the chart or no data point
+      if (!param.point || !param.time || param.point.x < 0 || param.point.y < 0) {
+        toolTip.style.display = 'none';
+        return;
+      }
+
+      // Get data from both series at current crosshair position
+      const primaryData = param.seriesData.get(this.primarySeries!);
+      const hedgeData = param.seriesData.get(this.hedgeSeries!);
+
+      // Hide if no data available for either series
+      if (!primaryData || !hedgeData) {
+        toolTip.style.display = 'none';
+        return;
+      }
+
+      // Extract prices from series data
+      const primaryPrice = (primaryData as LineData).value;
+      const hedgePrice = (hedgeData as LineData).value;
+
+      if (!primaryPrice || !hedgePrice) {
+        toolTip.style.display = 'none';
+        return;
+      }
+
+      // Calculate spread
+      const absoluteSpread = Math.abs(primaryPrice - hedgePrice);
+      const avgPrice = (primaryPrice + hedgePrice) / 2;
+      const spreadPercent = (absoluteSpread / avgPrice) * 100;
+
+      // Update tooltip content
+      const primaryPriceEl = document.getElementById('tooltip-primary-price');
+      const hedgePriceEl = document.getElementById('tooltip-hedge-price');
+      const absoluteSpreadEl = document.getElementById('tooltip-absolute-spread');
+      const percentSpreadEl = document.getElementById('tooltip-percent-spread');
+      const timeEl = document.getElementById('tooltip-time');
+
+      if (primaryPriceEl) primaryPriceEl.textContent = `$${primaryPrice.toFixed(6)}`;
+      if (hedgePriceEl) hedgePriceEl.textContent = `$${hedgePrice.toFixed(6)}`;
+      if (absoluteSpreadEl) absoluteSpreadEl.textContent = `$${absoluteSpread.toFixed(6)}`;
+      if (percentSpreadEl) percentSpreadEl.textContent = `${spreadPercent.toFixed(4)}%`;
+
+      // Format timestamp
+      if (timeEl && param.time) {
+        const date = new Date((param.time as number) * 1000);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        timeEl.textContent = `${hours}:${minutes}:${seconds}`;
+      }
+
+      // Position tooltip
+      toolTip.style.display = 'block';
+
+      // Get tooltip dimensions
+      const tooltipWidth = toolTip.offsetWidth;
+      const tooltipHeight = toolTip.offsetHeight;
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+
+      // Calculate position (offset from cursor to avoid blocking)
+      let left = param.point.x + 15; // 15px offset from cursor
+      let top = param.point.y - tooltipHeight / 2;
+
+      // Ensure tooltip stays within chart bounds
+      if (left + tooltipWidth > containerWidth) {
+        left = param.point.x - tooltipWidth - 15; // Show on left side of cursor
+      }
+      if (top < 0) {
+        top = 0;
+      }
+      if (top + tooltipHeight > containerHeight) {
+        top = containerHeight - tooltipHeight;
+      }
+
+      toolTip.style.left = left + 'px';
+      toolTip.style.top = top + 'px';
+    });
+
+    console.log('[ArbitrageChart] Crosshair tooltip setup complete');
   }
 
   /**
@@ -923,6 +1125,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           op: 'subscribe',
           args: [`tickers.${symbol}`]
         };
+        break;
+
+      case 'BINANCE':
+        // Binance Futures WebSocket for mark price streams
+        wsUrl = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`;
+        // BINANCE doesn't require subscription message - connection is stream-specific
+        subscribeMessage = null;
+        console.log(`[ArbitrageChart] BINANCE symbol: ${symbol} -> stream: ${symbol.toLowerCase()}@markPrice@1s`);
         break;
 
       case 'BINGX':
@@ -1148,6 +1358,30 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         }
         break;
 
+      case 'BINANCE':
+        // Binance mark price stream format: { e: "markPriceUpdate", s: "BTCUSDT", p: "47000.00", r: "0.0001", T: timestamp }
+        if (data.e === 'markPriceUpdate' && data.p) {
+          price = parseFloat(data.p); // 'p' = mark price
+
+          // Funding rate and next funding time
+          if (data.r !== undefined) {
+            fundingRate = data.r; // 'r' = funding rate
+          }
+          if (data.T) {
+            nextFundingTime = parseInt(data.T); // 'T' = next funding time (timestamp in ms)
+          }
+
+          console.log(`[ArbitrageChart] BINANCE mark price:`, {
+            symbol: data.s,
+            price,
+            fundingRate,
+            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined
+          });
+        } else {
+          console.warn(`[ArbitrageChart] BINANCE message format not recognized:`, data);
+        }
+        break;
+
       case 'BINGX':
         // BingX ticker format: { "dataType": "BTC-USDT@ticker", "data": { "c": "50000.5", "E": timestamp } }
         if (data.dataType && data.dataType.includes('@ticker') && data.data) {
@@ -1330,7 +1564,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Fetch funding rates for both exchanges from optimized endpoint
-   * Uses the new /api/arbitrage/public-funding-rates endpoint which returns only needed data
+   * Uses FundingArbitrageDataStorageService with caching and state persistence
    */
   private async fetchFundingRates(): Promise<void> {
     try {
@@ -1345,10 +1579,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       console.log(`[ArbitrageChart] Fetching funding rates for ${primaryEx} and ${hedgeEx} - ${currentSymbol}`);
 
-      // Use the new optimized endpoint - only fetch data for needed exchanges
+      // Use FundingArbitrageDataStorageService for data loading with caching
       const exchanges = [primaryEx, hedgeEx];
-      const fundingRates = await lastValueFrom(
-        this.fundingRatesService.getArbitrageFundingRates(exchanges, currentSymbol)
+      const fundingRates = await this.fundingDataStorage.loadFundingData(
+        exchanges,
+        currentSymbol,
+        false // Use cache if available
       );
 
       console.log(`[ArbitrageChart] Received ${fundingRates.length} funding rates`);
@@ -1477,14 +1713,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const hedgeExchange = this.hedgeExchange();
       const interval = this.selectedTimeframe();
 
-      // Calculate limit based on interval to get ~3 months of data
+      // Calculate limit based on interval - BingX now supports multiple requests for limit > 1440
       const limitMap: Record<string, number> = {
-        '1m': 4320,   // 3 days (too much for 3 months, API limits)
-        '5m': 2160,   // 7.5 days
-        '15m': 2016,  // 3 weeks
-        '1h': 2160,   // 3 months
-        '4h': 540,    // 3 months
-        '1d': 90      // 3 months
+        '1m': 7200,   // 5 days (7200 minutes)
+        '5m': 4320,   // 15 days (4320 * 5min)
+        '15m': 4320,  // 45 days / 1.5 months (4320 * 15min)
+        '1h': 4320,   // 6 months (4320 hours = 180 days)
+        '4h': 2160,   // 1 year (2160 * 4h = 360 days)
+        '1d': 365     // 1 year
       };
 
       const limit = limitMap[interval] || 1000;
@@ -1560,6 +1796,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
+    // Skip updates with invalid price (prevents vertical lines on chart from 0 to actual price)
+    if (!price || price <= 0) {
+      console.warn(`[ArbitrageChart] PRIMARY: Skipping update with invalid price: ${price}`);
+      return;
+    }
+
     // Calculate funding interval if we have both previous and current nextFundingTime
     let fundingInterval = this.primaryData().fundingInterval;
 
@@ -1622,11 +1864,26 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const isNewCandle = !this.lastPrimaryCandle || this.lastPrimaryCandle.time !== roundedTime;
 
     if (isNewCandle) {
+      // Validate price before adding new candle
+      // Check if there's a huge price gap from last candle (>10% change) - might be data error
+      if (this.lastPrimaryCandle && this.lastPrimaryCandle.price > 0) {
+        const priceChange = Math.abs(price - this.lastPrimaryCandle.price) / this.lastPrimaryCandle.price;
+
+        // Log all price updates for debugging
+        console.log(`[ArbitrageChart] PRIMARY new candle: prev=${this.lastPrimaryCandle.price}, new=${price}, change=${(priceChange * 100).toFixed(2)}%, time=${new Date(roundedTime * 1000).toISOString()}`);
+
+        if (priceChange > 0.1) { // 10% threshold
+          console.warn(`[ArbitrageChart] PRIMARY: Suspicious price jump detected: ${this.lastPrimaryCandle.price} → ${price} (${(priceChange * 100).toFixed(2)}% change). Skipping this update.`);
+          return; // Skip this update - likely bad data
+        }
+      } else {
+        console.log(`[ArbitrageChart] PRIMARY first candle: price=${price}, time=${new Date(roundedTime * 1000).toISOString()}`);
+      }
+
       // New candle period - update chart
       if (this.primarySeries) {
         const time = roundedTime as Time;
         this.primarySeries.update({ time, value: price } as LineData);
-        // console.log(`[ArbitrageChart] Primary new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
       }
 
       // Update last candle tracker
@@ -1657,6 +1914,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   private updateHedgeData(price: number, fundingRate?: string, nextFundingTime?: number, fundingIntervalFromWS?: string): void {
     // Guard against updates after component destruction
     if (this.isDestroyed || !this.chart || !this.hedgeSeries) {
+      return;
+    }
+
+    // Skip updates with invalid price (prevents vertical lines on chart from 0 to actual price)
+    if (!price || price <= 0) {
+      console.warn(`[ArbitrageChart] HEDGE: Skipping update with invalid price: ${price}`);
       return;
     }
 
@@ -1700,20 +1963,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       console.warn(`[ArbitrageChart] No funding interval available for exchange`);
     }
 
-    const updatedData = {
-      exchange: this.hedgeExchange(),
-      price,
-      fundingRate: fundingRate || this.hedgeData().fundingRate,
-      nextFundingTime: nextFundingTime || this.hedgeData().nextFundingTime,
-      fundingInterval: fundingInterval,
-      fundingIntervalStr: fundingIntervalStr, // From DB/API for BingX
-      lastUpdate: new Date()
-    };
-
-    // console.log('[ArbitrageChart] Updating hedge data:', updatedData);
-
-    this.hedgeData.set(updatedData);
-
     // Get current timestamp in seconds and round to timeframe interval
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const roundedTime = this.roundTimeToInterval(currentTimestamp);
@@ -1722,11 +1971,26 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     const isNewCandle = !this.lastHedgeCandle || this.lastHedgeCandle.time !== roundedTime;
 
     if (isNewCandle) {
+      // Validate price before adding new candle
+      // Check if there's a huge price gap from last candle (>10% change) - might be data error
+      if (this.lastHedgeCandle && this.lastHedgeCandle.price > 0) {
+        const priceChange = Math.abs(price - this.lastHedgeCandle.price) / this.lastHedgeCandle.price;
+
+        // Log all price updates for debugging
+        console.log(`[ArbitrageChart] HEDGE new candle: prev=${this.lastHedgeCandle.price}, new=${price}, change=${(priceChange * 100).toFixed(2)}%, time=${new Date(roundedTime * 1000).toISOString()}`);
+
+        if (priceChange > 0.1) { // 10% threshold
+          console.warn(`[ArbitrageChart] HEDGE: Suspicious price jump detected: ${this.lastHedgeCandle.price} → ${price} (${(priceChange * 100).toFixed(2)}% change). Skipping this update.`);
+          return; // Skip this update - likely bad data
+        }
+      } else {
+        console.log(`[ArbitrageChart] HEDGE first candle: price=${price}, time=${new Date(roundedTime * 1000).toISOString()}`);
+      }
+
       // New candle period - update chart
       if (this.hedgeSeries) {
         const time = roundedTime as Time;
         this.hedgeSeries.update({ time, value: price } as LineData);
-        // console.log(`[ArbitrageChart] Hedge new candle: ${new Date(roundedTime * 1000).toISOString()}, price: ${price}`);
       }
 
       // Update last candle tracker
@@ -1741,11 +2005,25 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.hedgeSeries.update({ time, value: price } as LineData);
       }
 
-      // Update tracker with latest price (guaranteed to exist since isNewCandle is false)
+      // Update tracker with latest price
       if (this.lastHedgeCandle) {
         this.lastHedgeCandle.price = price;
       }
     }
+
+    const updatedData = {
+      exchange: this.hedgeExchange(),
+      price,
+      fundingRate: fundingRate || this.hedgeData().fundingRate,
+      nextFundingTime: nextFundingTime || this.hedgeData().nextFundingTime,
+      fundingInterval: fundingInterval,
+      fundingIntervalStr: fundingIntervalStr, // From DB/API for BingX
+      lastUpdate: new Date()
+    };
+
+    // console.log('[ArbitrageChart] Updating hedge data:', updatedData);
+
+    this.hedgeData.set(updatedData);
 
     // Recalculate spread
     this.calculateSpread();
@@ -1772,7 +2050,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Calculate funding rate spread using centralized calculation
-   * Normalizes rates to 1h intervals and determines optimal sides
+   * Normalizes rates to 1h intervals and determines optimal sides (if not manual),
+   * then calculates actual spread based on user-selected positions
    */
   private calculateFundingSpread(): void {
     const primaryRateStr = this.primaryData().fundingRate;
@@ -1787,25 +2066,25 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
       const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
 
-      // Use centralized calculation with normalization
-      const spreadResult = calculateCombinedFundingSpread(
-        {
-          rate: primaryRate,
-          intervalHours: primaryIntervalHours,
-          exchange: this.primaryExchange(),
-        },
-        {
-          rate: hedgeRate,
-          intervalHours: hedgeIntervalHours,
-          exchange: this.hedgeExchange(),
-        }
-      );
+      // Automatically set optimal sides if user hasn't manually selected
+      if (!this.hasManualSideSelection) {
+        const spreadResult = calculateCombinedFundingSpread(
+          {
+            rate: primaryRate,
+            intervalHours: primaryIntervalHours,
+            exchange: this.primaryExchange(),
+          },
+          {
+            rate: hedgeRate,
+            intervalHours: hedgeIntervalHours,
+            exchange: this.hedgeExchange(),
+          }
+        );
+        this.setOptimalSidesFromSpreadResult(spreadResult);
+      }
 
-      // Set the spread value from centralized calculation
-      this.fundingSpread.set(spreadResult.spreadPerHour);
-
-      // Automatically set optimal sides based on centralized calculation result
-      this.setOptimalSidesFromSpreadResult(spreadResult);
+      // Calculate actual spread based on current (possibly user-selected) positions
+      this.calculateActualFundingSpread(primaryRate, primaryIntervalHours, hedgeRate, hedgeIntervalHours);
     } else {
       // If either rate is unavailable, set spread to NaN
       this.fundingSpread.set(NaN);
@@ -1813,7 +2092,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * Recalculate funding spread using centralized calculation
+   * Recalculate funding spread based on actual user-selected positions
    * Called when user manually changes position sides
    */
   private recalculateFundingSpread(): void {
@@ -1828,32 +2107,62 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       const primaryIntervalHours = this.parseFundingIntervalToHours(this.primaryData()) || 8;
       const hedgeIntervalHours = this.parseFundingIntervalToHours(this.hedgeData()) || 8;
 
-      // Use centralized calculation with normalization
-      const spreadResult = calculateCombinedFundingSpread(
-        {
-          rate: primaryRate,
-          intervalHours: primaryIntervalHours,
-          exchange: this.primaryExchange(),
-        },
-        {
-          rate: hedgeRate,
-          intervalHours: hedgeIntervalHours,
-          exchange: this.hedgeExchange(),
-        }
-      );
-
-      // Set the spread value from centralized calculation
-      this.fundingSpread.set(spreadResult.spreadPerHour);
-
-      console.log('[ArbitrageChart] Funding spread recalculated:', {
-        primaryExchange: spreadResult.primaryExchange,
-        hedgeExchange: spreadResult.hedgeExchange,
-        primaryRatePerHour: (spreadResult.primaryRatePerHour * 100).toFixed(4) + '%',
-        hedgeRatePerHour: (spreadResult.hedgeRatePerHour * 100).toFixed(4) + '%',
-        spreadPerHour: (spreadResult.spreadPerHour * 100).toFixed(4) + '%',
-        isProfitable: spreadResult.isProfitable
-      });
+      // Calculate actual spread based on current user-selected positions
+      this.calculateActualFundingSpread(primaryRate, primaryIntervalHours, hedgeRate, hedgeIntervalHours);
     }
+  }
+
+  /**
+   * Calculate actual funding spread based on current user-selected positions
+   *
+   * Cash flow logic:
+   * - LONG position: cash flow = -ratePerHour (negative rate = positive income, positive rate = cost)
+   * - SHORT position: cash flow = +ratePerHour (negative rate = cost, positive rate = income)
+   * - Net funding profit = primaryCashFlow + hedgeCashFlow
+   *
+   * @param primaryRate - Primary exchange funding rate
+   * @param primaryIntervalHours - Primary exchange funding interval in hours
+   * @param hedgeRate - Hedge exchange funding rate
+   * @param hedgeIntervalHours - Hedge exchange funding interval in hours
+   */
+  private calculateActualFundingSpread(
+    primaryRate: number,
+    primaryIntervalHours: number,
+    hedgeRate: number,
+    hedgeIntervalHours: number
+  ): void {
+    // Normalize rates to 1h
+    const primaryRatePerHour = primaryRate / primaryIntervalHours;
+    const hedgeRatePerHour = hedgeRate / hedgeIntervalHours;
+
+    // Get current user-selected sides
+    const primarySide = this.primaryOrderForm.get('side')?.value || 'long';
+    const hedgeSide = this.hedgeOrderForm.get('side')?.value || 'short';
+
+    // Calculate actual cash flow based on positions
+    // LONG: earn when rate is negative (shorts pay longs), pay when positive
+    // SHORT: pay when rate is negative, earn when positive
+    const primaryCashFlow = primarySide === 'long' ? -primaryRatePerHour : primaryRatePerHour;
+    const hedgeCashFlow = hedgeSide === 'long' ? -hedgeRatePerHour : hedgeRatePerHour;
+
+    // Net funding profit from both positions
+    const netFundingProfit = primaryCashFlow + hedgeCashFlow;
+
+    // Set the actual spread based on user's selected positions
+    this.fundingSpread.set(netFundingProfit);
+
+    console.log('[ArbitrageChart] Actual funding spread calculated:', {
+      primaryExchange: this.primaryExchange(),
+      hedgeExchange: this.hedgeExchange(),
+      primarySide,
+      hedgeSide,
+      primaryRatePerHour: (primaryRatePerHour * 100).toFixed(4) + '%',
+      hedgeRatePerHour: (hedgeRatePerHour * 100).toFixed(4) + '%',
+      primaryCashFlow: (primaryCashFlow * 100).toFixed(4) + '%',
+      hedgeCashFlow: (hedgeCashFlow * 100).toFixed(4) + '%',
+      netFundingProfit: (netFundingProfit * 100).toFixed(4) + '%',
+      isProfitable: netFundingProfit > 0
+    });
   }
 
   /**
@@ -2113,8 +2422,13 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Use funding interval from API/DB if available, otherwise default to 8h
-    const intervalFormatted = fundingIntervalStr || '8h';
+    // Use funding interval from API/DB if available
+    // Show "-" for unknown intervals (0h, null, undefined)
+    // IMPORTANT: No hardcoded fallback values as per project principles
+    let intervalFormatted = '-';
+    if (fundingIntervalStr && fundingIntervalStr !== '0h') {
+      intervalFormatted = fundingIntervalStr;
+    }
 
     const result = `${rateFormatted} / ${timeFormatted} / ${intervalFormatted}`;
 
@@ -2543,6 +2857,110 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       },
       warning: this.credentialsWarning()
     });
+  }
+
+  /**
+   * Load price arbitrage positions from backend
+   */
+  private async loadPriceArbitragePositions(): Promise<void> {
+    try {
+      console.log('[ArbitrageChart] Loading price arbitrage positions...');
+
+      const token = this.authService.authState().token;
+      if (!token) {
+        console.warn('[ArbitrageChart] No auth token available');
+        return;
+      }
+
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`
+      });
+
+      // Get active price arbitrage positions
+      const url = '/api/arbitrage/positions?status=ACTIVE';
+      const response = await this.http.get<any>(url, { headers }).toPromise();
+
+      if (response?.success && response?.data) {
+        console.log(`[ArbitrageChart] Loaded ${response.data.length} price arbitrage positions`);
+
+        // Transform to ArbitragePosition format
+        const pricePositions: ArbitragePosition[] = response.data.map((pos: any) => {
+          console.log('[ArbitrageChart] Mapping price position:', {
+            id: pos.id,
+            symbol: pos.symbol,
+            primaryQuantity: pos.primaryQuantity,
+            hedgeQuantity: pos.hedgeQuantity,
+            primaryFees: pos.primaryFees,
+            hedgeFees: pos.hedgeFees
+          });
+
+          // Calculate profit if we have current/exit prices
+          let grossProfit = 0;
+          let netProfit = 0;
+
+          if (pos.exitPrimaryPrice && pos.exitHedgePrice) {
+            // Position is closed - calculate realized profit
+            const primaryProfit = (pos.entryPrimaryPrice - pos.exitPrimaryPrice) * (pos.primaryQuantity || 0);
+            const hedgeProfit = (pos.exitHedgePrice - pos.entryHedgePrice) * (pos.hedgeQuantity || 0);
+            grossProfit = primaryProfit + hedgeProfit;
+            netProfit = grossProfit - (pos.primaryFees || 0) - (pos.hedgeFees || 0);
+          } else if (pos.totalPnl !== undefined && pos.totalPnl !== null) {
+            // Use totalPnl from database if available
+            netProfit = pos.totalPnl;
+            grossProfit = netProfit + (pos.primaryFees || 0) + (pos.hedgeFees || 0);
+          }
+          // Otherwise, grossProfit and netProfit remain 0 (will be calculated when we get current prices)
+
+          return {
+            positionId: pos.id,
+            symbol: pos.symbol,
+            primary: {
+              exchange: pos.primaryExchange,
+              side: 'SHORT', // Price arbitrage typically SHORT on primary
+              leverage: pos.primaryLeverage,
+              quantity: pos.primaryQuantity || pos.hedgeQuantity || 0,
+              environment: 'MAINNET',
+              entryPrice: pos.entryPrimaryPrice,
+              // Funding data (0 for Price Arbitrage - not funding arbitrage)
+              lastFundingPaid: 0,
+              totalFundingEarned: 0,
+              // Entry fees from database
+              tradingFees: pos.primaryFees || 0,
+            },
+            hedge: {
+              exchange: pos.hedgeExchange,
+              side: 'LONG', // Price arbitrage typically LONG on hedge
+              leverage: pos.hedgeLeverage,
+              quantity: pos.hedgeQuantity || pos.primaryQuantity || 0,
+              environment: 'MAINNET',
+              entryPrice: pos.entryHedgePrice,
+              // Funding data (0 for Price Arbitrage - not funding arbitrage)
+              lastFundingPaid: 0,
+              totalFundingEarned: 0,
+              // Entry fees from database
+              tradingFees: pos.hedgeFees || 0,
+            },
+            graduatedEntry: {
+              parts: 1,
+              delayMs: 0
+            },
+            startedAt: pos.openedAt || pos.createdAt,
+            status: pos.status,
+            grossProfit,
+            netProfit
+          };
+        });
+
+        // Merge with existing funding arbitrage positions
+        const currentPositions = this.activePositions();
+        const allPositions = [...currentPositions, ...pricePositions];
+        this.activePositions.set(allPositions);
+
+        console.log(`[ArbitrageChart] Total positions (funding + price): ${allPositions.length}`);
+      }
+    } catch (error: any) {
+      console.error('[ArbitrageChart] Failed to load price arbitrage positions:', error);
+    }
   }
 
   /**
@@ -3674,6 +4092,83 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
     const progress = (update.fundingSpreadPercent / config.minFundingSpreadPercent) * 100;
     return Math.min(Math.max(progress, 0), 100);
+  }
+
+  /**
+   * Detect and import existing arbitrage positions from exchanges
+   *
+   * This method checks both exchanges for open positions that match arbitrage criteria:
+   * - Opposite directions (LONG/SHORT)
+   * - Same quantity
+   * - Same leverage
+   *
+   * If a matching pair is found, it will be automatically imported and displayed.
+   */
+  private async detectAndImportExistingPosition(): Promise<void> {
+    const symbol = this.symbol();
+    const primaryExchange = this.primaryExchange();
+    const hedgeExchange = this.hedgeExchange();
+
+    // Skip if any required parameter is missing
+    if (!symbol || !primaryExchange || !hedgeExchange) {
+      console.log('[ArbitrageChart] Skipping position detection - missing parameters');
+      return;
+    }
+
+    // Skip if not authenticated
+    const token = this.authService.authState().token;
+    if (!token) {
+      console.log('[ArbitrageChart] Skipping position detection - not authenticated');
+      return;
+    }
+
+    console.log('[ArbitrageChart] Checking for existing positions on exchanges...', {
+      symbol,
+      primaryExchange,
+      hedgeExchange
+    });
+
+    try {
+      // Call the detection service
+      const result = await lastValueFrom(
+        this.priceArbitrageService.detectExistingPosition(
+          symbol,
+          primaryExchange,
+          hedgeExchange
+        )
+      );
+
+      if (result.detected && result.position) {
+        console.log('[ArbitrageChart] ✓ Existing arbitrage position detected and imported:', result.position);
+
+        // Show success notification
+        this.toastService.success(
+          this.translationService.translate('arbitrage.positionImported') ||
+          'Existing arbitrage position detected and imported successfully!'
+        );
+
+        // Reload PRICE arbitrage positions to show the newly imported one
+        await this.loadPriceArbitragePositions();
+      } else if (result.alreadyExists) {
+        console.log('[ArbitrageChart] Position already exists in database - reloading to ensure it displays');
+        // Reload positions to ensure they are displayed even if they already existed
+        await this.loadPriceArbitragePositions();
+      } else {
+        console.log('[ArbitrageChart] No matching arbitrage positions found on exchanges');
+      }
+    } catch (error: any) {
+      // Only log error, don't show to user (this is a background check)
+      console.error('[ArbitrageChart] Error detecting existing positions:', error);
+
+      // Only show error if it's not a "no credentials" or "no positions" error
+      const errorMessage = error.message || 'Unknown error';
+      if (!errorMessage.includes('credentials') && !errorMessage.includes('No matching')) {
+        this.toastService.error(
+          this.translationService.translate('arbitrage.positionDetectionError') ||
+          'Failed to check for existing positions'
+        );
+      }
+    }
   }
 
 

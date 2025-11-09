@@ -194,8 +194,10 @@ export interface PriceArbitragePositionDTO {
   // Configuration
   primaryLeverage: number;
   primaryMargin: number;
+  primaryQuantity: number;
   hedgeLeverage: number;
   hedgeMargin: number;
+  hedgeQuantity: number;
 
   // Entry data
   entryPrimaryPrice: number;

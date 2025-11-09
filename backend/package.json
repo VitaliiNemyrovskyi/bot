@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "start-dev.cmd",
+    "dev": "cmd /c start-dev.cmd",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -42,7 +42,7 @@
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
-    "@types/react": "^19",
+    "@types/react": "19.2.2",
     "@types/react-dom": "^19",
     "@types/supertest": "^6.0.3",
     "eslint": "^9",

@@ -63,285 +63,48 @@
               </div>
             </div>
           </div>
-          <div #chartContainer id="chart-container" class="chart-container"></div>
+          <div #chartContainer id="chart-container" class="chart-container">
+            <!-- Chart Tooltip for Spread Information -->
+            <div #chartTooltip class="chart-tooltip" style="display: none;">
+              <div class="tooltip-header">Price Spread</div>
+              <div class="tooltip-row">
+                <span class="tooltip-label">{{ primaryExchange() }}:</span>
+                <span class="tooltip-value primary-value" id="tooltip-primary-price">-</span>
+              </div>
+              <div class="tooltip-row">
+                <span class="tooltip-label">{{ hedgeExchange() }}:</span>
+                <span class="tooltip-value hedge-value" id="tooltip-hedge-price">-</span>
+              </div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row spread-row">
+                <span class="tooltip-label">Absolute Spread:</span>
+                <span class="tooltip-value" id="tooltip-absolute-spread">-</span>
+              </div>
+              <div class="tooltip-row spread-row">
+                <span class="tooltip-label">Spread %:</span>
+                <span class="tooltip-value" id="tooltip-percent-spread">-</span>
+              </div>
+              <div class="tooltip-time" id="tooltip-time">-</div>
+            </div>
+          </div>
         </div>
 
-        <!-- Active Positions Table -->
+        <!-- Active Positions Component -->
         <div id="active-positions-section" class="active-positions-section">
           <div class="section-header">
             <h2>{{ t('arbitrageChart.activePositions') }}</h2>
-            <span class="positions-count">{{ filteredActivePositions().length }} {{ t('arbitrageChart.positionCount') }}</span>
+            <span class="positions-count">{{ transformedPositions().length }} {{ t('arbitrageChart.positionCount') }}</span>
           </div>
 
-          @if (filteredActivePositions().length === 0) {
-            <div id="no-positions" class="no-positions">
-              <span class="icon">📊</span>
-              <p>{{ t('arbitrageChart.noPositions') }}</p>
-              <small>{{ t('arbitrageChart.startPosition') }}</small>
-            </div>
-          } @else {
-            <div id="positions-table-container" class="positions-table-container">
-              <table id="positions-table" class="positions-table">
-                <thead>
-                  <tr>
-                    <th>{{ t('arbitrageChart.table.positionId') }}</th>
-                    <th>{{ t('arbitrageChart.table.symbol') }}</th>
-                    <th>{{ t('arbitrageChart.table.primaryExchange') }}</th>
-                    <th>{{ t('arbitrageChart.table.hedgeExchange') }}</th>
-                    <th>{{ t('arbitrageChart.table.status') }}</th>
-                    <th>{{ t('arbitrageChart.table.startedAt') }}</th>
-                    <th>{{ t('arbitrageChart.table.actions') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (position of filteredActivePositions(); track position.positionId) {
-                    <!-- Main Row (clickable) -->
-                    <tr class="position-row" [class.expanded]="isRowExpanded(position.positionId)" (click)="toggleRowExpansion(position.positionId)">
-                      <td class="position-id">
-                        <span class="expand-icon">{{ isRowExpanded(position.positionId) ? '▼' : '▶' }}</span>
-                        {{ position.positionId }}
-                      </td>
-                      <td class="symbol">{{ position.symbol }}</td>
-                      <td class="exchange">
-                        <div class="exchange-cell">
-                          <span class="exchange-name">{{ position.primary.exchange }}</span>
-                          <span class="side-badge" [class.long]="position.primary.side === 'long'" [class.short]="position.primary.side === 'short'">
-                            {{ position.primary.side }}
-                          </span>
-                          <span class="leverage">{{ position.primary.leverage }}x</span>
-                        </div>
-                      </td>
-                      <td class="exchange">
-                        <div class="exchange-cell">
-                          <span class="exchange-name">{{ position.hedge.exchange }}</span>
-                          <span class="side-badge" [class.long]="position.hedge.side === 'long'" [class.short]="position.hedge.side === 'short'">
-                            {{ position.hedge.side }}
-                          </span>
-                          <span class="leverage">{{ position.hedge.leverage }}x</span>
-                        </div>
-                      </td>
-                      <td class="status">
-                        <span class="status-badge" [ngClass]="getStatusBadge(position.status).class">
-                          {{ getStatusBadge(position.status).label }}
-                        </span>
-                      </td>
-                      <td class="timestamp">{{ position.startedAt | relativeTime }}</td>
-                      <td class="actions">
-                        <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" [title]="t('arbitrageChart.actions.tpslTooltip')">
-                          {{ t('arbitrageChart.actions.tpsl') }}
-                        </button>
-                        <button
-                          [class.monitoring-enabled]="position.monitoring?.enabled"
-                          [class.monitoring-disabled]="!position.monitoring?.enabled"
-                          (click)="toggleMonitoring(position); $event.stopPropagation()"
-                          [title]="position.monitoring?.enabled ? t('arbitrageChart.actions.monitoringActive') : t('arbitrageChart.actions.monitoringDisabled')">
-                          {{ position.monitoring?.enabled ? '👁️ ' + t('arbitrageChart.actions.monitoringOn') : '👁️ ' + t('arbitrageChart.actions.monitoringOff') }}
-                        </button>
-                        <button class="stop-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
-                          {{ t('arbitrageChart.actions.stop') }}
-                        </button>
-                      </td>
-                    </tr>
-
-                    <!-- Expanded Details Row -->
-                    @if (isRowExpanded(position.positionId)) {
-                      <tr class="expanded-row">
-                        <td colspan="7">
-                          <div class="position-details">
-                            <table class="details-table">
-                              <thead>
-                                <tr>
-                                  <th>{{ t('arbitrageChart.details.metric') }}</th>
-                                  <th>{{ t('arbitrageChart.details.primary') }} ({{ position.primary.exchange }})</th>
-                                  <th>{{ t('arbitrageChart.details.hedge') }} ({{ position.hedge.exchange }})</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td class="metric-label">{{ t('arbitrageChart.details.entryPrice') }}</td>
-                                  <td class="metric-value">{{ position.primary.entryPrice ? (position.primary.entryPrice | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                  <td class="metric-value">{{ position.hedge.entryPrice ? (position.hedge.entryPrice | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                </tr>
-                                @if (position.primary.unrealizedProfit !== undefined || position.hedge.unrealizedProfit !== undefined) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.unrealizedPnl') }}</td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.primary.unrealizedProfit || 0) > 0"
-                                        [class.negative]="(position.primary.unrealizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.primary.unrealizedProfit) }} USDT
-                                    </td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.hedge.unrealizedProfit || 0) > 0"
-                                        [class.negative]="(position.hedge.unrealizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.hedge.unrealizedProfit) }} USDT
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.realizedProfit !== undefined || position.hedge.realizedProfit !== undefined) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.realizedPnl') }}</td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.primary.realizedProfit || 0) > 0"
-                                        [class.negative]="(position.primary.realizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.primary.realizedProfit) }} USDT
-                                    </td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.hedge.realizedProfit || 0) > 0"
-                                        [class.negative]="(position.hedge.realizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.hedge.realizedProfit) }} USDT
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.liquidationPrice || position.hedge.liquidationPrice) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.liquidationPrice') }}</td>
-                                    <td class="metric-value">{{ position.primary.liquidationPrice ? (position.primary.liquidationPrice | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                    <td class="metric-value">{{ position.hedge.liquidationPrice ? (position.hedge.liquidationPrice | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                  </tr>
-                                }
-                                @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null || position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.liquidationProximity') }}</td>
-                                    <td class="metric-value">
-                                      @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null) {
-                                        <span class="proximity-value"
-                                              [class.proximity-safe]="position.primary.proximityRatio < 0.7"
-                                              [class.proximity-warning]="position.primary.proximityRatio >= 0.7 && position.primary.proximityRatio < 0.9"
-                                              [class.proximity-danger]="position.primary.proximityRatio >= 0.9">
-                                          {{ (position.primary.proximityRatio * 100) | number:'1.1-1' }}%
-                                          @if (position.primary.inDanger) {
-                                            <span class="danger-badge">{{ t('arbitrageChart.details.danger') }}</span>
-                                          }
-                                        </span>
-                                      } @else {
-                                        {{ t('arbitrageChart.details.notAvailable') }}
-                                      }
-                                    </td>
-                                    <td class="metric-value">
-                                      @if (position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
-                                        <span class="proximity-value"
-                                              [class.proximity-safe]="position.hedge.proximityRatio < 0.7"
-                                              [class.proximity-warning]="position.hedge.proximityRatio >= 0.7 && position.hedge.proximityRatio < 0.9"
-                                              [class.proximity-danger]="position.hedge.proximityRatio >= 0.9">
-                                          {{ (position.hedge.proximityRatio * 100) | number:'1.1-1' }}%
-                                          @if (position.hedge.inDanger) {
-                                            <span class="danger-badge">{{ t('arbitrageChart.details.danger') }}</span>
-                                          }
-                                        </span>
-                                      } @else {
-                                        {{ t('arbitrageChart.details.notAvailable') }}
-                                      }
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.stopLoss || position.hedge.stopLoss) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.stopLoss') }}</td>
-                                    <td class="metric-value">{{ position.primary.stopLoss ? (position.primary.stopLoss | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                    <td class="metric-value">{{ position.hedge.stopLoss ? (position.hedge.stopLoss | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                  </tr>
-                                }
-                                @if (position.primary.takeProfit || position.hedge.takeProfit) {
-                                  <tr>
-                                    <td class="metric-label">{{ t('arbitrageChart.details.takeProfit') }}</td>
-                                    <td class="metric-value">{{ position.primary.takeProfit ? (position.primary.takeProfit | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                    <td class="metric-value">{{ position.hedge.takeProfit ? (position.hedge.takeProfit | number:'1.2-6') : t('arbitrageChart.details.notAvailable') }}</td>
-                                  </tr>
-                                }
-                                <tr>
-                                  <td class="metric-label">{{ t('arbitrageChart.details.lastFundingPaid') }}</td>
-                                  <td class="metric-value">{{ formatCurrency(position.primary.lastFundingPaid) }} USDT</td>
-                                  <td class="metric-value">{{ formatCurrency(position.hedge.lastFundingPaid) }} USDT</td>
-                                </tr>
-                                <tr>
-                                  <td class="metric-label">{{ t('arbitrageChart.details.totalFundingEarned') }}</td>
-                                  <td class="metric-value positive">{{ formatCurrency(position.primary.totalFundingEarned) }} USDT</td>
-                                  <td class="metric-value positive">{{ formatCurrency(position.hedge.totalFundingEarned) }} USDT</td>
-                                </tr>
-                                <tr>
-                                  <td class="metric-label">{{ t('arbitrageChart.details.entryFees') }}</td>
-                                  <td class="metric-value negative">{{ formatCurrency(position.primary.tradingFees) }} USDT</td>
-                                  <td class="metric-value negative">{{ formatCurrency(position.hedge.tradingFees) }} USDT</td>
-                                </tr>
-                                <tr class="summary-row">
-                                  <td class="metric-label">{{ t('arbitrageChart.details.grossProfit') }}</td>
-                                  <td colspan="2" class="metric-value gross-profit">{{ formatCurrency(position.grossProfit) }} USDT</td>
-                                </tr>
-                                <tr class="summary-row">
-                                  <td class="metric-label">{{ t('arbitrageChart.details.netProfit') }}</td>
-                                  <td colspan="2" class="metric-value net-profit" [class.positive]="(position.netProfit || 0) > 0" [class.negative]="(position.netProfit || 0) < 0">
-                                    {{ formatCurrency(position.netProfit) }} USDT
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-
-                            <!-- Error Message Section for ERROR status -->
-                            @if (position.status === 'ERROR' && position.errorMessage) {
-                              <div class="error-message-section">
-                                <div class="error-header">
-                                  <span class="error-icon">⚠️</span>
-                                  <span class="error-title">{{ t('arbitrageChart.error.title') }}</span>
-                                </div>
-                                <div class="error-content">
-                                  <div class="error-details">
-                                    <h4>{{ t('arbitrageChart.error.details') }}</h4>
-                                    <p class="error-text">{{ position.errorMessage }}</p>
-                                  </div>
-
-                                  <div class="troubleshooting-section">
-                                    <h4>{{ t('arbitrageChart.error.howToFix') }}</h4>
-                                    <ol class="fix-steps">
-                                      <li>
-                                        <strong>{{ t('arbitrageChart.error.checkConnectivity') }}</strong>
-                                        <ul>
-                                          <li>{{ t('arbitrageChart.error.verifyInternet') }}</li>
-                                          <li>{{ t('arbitrageChart.error.checkApis') }} {{ position.primary.exchange }} {{ t('arbitrageChart.error.checkApis') }} {{ position.hedge.exchange }} {{ t('arbitrageChart.error.checkApisOperational') }}</li>
-                                          <li>{{ t('arbitrageChart.error.lookForErrors') }}</li>
-                                        </ul>
-                                      </li>
-                                      <li>
-                                        <strong>{{ t('arbitrageChart.error.verifyCredentials') }}</strong>
-                                        <ul>
-                                          <li>{{ t('arbitrageChart.error.goToProfile') }}</li>
-                                          <li>{{ t('arbitrageChart.error.testConnection') }}</li>
-                                          <li>{{ t('arbitrageChart.error.checkPermissions') }}</li>
-                                        </ul>
-                                      </li>
-                                      <li>
-                                        <strong>{{ t('arbitrageChart.error.checkStatus') }}</strong>
-                                        <ul>
-                                          <li>{{ t('arbitrageChart.error.visitWebsites') }}</li>
-                                          <li>{{ t('arbitrageChart.error.checkRateLimits') }}</li>
-                                        </ul>
-                                      </li>
-                                    </ol>
-                                  </div>
-
-                                  <div class="error-actions">
-                                    <div class="status-info">
-                                      <p class="warning-text">
-                                        ⚠️ <strong>{{ t('arbitrageChart.error.partiallyFilled') }}</strong> {{ t('arbitrageChart.error.partiallyFilledMessage') }}
-                                      </p>
-                                    </div>
-                                    <button class="close-error-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
-                                      {{ t('arbitrageChart.error.closePosition') }}
-                                    </button>
-                                    <p class="error-help-text">
-                                      {{ t('arbitrageChart.error.closePositionHelp') }}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            }
-                          </div>
-                        </td>
-                      </tr>
-                    }
-                  }
-                </tbody>
-              </table>
-            </div>
+          @if (transformedPositions().length > 0) {
+            <app-active-positions
+              [positions]="transformedPositions()"
+              [primaryPrice]="primaryData().price"
+              [hedgePrice]="hedgeData().price"
+              (syncTpSlClick)="syncTpSl($event)"
+              (toggleMonitoringClick)="toggleMonitoring($event)"
+              (stopPositionClick)="stopPosition($event)">
+            </app-active-positions>
           }
         </div>
       </div>

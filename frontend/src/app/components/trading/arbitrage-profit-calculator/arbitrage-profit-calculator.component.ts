@@ -1,9 +1,11 @@
 import { Component, Input, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { calculateFundingSpread, SpreadStrategyType } from '@shared/lib';
 
 interface ProfitBreakdown {
-  fundingIncome: number;
   entrySpread: number;
+  fundingIncome: number;
+  spreadClosingProfit: number;
   tradingFees: number;
   netProfit: number;
   roi: number;
@@ -84,14 +86,15 @@ export class ArbitrageProfitCalculatorComponent {
   private _positionSize = signal<number>(0);
   private _leverage = signal<number>(1);
 
-  // Exchange fee rates (percentage)
+  // Exchange fee rates (Maker/Taker average in percentage)
   private readonly EXCHANGE_FEES: Record<string, number> = {
-    'BYBIT': 0.055,
-    'BINGX': 0.05,
-    'MEXC': 0.03,
-    'BINANCE': 0.04,
-    'GATEIO': 0.05,
-    'BITGET': 0.06,
+    'BYBIT': 0.055,   // 0.055% average
+    'BINGX': 0.05,    // 0.05% average
+    'MEXC': 0.03,     // 0.03% average
+    'BINANCE': 0.04,  // 0.04% average
+    'GATEIO': 0.05,   // 0.05% average
+    'BITGET': 0.06,   // 0.06% average
+    'OKX': 0.05,      // 0.05% average
   };
 
   /**
@@ -139,67 +142,147 @@ export class ArbitrageProfitCalculatorComponent {
 
   /**
    * Calculate profit for Combined strategy (Funding + Price)
+   *
+   * Uses centralized funding spread calculator from @shared/lib
+   *
+   * Net Profit Formula (WITHOUT leverage - leverage only affects margin):
+   * Net Profit = [Funding Spread × Quantity × Hours] + [(Spread) × Quantity] - Fees
+   *
+   * Funding Spread is calculated by centralized function:
+   * - Automatically determines which exchange is primary (LONG) and which is hedge (SHORT)
+   * - Primary = exchange with higher |funding rate|
+   * - Formula: Math.abs(primary_rate_per_hour) + hedge_rate_per_hour
    */
   private calculateCombinedProfit(): ProfitBreakdown {
-    const collateral = this._positionSize(); // User input = collateral (margin)
-    const leverage = this._leverage();
-    const positionSize = collateral * leverage; // Real position size with leverage
-    const primaryPrice = this._primaryPrice();
-    const hedgePrice = this._hedgePrice();
-    const primaryFundingRate = this._primaryFundingRate();
-    const hedgeFundingRate = this._hedgeFundingRate();
-    const fundingInterval = this._fundingInterval();
+    const quantity = this._positionSize(); // Quantity (e.g. 0.5 BTC) - WITHOUT leverage
+    const primaryPrice = this._primaryPrice(); // Price on primary exchange
+    const hedgePrice = this._hedgePrice(); // Price on hedge exchange
+    const primaryFundingRate = this._primaryFundingRate(); // in % (e.g. -0.8)
+    const hedgeFundingRate = this._hedgeFundingRate(); // in % (e.g. -0.4)
+    const fundingInterval = this._fundingInterval(); // 4 or 8 hours
     const primaryExchange = this._primaryExchange();
     const hedgeExchange = this._hedgeExchange();
 
-    // DEBUG: Log funding rates
-    console.log('💰 [Calculator] Funding rates:', {
+    // Nominal position value in USD (for fee calculation)
+    const primaryPositionValue = quantity * primaryPrice;
+    const hedgePositionValue = quantity * hedgePrice;
+
+    console.log('💰 [Calculator] Combined Profit Calculation (without leverage):', {
+      quantity,
+      primaryPrice,
+      hedgePrice,
+      primaryPositionValue: primaryPositionValue.toFixed(2),
+      hedgePositionValue: hedgePositionValue.toFixed(2),
       primaryFundingRate,
       hedgeFundingRate,
-      fundingInterval,
-      positionSize,
-      collateral,
-      leverage
+      fundingInterval
     });
 
-    // 1. Calculate funding income for 24 hours
-    const fundingsPerDay = 24 / fundingInterval; // 3 payments (8h) or 6 payments (4h)
+    // 1. Calculate Funding Spread using centralized function
+    // ==================================================================
+    // Function automatically determines which exchange is primary (LONG) and which is hedge (SHORT)
+    const fundingSpread = calculateFundingSpread(
+      {
+        rate: primaryFundingRate / 100, // convert % to decimal (-0.8% → -0.008)
+        intervalHours: fundingInterval,
+        exchange: primaryExchange
+      },
+      {
+        rate: hedgeFundingRate / 100, // convert % to decimal (-0.4% → -0.004)
+        intervalHours: fundingInterval,
+        exchange: hedgeExchange
+      },
+      SpreadStrategyType.COMBINED
+    );
 
-    // Calculate position size in coins
+    console.log('📊 [Funding Spread from @shared/lib]:', {
+      spreadPerHour: fundingSpread.spreadPerHour,
+      spreadPercentFormatted: fundingSpread.spreadPercentFormatted,
+      primaryExchange: fundingSpread.primaryExchange,
+      hedgeExchange: fundingSpread.hedgeExchange,
+      primaryRatePerHour: fundingSpread.primaryRatePerHour,
+      hedgeRatePerHour: fundingSpread.hedgeRatePerHour
+    });
+
+    // Funding income for 24 hours (WITHOUT leverage)
+    // ====================================
+    // Account for funding payment interval (4h or 8h)
+    // Formula (WITHOUT leverage):
+    // 1. Position value = quantity × avgPrice
+    // 2. Income per interval = spreadPerHour × fundingInterval × positionValue
+    // 3. Number of payments per day = 24 / fundingInterval
+    // 4. Daily income = (income per interval) × (number of payments)
     const avgPrice = (primaryPrice + hedgePrice) / 2;
-    const positionSizeInCoins = positionSize / avgPrice;
+    const positionValue = quantity * avgPrice;
+    const fundingPeriodsPerDay = 24 / fundingInterval; // 3 for 8h, 6 for 4h
+    const fundingIncomePerPeriod = fundingSpread.spreadPerHour * fundingInterval * positionValue;
+    const dailyFundingIncome = fundingIncomePerPeriod * fundingPeriodsPerDay;
 
-    // Funding per payment (assuming we're long on one and short on other)
-    // Long position pays negative funding (receives if rate is positive)
-    // Short position receives negative funding (pays if rate is positive)
-    const primaryFundingPerPayment = positionSize * (primaryFundingRate / 100);
-    const hedgeFundingPerPayment = positionSize * (hedgeFundingRate / 100);
+    console.log('📊 [Funding Income (without leverage)]:', {
+      spreadPerHour: (fundingSpread.spreadPerHour * 100).toFixed(4) + '% per hour',
+      fundingInterval: fundingInterval + 'h',
+      fundingPeriodsPerDay: fundingPeriodsPerDay,
+      quantity,
+      avgPrice: avgPrice.toFixed(2),
+      positionValue: positionValue.toFixed(2),
+      fundingIncomePerPeriod: fundingIncomePerPeriod.toFixed(2),
+      dailyFundingIncome: dailyFundingIncome.toFixed(2)
+    });
 
-    // Total daily funding (we capture the spread between the two rates)
-    const dailyFundingIncome = Math.abs(primaryFundingPerPayment - hedgeFundingPerPayment) * fundingsPerDay;
+    // 2. Entry Spread Profit (WITHOUT leverage)
+    // =========================================
+    // Profit from price difference at entry (same as in active-positions)
+    // Entry profit = (hedge price - primary price) * quantity
+    const priceSpread = hedgePrice - primaryPrice;
+    const entrySpreadProfit = priceSpread * quantity;
 
-    // 2. Calculate entry spread P&L
-    const priceSpread = Math.abs(primaryPrice - hedgePrice);
-    const entrySpreadProfit = priceSpread * positionSizeInCoins;
+    console.log('📈 [Entry Spread Profit (without leverage)]:', {
+      primaryPrice,
+      hedgePrice,
+      priceSpread: priceSpread.toFixed(2),
+      quantity,
+      entrySpreadProfit: entrySpreadProfit.toFixed(2)
+    });
 
-    // 3. Calculate trading fees (4 transactions: open long, open short, close long, close short)
-    const primaryFee = this.EXCHANGE_FEES[primaryExchange] || 0.055;
-    const hedgeFee = this.EXCHANGE_FEES[hedgeExchange] || 0.055;
-    const totalFees = positionSize * (primaryFee + hedgeFee) * 2 / 100;
+    // 3. Trading Fees (4 trades: open+close on both exchanges, WITHOUT leverage)
+    // =========================================================
+    const primaryFee = this.EXCHANGE_FEES[fundingSpread.primaryExchange] || 0.055;
+    const hedgeFee = this.EXCHANGE_FEES[fundingSpread.hedgeExchange] || 0.055;
+    // Fees are calculated from position value (quantity * price)
+    const totalFees = (primaryPositionValue * 2 * primaryFee / 100) + (hedgePositionValue * 2 * hedgeFee / 100);
 
-    // 4. Calculate net profit and ROI
-    const netProfit = dailyFundingIncome + entrySpreadProfit - totalFees;
+    console.log('💸 [Fees (without leverage)]:', {
+      primaryExchange: fundingSpread.primaryExchange,
+      hedgeExchange: fundingSpread.hedgeExchange,
+      primaryFee: primaryFee + '%',
+      hedgeFee: hedgeFee + '%',
+      primaryPositionValue: primaryPositionValue.toFixed(2),
+      hedgePositionValue: hedgePositionValue.toFixed(2),
+      totalFees: totalFees.toFixed(2)
+    });
 
-    // Calculate collateral (margin) for 2 positions (long + short)
-    const totalCollateral = collateral * 2;
+    // 4. Net Profit and ROI (WITHOUT leverage)
+    // ==========================
+    // Main formula: Funding Income + Entry Spread - Fees
+    const grossProfit = dailyFundingIncome + entrySpreadProfit;
+    const netProfit = grossProfit - totalFees;
 
-    // ROI is profit relative to collateral
-    const roi = (netProfit / totalCollateral) * 100;
+    // ROI is calculated from position value (not margin)
+    const roi = (netProfit / positionValue) * 100;
     const apy = roi * 365;
 
+    console.log('✅ [Result (without leverage)]:', {
+      grossProfit: grossProfit.toFixed(2),
+      netProfit: netProfit.toFixed(2),
+      positionValue: positionValue.toFixed(2),
+      roi: roi.toFixed(2) + '%',
+      apy: apy.toFixed(0) + '%'
+    });
+
     return {
-      fundingIncome: dailyFundingIncome,
       entrySpread: entrySpreadProfit,
+      fundingIncome: dailyFundingIncome,
+      spreadClosingProfit: entrySpreadProfit,
       tradingFees: totalFees,
       netProfit: netProfit,
       roi: roi,
@@ -208,40 +291,71 @@ export class ArbitrageProfitCalculatorComponent {
   }
 
   /**
-   * Calculate profit for Price Only strategy
+   * Calculate profit for Price Only strategy (Instant Arbitrage)
+   *
+   * Formula (WITHOUT leverage - leverage only affects margin):
+   * Net Profit = [(Spread) × Quantity] - Fees
    */
   private calculatePriceOnlyProfit(): ProfitBreakdown {
-    const collateral = this._positionSize(); // User input = collateral (margin)
-    const leverage = this._leverage();
-    const positionSize = collateral * leverage; // Real position size with leverage
-    const primaryPrice = this._primaryPrice();
-    const hedgePrice = this._hedgePrice();
+    const quantity = this._positionSize(); // Quantity (e.g. 0.5 BTC) - WITHOUT leverage
+    const primaryPrice = this._primaryPrice(); // Price on exchange A
+    const hedgePrice = this._hedgePrice(); // Price on exchange B
     const primaryExchange = this._primaryExchange();
     const hedgeExchange = this._hedgeExchange();
 
-    // 1. Calculate price spread profit
+    // Nominal position value in USD (for fee calculation)
+    const primaryPositionValue = quantity * primaryPrice;
+    const hedgePositionValue = quantity * hedgePrice;
     const avgPrice = (primaryPrice + hedgePrice) / 2;
-    const positionSizeInCoins = positionSize / avgPrice;
-    const priceSpread = Math.abs(primaryPrice - hedgePrice);
-    const spreadProfit = priceSpread * positionSizeInCoins;
+    const positionValue = quantity * avgPrice;
 
-    // 2. Calculate trading fees (4 transactions)
+    console.log('💰 [Calculator] Price Only Profit Calculation (without leverage):', {
+      quantity,
+      primaryPrice,
+      hedgePrice,
+      primaryPositionValue: primaryPositionValue.toFixed(2),
+      hedgePositionValue: hedgePositionValue.toFixed(2)
+    });
+
+    // 1. Spread Profit (WITHOUT leverage - same as in active-positions)
+    const priceSpread = hedgePrice - primaryPrice; // P_B - P_A
+    const spreadPercentage = (priceSpread / primaryPrice) * 100;
+    const spreadProfit = priceSpread * quantity; // WITHOUT leverage
+
+    console.log('📈 [Spread (without leverage)]:', {
+      priceSpread: priceSpread.toFixed(2),
+      spreadPercentage: spreadPercentage.toFixed(4) + '%',
+      quantity,
+      spreadProfit: spreadProfit.toFixed(2)
+    });
+
+    // 2. Trading Fees (4 trades, WITHOUT leverage)
     const primaryFee = this.EXCHANGE_FEES[primaryExchange] || 0.055;
     const hedgeFee = this.EXCHANGE_FEES[hedgeExchange] || 0.055;
-    const totalFees = positionSize * (primaryFee + hedgeFee) * 2 / 100;
+    const totalFees = (primaryPositionValue * 2 * primaryFee / 100) + (hedgePositionValue * 2 * hedgeFee / 100);
 
-    // 3. Calculate net profit and ROI
+    console.log('💸 [Fees (without leverage)]:', {
+      primaryFee: primaryFee + '%',
+      hedgeFee: hedgeFee + '%',
+      primaryPositionValue: primaryPositionValue.toFixed(2),
+      hedgePositionValue: hedgePositionValue.toFixed(2),
+      totalFees: totalFees.toFixed(2)
+    });
+
+    // 3. Net Profit and ROI (WITHOUT leverage)
     const netProfit = spreadProfit - totalFees;
+    const roi = (netProfit / positionValue) * 100;
 
-    // Calculate collateral (margin) for 2 positions (long + short)
-    const totalCollateral = collateral * 2;
-
-    // ROI is profit relative to collateral
-    const roi = (netProfit / totalCollateral) * 100;
+    console.log('✅ [Result (without leverage)]:', {
+      netProfit: netProfit.toFixed(2),
+      positionValue: positionValue.toFixed(2),
+      roi: roi.toFixed(2) + '%'
+    });
 
     return {
+      entrySpread: spreadProfit, // Entry spread profit (price difference at entry)
       fundingIncome: 0, // Not applicable for price only
-      entrySpread: spreadProfit,
+      spreadClosingProfit: spreadProfit,
       tradingFees: totalFees,
       netProfit: netProfit,
       roi: roi,

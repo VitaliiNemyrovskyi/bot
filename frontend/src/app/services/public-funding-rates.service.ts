@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay, take, timeout } from 'rxjs';
 import { ExchangeFundingRate, FundingRateOpportunity, SpreadStabilityMetrics } from '../models/public-funding-rate.model';
 import { StatisticalUtilsService } from './statistical-utils.service';
+import { normalizeFundingRateTo1h } from '@shared/lib';
 
 /**
  * Public Funding Rates Service
@@ -182,10 +183,10 @@ export class PublicFundingRatesService {
 
     // Fetch from selected exchanges in parallel
     this.fundingRatesCache$ = forkJoin(requests).pipe(
+      take(1),
       map(results => {
         // Combine all exchange data
         const allRates: ExchangeFundingRate[] = Object.values(results).flat();
-
         console.log(`[PublicFundingRatesService] Received ${allRates.length} funding rates from ${Object.keys(requests).length} exchanges`);
 
         // Calculate opportunities
@@ -340,7 +341,7 @@ export class PublicFundingRatesService {
     }
 
     return this.http.get<BingXResponse>(url).pipe(
-      timeout(10000), // 10 second timeout
+      timeout(20000), // 20 second timeout (BingX is slow)
       map(response => {
         if (response.code !== 0 || !response.data) {
           console.error('[BingX] API error:', response.msg);
@@ -567,13 +568,13 @@ export class PublicFundingRatesService {
       code: string;
       msg?: string;
       data: {
-        instType: string;
+        instType?: string;
         instId: string;
         fundingRate: string;
         nextFundingTime: string;
-        fundingInterval: string;
+        fundingInterval: number | string; // Can be number or string from backend
         markPx: string;
-        indexPx: string;
+        idxPx: string;
       }[];
     }
 
@@ -593,19 +594,29 @@ export class PublicFundingRatesService {
             fr.instId &&
             fr.fundingRate !== undefined
           )
-          .map(fr => ({
-            exchange: 'OKX',
-            symbol: fr.instId.replace(/[\\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
-            originalSymbol: fr.instId, // BTC-USDT
-            fundingRate: fr.fundingRate,
-            nextFundingTime: parseInt(fr.nextFundingTime) || 0,
-            lastPrice: fr.markPx || '0',
-            fundingInterval: fr.fundingInterval || '-', // Dash if not available
-            volume24h: undefined,
-            openInterest: undefined,
-            high24h: undefined,
-            low24h: undefined,
-          } as ExchangeFundingRate));
+          .map(fr => {
+            // ✅ Convert fundingInterval from number to string format (8 -> '8h', 4 -> '4h', etc.)
+            let fundingInterval = '-';
+            if (fr.fundingInterval) {
+              fundingInterval = typeof fr.fundingInterval === 'number'
+                ? `${fr.fundingInterval}h`
+                : fr.fundingInterval;
+            }
+
+            return {
+              exchange: 'OKX',
+              symbol: fr.instId.replace(/[\\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
+              originalSymbol: fr.instId, // BTC-USDT
+              fundingRate: fr.fundingRate,
+              nextFundingTime: parseInt(fr.nextFundingTime) || 0,
+              lastPrice: fr.markPx || '0',
+              fundingInterval, // Now properly formatted as '8h', '4h', etc.
+              volume24h: undefined,
+              openInterest: undefined,
+              high24h: undefined,
+              low24h: undefined,
+            } as ExchangeFundingRate;
+          });
       }),
       catchError((error: Error) => {
         console.error('[OKX] Failed to fetch funding rates via proxy:', error.message);
@@ -615,45 +626,26 @@ export class PublicFundingRatesService {
   }
 
   /**
-   * Calculate funding interval based on time until next funding
-   * Uses REAL data from exchange API instead of hardcoded assumptions
-   */
-  private calculateFundingInterval(nextFundingTime: number): string {
-    const now = Date.now();
-    const timeUntilFunding = nextFundingTime - now;
-
-    if (timeUntilFunding <= 0) {
-      return '8h'; // Default if funding time is in the past
-    }
-
-    const hoursUntilFunding = timeUntilFunding / (1000 * 60 * 60);
-
-    // Determine interval based on actual time until next funding
-    if (hoursUntilFunding <= 1.5) {
-      return '1h';  // GATEIO, some MEXC symbols
-    } else if (hoursUntilFunding <= 5) {
-      return '4h';  // Some MEXC symbols
-    } else {
-      return '8h';  // BYBIT, BINANCE, BINGX, OKX, most symbols
-    }
-  }
-
-  /**
-   * Normalize funding rate to 8-hour interval for fair comparison
+   * Normalize funding rate to 1-hour interval for fair comparison
    * Different exchanges use different intervals (1h, 4h, 8h)
+   *
+   * ✅ Uses centralized function from @shared/lib to ensure consistency
+   * across the entire application (frontend, backend, calculator components)
    */
-  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval = '-'): number {
-    const rate = parseFloat(fundingRate);
+  private normalizeFundingRate(fundingRate: string | number, fundingInterval: string | number | undefined = '-'): number {
+    // Parse funding rate
+    const rate = typeof fundingRate === 'string' ? parseFloat(fundingRate) : fundingRate;
 
-    // Normalization multipliers to convert to 8h interval
-    const multipliers: Record<string, number> = {
-      '1h': 8,   // 8 hourly payments = 1 eight-hour period
-      '4h': 2,   // 2 four-hour payments = 1 eight-hour period
-      '8h': 1,   // Already 8h interval
-    };
+    // Ensure fundingInterval is a string
+    const intervalStr = fundingInterval ? String(fundingInterval) : '-';
 
-    const multiplier = multipliers[fundingInterval] || 1;
-    return rate * multiplier;
+    // Extract numeric interval from string format ('1h' -> 1, '4h' -> 4, '8h' -> 8, '8' -> 8)
+    const intervalMatch = intervalStr.match(/^(\d+)h?$/);
+    const intervalHours = intervalMatch ? parseInt(intervalMatch[1]) : 1;
+
+    // Use centralized normalization function from @shared/lib
+    // This ensures ALL funding rate calculations use the same logic
+    return normalizeFundingRateTo1h(rate, intervalHours);
   }
 
   /**
@@ -676,14 +668,14 @@ export class PublicFundingRatesService {
       //   rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
       // }
 
-      // Normalize funding rate to 8h interval using calculated interval
-      // If interval is unknown ('-'), no normalization applied (multiplier = 1)
-      rate.fundingRateNormalized = this.normalizeFundingRateTo8h(
+      // ✅ Normalize funding rate to 1h interval using centralized function from @shared/lib
+      // This ensures fair comparison across exchanges with different intervals (1h, 4h, 8h)
+      rate.fundingRateNormalized = this.normalizeFundingRate(
         rate.fundingRate,
         rate.fundingInterval || '-'
       );
 
-      console.log(`[FundingInterval] ${rate.exchange} ${rate.symbol}: interval=${rate.fundingInterval}, nextFunding=${new Date(rate.nextFundingTime).toLocaleTimeString()}, rate=${rate.fundingRate}, normalized=${rate.fundingRateNormalized.toFixed(6)}`);
+      // console.log(`[FundingInterval] ${rate.exchange} ${rate.symbol}: interval=${rate.fundingInterval}, nextFunding=${new Date(rate.nextFundingTime).toLocaleTimeString()}, rate=${rate.fundingRate}, normalized=${rate.fundingRateNormalized?.toFixed(6) || 'N/A'}`);
 
       symbolMap.get(rate.symbol)!.push(rate);
     });
@@ -710,9 +702,9 @@ export class PublicFundingRatesService {
       // Calculate price spread
       const bestLongPrice = parseFloat(bestLong.lastPrice);
       const bestShortPrice = parseFloat(bestShort.lastPrice);
-      const priceSpread = (bestShortPrice - bestLongPrice) / bestLongPrice;
-      const priceSpreadPercent = (priceSpread * 100).toFixed(2);
-      const priceSpreadUsdt = (bestShortPrice - bestLongPrice).toFixed(2);
+      const priceSpread = Math.abs(bestShortPrice - bestLongPrice) / bestLongPrice;
+      const priceSpreadPercent = Math.abs(priceSpread * 100).toFixed(2);
+      const priceSpreadUsdt = Math.abs(bestShortPrice - bestLongPrice).toFixed(2);
 
       // Get earliest next funding time
       const fundingTimes = exchanges.map(e => e.nextFundingTime).filter(t => t > 0);
@@ -776,10 +768,10 @@ export class PublicFundingRatesService {
         recommendedStrategy = 'spot-futures';
         // Choose exchange with highest funding rate for spot-futures
         spotFuturesBestExchange = bestShort; // Highest funding rate
-        console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both normalized fundings positive: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
+       // console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both normalized fundings positive: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
       } else {
         recommendedStrategy = 'cross-exchange';
-        console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
+       // console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
       }
 
       // 9. Strategy Metrics Calculation
@@ -956,13 +948,20 @@ export class PublicFundingRatesService {
 
   /**
    * Calculate Estimated APR from funding spread
-   * Formula: funding spread × funding periods per year × 100
-   * 8h intervals = 3 times per day × 365 days = 1095 funding periods per year
-   * @param fundingSpread - Funding rate spread (decimal)
-   * @returns Annual Percentage Rate (decimal)
+   *
+   * ⚠️ CRITICAL: This method expects fundingSpread to be NORMALIZED TO 1H intervals!
+   * Since we normalize all funding rates to 1h using @shared/lib utilities,
+   * we must use 1h-based periods for accurate APR calculation.
+   *
+   * Formula: funding spread (per hour) × hours per year × 100
+   * 1h intervals = 24 times per day × 365 days = 8760 funding periods per year
+   *
+   * @param fundingSpread - Funding rate spread normalized to 1h (decimal, e.g., 0.0004)
+   * @returns Annual Percentage Rate (decimal, e.g., 3.504)
    */
   private calculateEstimatedAPR(fundingSpread: number): number {
-    const fundingPeriodsPerYear = 3 * 365; // 8h intervals
+    // ✅ Updated to reflect 1h normalization (24 periods/day instead of 3)
+    const fundingPeriodsPerYear = 24 * 365; // 1h intervals = 8760 periods per year
     return fundingSpread * fundingPeriodsPerYear;
   }
 

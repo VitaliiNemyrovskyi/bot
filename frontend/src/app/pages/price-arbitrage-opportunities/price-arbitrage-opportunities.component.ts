@@ -659,7 +659,18 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
         const exchanges = JSON.parse(saved) as string[];
         // Validate that saved exchanges are still in availableExchanges
         const validExchanges = exchanges.filter(ex => this.availableExchanges.includes(ex));
-        this.selectedExchanges.set(validExchanges);
+
+        // ✅ FIX: Auto-add any NEW exchanges that were added to availableExchanges
+        // but aren't in the saved list (e.g., OKX)
+        const newExchanges = this.availableExchanges.filter(ex => !exchanges.includes(ex));
+        const mergedExchanges = [...validExchanges, ...newExchanges];
+
+        this.selectedExchanges.set(mergedExchanges);
+
+        // Save merged list back to localStorage
+        if (newExchanges.length > 0) {
+          this.saveExchangeFilters();
+        }
       } else {
         // Default: select all exchanges on first load
         this.selectedExchanges.set([...this.availableExchanges]);

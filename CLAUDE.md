@@ -18,4 +18,5 @@ You are a Senior Software developer and crypto trading expert
   - always check data structure between backed, frontend or third party API
   - never use hardcoded default values
   - always add untracked files to GIT
-  - hardcoded values or fallbacks are forbbiden 
+  - hardcoded values or fallbacks are forbbiden
+  - calculate funding spread using shared utilities

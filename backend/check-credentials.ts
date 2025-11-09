@@ -8,11 +8,11 @@ async function checkCredentials() {
   console.log('🔍 Checking Binance and BingX credentials...\n');
 
   try {
-    // Get all BINANCE and BINGX credentials
+    // Get all BINANCE, BINGX, and GATEIO credentials
     const credentials = await prisma.exchangeCredentials.findMany({
       where: {
         exchange: {
-          in: ['BINANCE', 'BINGX'],
+          in: ['BINANCE', 'BINGX', 'GATEIO'],
         },
       },
       select: {

@@ -254,6 +254,81 @@
           height: 500px;
           background: var(--background-primary);
           transition: background-color 0.3s ease;
+          position: relative; // For absolute positioning of tooltip
+
+          // Chart Tooltip
+          .chart-tooltip {
+            position: absolute;
+            display: none;
+            pointer-events: none; // Prevent tooltip from interfering with chart interactions
+            z-index: 1000;
+            background: var(--background-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-md);
+            padding: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            min-width: 220px;
+            font-size: 13px;
+
+            .tooltip-header {
+              font-weight: 600;
+              color: var(--text-primary);
+              margin-bottom: 8px;
+              padding-bottom: 6px;
+              border-bottom: 1px solid var(--border-color);
+              font-size: 14px;
+            }
+
+            .tooltip-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 4px;
+              gap: 16px;
+
+              .tooltip-label {
+                color: var(--text-secondary);
+                font-size: 12px;
+              }
+
+              .tooltip-value {
+                color: var(--text-primary);
+                font-weight: 500;
+                font-family: 'Roboto Mono', monospace;
+
+                &.primary-value {
+                  color: #3b82f6; // Blue for primary exchange
+                }
+
+                &.hedge-value {
+                  color: #a855f7; // Purple for hedge exchange
+                }
+              }
+
+              &.spread-row {
+                .tooltip-value {
+                  color: var(--primary-color);
+                  font-weight: 600;
+                }
+              }
+            }
+
+            .tooltip-divider {
+              height: 1px;
+              background: var(--border-color);
+              margin: 8px 0;
+            }
+
+            .tooltip-time {
+              margin-top: 8px;
+              padding-top: 6px;
+              border-top: 1px solid var(--border-color);
+              color: var(--text-tertiary);
+              font-size: 11px;
+              text-align: center;
+              font-family: 'Roboto Mono', monospace;
+            }
+          }
         }
       }
     }

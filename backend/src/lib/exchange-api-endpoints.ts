@@ -8,7 +8,7 @@ export const EXCHANGE_ENDPOINTS = {
     BASE_URL: 'https://open-api.bingx.com',
     PREMIUM_INDEX: 'https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex',
     FUNDING_RATE_HISTORY: (symbol: string) =>
-      `https://open-api.bingx.com/openApi/swap/v2/quote/fundingRate?symbol=${symbol}&limit=2`,
+      `https://open-api.bingx.com/openApi/swap/v2/quote/fundingRate?symbol=${symbol}&limit=10`,
   },
   OKX: {
     BASE_URL: 'https://www.okx.com',
