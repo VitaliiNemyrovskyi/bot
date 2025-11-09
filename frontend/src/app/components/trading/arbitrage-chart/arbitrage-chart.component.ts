@@ -1652,7 +1652,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         false // Use cache if available
       );
 
-      console.log(`[ArbitrageChart] Received ${fundingRates.length} funding rates`);
+      console.log(`[ArbitrageChart] Received ${fundingRates.length} funding rates from API`);
 
       // Store all rates in map with exchange-symbol as key
       this.fundingRatesMap.clear();
@@ -1674,11 +1674,27 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         });
 
         console.log(`[ArbitrageChart] Stored funding rate: ${key}`, {
+          exchange: rate.exchange,
+          symbol: rate.symbol,
+          symbolFormat: rate.symbol.includes('-') ? 'hyphenated' : rate.symbol.includes('/') ? 'slash' : 'concatenated',
           rate: rate.fundingRate,
-          interval: rate.fundingInterval,
+          interval: fundingIntervalStr,
           nextTime: new Date(rate.nextFundingTime).toISOString()
         });
       });
+
+      console.log('[ArbitrageChart] All stored funding rate keys:', Array.from(this.fundingRatesMap.keys()));
+
+      // Verify we have data for both exchanges
+      const hasPrimary = fundingRates.some(r => r.exchange === primaryEx);
+      const hasHedge = fundingRates.some(r => r.exchange === hedgeEx);
+
+      if (!hasPrimary) {
+        console.warn(`[ArbitrageChart] No funding rate data received from API for primary exchange ${primaryEx}`);
+      }
+      if (!hasHedge) {
+        console.warn(`[ArbitrageChart] No funding rate data received from API for hedge exchange ${hedgeEx}`);
+      }
 
       // Update primary exchange data
       const primaryData = this.getFundingRate(primaryEx, currentSymbol);
@@ -1731,6 +1747,16 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
+    // Log search attempt
+    const searchKey = `${exchange}-${symbol}`;
+    if (!this._loggedFundingSearches.has(searchKey)) {
+      console.log(`[ArbitrageChart] Searching funding rate for ${exchange} symbol "${symbol}"`, {
+        variations: symbolVariations,
+        availableKeys: Array.from(this.fundingRatesMap.keys())
+      });
+      this._loggedFundingSearches.add(searchKey);
+    }
+
     // Try all variations
     for (const variant of symbolVariations) {
       const key = `${exchange}-${variant}`;
@@ -1738,7 +1764,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       if (fundingData) {
         // Only log once per symbol to reduce console spam
         if (!this._loggedFundingSymbols.has(key)) {
-          console.log(`[ArbitrageChart] Found funding for ${exchange} symbol "${symbol}" using variant "${variant}"`);
+          console.log(`[ArbitrageChart] ✓ Found funding for ${exchange} symbol "${symbol}" using variant "${variant}"`);
           this._loggedFundingSymbols.add(key);
         }
         return {
@@ -1749,12 +1775,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
-    // Return empty - the caller will use default values
+    // Not found - log warning
+    console.warn(`[ArbitrageChart] ✗ No funding rate found for ${exchange} symbol "${symbol}" after trying ${symbolVariations.length} variations`);
     return {};
   }
 
   // Track logged symbols to avoid console spam
   private _loggedFundingSymbols = new Set<string>();
+  private _loggedFundingSearches = new Set<string>();
 
   /**
    * Load historical price data for chart initialization
