@@ -4055,20 +4055,21 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
   /**
    * Parse funding interval to hours from ExchangeData
-   * Uses fundingInterval (ms) if available, otherwise fundingIntervalStr
+   * IMPORTANT: Prioritizes API data (fundingIntervalStr) over calculated values (fundingInterval)
+   * because API is the source of truth, while calculated intervals can be inaccurate
    */
   parseFundingIntervalToHours(data: ExchangeData): number | null {
-    // First try to use fundingInterval in milliseconds
-    if (data.fundingInterval !== undefined) {
-      return data.fundingInterval / (1000 * 60 * 60); // Convert ms to hours
-    }
-
-    // Otherwise try to parse fundingIntervalStr
+    // First try to use fundingIntervalStr from API (source of truth)
     if (data.fundingIntervalStr) {
       const match = data.fundingIntervalStr.match(/^(\d+)h$/);
       if (match) {
         return parseInt(match[1], 10);
       }
+    }
+
+    // Fallback to calculated fundingInterval in milliseconds (can be inaccurate)
+    if (data.fundingInterval !== undefined) {
+      return data.fundingInterval / (1000 * 60 * 60); // Convert ms to hours
     }
 
     // No funding interval data available
