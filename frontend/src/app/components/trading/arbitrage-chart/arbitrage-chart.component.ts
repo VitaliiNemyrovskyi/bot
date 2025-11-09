@@ -1508,9 +1508,9 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         if (data.action && data.data && data.data.length > 0) {
           const tickerData = data.data[0];
 
-          // 'last' = last traded price
-          if (tickerData.last) {
-            price = parseFloat(tickerData.last);
+          // 'lastPr' = last traded price (Bitget uses 'lastPr' not 'last')
+          if (tickerData.lastPr) {
+            price = parseFloat(tickerData.lastPr);
           }
 
           // Extract timestamp from Bitget message (in milliseconds)
