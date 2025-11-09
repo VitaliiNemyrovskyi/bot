@@ -61,6 +61,18 @@ export async function GET(request: NextRequest) {
 
     let balance: ExchangeBalance | null = null;
 
+    // Exchanges that require passphrase (stored in authToken field)
+    const passphraseRequired = ['OKX', 'BITGET', 'KUCOIN'];
+    if (passphraseRequired.includes(exchange)) {
+      // For OKX/BITGET/KUCOIN, passphrase is stored in authToken field
+      if (!credentials.authToken || credentials.authToken.trim() === '') {
+        return NextResponse.json(
+          { success: false, error: `${exchange} requires a passphrase. Please add your ${exchange} API passphrase in settings.` },
+          { status: 400 }
+        );
+      }
+    }
+
     switch (exchange) {
       case 'BINGX':
         balance = await getBingXBalance(credentials.apiKey, credentials.apiSecret);
@@ -68,34 +80,19 @@ export async function GET(request: NextRequest) {
       case 'BYBIT':
         balance = await getBybitBalance(credentials.apiKey, credentials.apiSecret);
         break;
-      case 'BINANCE':
-        balance = await getBinanceBalance(credentials.apiKey, credentials.apiSecret);
-        break;
-      case 'OKX':
-        if (!credentials.passphrase || credentials.passphrase.trim() === '') {
-          return NextResponse.json(
-            { success: false, error: 'OKX requires a passphrase. Please add your OKX API passphrase in settings.' },
-            { status: 400 }
-          );
-        }
-        balance = await getOKXBalance(credentials.apiKey, credentials.apiSecret, credentials.passphrase.trim());
-        break;
-      case 'GATEIO':
-        balance = await getGateIOBalance(credentials.apiKey, credentials.apiSecret);
-        break;
       case 'MEXC':
         balance = await getMEXCBalance(credentials.apiKey, credentials.apiSecret, credentials.authToken);
         break;
-      case 'BITGET':
-        return NextResponse.json(
-          { success: false, error: `${exchange} balance not yet implemented` },
-          { status: 501 }
-        );
+      // All other exchanges use CCXT
       default:
-        return NextResponse.json(
-          { success: false, error: `Unsupported exchange: ${exchange}` },
-          { status: 400 }
+        // For OKX/BITGET/KUCOIN, passphrase is in authToken field
+        balance = await getCCXTBalance(
+          exchange,
+          credentials.apiKey,
+          credentials.apiSecret,
+          credentials.authToken?.trim()
         );
+        break;
     }
 
     if (!balance) {
@@ -202,64 +199,6 @@ async function getBybitBalance(apiKey: string, apiSecret: string): Promise<Excha
 }
 
 /**
- * Get Gate.io balance
- */
-async function getGateIOBalance(apiKey: string, apiSecret: string): Promise<ExchangeBalance | null> {
-  try {
-    // console.log('[Gate.io] Fetching balance...');
-
-    // Create Gate.io exchange instance using CCXT
-    const exchange = new ccxt.gate({
-      apiKey,
-      secret: apiSecret,
-      enableRateLimit: true,
-    });
-
-    // Fetch USDT perpetual futures balance
-    // Gate.io uses 'swap' market type for perpetual futures
-    const balance = await exchange.fetchBalance({ type: 'swap' });
-
-    // console.log('[Gate.io] Balance data received:', {
-    //   total: balance.total,
-    //   free: balance.free,
-    //   used: balance.used,
-    // });
-
-    // Extract USDT balance
-    const usdtTotal = balance.total?.USDT || 0;
-    const usdtFree = balance.free?.USDT || 0;
-    const usdtUsed = balance.used?.USDT || 0;
-
-    console.log(`[Gate.io] USDT Balance:`, {
-      total: usdtTotal,
-      free: usdtFree,
-      used: usdtUsed,
-    });
-
-    return {
-      exchange: 'GATEIO',
-      totalBalance: usdtTotal.toString(),
-      availableBalance: usdtFree.toString(),
-      usedBalance: usdtUsed.toString(),
-      currency: 'USDT',
-    };
-  } catch (error: any) {
-    console.error('[Gate.io] Error getting balance:', error.message);
-
-    // Handle specific Gate.io errors
-    const errorMsg = error.message || '';
-
-    // USER_NOT_FOUND means the futures account hasn't been activated yet
-    if (errorMsg.includes('USER_NOT_FOUND') || errorMsg.includes('please transfer funds first')) {
-      throw new Error('Gate.io futures account not activated. Please transfer funds to your Gate.io futures account first to activate it. You can do this by: 1) Logging into Gate.io, 2) Going to Futures Trading, 3) Transferring USDT from your spot wallet to futures wallet.');
-    }
-
-    // Throw original error if it's not a known case
-    throw error;
-  }
-}
-
-/**
  * Get MEXC balance
  */
 async function getMEXCBalance(apiKey: string, apiSecret: string, authToken?: string | null): Promise<ExchangeBalance | null> {
@@ -298,87 +237,107 @@ async function getMEXCBalance(apiKey: string, apiSecret: string, authToken?: str
 }
 
 /**
- * Get Binance Futures balance
+ * Get balance using CCXT for any supported exchange
+ * Universal implementation for BINANCE, GATEIO, OKX, BITGET, KUCOIN, and 100+ other exchanges
  */
-async function getBinanceBalance(apiKey: string, apiSecret: string): Promise<ExchangeBalance | null> {
+async function getCCXTBalance(
+  exchangeName: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase?: string
+): Promise<ExchangeBalance | null> {
   try {
-    // Create Binance futures exchange instance using CCXT
-    const exchange = new ccxt.binance({
+    // Convert exchange name to CCXT format
+    const ccxtExchangeId = getCCXTExchangeId(exchangeName);
+
+    console.log(`[CCXT] Fetching balance for ${exchangeName} (${ccxtExchangeId})...`);
+
+    // Dynamically create exchange instance
+    const ExchangeClass = ccxt[ccxtExchangeId as keyof typeof ccxt] as any;
+    if (!ExchangeClass) {
+      throw new Error(`Exchange ${exchangeName} (${ccxtExchangeId}) not supported by CCXT`);
+    }
+
+    // Configure exchange
+    const config: any = {
       apiKey,
       secret: apiSecret,
       enableRateLimit: true,
       options: {
-        defaultType: 'future',  // Use USDⓈ-M Futures
-        adjustForTimeDifference: true,
+        defaultType: 'swap',  // USDT perpetual swaps/futures
       },
-    });
+    };
 
-    // Fetch USDT perpetual futures balance
-    const balance = await exchange.fetchBalance();
+    // Add passphrase if provided (required for OKX, BITGET, KUCOIN)
+    if (passphrase) {
+      config.password = passphrase;
+    }
+
+    // Special handling for Binance (uses 'future' instead of 'swap')
+    if (ccxtExchangeId === 'binance') {
+      config.options.defaultType = 'future';
+      config.options.adjustForTimeDifference = true;
+    }
+
+    // Create exchange instance
+    const exchange = new ExchangeClass(config);
+
+    // Fetch balance
+    const balance = await exchange.fetchBalance({ type: config.options.defaultType });
 
     // Extract USDT balance
     const usdtTotal = balance.total?.USDT || 0;
     const usdtFree = balance.free?.USDT || 0;
     const usdtUsed = balance.used?.USDT || 0;
 
-    console.log(`[Binance] USDT Futures Balance:`, {
+    console.log(`[${exchangeName}] USDT Balance:`, {
       total: usdtTotal,
       free: usdtFree,
       used: usdtUsed,
     });
 
     return {
-      exchange: 'BINANCE',
+      exchange: exchangeName,
       totalBalance: usdtTotal.toString(),
       availableBalance: usdtFree.toString(),
       usedBalance: usdtUsed.toString(),
       currency: 'USDT',
     };
   } catch (error: any) {
-    console.error('[Binance] Error getting balance:', error.message);
+    console.error(`[${exchangeName}] Error getting balance:`, error.message);
+
+    // Handle specific errors with helpful messages
+    const errorMsg = error.message || '';
+
+    // Gate.io specific error - futures account not activated
+    if (exchangeName === 'GATEIO' && (errorMsg.includes('USER_NOT_FOUND') || errorMsg.includes('please transfer funds first'))) {
+      throw new Error('Gate.io futures account not activated. Please transfer funds to your Gate.io futures account first to activate it. You can do this by: 1) Logging into Gate.io, 2) Going to Futures Trading, 3) Transferring USDT from your spot wallet to futures wallet.');
+    }
+
     throw error;
   }
 }
 
 /**
- * Get OKX Futures balance
+ * Convert exchange name to CCXT exchange ID
  */
-async function getOKXBalance(apiKey: string, apiSecret: string, passphrase?: string | null): Promise<ExchangeBalance | null> {
-  try {
-    // Create OKX exchange instance using CCXT
-    const exchange = new ccxt.okx({
-      apiKey,
-      secret: apiSecret,
-      password: passphrase || '',
-      enableRateLimit: true,
-      options: {
-        defaultType: 'swap',  // USDT perpetual swaps
-      },
-    });
+function getCCXTExchangeId(exchangeName: string): string {
+  const upperExchange = exchangeName.toUpperCase();
 
-    // Fetch USDT perpetual swap balance
-    const balance = await exchange.fetchBalance({ type: 'swap' });
+  // Map exchange names to CCXT IDs
+  const exchangeMap: Record<string, string> = {
+    'GATEIO': 'gate',
+    'GATE': 'gate',
+    'OKX': 'okx',
+    'BINANCE': 'binance',
+    'BITGET': 'bitget',
+    'KUCOIN': 'kucoin',
+    'HUOBI': 'huobi',
+    'KRAKEN': 'kraken',
+    'COINBASE': 'coinbase',
+    'PHEMEX': 'phemex',
+    'DERIBIT': 'deribit',
+  };
 
-    // Extract USDT balance
-    const usdtTotal = balance.total?.USDT || 0;
-    const usdtFree = balance.free?.USDT || 0;
-    const usdtUsed = balance.used?.USDT || 0;
-
-    console.log(`[OKX] USDT Swap Balance:`, {
-      total: usdtTotal,
-      free: usdtFree,
-      used: usdtUsed,
-    });
-
-    return {
-      exchange: 'OKX',
-      totalBalance: usdtTotal.toString(),
-      availableBalance: usdtFree.toString(),
-      usedBalance: usdtUsed.toString(),
-      currency: 'USDT',
-    };
-  } catch (error: any) {
-    console.error('[OKX] Error getting balance:', error.message);
-    throw error;
-  }
+  return exchangeMap[upperExchange] || exchangeName.toLowerCase();
 }
