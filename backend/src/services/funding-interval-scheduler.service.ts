@@ -122,6 +122,120 @@ async function updateBingXIntervals(): Promise<void> {
 }
 
 /**
+ * Calculate KuCoin funding interval from historical data
+ */
+async function calculateKuCoinFundingInterval(kucoinSymbol: string, normalizedSymbol: string): Promise<number> {
+  try {
+    // Check cache first
+    const cacheKey = `KUCOIN-${normalizedSymbol}`;
+    const cached = fundingIntervalCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // KuCoin funding rates API endpoint
+    const now = Date.now();
+    const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
+    const url = `https://api-futures.kucoin.com/api/v1/contract/funding-rates?symbol=${kucoinSymbol}&from=${threeDaysAgo}&to=${now}`;
+
+    const response = await fetchWithTimeout(url, { timeout: 10000 });
+    const data = await response.json();
+
+    if (data.code === '200000' && data.data && data.data.length >= 2) {
+      // Sort by timePoint ascending
+      const sorted = data.data.sort((a: any, b: any) => a.timePoint - b.timePoint);
+
+      // Calculate interval from first two records
+      const timeDiff = Math.abs(sorted[1].timePoint - sorted[0].timePoint);
+      const hoursInterval = Math.round(timeDiff / (1000 * 60 * 60));
+
+      // Only accept valid funding intervals (1, 4, or 8 hours)
+      if (VALID_FUNDING_INTERVALS.includes(hoursInterval)) {
+        fundingIntervalCache.set(cacheKey, hoursInterval);
+        return hoursInterval;
+      }
+    }
+
+    return 0;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Scheduler] Error calculating KuCoin interval for ${kucoinSymbol}:`, errorMessage);
+    return 0;
+  }
+}
+
+/**
+ * Update funding intervals for KuCoin
+ */
+async function updateKuCoinIntervals(): Promise<void> {
+  try {
+    console.log('[Scheduler] Starting KuCoin funding interval update...');
+
+    // Get all KuCoin symbols with interval=0 or old data
+    const symbolsNeedingUpdate = await prisma.publicFundingRate.findMany({
+      where: {
+        exchange: 'KUCOIN',
+        OR: [
+          { fundingInterval: 0 },
+          { timestamp: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } // Older than 24h
+        ]
+      },
+      select: {
+        symbol: true
+      }
+    });
+
+    if (symbolsNeedingUpdate.length === 0) {
+      console.log('[Scheduler] KuCoin: All intervals up to date');
+      return;
+    }
+
+    console.log(`[Scheduler] KuCoin: Updating intervals for ${symbolsNeedingUpdate.length} symbols...`);
+
+    // Process in batches of 10
+    const batchSize = 10;
+    let updated = 0;
+
+    for (let i = 0; i < symbolsNeedingUpdate.length; i += batchSize) {
+      const batch = symbolsNeedingUpdate.slice(i, i + batchSize);
+
+      const batchPromises = batch.map(async ({ symbol }) => {
+        // Convert symbol format: BTC/USDT -> XBTUSDTM
+        const base = symbol.split('/')[0];
+        const kucoinBase = base === 'BTC' ? 'XBT' : base;
+        const kucoinSymbol = `${kucoinBase}USDTM`;
+
+        const interval = await calculateKuCoinFundingInterval(kucoinSymbol, symbol);
+
+        if (interval > 0) {
+          await prisma.publicFundingRate.update({
+            where: {
+              symbol_exchange: {
+                symbol: symbol,
+                exchange: 'KUCOIN'
+              }
+            },
+            data: {
+              fundingInterval: interval,
+              timestamp: new Date()
+            }
+          });
+          updated++;
+          console.log(`[Scheduler] KuCoin: Updated ${symbol} → ${interval}h`);
+        }
+      });
+
+      await Promise.all(batchPromises);
+    }
+
+    console.log(`[Scheduler] KuCoin: Updated ${updated}/${symbolsNeedingUpdate.length} intervals`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Scheduler] Error updating KuCoin intervals:', errorMessage);
+  }
+}
+
+/**
  * Update funding rates from public APIs for all exchanges
  */
 async function updateAllPublicFundingRates(): Promise<void> {
@@ -135,6 +249,7 @@ async function updateAllPublicFundingRates(): Promise<void> {
       { name: 'BINANCE', url: 'http://localhost:3000/api/binance/public-funding-rates' },
       { name: 'BYBIT', url: 'http://localhost:3000/api/bybit/public-funding-rates' },
       { name: 'MEXC', url: 'http://localhost:3000/api/mexc/public-funding-rates' },
+      { name: 'KUCOIN', url: 'http://localhost:3000/api/kucoin/public-funding-rates' },
     ];
 
     for (const exchange of exchanges) {
@@ -174,6 +289,9 @@ async function scheduledUpdate(): Promise<void> {
 
   // Step 2: Update BingX intervals specifically (for symbols that need it)
   await updateBingXIntervals();
+
+  // Step 3: Update KuCoin intervals specifically (for symbols that need it)
+  await updateKuCoinIntervals();
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`[Scheduler] ========== Hourly Update Completed in ${duration}s ==========`);
