@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
  *
  * Request body:
  * {
- *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE" | "BINGX" | "MEXC" | "GATEIO" | "BITGET",
+ *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE" | "BINGX" | "MEXC" | "GATEIO" | "BITGET" | "KUCOIN",
  *   "apiKey": "string",
  *   "apiSecret": "string",
  *   "authToken": "string" (optional, for MEXC browser sessions),
@@ -184,8 +184,8 @@ export async function POST(request: NextRequest) {
       }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
-      authToken: z.string().optional(), // Browser session token for MEXC, OR passphrase for OKX/Bitget
-      passphrase: z.string().optional(), // Passphrase for OKX/Bitget (will be stored in authToken)
+      authToken: z.string().optional(), // Browser session token for MEXC, OR passphrase for OKX/Bitget/KuCoin
+      passphrase: z.string().optional(), // Passphrase for OKX/Bitget/KuCoin (will be stored in authToken)
       label: z.string().optional(),
       isActive: z.boolean().optional(),
     });
@@ -212,8 +212,8 @@ export async function POST(request: NextRequest) {
 
     // Save credentials (includes validation)
     try {
-      // For OKX and Bitget, store passphrase in authToken field
-      const authTokenValue = (body.exchange === 'OKX' || body.exchange === 'BITGET')
+      // For OKX, Bitget, and KuCoin, store passphrase in authToken field
+      const authTokenValue = (body.exchange === 'OKX' || body.exchange === 'BITGET' || body.exchange === 'KUCOIN')
         ? body.passphrase
         : body.authToken;
 
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
         exchange: body.exchange,
         apiKey: body.apiKey,
         apiSecret: body.apiSecret,
-        authToken: authTokenValue, // Browser session token for MEXC, OR passphrase for OKX/Bitget
+        authToken: authTokenValue, // Browser session token for MEXC, OR passphrase for OKX/Bitget/KuCoin
         label: body.label,
         isActive: body.isActive ?? true, // Default to true for new credentials
       });

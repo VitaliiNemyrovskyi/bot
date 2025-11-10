@@ -4,6 +4,18 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 /**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
+
+/**
  * Public Bitget Funding Rates Proxy
  *
  * Proxies requests to Bitget public API to bypass CORS restrictions.
@@ -42,16 +54,22 @@ export async function GET(_request: NextRequest) {
     const data = await response.json();
     console.log('[Bitget] Successfully fetched', data?.data?.length || 0, 'rates');
 
-    // Add unified fundingInterval format (pure number)
-    const enrichedData = {
-      ...data,
-      data: data?.data?.map((item: any) => ({
-        ...item,
+    // Transform to unified format
+    const unifiedData = {
+      code: '0',
+      msg: '',
+      data: (data?.data || []).map((item: any) => ({
+        symbol: normalizeSymbol(item.symbol),
+        fundingRate: item.fundingRate || '0',
+        nextFundingTime: (item.nextFundingTime || '0').toString(),
         fundingInterval: item.fundingRateInterval || 0,
-      })) || []
+        last: item.lastPr || item.last || '0',
+        markPx: item.markPrice || item.markPr || '0',
+        idxPx: item.indexPrice || item.indexPr || '0',
+      })),
     };
 
-    return NextResponse.json(enrichedData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': 'public, max-age=30', // Cache for 30 seconds
       },

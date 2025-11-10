@@ -314,6 +314,35 @@ export class ExchangeValidators {
   }
 
   /**
+   * Validates KuCoin API credentials
+   */
+  static async validateKuCoin(
+    apiKey: string,
+    apiSecret: string
+  ): Promise<ValidationResult> {
+    try {
+      // TODO: Implement KuCoin validation when KuCoin integration is added
+      // For now, accept credentials but warn user that validation is not implemented
+
+      console.warn('KuCoin validation not yet implemented - accepting credentials without verification');
+
+      return {
+        valid: true,
+        details: {
+          warning: 'KuCoin API validation not yet implemented. Credentials saved but not verified.',
+          validated: false,
+        },
+      };
+    } catch (error: any) {
+      console.error('KuCoin API key validation failed:', error.message);
+      return {
+        valid: false,
+        error: error.message || 'Failed to validate KuCoin API keys',
+      };
+    }
+  }
+
+  /**
    * Main validation dispatcher
    * Routes to the appropriate validator based on exchange
    */
@@ -349,6 +378,9 @@ export class ExchangeValidators {
 
       case Exchange.BITGET:
         return this.validateBitget(apiKey, apiSecret);
+
+      case Exchange.KUCOIN:
+        return this.validateKuCoin(apiKey, apiSecret);
 
       default:
         return {

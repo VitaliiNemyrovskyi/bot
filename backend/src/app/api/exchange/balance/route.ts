@@ -3,7 +3,7 @@
  * Get account balance for a specific exchange
  *
  * Query params:
- * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET | BINANCE | OKX
+ * - exchange: BINGX | BYBIT | MEXC | GATEIO | BITGET | BINANCE | OKX | KUCOIN
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -277,6 +277,11 @@ async function getCCXTBalance(
     if (ccxtExchangeId === 'binance') {
       config.options.defaultType = 'future';
       config.options.adjustForTimeDifference = true;
+    }
+
+    // Special handling for KuCoin (spot trading, not futures)
+    if (ccxtExchangeId === 'kucoin') {
+      config.options.defaultType = 'spot';
     }
 
     // Create exchange instance

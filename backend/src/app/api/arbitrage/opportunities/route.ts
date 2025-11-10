@@ -8,6 +8,27 @@ import { MEXCService } from '@/lib/mexc';
 import { Exchange } from '@prisma/client';
 
 /**
+ * Normalized price data interface
+ */
+interface NormalizedPrice {
+  symbol: string;  // Normalized format: BTCUSDT (no separators)
+  price: number;   // Current price
+}
+
+/**
+ * Normalize symbol to standard format (remove all separators and suffixes)
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators: BTC-USDT, BTC/USDT, BTC/USDT:USDT -> BTCUSDT
+  let normalized = symbol.replace(/[-_/:]/g, '');
+
+  // Remove common suffixes: SWAP, PERP, PERPETUAL, etc.
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+
+  return normalized; // Final: BTCUSDTSWAP -> BTCUSDT
+}
+
+/**
  * Normalize funding rate to 8-hour interval for fair comparison
  *
  * @param fundingRate - Original funding rate as decimal (e.g., 0.0001)
@@ -158,6 +179,8 @@ export async function GET(request: NextRequest) {
       try {
         console.log(`[PriceOpportunities] Fetching prices from ${credential.exchange}`);
 
+        let normalizedPrices: NormalizedPrice[] = [];
+
         if (credential.exchange === 'BYBIT') {
           const bybitService = new BybitService({
             apiKey: credential.apiKey,
@@ -167,14 +190,11 @@ export async function GET(request: NextRequest) {
           });
 
           const tickers = await bybitService.getTicker('linear');
-          return {
-            credentialId: credential.id,
-            exchange: credential.exchange,
-            prices: tickers.map((t) => ({
-              symbol: t.symbol,
-              price: parseFloat(t.lastPrice),
-            })),
-          };
+          normalizedPrices = tickers.map((t) => ({
+            symbol: normalizeSymbol(t.symbol),
+            price: parseFloat(t.lastPrice),
+          }));
+
         } else if (credential.exchange === 'BINGX') {
           const bingxService = new BingXService({
             apiKey: credential.apiKey,
@@ -184,20 +204,91 @@ export async function GET(request: NextRequest) {
 
           await bingxService.syncTime();
           const rates = await bingxService.getAllFundingRates();
-          return {
-            credentialId: credential.id,
-            exchange: credential.exchange,
-            prices: rates.map((r) => ({
-              symbol: r.symbol.replace(/-/g, ''), // BTC-USDT -> BTCUSDT
-              price: parseFloat(r.markPrice || '0'),
-            })),
-          };
+          normalizedPrices = rates.map((r) => ({
+            symbol: normalizeSymbol(r.symbol),
+            price: parseFloat(r.markPrice || '0'),
+          })).filter(p => p.price > 0);
+
+        } else {
+          // Universal handler for other exchanges (OKX, GATEIO, BINANCE, BITGET, KUCOIN, etc.) via CCXT
+          const ccxt = await import('ccxt');
+          let exchange: any;
+
+          const exchangeName = credential.exchange.toLowerCase();
+
+          if (exchangeName === 'okx') {
+            exchange = new ccxt.okx({
+              apiKey: credential.apiKey,
+              secret: credential.apiSecret,
+              password: credential.authToken || undefined,
+              enableRateLimit: true,
+            });
+          } else if (exchangeName === 'gateio') {
+            exchange = new ccxt.gateio({
+              apiKey: credential.apiKey,
+              secret: credential.apiSecret,
+              enableRateLimit: true,
+            });
+          } else if (exchangeName === 'binance') {
+            exchange = new ccxt.binance({
+              apiKey: credential.apiKey,
+              secret: credential.apiSecret,
+              enableRateLimit: true,
+              options: { defaultType: 'future' },
+            });
+          } else if (exchangeName === 'bitget') {
+            exchange = new ccxt.bitget({
+              apiKey: credential.apiKey,
+              secret: credential.apiSecret,
+              password: credential.authToken || undefined,
+              enableRateLimit: true,
+            });
+          } else if (exchangeName === 'kucoin') {
+            exchange = new ccxt.kucoinfutures({
+              apiKey: credential.apiKey,
+              secret: credential.apiSecret,
+              password: credential.authToken || undefined,
+              enableRateLimit: true,
+            });
+          } else {
+            console.warn(`[PriceOpportunities] No handler for exchange: ${credential.exchange}`);
+            return null;
+          }
+
+          // Fetch tickers for futures/swap markets
+          const markets = await exchange.loadMarkets();
+          const usdtSwapSymbols = Object.keys(markets).filter((symbol: string) => {
+            const market = markets[symbol];
+            // Different exchanges use different properties
+            const isSwap = market.swap || market.type === 'swap' || market.type === 'future';
+            const isUSDTSettled = market.settle === 'USDT' || market.quote === 'USDT';
+            return isSwap && isUSDTSettled && market.active;
+          });
+
+          console.log(`[PriceOpportunities] ${credential.exchange}: Found ${usdtSwapSymbols.length} USDT swap markets`);
+
+          const tickers = await exchange.fetchTickers(usdtSwapSymbols);
+          normalizedPrices = Object.entries(tickers)
+            .map(([symbol, ticker]: [string, any]) => ({
+              symbol: normalizeSymbol(symbol),
+              price: ticker.last || ticker.close || ticker.mark || 0,
+            }))
+            .filter(p => p.price > 0);
+
+          console.log(`[PriceOpportunities] ${credential.exchange}: Fetched ${normalizedPrices.length} prices`);
         }
 
-        return null;
+        return {
+          credentialId: credential.id,
+          exchange: credential.exchange,
+          prices: normalizedPrices,
+        };
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`[PriceOpportunities] Failed to fetch from ${credential.exchange}:`, errorMessage);
+        if (error instanceof Error) {
+          console.error(`[PriceOpportunities] Stack trace:`, error.stack);
+        }
         return null;
       }
     });
@@ -232,13 +323,17 @@ export async function GET(request: NextRequest) {
         );
 
         const rates = await mexcService.getFundingRatesForSymbols(mexcSymbols);
+        const normalizedPrices: NormalizedPrice[] = rates
+          .map((r) => ({
+            symbol: normalizeSymbol(r.symbol),
+            price: parseFloat(r.lastPrice?.toString() || '0'),
+          }))
+          .filter(p => p.price > 0);
+
         return {
           credentialId: credential.id,
           exchange: credential.exchange,
-          prices: rates.map((r) => ({
-            symbol: r.symbol.replace(/_/g, ''), // BTC_USDT -> BTCUSDT
-            price: parseFloat(r.lastPrice?.toString() || '0'),
-          })),
+          prices: normalizedPrices,
         };
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -316,7 +411,8 @@ export async function GET(request: NextRequest) {
                 const symbolRaw = r.symbol || r.name;
                 if (!symbolRaw) return;
 
-                const normalizedSymbol = symbolRaw.replace(/-/g, '').replace(/_/g, '');
+                // Use the same normalization function as for prices to ensure consistency
+                const normalizedSymbol = normalizeSymbol(symbolRaw);
 
                 // Get interval from fundingInterval field (pure number in hours)
                 const interval = r.fundingInterval || 0; // 0 means unknown

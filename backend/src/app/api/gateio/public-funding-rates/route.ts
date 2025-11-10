@@ -8,6 +8,18 @@ export const runtime = 'nodejs';
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
 
 /**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
+
+/**
  * Public Gate.io Funding Rates with Redis + DB Cache
  *
  * Multi-layer caching approach:
@@ -39,7 +51,21 @@ export async function GET(request: NextRequest) {
     if (cachedData) {
       const totalTime = Date.now() - requestStartTime;
       console.log(`[GateIO] ✅ Served from Redis cache in ${totalTime}ms`);
-      return NextResponse.json(cachedData.data, {
+      // Unified response format
+      const unifiedResponse = {
+        code: '0',
+        msg: '',
+        data: (Array.isArray(cachedData.data) ? cachedData.data : []).map((item: any) => ({
+          symbol: normalizeSymbol(item.name || item.symbol || ''),
+          fundingRate: item.funding_rate || item.fundingRate || '0',
+          nextFundingTime: ((item.funding_next_apply || item.nextFundingTime) || '0').toString(),
+          fundingInterval: item.fundingInterval || (item.funding_interval ? item.funding_interval / 3600 : 0),
+          last: item.mark_price || item.last || item.markPx || '0',
+          markPx: item.mark_price || item.markPx || '0',
+          idxPx: item.index_price || item.idxPx || '0',
+        })),
+      };
+      return NextResponse.json(unifiedResponse, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'redis-cache',
@@ -80,24 +106,28 @@ export async function GET(request: NextRequest) {
       });
       console.log(`[GateIO] DB fetch took ${Date.now() - dbFetchStartTime}ms`);
 
-      // Transform DB format to API format with unified fundingInterval
-      const transformedData = cachedRates.map(rate => ({
-        name: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
-        funding_rate: rate.fundingRate.toString(),
-        funding_interval: rate.fundingInterval * 3600, // Hours → seconds (GateIO format)
-        fundingInterval: rate.fundingInterval, // Pure number
-        funding_next_apply: Math.floor(rate.nextFundingTime.getTime() / 1000),
-        mark_price: rate.markPrice?.toString() || '0',
-        index_price: rate.indexPrice?.toString() || '0',
-      }));
+      // Transform DB format to unified format
+      const unifiedData = {
+        code: '0',
+        msg: '',
+        data: cachedRates.map(rate => ({
+          symbol: normalizeSymbol(rate.symbol),
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: Math.floor(rate.nextFundingTime.getTime() / 1000).toString(),
+          fundingInterval: rate.fundingInterval,
+          last: rate.markPrice?.toString() || '0',
+          markPx: rate.markPrice?.toString() || '0',
+          idxPx: rate.indexPrice?.toString() || '0',
+        })),
+      };
 
       // Cache in Redis for next request
-      await redisService.cacheBulkFundingRates('GATEIO', transformedData);
+      await redisService.cacheBulkFundingRates('GATEIO', unifiedData);
 
       const totalTime = Date.now() - requestStartTime;
       console.log(`[GateIO] ✅ Served from DB cache in ${totalTime}ms`);
 
-      return NextResponse.json(transformedData, {
+      return NextResponse.json(unifiedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
@@ -205,19 +235,28 @@ export async function GET(request: NextRequest) {
     console.log(`[GateIO] Database upsert took ${Date.now() - upsertStartTime}ms`);
 
     // Step 5: Return transformed data with unified format (only valid contracts)
-    const transformedData = validContracts.map((contract: any) => ({
-      ...contract,
-      fundingInterval: contract.funding_interval / 3600, // Pure number (always exists after filter)
-    }));
+    const unifiedData = {
+      code: '0',
+      msg: '',
+      data: validContracts.map((contract: any) => ({
+        symbol: normalizeSymbol(contract.name),
+        fundingRate: contract.funding_rate || '0',
+        nextFundingTime: (contract.funding_next_apply || '0').toString(),
+        fundingInterval: contract.funding_interval / 3600,
+        last: contract.mark_price || '0',
+        markPx: contract.mark_price || '0',
+        idxPx: contract.index_price || '0',
+      })),
+    };
 
     // Cache in Redis for next request
-    await redisService.cacheBulkFundingRates('GATEIO', transformedData);
+    await redisService.cacheBulkFundingRates('GATEIO', unifiedData);
 
     const totalTime = Date.now() - requestStartTime;
     console.log(`[GateIO] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);
     console.log(`[GateIO] 📊 Summary: ${validContracts.length} symbols saved to database`);
 
-    return NextResponse.json(transformedData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         code: '0',
         msg: '',
         data: cachedRates.map(rate => ({
-          instId: rate.symbol.replace('/', '-') + '-SWAP',
+          symbol: rate.symbol.replace('/', ''), // Normalize: BTC/USDT -> BTCUSDT
           last: rate.markPrice?.toString() || '0',
           fundingRate: rate.fundingRate.toString(),
           nextFundingTime: rate.nextFundingTime.getTime().toString(),
@@ -52,7 +52,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: Fetch tickers to get list of instruments and prices
-    const tickersResponse = await fetch('https://www.okx.com/api/v5/market/tickers?instType=SWAP');
+    let tickersResponse;
+    try {
+      tickersResponse = await fetch('https://www.okx.com/api/v5/market/tickers?instType=SWAP', {
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[OKX Public Funding Rates] Tickers fetch failed:', errorMessage);
+      throw new Error(`OKX API connection failed: ${errorMessage}`);
+    }
 
     if (!tickersResponse.ok) {
       throw new Error(`OKX Tickers API error: ${tickersResponse.status} ${tickersResponse.statusText}`);
@@ -69,8 +78,9 @@ export async function GET(request: NextRequest) {
     // Filter for USDT perpetual swaps and sort by 24h volume
     const usdtSwaps = tickers
       .filter((item: { instId?: string }) => item.instId && item.instId.includes('-USDT-SWAP'))
-      .sort((a: { volCcy24h?: string }, b: { volCcy24h?: string }) => parseFloat(b.volCcy24h || '0') - parseFloat(a.volCcy24h || '0'))
-      .slice(0, 100);
+      .sort((a: { volCcy24h?: string }, b: { volCcy24h?: string }) => parseFloat(b.volCcy24h || '0') - parseFloat(a.volCcy24h || '0'));
+
+    console.log(`[OKX Public Funding Rates] Found ${usdtSwaps.length} USDT-SWAP instruments`);
 
     // Step 4: Fetch funding rates in batches
     const batchSize = 20;
@@ -88,7 +98,10 @@ export async function GET(request: NextRequest) {
       const batchPromises = batch.map(async (ticker: { instId: string; last: string; idxPx?: string }) => {
       try {
         const fundingResponse = await fetch(
-          EXCHANGE_ENDPOINTS.OKX.FUNDING_RATE(ticker.instId)
+          EXCHANGE_ENDPOINTS.OKX.FUNDING_RATE(ticker.instId),
+          {
+            signal: AbortSignal.timeout(10000), // 10 second timeout
+          }
         );
 
         if (!fundingResponse.ok) {
@@ -119,6 +132,8 @@ export async function GET(request: NextRequest) {
       const batchResults = (await Promise.all(batchPromises)).filter((item): item is NonNullable<typeof item> => item !== null);
       fundingRates.push(...batchResults);
     }
+
+    console.log(`[OKX Public Funding Rates] Successfully fetched ${fundingRates.length} funding rates`);
 
     // Step 5: Get existing intervals from DB
     const existingRates = await prisma.publicFundingRate.findMany({
@@ -186,8 +201,7 @@ export async function GET(request: NextRequest) {
         const fundingInterval = intervalMap.get(normalizedSymbol) || 8;
 
         return {
-          instType: 'SWAP',
-          instId: item.instId,
+          symbol: `${base}USDT`, // Normalize: BTC-USDT-SWAP -> BTCUSDT
           last: item.last,
           fundingRate: item.fundingRate,
           nextFundingTime: item.nextFundingTime,

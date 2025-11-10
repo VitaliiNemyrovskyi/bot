@@ -89,7 +89,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   private readonly SELECTED_EXCHANGES_KEY = 'priceArbitrage_selectedExchanges';
 
   // Available exchanges
-  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET', 'OKX'];
+  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET', 'OKX', 'KUCOIN'];
 
   // Strategy type dropdown options
   strategyTypeOptions: DropdownOption[] = [

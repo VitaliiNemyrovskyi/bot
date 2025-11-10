@@ -245,6 +245,25 @@ export class KuCoinConnector extends BaseExchangeConnector {
   }
 
   /**
+   * Get positions (spot trading doesn't have positions like futures)
+   * Returns empty array as spot trading uses balances instead of positions
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    console.warn('[KuCoinConnector] Spot trading does not support positions. Use getBalance() instead.');
+    // For spot trading, there are no short/long positions
+    // Return empty array to indicate no positions
+    return [];
+  }
+
+  /**
+   * Get position for a specific symbol (not applicable for spot trading)
+   */
+  async getPosition(symbol: string): Promise<any> {
+    console.warn('[KuCoinConnector] Spot trading does not support positions');
+    return null;
+  }
+
+  /**
    * Close connection
    */
   async close(): Promise<void> {

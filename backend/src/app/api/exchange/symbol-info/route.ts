@@ -3,7 +3,7 @@
  * Get trading symbol information including minimum order requirements
  *
  * Query params:
- * - exchange: BINGX | BINANCE | BYBIT | MEXC | GATEIO | BITGET
+ * - exchange: BINGX | BINANCE | BYBIT | MEXC | GATEIO | BITGET | KUCOIN
  * - symbol: Trading symbol (e.g., BTC-USDT for BingX, BTCUSDT for Bybit/Binance)
  */
 
@@ -147,6 +147,9 @@ export async function GET(request: NextRequest) {
         const mexcSymbol = normalizeSymbolForMEXC(symbol);
         console.log(`[API] MEXC symbol normalized: ${symbol} -> ${mexcSymbol}`);
         symbolInfo = await getMEXCSymbolInfo(mexcSymbol);
+        break;
+      case 'KUCOIN':
+        symbolInfo = await getKuCoinSymbolInfo(symbol);
         break;
       default:
         return NextResponse.json(
@@ -646,6 +649,95 @@ async function getBinanceSymbolInfo(symbol: string): Promise<SymbolInfo | null> 
     }
   } catch (error: any) {
     console.error('[Binance] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get KuCoin Futures symbol information
+ */
+async function getKuCoinSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    // KuCoin uses format like XBTUSDTM (BTC -> XBT, add USDTM suffix)
+    let kucoinSymbol = symbol;
+
+    // Convert symbol format if needed
+    if (!symbol.endsWith('M')) {
+      const base = symbol.replace(/USDT$/, '');
+      // BTC -> XBT for KuCoin
+      const kucoinBase = base === 'BTC' ? 'XBT' : base;
+      kucoinSymbol = `${kucoinBase}USDTM`;
+    }
+
+    const url = `https://api-futures.kucoin.com/api/v1/contracts/${kucoinSymbol}`;
+
+    console.log(`[KuCoin] Fetching contract info for ${kucoinSymbol}...`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`[KuCoin] Symbol ${kucoinSymbol} not found`);
+          return null;
+        }
+        throw new Error(`KuCoin API error: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.code !== '200000' || !result.data) {
+        throw new Error(`KuCoin API error: ${result.msg || 'Unknown error'}`);
+      }
+
+      const contract = result.data;
+
+      console.log(`[KuCoin] Found contract for ${kucoinSymbol}:`, {
+        symbol: contract.symbol,
+        multiplier: contract.multiplier,
+        lotSize: contract.lotSize,
+        tickSize: contract.tickSize,
+        maxLeverage: contract.maxLeverage,
+      });
+
+      // Calculate precisions
+      const pricePrecision = contract.tickSize ? Math.abs(Math.log10(parseFloat(contract.tickSize))) : 2;
+      const qtyPrecision = contract.lotSize ? Math.abs(Math.log10(parseFloat(contract.lotSize))) : 0;
+
+      return {
+        symbol: contract.symbol,
+        exchange: 'KUCOIN',
+        minOrderQty: parseFloat(contract.lotSize || '1'),
+        minOrderValue: undefined,
+        qtyStep: parseFloat(contract.lotSize || '1'),
+        pricePrecision: Math.ceil(pricePrecision),
+        qtyPrecision: Math.ceil(qtyPrecision),
+        maxOrderQty: contract.maxOrderQty ? parseFloat(contract.maxOrderQty) : undefined,
+        maxLeverage: contract.maxLeverage ? parseFloat(contract.maxLeverage) : undefined,
+      };
+    } catch (fetchError: any) {
+      clearTimeout(timeout);
+
+      if (fetchError.name === 'AbortError') {
+        throw new Error('KuCoin API request timed out after 30 seconds');
+      }
+
+      throw fetchError;
+    }
+  } catch (error: any) {
+    console.error('[KuCoin] Error getting symbol info:', error.message);
     throw error;
   }
 }

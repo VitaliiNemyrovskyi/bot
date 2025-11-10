@@ -19,6 +19,18 @@ const VALID_FUNDING_INTERVALS = [1, 4, 8];
 const INTERVAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
+
+/**
  * Calculate the actual funding interval by comparing nextFundingTime with current time
  * This is used to verify if stored interval matches real-time schedule
  */
@@ -165,7 +177,21 @@ export async function GET(_request: NextRequest) {
     if (cachedData) {
       const totalTime = Date.now() - requestStartTime;
       console.log(`[BingX] ✅ Served from Redis cache in ${totalTime}ms`);
-      return NextResponse.json(cachedData.data, {
+      // Unified response format
+      const unifiedResponse = {
+        code: '0',
+        msg: '',
+        data: (cachedData.data.data || cachedData.data).map((item: any) => ({
+          symbol: normalizeSymbol(item.symbol),
+          fundingRate: item.lastFundingRate || item.fundingRate || '0',
+          nextFundingTime: (item.nextFundingTime || '0').toString(),
+          fundingInterval: item.fundingInterval || 0,
+          last: item.markPrice || item.last || '0',
+          markPx: item.markPrice || item.markPx || '0',
+          idxPx: item.indexPrice || item.idxPx || '0',
+        })),
+      };
+      return NextResponse.json(unifiedResponse, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'redis-cache',
@@ -209,29 +235,30 @@ export async function GET(_request: NextRequest) {
       console.log(`[BingX] DB fetch took ${Date.now() - dbFetchStartTime}ms`);
 
 
-      // Transform DB format to BingX API format
-      const transformedData = {
-        code: 0,
+      // Transform DB format to unified format
+      const unifiedData = {
+        code: '0',
         msg: '',
         data: cachedRates.map(rate => ({
-          symbol: rate.symbol.replace('/', '-'), // BTC/USDT → BTC-USDT
-          lastFundingRate: rate.fundingRate.toString(),
-          nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-          markPrice: rate.markPrice?.toString() || '0',
-          indexPrice: rate.indexPrice?.toString() || '0',
-          fundingInterval: rate.fundingInterval, // Pure number: 0 means unknown
+          symbol: normalizeSymbol(rate.symbol),
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: rate.nextFundingTime.getTime().toString(),
+          fundingInterval: rate.fundingInterval,
+          last: rate.markPrice?.toString() || '0',
+          markPx: rate.markPrice?.toString() || '0',
+          idxPx: rate.indexPrice?.toString() || '0',
         })),
       };
 
       // Store in Redis for next request (non-blocking)
-      redisService.cacheBulkFundingRates('BINGX', transformedData, CACHE_TTL_SECONDS).catch(err => {
+      redisService.cacheBulkFundingRates('BINGX', unifiedData, CACHE_TTL_SECONDS).catch(err => {
         console.error('[BingX] Failed to cache in Redis:', err.message);
       });
 
       const totalTime = Date.now() - requestStartTime;
       console.log(`[BingX] ✅ Served from DB cache in ${totalTime}ms`);
 
-      return NextResponse.json(transformedData, {
+      return NextResponse.json(unifiedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
@@ -437,16 +464,22 @@ export async function GET(_request: NextRequest) {
     await Promise.all(upsertPromises);
     console.log(`[BingX] Database upsert took ${Date.now() - upsertStartTime}ms`);
 
-    // Step 9: Return transformed data with fresh or existing intervals
+    // Step 9: Return transformed data with unified format
     const transformStartTime = Date.now();
-    const enrichedData = {
-      ...rawData,
+    const unifiedData = {
+      code: '0',
+      msg: '',
       data: data.map((item: any) => {
         const symbol = item.symbol.replace('-', '/');
         const intervalHours = intervalMap.get(symbol) || 0;
         return {
-          ...item,
-          fundingInterval: intervalHours, // Pure number: 0 means unknown
+          symbol: normalizeSymbol(item.symbol),
+          fundingRate: item.lastFundingRate || '0',
+          nextFundingTime: (item.nextFundingTime || '0').toString(),
+          fundingInterval: intervalHours,
+          last: item.markPrice || '0',
+          markPx: item.markPrice || '0',
+          idxPx: item.indexPrice || '0',
         };
       }),
     };
@@ -454,7 +487,7 @@ export async function GET(_request: NextRequest) {
     console.log(`[BingX] Data transformation took ${Date.now() - transformStartTime}ms`);
 
     // Store in Redis for next request (non-blocking)
-    redisService.cacheBulkFundingRates('BINGX', enrichedData, CACHE_TTL_SECONDS).catch(err => {
+    redisService.cacheBulkFundingRates('BINGX', unifiedData, CACHE_TTL_SECONDS).catch(err => {
       console.error('[BingX] Failed to cache in Redis:', err.message);
     });
 
@@ -463,7 +496,7 @@ export async function GET(_request: NextRequest) {
     console.log(`[BingX] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);
     console.log(`[BingX] 📊 Summary: ${data.length} symbols, ${intervalsCalculated} intervals calculated`);
 
-    return NextResponse.json(enrichedData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',

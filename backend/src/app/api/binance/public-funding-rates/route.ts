@@ -9,6 +9,18 @@ export const runtime = 'nodejs';
 const CACHE_TTL_SECONDS = 30;
 
 /**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
+
+/**
  * Public Binance Funding Rates with Database Persistence
  *
  * Fetches funding rates from Binance public API, stores them in PostgreSQL database,
@@ -35,7 +47,21 @@ export async function GET(_request: NextRequest) {
     if (cachedData) {
       const totalTime = Date.now() - requestStartTime;
       console.log(`[Binance] ✅ Served from Redis cache in ${totalTime}ms`);
-      return NextResponse.json(cachedData.data, {
+      // Unified response format
+      const unifiedResponse = {
+        code: '0',
+        msg: '',
+        data: cachedData.data.map((item: any) => ({
+          symbol: normalizeSymbol(item.symbol),
+          fundingRate: item.lastFundingRate || item.fundingRate || '0',
+          nextFundingTime: item.nextFundingTime?.toString() || '0',
+          fundingInterval: item.fundingInterval || 0,
+          last: item.markPrice || item.last || '0',
+          markPx: item.markPrice || item.markPx || '0',
+          idxPx: item.indexPrice || item.idxPx || '0',
+        })),
+      };
+      return NextResponse.json(unifiedResponse, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'redis-cache',
@@ -73,23 +99,28 @@ export async function GET(_request: NextRequest) {
       });
       console.log(`[Binance] DB fetch took ${Date.now() - dbFetchStartTime}ms`);
 
-      // Transform to API format
-      const formattedData = cachedRates.map((rate) => ({
-        symbol: rate.symbol.replace('/', ''),
-        markPrice: rate.markPrice?.toString() || '0',
-        indexPrice: rate.indexPrice?.toString() || '0',
-        lastFundingRate: rate.fundingRate.toString(),
-        nextFundingTime: rate.nextFundingTime.getTime(),
-        fundingInterval: rate.fundingInterval,
-      }));
+      // Transform to unified format
+      const unifiedData = {
+        code: '0',
+        msg: '',
+        data: cachedRates.map((rate) => ({
+          symbol: normalizeSymbol(rate.symbol),
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: rate.nextFundingTime.getTime().toString(),
+          fundingInterval: rate.fundingInterval,
+          last: rate.markPrice?.toString() || '0',
+          markPx: rate.markPrice?.toString() || '0',
+          idxPx: rate.indexPrice?.toString() || '0',
+        })),
+      };
 
       // Cache in Redis
-      await redisService.cacheBulkFundingRates('BINANCE', formattedData);
+      await redisService.cacheBulkFundingRates('BINANCE', unifiedData);
 
       const totalTime = Date.now() - requestStartTime;
       console.log(`[Binance] ✅ Served from DB cache in ${totalTime}ms`);
 
-      return NextResponse.json(formattedData, {
+      return NextResponse.json(unifiedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
@@ -182,14 +213,29 @@ export async function GET(_request: NextRequest) {
     await Promise.all(upsertPromises);
     console.log(`[Binance] Database upsert took ${Date.now() - upsertStartTime}ms`);
 
+    // Transform to unified format
+    const unifiedData = {
+      code: '0',
+      msg: '',
+      data: enrichedData.map((item: any) => ({
+        symbol: normalizeSymbol(item.symbol),
+        fundingRate: item.lastFundingRate || '0',
+        nextFundingTime: (item.nextFundingTime || '0').toString(),
+        fundingInterval: item.fundingInterval || 0,
+        last: item.markPrice || '0',
+        markPx: item.markPrice || '0',
+        idxPx: item.indexPrice || '0',
+      })),
+    };
+
     // Cache in Redis
-    await redisService.cacheBulkFundingRates('BINANCE', enrichedData);
+    await redisService.cacheBulkFundingRates('BINANCE', unifiedData);
 
     const totalTime = Date.now() - requestStartTime;
     console.log(`[Binance] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);
     console.log(`[Binance] 📊 Summary: ${enrichedData.length} symbols saved to database`);
 
-    return NextResponse.json(enrichedData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',

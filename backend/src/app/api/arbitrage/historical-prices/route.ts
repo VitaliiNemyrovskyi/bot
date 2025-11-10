@@ -132,6 +132,12 @@ async function fetchExchangeHistoricalData(
     return fetchBybitKlines(symbol, interval, limit);
   }
 
+  // KuCoin uses direct API for better reliability
+  if (exchangeUpper === 'KUCOIN') {
+    console.log(`[Historical Prices] Using direct KuCoin API`);
+    return fetchKuCoinKlines(symbol, interval, limit);
+  }
+
   // Use CCXT for all other exchanges - it provides unified interface
   console.log(`[Historical Prices] Fetching ${exchangeUpper} data via CCXT`);
 
@@ -183,6 +189,10 @@ async function fetchExchangeHistoricalData(
       case 'GATEIO':
         console.log(`[Historical Prices] Falling back to Gate.io public API`);
         return fetchGateIOKlines(symbol, interval, limit);
+
+      case 'KUCOIN':
+        console.log(`[Historical Prices] Falling back to KuCoin public API`);
+        return fetchKuCoinKlines(symbol, interval, limit);
 
       default:
         console.error(`[Historical Prices] ${exchangeUpper} not supported and no fallback available`);
@@ -570,6 +580,81 @@ async function fetchGateIOKlines(
 }
 
 /**
+ * Fetch KuCoin historical klines (public API)
+ * KuCoin Futures API documentation: https://www.kucoin.com/docs/rest/futures-trading/market-data/get-klines
+ */
+async function fetchKuCoinKlines(
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<Array<{ time: number; price: number }>> {
+  try {
+    // Convert symbol format: BTCUSDT → XBTUSDTM, ETHUSDT → ETHUSDTM, AIAUSDT → AIAUSDTM
+    const normalizedSymbol = symbol.replace(/[-/]/g, '').toUpperCase();
+    const base = normalizedSymbol.replace('USDT', '');
+    // BTC -> XBT for KuCoin, others stay the same
+    const kucoinBase = base === 'BTC' ? 'XBT' : base;
+    const kucoinSymbol = `${kucoinBase}USDTM`;
+
+    // Map interval to KuCoin format (granularity in minutes)
+    const granularity = mapIntervalToKuCoin(interval);
+
+    // Calculate time range
+    const now = Math.floor(Date.now() / 1000);
+    const intervalSeconds = getIntervalSeconds(interval);
+    const from = now - (limit * intervalSeconds);
+
+    const url = `https://api-futures.kucoin.com/api/v1/kline/query?symbol=${kucoinSymbol}&granularity=${granularity}&from=${from * 1000}&to=${now * 1000}`;
+
+    console.log(`[KuCoin Klines] Original symbol: ${symbol}`);
+    console.log(`[KuCoin Klines] Converted symbol: ${kucoinSymbol}`);
+    console.log(`[KuCoin Klines] Interval: ${interval} -> ${granularity} minutes`);
+    console.log(`[KuCoin Klines] Time range: ${from} to ${now} (${limit} candles)`);
+    console.log(`[KuCoin Klines] Fetching from: ${url}`);
+
+    const response = await fetchWithTimeout(url, { timeout: 60000 });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[KuCoin Klines] API error response:`, errorText);
+      throw new Error(`KuCoin API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.code !== '200000') {
+      throw new Error(`KuCoin API error: ${result.msg || 'Unknown error'}`);
+    }
+
+    const data = result.data || [];
+
+    console.log(`[KuCoin Klines] Data points received: ${data.length}`);
+
+    if (data.length === 0) {
+      console.warn(`[KuCoin Klines] No data returned for ${kucoinSymbol}`);
+      return [];
+    }
+
+    // Convert KuCoin klines to our format
+    // KuCoin format: [timestamp, open, high, low, close, volume]
+    const klines = data.map((k: any) => ({
+      time: Math.floor(parseInt(k[0]) / 1000), // Convert ms to seconds
+      price: parseFloat(k[4]) // Close price
+    }));
+
+    console.log(`[KuCoin Klines] Successfully converted ${klines.length} klines`);
+    console.log(`[KuCoin Klines] First kline:`, klines[0]);
+    console.log(`[KuCoin Klines] Last kline:`, klines[klines.length - 1]);
+
+    return klines;
+
+  } catch (error) {
+    console.error('[KuCoin Klines] Error:', error);
+    return [];
+  }
+}
+
+/**
  * Get interval in seconds
  */
 function getIntervalSeconds(interval: string): number {
@@ -674,4 +759,20 @@ function mapIntervalToCCXT(interval: string): string {
     '1d': '1d'
   };
   return map[interval] || '1h';
+}
+
+/**
+ * Map interval to KuCoin format
+ * KuCoin uses granularity in minutes: 1, 5, 15, 60, 240, 1440
+ */
+function mapIntervalToKuCoin(interval: string): number {
+  const map: { [key: string]: number } = {
+    '1m': 1,
+    '5m': 5,
+    '15m': 15,
+    '1h': 60,
+    '4h': 240,
+    '1d': 1440
+  };
+  return map[interval] || 60; // Default to 1 hour
 }

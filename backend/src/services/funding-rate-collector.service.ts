@@ -27,6 +27,7 @@ export class FundingRateCollectorService {
     'DOT/USDT',
     'LINK/USDT',
     'RIVER/USDT',
+    'AIA/USDT',
   ];
 
   // Exchanges to track
@@ -37,6 +38,7 @@ export class FundingRateCollectorService {
     Exchange.GATEIO,
     Exchange.BITGET,
     Exchange.OKX,
+    Exchange.KUCOIN,
   ];
 
   constructor() {
@@ -132,6 +134,9 @@ export class FundingRateCollectorService {
           break;
         case Exchange.BITGET:
           fundingData = await this.fetchBitgetFunding(symbol);
+          break;
+        case Exchange.KUCOIN:
+          fundingData = await this.fetchKuCoinFunding(symbol);
           break;
         default:
           console.log(`[FundingRateCollector] ${exchange} not implemented yet`);
@@ -626,6 +631,87 @@ export class FundingRateCollectorService {
           }
         } else {
           console.error(`[FundingRateCollector] Bitget fetch error for ${symbol} (attempt ${attempt}/${maxRetries}):`, error.message);
+          if (attempt === maxRetries) return null;
+        }
+
+        if (attempt < maxRetries) {
+          await this.delay(1000);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Fetch funding rate from KuCoin
+   */
+  private async fetchKuCoinFunding(symbol: string): Promise<{
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  } | null> {
+    const maxRetries = 2;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // KuCoin uses format like XBTUSDTM (BTC -> XBT, add USDTM suffix)
+        // Symbol format: BTC/USDT -> XBTUSDTM, ETH/USDT -> ETHUSDTM, AIA/USDT -> AIAUSDTM
+        const base = symbol.split('/')[0];
+        // BTC -> XBT for KuCoin, others stay the same
+        const kucoinBase = base === 'BTC' ? 'XBT' : base;
+        const kucoinSymbol = `${kucoinBase}USDTM`;
+
+        const response = await fetch(`https://api-futures.kucoin.com/api/v1/contracts/${kucoinSymbol}`, {
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          // @ts-ignore - Node.js fetch options
+          family: 4
+        });
+
+        if (!response.ok) {
+          console.warn(`[FundingRateCollector] KuCoin API returned ${response.status} for ${symbol}`);
+          return null;
+        }
+
+        const result = await response.json();
+
+        if (result.code !== '200000' || !result.data) {
+          console.warn(`[FundingRateCollector] KuCoin API error: ${result.msg || 'Unknown error'}`);
+          return null;
+        }
+
+        const contract = result.data;
+
+        // Parse funding interval (KuCoin returns fundingRateGranularity in milliseconds)
+        const intervalMs = parseInt(contract.fundingRateGranularity || '28800000'); // Default 8 hours in ms
+        const intervalHours = intervalMs / 3600000;
+
+        return {
+          fundingRate: parseFloat(contract.fundingFeeRate || '0'),
+          nextFundingTime: new Date(parseInt(contract.nextFundingRateTime || '0')),
+          fundingInterval: intervalHours,
+          markPrice: parseFloat(contract.markPrice || '0'),
+          indexPrice: parseFloat(contract.indexPrice || '0'),
+        };
+      } catch (error: any) {
+        if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+          console.warn(`[FundingRateCollector] KuCoin API timeout for ${symbol} (attempt ${attempt}/${maxRetries})`);
+          if (attempt === maxRetries) return null;
+        } else if (error.code === 'ENOTFOUND') {
+          console.warn(`[FundingRateCollector] KuCoin API DNS resolution failed for ${symbol} (attempt ${attempt}/${maxRetries})`);
+          if (attempt < maxRetries) {
+            await this.delay(2000);
+          } else {
+            return null;
+          }
+        } else {
+          console.error(`[FundingRateCollector] KuCoin fetch error for ${symbol} (attempt ${attempt}/${maxRetries}):`, error.message);
           if (attempt === maxRetries) return null;
         }
 

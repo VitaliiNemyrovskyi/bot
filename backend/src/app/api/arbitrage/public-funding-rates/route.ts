@@ -153,6 +153,10 @@ export async function GET(request: NextRequest) {
             else if (responseData.code === 0 && responseData.data) {
               exchangeData = responseData.data;
             }
+            // KUCOIN format: { code: '0', data: [...] }
+            else if (responseData.code === '0' && responseData.data) {
+              exchangeData = responseData.data;
+            }
             // GATEIO format: array of objects
             else if (Array.isArray(responseData)) {
               exchangeData = responseData;
@@ -209,6 +213,10 @@ export async function GET(request: NextRequest) {
                 nextFundingTime = parseInt(matchingSymbol.nextUpdate || '0');
                 fundingInterval = matchingSymbol.fundingRateInterval ? `${matchingSymbol.fundingRateInterval}h` : 0;
               } else if (exchange === 'OKX') {
+                fundingRate = matchingSymbol.fundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'KUCOIN') {
                 fundingRate = matchingSymbol.fundingRate || '0';
                 nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
                 fundingInterval = matchingSymbol.fundingInterval || 0;
