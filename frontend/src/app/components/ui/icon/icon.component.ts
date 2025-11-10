@@ -16,12 +16,12 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <i
+    <span
       class="material-icons"
       [class.spinning]="class.includes('spinning')"
       [style.font-size.px]="size"
       [attr.aria-hidden]="true"
-    >{{ getIconName() }}</i>
+    >{{ getIconName() }}</span>
   `,
   styles: [`
     :host {
@@ -33,6 +33,18 @@ import { CommonModule } from '@angular/common';
     .material-icons {
       user-select: none;
       display: inline-block;
+      font-family: 'Material Icons';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
     }
 
     .material-icons.spinning {
@@ -86,6 +98,10 @@ export class IconComponent {
       'schedule': 'schedule',
       'arrow_upward': 'arrow_upward',
       'arrow_downward': 'arrow_downward',
+      'refresh': 'refresh',
+      'clear_all': 'clear_all',
+      'done_all': 'done_all',
+      'check_circle': 'check_circle',
     };
 
     return iconMap[this.name] || this.name;
