@@ -1193,6 +1193,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         this.connectGateIOViaAPI(symbol, onUpdate);
         return;
 
+      case 'KUCOIN':
+        // KuCoin Futures WebSocket
+        // Symbol format: BTCUSDT -> XBTUSDTM, KAVAUSDT -> KAVAUSDTM
+        const kucoinSymbol = symbol === 'BTCUSDT' ? 'XBTUSDTM' : symbol.replace('USDT', 'USDTM');
+        wsUrl = 'wss://ws-api-futures.kucoin.com/';
+        subscribeMessage = {
+          id: Date.now().toString(),
+          type: 'subscribe',
+          topic: `/contractMarket/ticker:${kucoinSymbol}`,
+          response: true
+        };
+        console.log(`[ArbitrageChart] KuCoin symbol normalized: ${symbol} -> ${kucoinSymbol}`);
+        break;
+
       default:
         console.warn(`[ArbitrageChart] Unsupported exchange: ${exchange}`);
         // Simulate data for unsupported exchanges
@@ -1233,6 +1247,22 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             // console.log(`[ArbitrageChart] BITGET Ping sent`);
           }
         }, 30000); // Send ping every 30 seconds
+
+        this.mexcPingIntervals.set(exchange, pingInterval);
+      }
+
+      // For KUCOIN, start ping interval to keep connection alive
+      // KuCoin requires ping every 50 seconds
+      if (exchange === 'KUCOIN') {
+        const pingInterval = setInterval(() => {
+          if (!this.isDestroyed && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              id: Date.now().toString(),
+              type: 'ping'
+            }));
+            // console.log(`[ArbitrageChart] KUCOIN Ping sent`);
+          }
+        }, 50000); // Send ping every 50 seconds
 
         this.mexcPingIntervals.set(exchange, pingInterval);
       }
@@ -1280,6 +1310,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         // Handle MEXC Pong response (server responds to our ping)
         if (exchange === 'MEXC' && data.channel === 'pong') {
           // console.log(`[ArbitrageChart] MEXC Pong received:`, data.data);
+          return;
+        }
+
+        // Handle KUCOIN Pong response (server responds to our ping)
+        if (exchange === 'KUCOIN' && data.type === 'pong') {
+          // console.log(`[ArbitrageChart] KUCOIN Pong received`);
           return;
         }
 
@@ -1542,6 +1578,46 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           return;
         } else {
           console.warn(`[ArbitrageChart] BITGET message format not recognized:`, data);
+        }
+        break;
+
+      case 'KUCOIN':
+        // KuCoin message format: { "topic": "/contractMarket/ticker:XBTUSDTM", "subject": "ticker", "data": { ... } }
+        if (data.topic && data.topic.startsWith('/contractMarket/ticker:') && data.data) {
+          const tickerData = data.data;
+          price = parseFloat(tickerData.lastTradePrice || tickerData.price);
+
+          // Extract timestamp from KuCoin message (in milliseconds)
+          if (data.ts || tickerData.ts) {
+            timestamp = typeof (data.ts || tickerData.ts) === 'string'
+              ? parseInt(data.ts || tickerData.ts)
+              : Number(data.ts || tickerData.ts);
+          }
+
+          // Get funding rate from stored map (KuCoin ticker doesn't include all funding data)
+          const symbolFromTopic = data.topic.split(':')[1]; // Extract "XBTUSDTM" from topic
+          const fundingData = this.getFundingRate('KUCOIN', symbolFromTopic);
+          fundingRate = fundingData.fundingRate;
+          nextFundingTime = fundingData.nextFundingTime;
+          fundingInterval = fundingData.fundingInterval;
+
+          console.log(`[ArbitrageChart] KUCOIN ticker parsed:`, {
+            symbol: symbolFromTopic,
+            price,
+            fundingRate,
+            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined,
+            fundingInterval
+          });
+        } else if (data.type === 'ack') {
+          // Subscription acknowledgment from KuCoin
+          console.log(`[ArbitrageChart] KUCOIN subscription confirmed:`, data);
+          return;
+        } else if (data.type === 'error') {
+          // Error message from KuCoin
+          console.error(`[ArbitrageChart] KUCOIN error:`, data);
+          return;
+        } else {
+          console.warn(`[ArbitrageChart] KUCOIN message format not recognized:`, data);
         }
         break;
     }
