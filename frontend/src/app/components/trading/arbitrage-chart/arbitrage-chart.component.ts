@@ -1827,12 +1827,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       this.loadingHistoricalData.set(true);
       console.log('[ArbitrageChart] Loading historical data...');
 
-      const token = this.authService.authState().token;
-      if (!token) {
-        console.warn('[ArbitrageChart] No auth token available, skipping historical data');
-        return;
-      }
-
       const symbol = this.symbol();
       const primaryExchange = this.primaryExchange();
       const hedgeExchange = this.hedgeExchange();
@@ -1852,10 +1846,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       console.log(`[ArbitrageChart] Fetching ${limit} ${interval} candles for ${symbol}`);
 
-      const headers = new HttpHeaders({
-        'Authorization': `Bearer ${token}`
-      });
-
+      // Historical prices API is now public (no authentication required)
       const url = buildUrlWithQuery(
         getEndpointUrl('arbitrage', 'historicalPrices'),
         {
@@ -1867,7 +1858,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         }
       );
 
-      const response = await this.http.get<any>(url, { headers }).toPromise();
+      const response = await this.http.get<any>(url).toPromise();
 
       if (response?.success && response?.data) {
         const primaryHistory = response.data.primary || [];
