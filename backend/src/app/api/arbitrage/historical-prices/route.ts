@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AuthService } from '@/lib/auth';
 import { CCXTService } from '@/lib/ccxt-service';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
@@ -29,20 +28,7 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
  */
 export async function GET(request: NextRequest) {
   try {
-    // 1. Authenticate user
-    const authResult = await AuthService.authenticateRequest(request);
-    if (!authResult.success || !authResult.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-          message: 'Authentication required',
-        },
-        { status: 401 }
-      );
-    }
-
-    // 2. Get query parameters
+    // Get query parameters (no authentication required for public historical data)
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get('symbol');
     const primaryExchange = searchParams.get('primaryExchange')?.toUpperCase();
