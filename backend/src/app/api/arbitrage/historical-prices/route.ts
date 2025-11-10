@@ -599,17 +599,22 @@ async function fetchKuCoinKlines(
     // Map interval to KuCoin format (granularity in minutes)
     const granularity = mapIntervalToKuCoin(interval);
 
+    // KuCoin has a maximum of 500 candles per request
+    const KUCOIN_MAX_LIMIT = 500;
+    const requestLimit = Math.min(limit, KUCOIN_MAX_LIMIT);
+
     // Calculate time range
     const now = Math.floor(Date.now() / 1000);
     const intervalSeconds = getIntervalSeconds(interval);
-    const from = now - (limit * intervalSeconds);
+    const from = now - (requestLimit * intervalSeconds);
 
     const url = `https://api-futures.kucoin.com/api/v1/kline/query?symbol=${kucoinSymbol}&granularity=${granularity}&from=${from * 1000}&to=${now * 1000}`;
 
     console.log(`[KuCoin Klines] Original symbol: ${symbol}`);
     console.log(`[KuCoin Klines] Converted symbol: ${kucoinSymbol}`);
     console.log(`[KuCoin Klines] Interval: ${interval} -> ${granularity} minutes`);
-    console.log(`[KuCoin Klines] Time range: ${from} to ${now} (${limit} candles)`);
+    console.log(`[KuCoin Klines] Requested: ${limit}, Limit: ${requestLimit} candles (max 500)`);
+    console.log(`[KuCoin Klines] Time range: ${new Date(from * 1000).toISOString()} to ${new Date(now * 1000).toISOString()}`);
     console.log(`[KuCoin Klines] Fetching from: ${url}`);
 
     const response = await fetchWithTimeout(url, { timeout: 60000 });
@@ -623,6 +628,7 @@ async function fetchKuCoinKlines(
     const result = await response.json();
 
     if (result.code !== '200000') {
+      console.error(`[KuCoin Klines] API error: ${result.msg || 'Unknown error'}`);
       throw new Error(`KuCoin API error: ${result.msg || 'Unknown error'}`);
     }
 
@@ -631,7 +637,7 @@ async function fetchKuCoinKlines(
     console.log(`[KuCoin Klines] Data points received: ${data.length}`);
 
     if (data.length === 0) {
-      console.warn(`[KuCoin Klines] No data returned for ${kucoinSymbol}`);
+      console.warn(`[KuCoin Klines] No data returned for ${kucoinSymbol}. Contract may be too new or data not available for this time range.`);
       return [];
     }
 
@@ -642,14 +648,19 @@ async function fetchKuCoinKlines(
       price: parseFloat(k[4]) // Close price
     }));
 
+    // Sort by time ascending (oldest first)
+    klines.sort((a, b) => a.time - b.time);
+
     console.log(`[KuCoin Klines] Successfully converted ${klines.length} klines`);
-    console.log(`[KuCoin Klines] First kline:`, klines[0]);
-    console.log(`[KuCoin Klines] Last kline:`, klines[klines.length - 1]);
+    if (klines.length > 0) {
+      console.log(`[KuCoin Klines] First kline:`, new Date(klines[0].time * 1000).toISOString(), `Price: ${klines[0].price}`);
+      console.log(`[KuCoin Klines] Last kline:`, new Date(klines[klines.length - 1].time * 1000).toISOString(), `Price: ${klines[klines.length - 1].price}`);
+    }
 
     return klines;
 
-  } catch (error) {
-    console.error('[KuCoin Klines] Error:', error);
+  } catch (error: any) {
+    console.error('[KuCoin Klines] Error:', error.message);
     return [];
   }
 }
