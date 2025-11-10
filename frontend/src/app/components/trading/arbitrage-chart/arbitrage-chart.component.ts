@@ -1194,18 +1194,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         return;
 
       case 'KUCOIN':
-        // KuCoin Futures WebSocket
-        // Symbol format: BTCUSDT -> XBTUSDTM, KAVAUSDT -> KAVAUSDTM
-        const kucoinSymbol = symbol === 'BTCUSDT' ? 'XBTUSDTM' : symbol.replace('USDT', 'USDTM');
-        wsUrl = 'wss://ws-api-futures.kucoin.com/';
-        subscribeMessage = {
-          id: Date.now().toString(),
-          type: 'subscribe',
-          topic: `/contractMarket/ticker:${kucoinSymbol}`,
-          response: true
-        };
-        console.log(`[ArbitrageChart] KuCoin symbol normalized: ${symbol} -> ${kucoinSymbol}`);
-        break;
+        // KuCoin WebSocket requires token authentication
+        // Use dedicated method to fetch token and connect
+        this.connectKuCoinWebSocket(symbol, onUpdate);
+        return;
 
       default:
         console.warn(`[ArbitrageChart] Unsupported exchange: ${exchange}`);
@@ -1247,22 +1239,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             // console.log(`[ArbitrageChart] BITGET Ping sent`);
           }
         }, 30000); // Send ping every 30 seconds
-
-        this.mexcPingIntervals.set(exchange, pingInterval);
-      }
-
-      // For KUCOIN, start ping interval to keep connection alive
-      // KuCoin requires ping every 50 seconds
-      if (exchange === 'KUCOIN') {
-        const pingInterval = setInterval(() => {
-          if (!this.isDestroyed && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              id: Date.now().toString(),
-              type: 'ping'
-            }));
-            // console.log(`[ArbitrageChart] KUCOIN Ping sent`);
-          }
-        }, 50000); // Send ping every 50 seconds
 
         this.mexcPingIntervals.set(exchange, pingInterval);
       }
@@ -1310,12 +1286,6 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         // Handle MEXC Pong response (server responds to our ping)
         if (exchange === 'MEXC' && data.channel === 'pong') {
           // console.log(`[ArbitrageChart] MEXC Pong received:`, data.data);
-          return;
-        }
-
-        // Handle KUCOIN Pong response (server responds to our ping)
-        if (exchange === 'KUCOIN' && data.type === 'pong') {
-          // console.log(`[ArbitrageChart] KUCOIN Pong received`);
           return;
         }
 
@@ -1612,6 +1582,10 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           // Subscription acknowledgment from KuCoin
           console.log(`[ArbitrageChart] KUCOIN subscription confirmed:`, data);
           return;
+        } else if (data.type === 'pong') {
+          // Pong response from KuCoin
+          // console.log(`[ArbitrageChart] KUCOIN pong received`);
+          return;
         } else if (data.type === 'error') {
           // Error message from KuCoin
           console.error(`[ArbitrageChart] KUCOIN error:`, data);
@@ -1710,6 +1684,122 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Store interval for cleanup
     if (!this.gateioRefreshInterval) {
       this.gateioRefreshInterval = interval;
+    }
+  }
+
+  /**
+   * Connect to KuCoin WebSocket with token authentication
+   * KuCoin requires fetching a connection token from REST API first
+   */
+  private async connectKuCoinWebSocket(
+    symbol: string,
+    onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
+  ): Promise<void> {
+    try {
+      // Normalize symbol: BTCUSDT -> XBTUSDTM, KAVAUSDT -> KAVAUSDTM
+      const normalizedSymbol = symbol.replace(/[-/]/g, '').toUpperCase();
+      const base = normalizedSymbol.replace('USDT', '');
+      const kucoinBase = base === 'BTC' ? 'XBT' : base;
+      const kucoinSymbol = `${kucoinBase}USDTM`;
+
+      console.log(`[ArbitrageChart] KuCoin connecting for symbol: ${symbol} -> ${kucoinSymbol}`);
+
+      // Step 1: Fetch WebSocket token from KuCoin REST API
+      const tokenUrl = 'https://api-futures.kucoin.com/api/v1/bullet-public';
+      console.log(`[ArbitrageChart] Fetching KuCoin WebSocket token from: ${tokenUrl}`);
+
+      const tokenResponse = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const tokenData = await tokenResponse.json();
+      console.log(`[ArbitrageChart] KuCoin token response:`, tokenData);
+
+      if (tokenData.code !== '200000' || !tokenData.data) {
+        console.error('[ArbitrageChart] KuCoin token fetch failed:', tokenData);
+        this.toastService.error(`KuCoin connection error: ${tokenData.msg || 'Failed to get token'}`);
+        return;
+      }
+
+      const { token, instanceServers } = tokenData.data;
+      if (!instanceServers || instanceServers.length === 0) {
+        console.error('[ArbitrageChart] KuCoin no instance servers available');
+        this.toastService.error('KuCoin connection error: No WebSocket servers available');
+        return;
+      }
+
+      const server = instanceServers[0];
+      const wsUrl = `${server.endpoint}?token=${token}&connectId=${Date.now()}`;
+      const pingInterval = server.pingInterval || 18000;
+
+      console.log(`[ArbitrageChart] KuCoin connecting to WebSocket: ${server.endpoint}`);
+      console.log(`[ArbitrageChart] KuCoin ping interval: ${pingInterval}ms`);
+
+      // Step 2: Connect to WebSocket
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log(`[ArbitrageChart] KUCOIN WebSocket connected for ${kucoinSymbol}`);
+
+        // Subscribe to ticker topic
+        const subscribeMessage = {
+          id: Date.now().toString(),
+          type: 'subscribe',
+          topic: `/contractMarket/ticker:${kucoinSymbol}`,
+          response: true
+        };
+
+        console.log(`[ArbitrageChart] KUCOIN subscribing to:`, subscribeMessage);
+        ws.send(JSON.stringify(subscribeMessage));
+
+        // Start ping interval
+        const pingIntervalId = setInterval(() => {
+          if (!this.isDestroyed && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              id: Date.now().toString(),
+              type: 'ping'
+            }));
+          } else {
+            clearInterval(pingIntervalId);
+          }
+        }, pingInterval);
+
+        // Store interval for cleanup
+        this.mexcPingIntervals.set('KUCOIN', pingIntervalId);
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleExchangeMessage('KUCOIN', data, onUpdate);
+        } catch (error) {
+          console.error('[ArbitrageChart] KUCOIN message parse error:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[ArbitrageChart] KUCOIN WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('[ArbitrageChart] KUCOIN WebSocket closed');
+        // Clear ping interval
+        const intervalId = this.mexcPingIntervals.get('KUCOIN');
+        if (intervalId) {
+          clearInterval(intervalId);
+          this.mexcPingIntervals.delete('KUCOIN');
+        }
+      };
+
+      // Store WebSocket for cleanup
+      this.websockets.set('KUCOIN', ws);
+
+    } catch (error: any) {
+      console.error('[ArbitrageChart] KuCoin WebSocket connection error:', error);
+      this.toastService.error(`KuCoin connection error: ${error.message || 'Unknown error'}`);
     }
   }
 
