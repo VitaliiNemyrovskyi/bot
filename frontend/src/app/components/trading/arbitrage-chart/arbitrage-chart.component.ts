@@ -1726,24 +1726,26 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         console.warn(`[ArbitrageChart] No funding rate data received from API for hedge exchange ${hedgeEx}`);
       }
 
-      // Update primary exchange data
+      // Update primary exchange data (only if we have a valid price from WebSocket/historical data)
       const primaryData = this.getFundingRate(primaryEx, currentSymbol);
-      if (primaryData.fundingRate && primaryData.nextFundingTime && primaryData.fundingInterval) {
+      const currentPrimaryPrice = this.primaryData().price;
+      if (primaryData.fundingRate && primaryData.nextFundingTime && primaryData.fundingInterval && currentPrimaryPrice && currentPrimaryPrice > 0) {
         console.log('[ArbitrageChart] Updating primary with funding data:', primaryData);
         this.updatePrimaryData(
-          this.primaryData().price || 0,
+          currentPrimaryPrice,
           primaryData.fundingRate,
           primaryData.nextFundingTime,
           primaryData.fundingInterval // Pass funding interval from API
         );
       }
 
-      // Update hedge exchange data
+      // Update hedge exchange data (only if we have a valid price from WebSocket/historical data)
       const hedgeData = this.getFundingRate(hedgeEx, currentSymbol);
-      if (hedgeData.fundingRate && hedgeData.nextFundingTime && hedgeData.fundingInterval) {
+      const currentHedgePrice = this.hedgeData().price;
+      if (hedgeData.fundingRate && hedgeData.nextFundingTime && hedgeData.fundingInterval && currentHedgePrice && currentHedgePrice > 0) {
         console.log('[ArbitrageChart] Updating hedge with funding data:', hedgeData);
         this.updateHedgeData(
-          this.hedgeData().price || 0,
+          currentHedgePrice,
           hedgeData.fundingRate,
           hedgeData.nextFundingTime,
           hedgeData.fundingInterval // Pass funding interval from API
