@@ -20,7 +20,8 @@ export enum ExchangeType {
   BINGX = 'BINGX',
   MEXC = 'MEXC',
   GATEIO = 'GATEIO',
-  BITGET = 'BITGET'
+  BITGET = 'BITGET',
+  KUCOIN = 'KUCOIN'
 }
 
 
@@ -359,6 +360,13 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/bitget.svg',
     color: '#00F0FF',
     website: 'https://www.bitget.com',
+    supportsTestnet: false
+  },
+  [ExchangeType.KUCOIN]: {
+    name: 'KuCoin',
+    logo: '/assets/images/exchanges/kucoin.svg',
+    color: '#24AE8F',
+    website: 'https://www.kucoin.com',
     supportsTestnet: false
   }
 };

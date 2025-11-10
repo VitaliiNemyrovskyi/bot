@@ -501,6 +501,163 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+    } else if (exchange.toUpperCase() === 'KUCOIN') {
+      // Validate KuCoin requires passphrase
+      if (!passphrase || passphrase.trim() === '') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Missing passphrase',
+            message: 'KuCoin requires a passphrase. Please provide your KuCoin API passphrase.',
+            code: 'MISSING_PASSPHRASE',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Test KuCoin credentials using custom connector
+      try {
+        console.log('[KUCOIN] Testing KuCoin credentials with custom connector...');
+        console.log('[KUCOIN] API Key:', apiKey.substring(0, 8) + '...');
+        console.log('[KUCOIN] Passphrase length:', passphrase.trim().length);
+
+        // Use ExchangeConnectorFactory to create KuCoin connector
+        const { ExchangeConnectorFactory } = await import('@/connectors/exchange.factory');
+
+        const kucoinConnector = ExchangeConnectorFactory.create(
+          'KUCOIN',
+          apiKey,
+          apiSecret,
+          undefined, // userId
+          undefined, // credentialId
+          passphrase // authToken (passphrase for KuCoin)
+        );
+
+        // Initialize connector
+        console.log('[KUCOIN] Initializing connector...');
+        await kucoinConnector.initialize();
+
+        // Fetch balance to validate credentials
+        console.log('[KUCOIN] Fetching balance...');
+        const balance = await kucoinConnector.getBalance();
+
+        console.log('[KUCOIN] Balance response:', JSON.stringify(balance, null, 2));
+
+        // Extract USDT balance info
+        const usdtTotal = balance.total?.USDT || 0;
+        const usdtFree = balance.free?.USDT || 0;
+
+        console.log('[KUCOIN] Credentials validated successfully');
+        console.log('[KUCOIN] USDT Total:', usdtTotal, 'Free:', usdtFree);
+
+        // Close connector
+        await kucoinConnector.close();
+
+        return NextResponse.json({
+          success: true,
+          message: 'API credentials are valid',
+          accountPreview: {
+            totalBalance: usdtTotal.toString(),
+            availableBalance: usdtFree.toString(),
+            currency: 'USDT',
+            accountType: 'spot',
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('KuCoin API validation error:', error);
+        console.error('KuCoin error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+
+        // Handle KuCoin-specific errors
+        const errorMsg = error.message || '';
+
+        // KuCoin error codes: https://docs.kucoin.com/#error-codes
+        if (errorMsg.includes('400000') || errorMsg.includes('KC-API-KEY-INVALID')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API Key',
+              message: 'The provided API key is invalid or does not exist',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('400001') || errorMsg.includes('KC-API-SIGN-INVALID') || errorMsg.includes('Signature')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid signature',
+              message: 'The API secret or passphrase is invalid. Please check your credentials.',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('400002') || errorMsg.includes('KC-API-PASSPHRASE') || errorMsg.includes('Passphrase') || errorMsg.includes('passphrase')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid passphrase',
+              message: 'The provided passphrase is incorrect',
+              code: 'INVALID_PASSPHRASE',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('400003') || errorMsg.includes('KC-API-KEY-EXPIRED')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'API Key expired',
+              message: 'Your API key has expired. Please generate a new one.',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('400004') || errorMsg.includes('KC-API-PERMISSION')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Insufficient permissions',
+              message: 'Your API key does not have the required permissions. Please enable "General" and "Trade" permissions.',
+              code: 'INSUFFICIENT_PERMISSIONS',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (errorMsg.includes('Invalid') || errorMsg.includes('Authentication')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid API credentials',
+              message: 'The provided API key, secret, or passphrase is invalid',
+              code: 'INVALID_CREDENTIALS',
+            },
+            { status: 400 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message || 'An error occurred while testing the credentials',
+            code: 'VALIDATION_ERROR',
+          },
+          { status: 500 }
+        );
+      }
     } else {
       return NextResponse.json(
         {

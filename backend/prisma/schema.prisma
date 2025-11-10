@@ -27,6 +27,7 @@ enum Exchange {
   MEXC
   GATEIO
   BITGET
+  KUCOIN
 }
 
 model User {

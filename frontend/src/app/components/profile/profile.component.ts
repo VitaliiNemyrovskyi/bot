@@ -184,7 +184,7 @@ export class ProfileComponent implements OnInit {
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
       authToken: [''], // Browser session token for MEXC
-      passphrase: [''], // Passphrase for OKX and Bitget
+      passphrase: [''], // Passphrase for OKX, Bitget, and KuCoin
       label: ['', [Validators.maxLength(50)]]
     });
 
@@ -192,8 +192,8 @@ export class ProfileComponent implements OnInit {
     this.newCredentialForm.get('exchange')?.valueChanges.subscribe((exchange: string) => {
       const passphraseControl = this.newCredentialForm.get('passphrase');
 
-      if (exchange === 'OKX' || exchange === 'BITGET') {
-        // Make passphrase required for OKX and Bitget
+      if (exchange === 'OKX' || exchange === 'BITGET' || exchange === 'KUCOIN') {
+        // Make passphrase required for OKX, Bitget, and KuCoin
         passphraseControl?.setValidators([Validators.required]);
       } else {
         // Remove required validator for other exchanges
@@ -362,16 +362,16 @@ export class ProfileComponent implements OnInit {
     // Fetch full credential details from backend (includes decrypted authToken)
     this.exchangeCredentialsService.getCredentialById(credential.id).pipe(take(1)).subscribe({
       next: (fullCredential: any) => {
-        // For OKX and Bitget, passphrase is stored in authToken field
+        // For OKX, Bitget, and KuCoin, passphrase is stored in authToken field
         // Map it back to passphrase field for display/editing
-        const isOkxOrBitget = fullCredential.exchange === 'OKX' || fullCredential.exchange === 'BITGET';
+        const isOkxOrBitgetOrKucoin = fullCredential.exchange === 'OKX' || fullCredential.exchange === 'BITGET' || fullCredential.exchange === 'KUCOIN';
 
         this.editFormData.set({
           label: fullCredential.label,
           apiKey: fullCredential.apiKey || '',  // Show decrypted API key
           apiSecret: '',  // Empty string means "keep current" - don't show for security
-          authToken: isOkxOrBitget ? '' : (fullCredential.authToken || ''),  // For MEXC, show authToken; for OKX/Bitget, use passphrase field instead
-          passphrase: isOkxOrBitget ? (fullCredential.authToken || '') : '',  // For OKX/Bitget, show passphrase (from authToken)
+          authToken: isOkxOrBitgetOrKucoin ? '' : (fullCredential.authToken || ''),  // For MEXC, show authToken; for OKX/Bitget/KuCoin, use passphrase field instead
+          passphrase: isOkxOrBitgetOrKucoin ? (fullCredential.authToken || '') : '',  // For OKX/Bitget/KuCoin, show passphrase (from authToken)
           // Store original values for canceling
           _originalLabel: fullCredential.label
         } as any);
