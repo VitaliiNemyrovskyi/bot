@@ -1196,7 +1196,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       case 'KUCOIN':
         // KuCoin WebSocket requires token authentication
         // Use dedicated method to fetch token and connect
-        this.connectKuCoinWebSocket(symbol, onUpdate);
+        this.connectKuCoinWebSocket(exchange, symbol, onUpdate);
         return;
 
       default:
@@ -1692,6 +1692,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    * KuCoin requires fetching a connection token from REST API first
    */
   private async connectKuCoinWebSocket(
+    exchange: string,
     symbol: string,
     onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string) => void
   ): Promise<void> {
@@ -1794,8 +1795,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         }
       };
 
-      // Store WebSocket for cleanup
-      this.websockets.set('KUCOIN', ws);
+      // Store WebSocket reference (same as connectExchangeWebSocket)
+      if (exchange === this.primaryExchange().toUpperCase()) {
+        this.primaryWs = ws;
+      } else {
+        this.hedgeWs = ws;
+      }
 
     } catch (error: any) {
       console.error('[ArbitrageChart] KuCoin WebSocket connection error:', error);
