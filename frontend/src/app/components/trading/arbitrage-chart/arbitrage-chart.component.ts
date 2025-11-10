@@ -1705,27 +1705,20 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
 
       console.log(`[ArbitrageChart] KuCoin connecting for symbol: ${symbol} -> ${kucoinSymbol}`);
 
-      // Step 1: Fetch WebSocket token from KuCoin REST API
-      const tokenUrl = 'https://api-futures.kucoin.com/api/v1/bullet-public';
-      console.log(`[ArbitrageChart] Fetching KuCoin WebSocket token from: ${tokenUrl}`);
+      // Step 1: Fetch WebSocket token from backend proxy (to avoid CORS)
+      const tokenUrl = '/api/kucoin/ws-token';
+      console.log(`[ArbitrageChart] Fetching KuCoin WebSocket token from backend proxy: ${tokenUrl}`);
 
-      const tokenResponse = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      const tokenResponse = await this.http.post<any>(tokenUrl, {}).toPromise();
+      console.log(`[ArbitrageChart] KuCoin token response:`, tokenResponse);
 
-      const tokenData = await tokenResponse.json();
-      console.log(`[ArbitrageChart] KuCoin token response:`, tokenData);
-
-      if (tokenData.code !== '200000' || !tokenData.data) {
-        console.error('[ArbitrageChart] KuCoin token fetch failed:', tokenData);
-        this.toastService.error(`KuCoin connection error: ${tokenData.msg || 'Failed to get token'}`);
+      if (!tokenResponse.success || !tokenResponse.data) {
+        console.error('[ArbitrageChart] KuCoin token fetch failed:', tokenResponse);
+        this.toastService.error(`KuCoin connection error: ${tokenResponse.error || 'Failed to get token'}`);
         return;
       }
 
-      const { token, instanceServers } = tokenData.data;
+      const { token, instanceServers } = tokenResponse.data;
       if (!instanceServers || instanceServers.length === 0) {
         console.error('[ArbitrageChart] KuCoin no instance servers available');
         this.toastService.error('KuCoin connection error: No WebSocket servers available');
