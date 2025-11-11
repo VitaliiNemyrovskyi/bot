@@ -18,11 +18,6 @@ export const routes: Routes = [
     canActivate: [AuthGuard]
   },
   {
-    path: 'trading',
-    loadComponent: () => import('./components/trading/grid-bot-dashboard/grid-bot-dashboard.component').then(m => m.GridBotDashboardComponent),
-    canActivate: [AuthGuard]
-  },
-  {
     path: 'trading/bot/create',
     loadComponent: () => import('./components/trading/bot-config-page/bot-config-page.component').then(m => m.BotConfigPageComponent),
     canActivate: [AuthGuard],
