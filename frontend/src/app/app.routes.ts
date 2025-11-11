@@ -51,11 +51,6 @@ export const routes: Routes = [
     canActivate: [AuthGuard]
   },
   {
-    path: 'trading/funding-revenue',
-    loadComponent: () => import('./components/trading/funding-revenue/funding-revenue.component').then(m => m.FundingRevenueComponent),
-    canActivate: [AuthGuard]
-  },
-  {
     path: 'arbitrage/funding',
     loadComponent: () => import('./pages/arbitrage-funding/arbitrage-funding.component').then(m => m.ArbitrageFundingComponent)
     // No auth guard - public page using public exchange APIs
