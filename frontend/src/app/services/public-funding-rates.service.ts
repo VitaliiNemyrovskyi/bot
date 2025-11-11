@@ -412,31 +412,31 @@ export class PublicFundingRatesService {
     const opportunities: FundingRateOpportunity[] = [];
 
     // Calculate opportunities for each symbol
-    symbolMap.forEach((exchanges, symbol) => {
+    symbolMap.forEach((exchanges: ExchangeFundingRate[], symbol: string) => {
       // Skip symbols with only one exchange
       if (exchanges.length < 2) return;
 
       // Sort by NORMALIZED funding rate (lowest to highest) - CRITICAL for fair comparison!
-      const sortedExchanges = [...exchanges].sort(
-        (a, b) => (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
+      const sortedExchanges: ExchangeFundingRate[] = [...exchanges].sort(
+        (a: ExchangeFundingRate, b: ExchangeFundingRate) => (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
       );
 
-      const bestLong = sortedExchanges[0]; // Lowest (most negative) normalized funding rate
-      const bestShort = sortedExchanges[sortedExchanges.length - 1]; // Highest normalized funding rate
+      const bestLong: ExchangeFundingRate = sortedExchanges[0]; // Lowest (most negative) normalized funding rate
+      const bestShort: ExchangeFundingRate = sortedExchanges[sortedExchanges.length - 1]; // Highest normalized funding rate
 
       // Calculate funding spread using NORMALIZED rates
-      const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
-      const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
+      const fundingSpread: number = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
+      const fundingSpreadPercent: string = (fundingSpread * 100).toFixed(4);
 
       // Calculate price spread
-      const bestLongPrice = parseFloat(bestLong.lastPrice);
-      const bestShortPrice = parseFloat(bestShort.lastPrice);
+      const bestLongPrice: number = parseFloat(bestLong.lastPrice);
+      const bestShortPrice: number = parseFloat(bestShort.lastPrice);
       const priceSpread = Math.abs(bestShortPrice - bestLongPrice) / bestLongPrice;
       const priceSpreadPercent = Math.abs(priceSpread * 100).toFixed(2);
       const priceSpreadUsdt = Math.abs(bestShortPrice - bestLongPrice).toFixed(2);
 
       // Get earliest next funding time
-      const fundingTimes = exchanges.map(e => e.nextFundingTime).filter(t => t > 0);
+      const fundingTimes = exchanges.map((e: ExchangeFundingRate) => e.nextFundingTime).filter(t => t > 0);
       const nextFundingTime = fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
 
       // Calculate funding periodicity
@@ -530,23 +530,23 @@ export class PublicFundingRatesService {
         };
       }
 
-      // Price Only Strategy: If has price spread
-      if (Math.abs(priceSpread) > 0.0001) {
-        strategyMetrics.priceOnly = {
-          combinedScore: priceSpreadPct,
-          expectedDailyReturn: priceSpreadPct,
-          estimatedMonthlyROI: priceSpreadPct,
-        };
-      }
-
-      // Funding Only Strategy: If has funding spread
-      if (Math.abs(fundingSpread) > 0.0001) {
-        strategyMetrics.fundingOnly = {
-          combinedScore: dailyFundingReturn * 7,
-          expectedDailyReturn: dailyFundingReturn,
-          estimatedMonthlyROI: dailyFundingReturn * 30,
-        };
-      }
+      // // Price Only Strategy: If has price spread
+      // if (Math.abs(priceSpread) > 0.0001) {
+      //   strategyMetrics.priceOnly = {
+      //     combinedScore: priceSpreadPct,
+      //     expectedDailyReturn: priceSpreadPct,
+      //     estimatedMonthlyROI: priceSpreadPct,
+      //   };
+      // }
+      //
+      // // Funding Only Strategy: If has funding spread
+      // if (Math.abs(fundingSpread) > 0.0001) {
+      //   strategyMetrics.fundingOnly = {
+      //     combinedScore: dailyFundingReturn * 7,
+      //     expectedDailyReturn: dailyFundingReturn,
+      //     estimatedMonthlyROI: dailyFundingReturn * 30,
+      //   };
+      // }
 
       // LEGACY FIELDS - determine default strategyType and metrics for backward compatibility
       // Priority: combined > price_only > funding_only

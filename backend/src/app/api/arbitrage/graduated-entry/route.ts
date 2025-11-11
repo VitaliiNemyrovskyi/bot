@@ -127,6 +127,29 @@ export async function GET(request: NextRequest) {
         // Real-time Net Profit = Gross Profit - Fees
         const realtimeNetProfit = realtimeGrossProfit - totalFees;
 
+        // Log entry prices and funding for debugging
+        if (position.positionId === 'arb_1_1762851015457') {
+          console.log(`[API GET] Position ${position.positionId} RAW DB DATA:`, {
+            primaryEntryPrice: position.primaryEntryPrice,
+            hedgeEntryPrice: position.hedgeEntryPrice,
+            primaryCurrentPrice: position.primaryCurrentPrice,
+            hedgeCurrentPrice: position.hedgeCurrentPrice,
+            primaryLastFundingPaid: position.primaryLastFundingPaid,
+            primaryTotalFundingEarned: position.primaryTotalFundingEarned,
+            hedgeLastFundingPaid: position.hedgeLastFundingPaid,
+            hedgeTotalFundingEarned: position.hedgeTotalFundingEarned,
+            fundingUpdateCount: position.fundingUpdateCount,
+          });
+          console.log(`[API GET] Position ${position.positionId} AFTER PROCESSING:`, {
+            hasFundingPayments,
+            actualPrimaryFundingPaid,
+            actualPrimaryFundingEarned,
+            actualHedgeFundingPaid,
+            actualHedgeFundingEarned,
+            totalActualFunding,
+          });
+        }
+
         return {
           positionId: position.positionId,
           symbol: position.symbol,

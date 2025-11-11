@@ -210,17 +210,17 @@ export class FundingTrackerService {
         updatedHedge: hedgeFeesUpdate,
       });
 
-      // Update database
+      // Update database - keep existing values if fetch failed
       await this.prisma.graduatedEntryPosition.update({
         where: { positionId },
         data: {
-          primaryLastFundingPaid: primaryData?.lastFunding || 0,
-          primaryTotalFundingEarned: primaryData?.totalFunding || 0,
+          primaryLastFundingPaid: primaryData?.lastFunding ?? position.primaryLastFundingPaid ?? 0,
+          primaryTotalFundingEarned: primaryData?.totalFunding ?? position.primaryTotalFundingEarned ?? 0,
           primaryTradingFees: primaryFeesUpdate,
           primaryCurrentPrice: primaryData?.currentPrice || position.primaryCurrentPrice,
 
-          hedgeLastFundingPaid: hedgeData?.lastFunding || 0,
-          hedgeTotalFundingEarned: hedgeData?.totalFunding || 0,
+          hedgeLastFundingPaid: hedgeData?.lastFunding ?? position.hedgeLastFundingPaid ?? 0,
+          hedgeTotalFundingEarned: hedgeData?.totalFunding ?? position.hedgeTotalFundingEarned ?? 0,
           hedgeTradingFees: hedgeFeesUpdate,
           hedgeCurrentPrice: hedgeData?.currentPrice || position.hedgeCurrentPrice,
 

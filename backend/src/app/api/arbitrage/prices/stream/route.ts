@@ -104,14 +104,16 @@ export async function GET(request: NextRequest) {
           } else if (exchange === 'MEXC') {
             const mexcSymbol = symbol.includes('_') ? symbol : symbol.replace(/USDT$/, '_USDT');
             wsConfig = {
-              url: 'wss://contract.mexc.com/edge',
+              url: 'wss://contract.mexc.com/ws',
               subscribeMessage: {
                 method: 'sub.ticker',
                 param: {
                   symbol: mexcSymbol,
                 },
               },
-              heartbeatInterval: 15000,
+              heartbeatInterval: 20000,
+              reconnectDelay: 1000,
+              maxReconnectDelay: 30000,
             };
           } else if (exchange === 'OKX') {
             // Convert symbol format: BTCUSDT → BTC-USDT-SWAP or 0GUSDT → 0G-USDT-SWAP

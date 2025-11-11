@@ -28,6 +28,7 @@ export class FundingRateCollectorService {
     'LINK/USDT',
     'RIVER/USDT',
     'AIA/USDT',
+    'LSK/USDT',
   ];
 
   // Exchanges to track

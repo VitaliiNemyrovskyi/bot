@@ -585,8 +585,8 @@ async function fetchKuCoinKlines(
     // Map interval to KuCoin format (granularity in minutes)
     const granularity = mapIntervalToKuCoin(interval);
 
-    // KuCoin has a maximum of 500 candles per request
-    const KUCOIN_MAX_LIMIT = 500;
+    // KuCoin API returns a maximum of 200 candles per request (not 500!)
+    const KUCOIN_MAX_LIMIT = 200;
     const allKlines: Array<{ time: number; price: number }> = [];
 
     // If limit <= 500, single request
@@ -655,7 +655,8 @@ async function fetchKuCoinKlines(
     const now = Math.floor(Date.now() / 1000);
     const oldestTime = now - (limit * intervalSeconds);
 
-    for (let i = 0; i < numRequests; i++) {
+    // Fetch from newest to oldest to ensure we always get recent data first
+    for (let i = numRequests - 1; i >= 0; i--) {
       const requestLimit = Math.min(KUCOIN_MAX_LIMIT, limit - (i * KUCOIN_MAX_LIMIT));
 
       // Calculate time range for this batch
@@ -684,8 +685,9 @@ async function fetchKuCoinKlines(
         const data = result.data || [];
 
         if (data.length === 0) {
-          console.warn(`[KuCoin Klines] Request ${i + 1} returned no data`);
-          break;
+          console.warn(`[KuCoin Klines] Request ${i + 1} returned no data, continuing to next batch...`);
+          // Don't break - continue fetching other batches
+          continue;
         }
 
         // Convert and add to results

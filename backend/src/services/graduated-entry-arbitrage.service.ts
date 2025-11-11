@@ -1352,12 +1352,24 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
         if (primaryPosition && primaryPosition.entryPrice > 0) {
           primaryEntryPrice = primaryPosition.entryPrice;
-          console.log(`[GraduatedEntry] ${position.id} - Primary entry price: ${primaryEntryPrice}`);
+          console.log(`[GraduatedEntry] ${position.id} - ✅ Primary entry price: ${primaryEntryPrice}`);
+        } else {
+          console.warn(`[GraduatedEntry] ${position.id} - ⚠️ Primary position not found or entry price is 0:`, {
+            found: !!primaryPosition,
+            entryPrice: primaryPosition?.entryPrice,
+            size: primaryPosition?.size
+          });
         }
 
         if (hedgePosition && hedgePosition.entryPrice > 0) {
           hedgeEntryPrice = hedgePosition.entryPrice;
-          console.log(`[GraduatedEntry] ${position.id} - Hedge entry price: ${hedgeEntryPrice}`);
+          console.log(`[GraduatedEntry] ${position.id} - ✅ Hedge entry price: ${hedgeEntryPrice}`);
+        } else {
+          console.warn(`[GraduatedEntry] ${position.id} - ⚠️ Hedge position not found or entry price is 0:`, {
+            found: !!hedgePosition,
+            entryPrice: hedgePosition?.entryPrice,
+            size: hedgePosition?.size
+          });
         }
 
         // If both prices found, break early
@@ -1450,6 +1462,10 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
 
     // Update database with ACTIVE status, entry prices, and trading fees
     if (position.dbId) {
+      console.log(`[GraduatedEntry] ${position.id} - Saving entry prices to database:`);
+      console.log(`[GraduatedEntry] ${position.id} - Primary Entry Price: ${primaryEntryPrice}`);
+      console.log(`[GraduatedEntry] ${position.id} - Hedge Entry Price: ${hedgeEntryPrice}`);
+
       await prisma.graduatedEntryPosition.update({
         where: { id: position.dbId },
         data: {
@@ -1461,7 +1477,11 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           primaryTradingFees,
           hedgeTradingFees,
         },
-      }).catch(err => console.error('[GraduatedEntry] DB update error:', err.message));
+      }).then(() => {
+        console.log(`[GraduatedEntry] ${position.id} - ✅ Entry prices saved to database successfully`);
+      }).catch(err => {
+        console.error(`[GraduatedEntry] ${position.id} - ❌ DB update error:`, err.message);
+      });
     }
 
     console.log(`[GraduatedEntry] ${position.id} - All parts executed, positions ACTIVE and monitoring:`, {

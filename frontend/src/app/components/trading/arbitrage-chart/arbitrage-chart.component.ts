@@ -1294,7 +1294,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         //   console.log(`[ArbitrageChart] BingX WebSocket message:`, data);
         // }
 
-        this.handleExchangeMessage(exchange, data, onUpdate);
+        this.handleExchangeMessage(exchange, symbol, data, onUpdate);
       } catch (error) {
         console.error(`[ArbitrageChart] ${exchange} message parse error:`, error);
       }
@@ -1330,6 +1330,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
    */
   private handleExchangeMessage(
     exchange: string,
+    symbol: string,
     data: any,
     onUpdate: (price: number, fundingRate?: string, nextFundingTime?: number, fundingInterval?: string, timestamp?: number) => void
   ): void {
@@ -1491,7 +1492,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           // IMPORTANT: MEXC doesn't provide nextFundingTime in WebSocket ticker
           // DO NOT calculate it locally - funding intervals can vary by symbol and change over time
           // We rely on the backend API (/api/arbitrage/funding-rates) to provide accurate nextFundingTime
-          // The existing nextFundingTime from fundingRatesMap will be used
+          // Get nextFundingTime and fundingInterval from fundingRatesMap
+          // Use symbol parameter from outer scope (converted to MEXC format in connectExchangeWebSocket)
+          const fundingData = this.getFundingRate('MEXC', symbol);
+          // Use fundingRate from WebSocket (more up-to-date), but get nextFundingTime and interval from API
+          nextFundingTime = fundingData.nextFundingTime;
+          fundingInterval = fundingData.fundingInterval;
         }
         break;
 
@@ -1619,24 +1625,29 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         const response = await this.http.get<any>(url).toPromise();
         console.log(`[ArbitrageChart] Gate.io API response:`, response);
 
-        if (response && Array.isArray(response)) {
-          console.log(`[ArbitrageChart] Gate.io returned ${response.length} symbols`);
+        // Backend returns wrapped response: {code, msg, data}
+        const responseData = response?.data || response;
+
+        if (responseData && Array.isArray(responseData)) {
+          console.log(`[ArbitrageChart] Gate.io returned ${responseData.length} symbols`);
 
           // Find our symbol in the response
-          const normalizedSymbol = symbol.replace('USDT', '_USDT').replace('USDC', '_USDC');
+          // Gate.io uses concatenated format without underscores (e.g., "LSKUSDT", "BTCUSDT")
+          const normalizedSymbol = symbol.replace(/-/g, '').replace(/\//g, '').toUpperCase();
           console.log(`[ArbitrageChart] Looking for symbol: ${normalizedSymbol} (original: ${symbol})`);
 
-          const symbolData = response.find((item: any) =>
+          const symbolData = responseData.find((item: any) =>
             item.name === normalizedSymbol || item.symbol === normalizedSymbol
           );
 
           if (symbolData) {
             console.log(`[ArbitrageChart] Found symbol data:`, symbolData);
 
-            const price = parseFloat(symbolData.mark_price || symbolData.last_price || symbolData.lastPrice || '0');
-            const fundingRate = symbolData.funding_rate || symbolData.fundingRate;
-            const nextFundingTime = (symbolData.funding_next_apply || symbolData.nextFundingTime) * 1000; // Convert to ms
-            const fundingInterval = symbolData.fundingInterval; // e.g., "8h"
+            // Gate.io API returns: markPx (mark price), last (last price), fundingRate, nextFundingTime (in seconds), fundingInterval (number)
+            const price = parseFloat(symbolData.markPx || symbolData.last || symbolData.mark_price || symbolData.last_price || symbolData.lastPrice || '0');
+            const fundingRate = symbolData.fundingRate || symbolData.funding_rate;
+            const nextFundingTime = parseInt(symbolData.nextFundingTime || symbolData.funding_next_apply || '0') * 1000; // Convert seconds to ms
+            const fundingInterval = symbolData.fundingInterval; // e.g., 8, 4, 1 (hours as number)
 
             if (price > 0) {
               console.log(`[ArbitrageChart] Gate.io data updated:`, {
@@ -1652,7 +1663,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             }
           } else {
             console.warn(`[ArbitrageChart] Gate.io symbol not found: ${normalizedSymbol}`);
-            console.warn(`[ArbitrageChart] Available symbols:`, response.slice(0, 5).map((r: any) => r.name || r.symbol));
+            console.warn(`[ArbitrageChart] Available symbols:`, responseData.slice(0, 5).map((r: any) => r.name || r.symbol));
           }
         } else if (response && typeof response === 'object' && 'error' in response) {
           // Backend returned an error object
@@ -1674,12 +1685,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     // Initial fetch
     await fetchGateIOData();
 
-    // Refresh every 30 seconds (not real-time like WebSocket, but proper data)
+    // Refresh every 5 seconds for near real-time updates (Gate.io doesn't have public WebSocket)
     const interval = setInterval(() => {
       if (!this.isDestroyed) {
         fetchGateIOData();
       }
-    }, 30000);
+    }, 5000);
 
     // Store interval for cleanup
     if (!this.gateioRefreshInterval) {
@@ -1768,7 +1779,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       ws.onmessage = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
-          this.handleExchangeMessage('KUCOIN', data, onUpdate);
+          this.handleExchangeMessage('KUCOIN', symbol, data, onUpdate);
         } catch (error) {
           console.error('[ArbitrageChart] KUCOIN message parse error:', error);
         }
@@ -3340,14 +3351,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         const positions: ArbitragePosition[] = response.data.map((pos: any) => {
           // DEBUG: Log raw API data for debugging
           console.log(`[ArbitrageChart] Position ${pos.positionId} raw API data:`, {
+            fundingUpdateCount: pos.fundingUpdateCount,
             primary: {
               exchange: pos.primary.exchange,
+              entryPrice: pos.primary.entryPrice,
+              currentPrice: pos.primary.currentPrice,
               lastFundingPaid: pos.primary.lastFundingPaid,
               totalFundingEarned: pos.primary.totalFundingEarned,
               tradingFees: pos.primary.tradingFees
             },
             hedge: {
               exchange: pos.hedge.exchange,
+              entryPrice: pos.hedge.entryPrice,
+              currentPrice: pos.hedge.currentPrice,
               lastFundingPaid: pos.hedge.lastFundingPaid,
               totalFundingEarned: pos.hedge.totalFundingEarned,
               tradingFees: pos.hedge.tradingFees
@@ -3419,7 +3435,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             startedAt: new Date(pos.startedAt),
             status: pos.status,
             grossProfit,
-            netProfit
+            netProfit,
+            fundingUpdateCount: pos.fundingUpdateCount || 0
           };
         });
 
