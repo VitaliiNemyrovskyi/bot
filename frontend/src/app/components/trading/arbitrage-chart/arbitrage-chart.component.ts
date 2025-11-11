@@ -1415,11 +1415,18 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             nextFundingTime = parseInt(data.T); // 'T' = next funding time (timestamp in ms)
           }
 
+          // Get fundingInterval from fundingRatesMap (BINANCE WebSocket doesn't provide interval)
+          const fundingData = this.getFundingRate('BINANCE', symbol);
+          if (!fundingInterval) {
+            fundingInterval = fundingData.fundingInterval;
+          }
+
           console.log(`[ArbitrageChart] BINANCE mark price:`, {
             symbol: data.s,
             price,
             fundingRate,
-            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined
+            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined,
+            fundingInterval
           });
         } else {
           console.warn(`[ArbitrageChart] BINANCE message format not recognized:`, data);
@@ -1449,10 +1456,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           const fundingData = this.getFundingRate('BINGX', symbolForLookup);
           fundingRate = fundingData.fundingRate;
           nextFundingTime = fundingData.nextFundingTime;
+          fundingInterval = fundingData.fundingInterval;
 
           // console.log(`[ArbitrageChart] BingX funding data for ${symbolForLookup}:`, {
           //   fundingRate,
-          //   nextFundingTime
+          //   nextFundingTime,
+          //   fundingInterval
           // });
         } else if (data.code !== undefined) {
           // Handle BingX response codes
@@ -1511,6 +1520,12 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
           if (data.data[0].ts) {
             timestamp = typeof data.data[0].ts === 'string' ? parseInt(data.data[0].ts) : Number(data.data[0].ts);
           }
+
+          // Get fundingInterval from fundingRatesMap (OKX WebSocket doesn't provide interval)
+          const fundingData = this.getFundingRate('OKX', symbol);
+          if (!fundingInterval) {
+            fundingInterval = fundingData.fundingInterval;
+          }
         }
         break;
 
@@ -1529,7 +1544,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             timestamp = typeof data.ts === 'string' ? parseInt(data.ts) : Number(data.ts);
           }
 
-          // Funding rate and next funding time
+          // Funding rate and next funding time from WebSocket
           if (tickerData.fundingRate) {
             fundingRate = tickerData.fundingRate;
           }
@@ -1538,11 +1553,19 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
             nextFundingTime = parseInt(tickerData.nextFundingTime);
           }
 
+          // Get fundingInterval from fundingRatesMap (BITGET WebSocket doesn't provide interval)
+          const fundingData = this.getFundingRate('BITGET', symbol);
+          // Use WebSocket fundingRate and nextFundingTime (more up-to-date), but get interval from API
+          if (!fundingInterval) {
+            fundingInterval = fundingData.fundingInterval;
+          }
+
           console.log(`[ArbitrageChart] BITGET ticker parsed:`, {
             instId: tickerData.instId,
             price,
             fundingRate,
-            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined
+            nextFundingTime: nextFundingTime ? new Date(nextFundingTime).toISOString() : undefined,
+            fundingInterval
           });
         } else if (data.event) {
           // Handle subscription events (subscribe, error, etc.)
