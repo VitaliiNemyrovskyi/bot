@@ -157,14 +157,18 @@ export async function GET(request: NextRequest) {
         primaryCredentials.apiKey,
         primaryCredentials.apiSecret,
         primaryCredentials.environment === 'TESTNET',
-        primaryCredentials.authToken
+        primaryCredentials.authToken,
+        userId,
+        primaryCredentials.id
       );
       hedgeConnector = getConnector(
         hedgeExchange,
         hedgeCredentials.apiKey,
         hedgeCredentials.apiSecret,
         hedgeCredentials.environment === 'TESTNET',
-        hedgeCredentials.authToken
+        hedgeCredentials.authToken,
+        userId,
+        hedgeCredentials.id
       );
 
       await primaryConnector.initialize();
@@ -283,14 +287,16 @@ function getConnector(
   apiKey: string,
   apiSecret: string,
   isTestnet: boolean,
-  authToken?: string | null
+  authToken?: string | null,
+  userId?: string,
+  credentialId?: string
 ): BaseExchangeConnector {
   return ExchangeConnectorFactory.create(
     exchange,
     apiKey,
     apiSecret,
-    undefined, // userId
-    undefined, // credentialId
+    userId, // Pass userId for persistent time sync caching
+    credentialId, // Pass credentialId for persistent time sync caching
     authToken || undefined
   );
 }
