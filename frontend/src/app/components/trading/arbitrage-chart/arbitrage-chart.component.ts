@@ -4426,12 +4426,17 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     if (data.fundingIntervalStr) {
       const match = data.fundingIntervalStr.match(/^(\d+)h$/);
       if (match) {
-        return parseInt(match[1], 10);
+        const hours = parseInt(match[1], 10);
+        // Validate that hours > 0 (0h means no data available)
+        if (hours > 0) {
+          return hours;
+        }
       }
     }
 
     // Fallback to calculated fundingInterval in milliseconds (can be inaccurate)
-    if (data.fundingInterval !== undefined) {
+    // Only use if > 0 (0 means no data available)
+    if (data.fundingInterval !== undefined && data.fundingInterval > 0) {
       return data.fundingInterval / (1000 * 60 * 60); // Convert ms to hours
     }
 
