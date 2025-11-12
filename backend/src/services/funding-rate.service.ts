@@ -56,6 +56,7 @@ export interface ArbitrageOpportunity {
   markPrice: number;
   volume24h: number;
   openInterest: number;
+  exchange?: string; // Added by opportunities endpoint
 }
 
 /**

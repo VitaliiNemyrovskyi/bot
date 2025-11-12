@@ -1,0 +1,161 @@
+:host {
+  display: block;
+  padding: 2rem;
+  background-color: var(--background-color-secondary);
+  border-radius: var(--border-radius-lg);
+}
+
+.farm-container {
+  h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color-primary);
+  }
+
+  p {
+    font-size: 1rem;
+    color: var(--text-color-secondary);
+    margin-bottom: 2rem;
+  }
+}
+
+.filters-container {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background-color: var(--background-color-tertiary);
+  border-radius: var(--border-radius-md);
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: var(--text-color-secondary);
+  }
+
+  .exchange-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.farm-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--background-color-tertiary);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+
+  thead {
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-color-secondary);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--border-color);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &:hover {
+        background-color: var(--background-color-hover);
+      }
+
+      td {
+        padding: 1rem;
+        vertical-align: middle;
+        color: var(--text-color-primary);
+      }
+    }
+  }
+}
+
+.text-right {
+  text-align: right;
+}
+
+.positive-rate {
+  color: var(--success-color);
+  font-weight: 500;
+}
+
+.negative-rate {
+  color: var(--danger-color);
+  font-weight: 500;
+}
+
+.exchange-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background-color: var(--background-color-secondary);
+  border: 1px solid var(--border-color);
+}
+
+// Add specific exchange colors for better readability if needed
+.exchange-bybit { background-color: #1e293b; color: #f8b813; border-color: #f8b813; }
+.exchange-bingx { background-color: #1e293b; color: #4a90e2; border-color: #4a90e2; }
+.exchange-binance { background-color: #1e293b; color: #f0b90b; border-color: #f0b90b; }
+.exchange-gateio { background-color: #1e293b; color: #00a1e0; border-color: #00a1e0; }
+.exchange-bitget { background-color: #1e293b; color: #00e0e0; border-color: #00e0e0; }
+.exchange-okx { background-color: #1e293b; color: #52a8ec; border-color: #52a8ec; }
+.exchange-kucoin { background-color: #1e293b; color: #24ae8f; border-color: #24ae8f; }
+
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 4rem auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  text-align: center;
+  color: var(--text-color-secondary);
+  font-size: 1.1rem;
+}
+
+.no-data-message {
+  text-align: center;
+  padding: 4rem 2rem;
+  background-color: var(--background-color-tertiary);
+  border-radius: var(--border-radius-md);
+
+  p {
+    margin: 0;
+    line-height: 1.6;
+    &:first-child {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: var(--text-color-primary);
+      margin-bottom: 0.5rem;
+    }
+  }
+}

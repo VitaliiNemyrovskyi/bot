@@ -1,0 +1,70 @@
+<div class="farm-container">
+  <h1>Funding Farm</h1>
+  <p>Top funding rate opportunities across all exchanges, sorted by the highest absolute rate.</p>
+
+  <div class="filters-container">
+    <h3>Filter by Exchange:</h3>
+    <div class="exchange-filters">
+      <ui-button
+        *ngFor="let exchange of availableExchanges; trackBy: trackByExchange"
+        (clicked)="toggleExchangeFilter(exchange)"
+        [variant]="isExchangeSelected(exchange) ? 'primary' : 'secondary'"
+        size="small"
+        className="filter-button"
+      >
+        {{ exchange }}
+      </ui-button>
+    </div>
+  </div>
+
+  <div class="table-container" *ngIf="filteredOpportunities$ | async as opportunities; else loading">
+    <table class="farm-table" *ngIf="opportunities.length > 0; else noData">
+      <thead>
+        <tr>
+          <th>Exchange</th>
+          <th>Symbol</th>
+          <th class="text-right">Funding Rate (1h)</th>
+          <th class="text-right">Annualized Rate</th>
+          <th>Next Funding</th>
+          <th class="text-right">Mark Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let op of opportunities">
+          <td><span class="exchange-badge exchange-{{ op.exchange.toLowerCase() }}">{{ op.exchange }}</span></td>
+          <td>{{ op.symbol }}</td>
+          <td class="text-right">
+            <span [ngClass]="{
+              'positive-rate': op.fundingRate > 0,
+              'negative-rate': op.fundingRate < 0
+            }">
+              {{ (op.fundingRate * 100).toFixed(4) }}%
+            </span>
+          </td>
+          <td class="text-right">
+            <span [ngClass]="{
+              'positive-rate': op.annualizedRate > 0,
+              'negative-rate': op.annualizedRate < 0
+            }">
+              {{ op.annualizedRate.toFixed(2) }}%
+            </span>
+          </td>
+          <td>{{ op.nextFundingTime | date:'medium' }}</td>
+          <td class="text-right">{{ op.markPrice.toFixed(4) }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <ng-template #noData>
+      <div class="no-data-message">
+        <p>No funding rate opportunities found for the selected exchanges.</p>
+        <p>Try adjusting your filters or check back later.</p>
+      </div>
+    </ng-template>
+  </div>
+
+  <ng-template #loading>
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Loading funding opportunities...</p>
+  </ng-template>
+</div>

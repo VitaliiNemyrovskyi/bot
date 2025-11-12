@@ -75,5 +75,10 @@ export const routes: Routes = [
     path: 'arbitrage/opportunities',
     loadComponent: () => import('./pages/price-arbitrage-opportunities/price-arbitrage-opportunities.component').then(m => m.PriceArbitrageOpportunitiesComponent),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'farm',
+    loadComponent: () => import('./pages/farm/farm.component').then(m => m.FarmComponent),
+    canActivate: [AuthGuard]
   }
 ];
