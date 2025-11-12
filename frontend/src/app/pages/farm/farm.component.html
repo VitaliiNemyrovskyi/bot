@@ -49,7 +49,11 @@
               {{ op.annualizedRate.toFixed(2) }}%
             </span>
           </td>
-          <td>{{ op.nextFundingTime | date:'medium' }}</td>
+          <td>
+            <ng-container *ngIf="currentTime$ | async">
+              {{ getCountdown(op.nextFundingTime) }}
+            </ng-container>
+          </td>
           <td class="text-right">{{ op.markPrice.toFixed(4) }}</td>
         </tr>
       </tbody>
