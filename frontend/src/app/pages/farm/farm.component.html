@@ -24,7 +24,6 @@
           <th>Exchange</th>
           <th>Symbol</th>
           <th class="text-right">Funding Rate (1h)</th>
-          <th class="text-right">Annualized Rate</th>
           <th>Next Funding</th>
           <th class="text-right">Mark Price</th>
         </tr>
@@ -39,14 +38,6 @@
               'negative-rate': op.fundingRate < 0
             }">
               {{ (op.fundingRate * 100).toFixed(4) }}%
-            </span>
-          </td>
-          <td class="text-right">
-            <span [ngClass]="{
-              'positive-rate': op.annualizedRate > 0,
-              'negative-rate': op.annualizedRate < 0
-            }">
-              {{ op.annualizedRate.toFixed(2) }}%
             </span>
           </td>
           <td>
