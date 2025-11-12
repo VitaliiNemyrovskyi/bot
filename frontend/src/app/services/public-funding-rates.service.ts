@@ -6,6 +6,53 @@ import { StatisticalUtilsService } from './statistical-utils.service';
 import { normalizeFundingRateTo1h } from '@shared/lib';
 
 /**
+ * Intermediate data structures for refactored calculateOpportunities method
+ */
+interface PriceSpreadData {
+  priceSpread: number;
+  priceSpreadPercent: string;
+  priceSpreadUsdt: string;
+  bestLongPrice: number;
+  bestShortPrice: number;
+}
+
+interface AdvancedMetrics {
+  fundingSpread: number;
+  fundingSpreadPercent: string;
+  fundingPeriodicity: string;
+  timeToFunding: string;
+  estimatedAPR: number;
+  estimatedAPRFormatted: string;
+  totalFees: number;
+  totalFeesFormatted: string;
+  netAPR: number;
+  netAPRFormatted: string;
+  volume24h: number | undefined;
+  volume24hFormatted: string | undefined;
+  openInterest: number | undefined;
+  openInterestFormatted: string | undefined;
+  volatility24h: number | undefined;
+  volatility24hFormatted: string | undefined;
+}
+
+interface StrategyInfo {
+  recommendedStrategy: 'cross-exchange' | 'spot-futures';
+  spotFuturesBestExchange: ExchangeFundingRate | undefined;
+}
+
+interface StrategyMetricsData {
+  strategyMetrics: {
+    combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+  };
+  strategyType: 'price_only' | 'funding_only' | 'combined';
+  combinedScore: number | undefined;
+  expectedDailyReturn: number | undefined;
+  estimatedMonthlyROI: number | undefined;
+}
+
+/**
  * Public Funding Rates Service
  *
  * Fetches funding rate data directly from exchange public APIs
@@ -385,240 +432,335 @@ export class PublicFundingRatesService {
   /**
    * Calculate arbitrage opportunities from exchange data
    * Groups by symbol and calculates spreads
-   * IMPORTANT: Normalizes all funding rates to 8h intervals for fair comparison
+   * IMPORTANT: Normalizes all funding rates to 1h intervals for fair comparison
    */
   private calculateOpportunities(rates: ExchangeFundingRate[]): FundingRateOpportunity[] {
-    // Group by normalized symbol
+    const symbolMap = this.groupRatesBySymbol(rates);
+    const opportunities: FundingRateOpportunity[] = [];
+
+    symbolMap.forEach((exchanges: ExchangeFundingRate[], symbol: string) => {
+      if (exchanges.length < 2) {
+        return;
+      }
+
+      const sortedExchanges: ExchangeFundingRate[] = this.sortExchangesByPrice(exchanges); //  this.sortExchangesByFundingRate(exchanges);
+      const bestLong: ExchangeFundingRate = sortedExchanges[0];
+      const bestShort: ExchangeFundingRate = sortedExchanges[sortedExchanges.length - 1];
+
+      const priceSpreadData: PriceSpreadData = this.calculatePriceSpreadData(bestLong, bestShort);
+
+      if (!this.validateOpportunityData(symbol, priceSpreadData)) {
+        return;
+      }
+
+      const nextFundingTime: number = this.getEarliestFundingTime(exchanges);
+      const advancedMetrics = this.calculateAdvancedMetrics(bestLong, bestShort, exchanges, nextFundingTime);
+      const strategyInfo = this.determineRecommendedStrategy(bestLong, bestShort);
+      const strategyMetrics = this.calculateAllStrategyMetrics(priceSpreadData, advancedMetrics.fundingSpread);
+
+      const opportunity = this.buildOpportunityObject(
+        symbol,
+        sortedExchanges,
+        bestLong,
+        bestShort,
+        priceSpreadData,
+        advancedMetrics,
+        strategyInfo,
+        strategyMetrics,
+        nextFundingTime
+      );
+
+      opportunities.push(opportunity);
+    });
+
+    opportunities.sort((a, b) => Math.abs((b.fundingSpread || 0)) - Math.abs((a.fundingSpread || 0)));
+    console.log(`[PublicFundingRates] Calculated ${opportunities.length} opportunities`);
+
+    return opportunities;
+  }
+
+  /**
+   * Group exchange rates by normalized symbol and normalize funding rates
+   */
+  private groupRatesBySymbol(rates: ExchangeFundingRate[]): Map<string, ExchangeFundingRate[]> {
     const symbolMap = new Map<string, ExchangeFundingRate[]>();
 
-    // Add normalized funding rates and calculate intervals based on real data
-    rates.forEach(rate => {
+    rates.forEach((rate: ExchangeFundingRate) => {
       if (!symbolMap.has(rate.symbol)) {
         symbolMap.set(rate.symbol, []);
       }
 
-      // Calculate funding interval from actual nextFundingTime (not hardcoded!)
-      // if (!rate.fundingInterval && rate.nextFundingTime) {
-      //   rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
-      // }
-
-      // ✅ Normalize funding rate to 1h interval using centralized function from @shared/lib
-      // This ensures fair comparison across exchanges with different intervals (1h, 4h, 8h)
-      rate.fundingRateNormalized = this.normalizeFundingRate(rate.fundingRate, rate.fundingInterval || '-');
+      rate.fundingRateNormalized = this.normalizeFundingRate(
+        rate.fundingRate,
+        rate.fundingInterval || '-'
+      );
 
       symbolMap.get(rate.symbol)!.push(rate);
     });
 
-    const opportunities: FundingRateOpportunity[] = [];
+    return symbolMap;
+  }
 
-    // Calculate opportunities for each symbol
-    symbolMap.forEach((exchanges: ExchangeFundingRate[], symbol: string) => {
-      // Skip symbols with only one exchange
-      if (exchanges.length < 2) return;
+  /**
+   * Sort exchanges by normalized funding rate (lowest to highest)
+   */
+  private sortExchangesByFundingRate(exchanges: ExchangeFundingRate[]): ExchangeFundingRate[] {
+    return [...exchanges].sort(
+      (a: ExchangeFundingRate, b: ExchangeFundingRate) =>
+        (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
+    );
+  }
 
-      // Sort by NORMALIZED funding rate (lowest to highest) - CRITICAL for fair comparison!
-      const sortedExchanges: ExchangeFundingRate[] = [...exchanges].sort(
-        (a: ExchangeFundingRate, b: ExchangeFundingRate) => (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
+  private sortExchangesByPrice(exchanges: ExchangeFundingRate[]): ExchangeFundingRate[] {
+    return [...exchanges].sort(
+        (a: ExchangeFundingRate, b: ExchangeFundingRate) => Math.abs(parseFloat(a.lastPrice) - parseFloat(b.lastPrice))
+    );
+  }
+
+  /**
+   * Calculate price spread data between two exchanges
+   */
+  private calculatePriceSpreadData(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate
+  ): PriceSpreadData {
+    const bestLongPrice = parseFloat(bestLong.lastPrice);
+    const bestShortPrice = parseFloat(bestShort.lastPrice);
+    const priceSpread = Math.abs(bestShortPrice - bestLongPrice) / bestLongPrice;
+    const priceSpreadPercent = Math.abs(priceSpread * 100).toFixed(2);
+    const priceSpreadUsdt = Math.abs(bestShortPrice - bestLongPrice).toFixed(2);
+
+    return {
+      priceSpread,
+      priceSpreadPercent,
+      priceSpreadUsdt,
+      bestLongPrice,
+      bestShortPrice
+    };
+  }
+
+  /**
+   * Validate opportunity data to filter out invalid entries
+   */
+  private validateOpportunityData(
+    symbol: string,
+    priceSpreadData: { priceSpread: number; priceSpreadPercent: string; bestLongPrice: number; bestShortPrice: number }
+  ): boolean {
+    if (Math.abs(priceSpreadData.priceSpread) > 1.0) {
+      console.debug(
+        `[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadData.priceSpreadPercent}%`
       );
+      return false;
+    }
 
-      const bestLong: ExchangeFundingRate = sortedExchanges[0]; // Lowest (most negative) normalized funding rate
-      const bestShort: ExchangeFundingRate = sortedExchanges[sortedExchanges.length - 1]; // Highest normalized funding rate
+    if (priceSpreadData.bestLongPrice <= 0 || priceSpreadData.bestShortPrice <= 0) {
+      console.debug(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
+      return false;
+    }
 
-      // Calculate funding spread using NORMALIZED rates
-      const fundingSpread: number = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
-      const fundingSpreadPercent: string = (fundingSpread * 100).toFixed(4);
+    return true;
+  }
 
-      // Calculate price spread
-      const bestLongPrice: number = parseFloat(bestLong.lastPrice);
-      const bestShortPrice: number = parseFloat(bestShort.lastPrice);
-      const priceSpread = Math.abs(bestShortPrice - bestLongPrice) / bestLongPrice;
-      const priceSpreadPercent = Math.abs(priceSpread * 100).toFixed(2);
-      const priceSpreadUsdt = Math.abs(bestShortPrice - bestLongPrice).toFixed(2);
+  /**
+   * Get earliest next funding time from exchanges
+   */
+  private getEarliestFundingTime(exchanges: ExchangeFundingRate[]): number {
+    const fundingTimes = exchanges
+      .map((e: ExchangeFundingRate) => e.nextFundingTime)
+      .filter(t => t > 0);
+    return fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
+  }
 
-      // Get earliest next funding time
-      const fundingTimes = exchanges.map((e: ExchangeFundingRate) => e.nextFundingTime).filter(t => t > 0);
-      const nextFundingTime = fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
+  /**
+   * Calculate advanced metrics including funding spread, APR, fees, volume, etc.
+   */
+  private calculateAdvancedMetrics(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate,
+    exchanges: ExchangeFundingRate[],
+    nextFundingTime: number
+  ): AdvancedMetrics {
+    const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
+    const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
+    const fundingPeriodicity = this.calculateFundingPeriodicity(nextFundingTime);
+    const timeToFunding = this.calculateTimeToFunding(nextFundingTime);
+    const estimatedAPR = this.calculateEstimatedAPR(fundingSpread);
+    const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
+    const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
+    const totalFeesFormatted = (totalFees * 100).toFixed(2) + '%';
+    const netAPR = this.calculateNetAPR(estimatedAPR, totalFees);
+    const netAPRFormatted = (netAPR * 100).toFixed(2) + '%';
+    const volume24h = this.calculateVolume24h(exchanges);
+    const volume24hFormatted = volume24h !== undefined ? '$' + this.formatLargeNumber(volume24h) : undefined;
+    const openInterest = this.calculateOpenInterest(exchanges);
+    const openInterestFormatted = openInterest !== undefined ? '$' + this.formatLargeNumber(openInterest) : undefined;
+    const volatility24h = this.calculateVolatility24h(exchanges);
+    const volatility24hFormatted = volatility24h !== undefined ? (volatility24h * 100).toFixed(2) + '%' : undefined;
 
-      // Calculate funding periodicity
-      const fundingPeriodicity = this.calculateFundingPeriodicity(nextFundingTime);
+    return {
+      fundingSpread,
+      fundingSpreadPercent,
+      fundingPeriodicity,
+      timeToFunding,
+      estimatedAPR,
+      estimatedAPRFormatted,
+      totalFees,
+      totalFeesFormatted,
+      netAPR,
+      netAPRFormatted,
+      volume24h,
+      volume24hFormatted,
+      openInterest,
+      openInterestFormatted,
+      volatility24h,
+      volatility24hFormatted
+    };
+  }
 
-      // Filter out unrealistic spreads (> 100%)
-      if (Math.abs(priceSpread) > 1.0) {
-        console.debug(`[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadPercent}%`);
-        return;
-      }
+  /**
+   * Determine recommended strategy (spot-futures vs cross-exchange)
+   */
+  private determineRecommendedStrategy(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate
+  ): StrategyInfo {
+    const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
+    const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
 
-      // Filter out invalid prices
-      if (bestLongPrice <= 0 || bestShortPrice <= 0) {
-        console.debug(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
-        return;
-      }
+    if (bestLongFundingNormalized > 0 && bestShortFundingNormalized > 0) {
+      return {
+        recommendedStrategy: 'spot-futures',
+        spotFuturesBestExchange: bestShort
+      };
+    }
 
-      // ===== Phase 1 Advanced Metrics Calculations =====
+    return {
+      recommendedStrategy: 'cross-exchange',
+      spotFuturesBestExchange: undefined
+    };
+  }
 
-      // 1. Time to Funding
-      const timeToFunding = this.calculateTimeToFunding(nextFundingTime);
+  /**
+   * Calculate metrics for all applicable strategies
+   */
+  private calculateAllStrategyMetrics(
+    priceSpreadData: { priceSpread: number },
+    fundingSpread: number
+  ): StrategyMetricsData {
+    const strategyMetrics: {
+      combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+      priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+      fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    } = {};
 
-      // 2. Estimated APR (gross, before fees)
-      const estimatedAPR = this.calculateEstimatedAPR(fundingSpread);
-      const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
+    const priceSpreadPct = priceSpreadData.priceSpread * 100;
+    const fundingDifferentialPct = fundingSpread * 100;
+    const dailyFundingReturn = fundingDifferentialPct * 3;
 
-      // 3. Total Fees
-      const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
-      const totalFeesFormatted = (totalFees * 100).toFixed(2) + '%';
+    if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpreadData.priceSpread) > 0.0001) {
+      strategyMetrics.combined = {
+        expectedDailyReturn: priceSpreadPct + dailyFundingReturn,
+        estimatedMonthlyROI: priceSpreadPct + (dailyFundingReturn * 30),
+        combinedScore: priceSpreadPct + (dailyFundingReturn * 7)
+      };
+    }
 
-      // 4. Net APR (after fees)
-      const netAPR = this.calculateNetAPR(estimatedAPR, totalFees);
-      const netAPRFormatted = (netAPR * 100).toFixed(2) + '%';
+    if (Math.abs(priceSpreadData.priceSpread) > 0.0001) {
+      strategyMetrics.priceOnly = {
+        combinedScore: priceSpreadPct,
+        expectedDailyReturn: priceSpreadPct,
+        estimatedMonthlyROI: priceSpreadPct
+      };
+    }
 
-      // 5. 24h Volume (optional)
-      const volume24h = this.calculateVolume24h(exchanges);
-      const volume24hFormatted = volume24h !== undefined ? '$' + this.formatLargeNumber(volume24h) : undefined;
+    if (Math.abs(fundingSpread) > 0.0001) {
+      strategyMetrics.fundingOnly = {
+        combinedScore: dailyFundingReturn * 7,
+        expectedDailyReturn: dailyFundingReturn,
+        estimatedMonthlyROI: dailyFundingReturn * 30
+      };
+    }
 
-      // 6. Open Interest (optional)
-      const openInterest = this.calculateOpenInterest(exchanges);
-      const openInterestFormatted = openInterest !== undefined ? '$' + this.formatLargeNumber(openInterest) : undefined;
+    let strategyType: 'price_only' | 'funding_only' | 'combined' = 'combined';
+    let combinedScore: number | undefined;
+    let expectedDailyReturn: number | undefined;
+    let estimatedMonthlyROI: number | undefined;
 
-      // 7. Volatility 24h (optional)
-      const volatility24h = this.calculateVolatility24h(exchanges);
-      const volatility24hFormatted = volatility24h !== undefined ? (volatility24h * 100).toFixed(2) + '%' : undefined;
+    if (strategyMetrics.combined) {
+      strategyType = 'combined';
+      combinedScore = strategyMetrics.combined.combinedScore;
+      expectedDailyReturn = strategyMetrics.combined.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.combined.estimatedMonthlyROI;
+    } else if (strategyMetrics.priceOnly) {
+      strategyType = 'price_only';
+      combinedScore = strategyMetrics.priceOnly.combinedScore;
+      expectedDailyReturn = strategyMetrics.priceOnly.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.priceOnly.estimatedMonthlyROI;
+    } else if (strategyMetrics.fundingOnly) {
+      strategyType = 'funding_only';
+      combinedScore = strategyMetrics.fundingOnly.combinedScore;
+      expectedDailyReturn = strategyMetrics.fundingOnly.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.fundingOnly.estimatedMonthlyROI;
+    }
 
-      // 8. Determine Recommended Strategy (spot-futures vs cross-exchange)
-      let recommendedStrategy: 'cross-exchange' | 'spot-futures' = 'cross-exchange';
-      let spotFuturesBestExchange: ExchangeFundingRate | undefined;
+    return {
+      strategyMetrics,
+      strategyType,
+      combinedScore,
+      expectedDailyReturn,
+      estimatedMonthlyROI
+    };
+  }
 
-      const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
-      const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
-
-      // If BOTH funding rates are positive, spot-futures is more profitable
-      // Spot-futures: Buy spot + Short futures on same exchange = earn full funding rate
-      // Cross-exchange: Short on high funding - Long on low funding = earn only the spread
-      if (bestLongFundingNormalized > 0 && bestShortFundingNormalized > 0) {
-        recommendedStrategy = 'spot-futures';
-        // Choose exchange with highest funding rate for spot-futures
-        spotFuturesBestExchange = bestShort; // Highest funding rate
-       // console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both normalized fundings positive: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
-      } else {
-        recommendedStrategy = 'cross-exchange';
-       // console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
-      }
-
-      // 9. Strategy Metrics Calculation
-      // Calculate metrics for ALL applicable strategies (not mutually exclusive)
-      // Each opportunity can have multiple strategies calculated
-
-      const strategyMetrics: {
-        combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
-        priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
-        fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; };
-      } = {};
-
-      // Convert to percentages for calculations (use different variable names to avoid redeclaration)
-      const priceSpreadPct = priceSpread * 100;
-      const fundingDifferentialPct = fundingSpread * 100;
-      const dailyFundingReturn = fundingDifferentialPct * 3; // 3 funding periods per day (every 8h)
-
-      // Combined Strategy: If has both price AND funding data
-      if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpread) > 0.0001) {
-        strategyMetrics.combined = {
-          // Expected daily return = price spread (one-time) + funding differential (3 times per day)
-          expectedDailyReturn: priceSpreadPct + dailyFundingReturn,
-          // Estimated monthly ROI = price spread (one-time) + funding for 30 days
-          estimatedMonthlyROI: priceSpreadPct + (dailyFundingReturn * 30),
-          // Combined score = immediate price spread + projected funding for 7 days
-          combinedScore: priceSpreadPct + (dailyFundingReturn * 7),
-        };
-      }
-
-      // // Price Only Strategy: If has price spread
-      // if (Math.abs(priceSpread) > 0.0001) {
-      //   strategyMetrics.priceOnly = {
-      //     combinedScore: priceSpreadPct,
-      //     expectedDailyReturn: priceSpreadPct,
-      //     estimatedMonthlyROI: priceSpreadPct,
-      //   };
-      // }
-      //
-      // // Funding Only Strategy: If has funding spread
-      // if (Math.abs(fundingSpread) > 0.0001) {
-      //   strategyMetrics.fundingOnly = {
-      //     combinedScore: dailyFundingReturn * 7,
-      //     expectedDailyReturn: dailyFundingReturn,
-      //     estimatedMonthlyROI: dailyFundingReturn * 30,
-      //   };
-      // }
-
-      // LEGACY FIELDS - determine default strategyType and metrics for backward compatibility
-      // Priority: combined > price_only > funding_only
-      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'combined';
-      let combinedScore: number | undefined;
-      let expectedDailyReturn: number | undefined;
-      let estimatedMonthlyROI: number | undefined;
-
-      if (strategyMetrics.combined) {
-        strategyType = 'combined';
-        combinedScore = strategyMetrics.combined.combinedScore;
-        expectedDailyReturn = strategyMetrics.combined.expectedDailyReturn;
-        estimatedMonthlyROI = strategyMetrics.combined.estimatedMonthlyROI;
-      } else if (strategyMetrics.priceOnly) {
-        strategyType = 'price_only';
-        combinedScore = strategyMetrics.priceOnly.combinedScore;
-        expectedDailyReturn = strategyMetrics.priceOnly.expectedDailyReturn;
-        estimatedMonthlyROI = strategyMetrics.priceOnly.estimatedMonthlyROI;
-      } else if (strategyMetrics.fundingOnly) {
-        strategyType = 'funding_only';
-        combinedScore = strategyMetrics.fundingOnly.combinedScore;
-        expectedDailyReturn = strategyMetrics.fundingOnly.expectedDailyReturn;
-        estimatedMonthlyROI = strategyMetrics.fundingOnly.estimatedMonthlyROI;
-      }
-
-      opportunities.push({
-        symbol,
-        exchanges: sortedExchanges,
-        maxFundingSpread: fundingSpread, // LEGACY - kept for backward compatibility
-        maxFundingSpreadPercent: fundingSpreadPercent + '%', // LEGACY
-        fundingSpread: fundingSpread, // Normalized funding spread (8h basis)
-        fundingSpreadPercent: fundingSpreadPercent + '%', // Normalized funding spread percentage
-        bestLong,
-        bestShort,
-        priceSpread,
-        priceSpreadPercent: priceSpreadPercent + '%',
-        priceSpreadUsdt: '$' + priceSpreadUsdt,
-        fundingPeriodicity,
-        nextFundingTime,
-        // Phase 1 Advanced Metrics
-        timeToFunding,
-        estimatedAPR,
-        estimatedAPRFormatted,
-        totalFees,
-        totalFeesFormatted,
-        netAPR,
-        netAPRFormatted,
-        volume24h,
-        volume24hFormatted,
-        openInterest,
-        openInterestFormatted,
-        volatility24h,
-        volatility24hFormatted,
-        // Strategy Metrics - ALL applicable strategies calculated
-        strategyMetrics,
-        // LEGACY Combined Strategy Metrics - for backward compatibility
-        combinedScore,
-        expectedDailyReturn,
-        estimatedMonthlyROI,
-        strategyType,
-        // Recommended Strategy
-        recommendedStrategy,
-        spotFuturesBestExchange,
-      });
-    });
-
-    // Sort by NORMALIZED funding spread (highest first) - uses fundingSpread which is now normalized
-    opportunities.sort((a, b) => Math.abs((b.fundingSpread || 0)) - Math.abs((a.fundingSpread || 0)));
-
-    console.log(`[PublicFundingRates] Calculated ${opportunities.length} opportunities`);
-
-    return opportunities;
+  /**
+   * Build final opportunity object with all calculated data
+   */
+  private buildOpportunityObject(
+    symbol: string,
+    sortedExchanges: ExchangeFundingRate[],
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate,
+    priceSpreadData: PriceSpreadData,
+    advancedMetrics: AdvancedMetrics,
+    strategyInfo: StrategyInfo,
+    strategyMetricsData: StrategyMetricsData,
+    nextFundingTime: number
+  ): FundingRateOpportunity {
+    return {
+      symbol,
+      exchanges: sortedExchanges,
+      maxFundingSpread: advancedMetrics.fundingSpread,
+      maxFundingSpreadPercent: advancedMetrics.fundingSpreadPercent + '%',
+      fundingSpread: advancedMetrics.fundingSpread,
+      fundingSpreadPercent: advancedMetrics.fundingSpreadPercent + '%',
+      bestLong,
+      bestShort,
+      priceSpread: priceSpreadData.priceSpread,
+      priceSpreadPercent: priceSpreadData.priceSpreadPercent + '%',
+      priceSpreadUsdt: '$' + priceSpreadData.priceSpreadUsdt,
+      fundingPeriodicity: advancedMetrics.fundingPeriodicity,
+      nextFundingTime,
+      timeToFunding: advancedMetrics.timeToFunding,
+      estimatedAPR: advancedMetrics.estimatedAPR,
+      estimatedAPRFormatted: advancedMetrics.estimatedAPRFormatted,
+      totalFees: advancedMetrics.totalFees,
+      totalFeesFormatted: advancedMetrics.totalFeesFormatted,
+      netAPR: advancedMetrics.netAPR,
+      netAPRFormatted: advancedMetrics.netAPRFormatted,
+      volume24h: advancedMetrics.volume24h,
+      volume24hFormatted: advancedMetrics.volume24hFormatted,
+      openInterest: advancedMetrics.openInterest,
+      openInterestFormatted: advancedMetrics.openInterestFormatted,
+      volatility24h: advancedMetrics.volatility24h,
+      volatility24hFormatted: advancedMetrics.volatility24hFormatted,
+      strategyMetrics: strategyMetricsData.strategyMetrics,
+      combinedScore: strategyMetricsData.combinedScore,
+      expectedDailyReturn: strategyMetricsData.expectedDailyReturn,
+      estimatedMonthlyROI: strategyMetricsData.estimatedMonthlyROI,
+      strategyType: strategyMetricsData.strategyType,
+      recommendedStrategy: strategyInfo.recommendedStrategy,
+      spotFuturesBestExchange: strategyInfo.spotFuturesBestExchange
+    };
   }
 
   /**
