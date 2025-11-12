@@ -291,19 +291,19 @@ export async function getArbitrageOpportunities(
   limit: number = 20
 ): Promise<ArbitrageOpportunity[]> {
   try {
-    // Get latest funding rates for all symbols
+    // Get latest funding rates for all symbols from public_funding_rates table
     const latestRates = await prisma.$queryRaw<any[]>`
       SELECT DISTINCT ON (symbol)
         symbol,
         "fundingRate",
         "nextFundingTime",
         "markPrice",
-        volume24h,
-        "openInterest",
-        "recordedAt"
-      FROM funding_rates
-      WHERE exchange = ${exchange}
-      ORDER BY symbol, "recordedAt" DESC
+        0 as volume24h,
+        0 as "openInterest",
+        timestamp as "recordedAt"
+      FROM public_funding_rates
+      WHERE exchange = ${exchange}::"Exchange"
+      ORDER BY symbol, timestamp DESC
     `;
 
     const opportunities: ArbitrageOpportunity[] = [];
