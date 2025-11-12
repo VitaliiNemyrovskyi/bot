@@ -55,15 +55,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create connector and close position
-    const testnet = credentials.environment === 'TESTNET';
     let connector: BingXConnector | BybitConnector;
 
     switch (exchange.toUpperCase()) {
       case 'BINGX':
         connector = new BingXConnector(
           credentials.apiKey,
-          credentials.apiSecret,
-          testnet
+          credentials.apiSecret
         );
         await connector.initialize();
         break;
@@ -71,8 +69,7 @@ export async function POST(request: NextRequest) {
       case 'BYBIT':
         connector = new BybitConnector(
           credentials.apiKey,
-          credentials.apiSecret,
-          testnet
+          credentials.apiSecret
         );
         await connector.initialize();
         break;
@@ -98,9 +95,10 @@ export async function POST(request: NextRequest) {
         },
         message: `Position closed successfully on ${exchange}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If no position exists, that's not an error
-      if (error.message && (error.message.includes('no position') || error.message.includes('No open position'))) {
+      const errorMessage = error instanceof Error ? error.message : '';
+      if (errorMessage && (errorMessage.includes('no position') || errorMessage.includes('No open position'))) {
         console.log(`[API] No open position found on ${exchange} for ${symbol}`);
         return NextResponse.json({
           success: true,
@@ -114,12 +112,13 @@ export async function POST(request: NextRequest) {
       }
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API] Error closing position:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to close position';
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to close position',
+        error: errorMessage,
       },
       { status: 500 }
     );

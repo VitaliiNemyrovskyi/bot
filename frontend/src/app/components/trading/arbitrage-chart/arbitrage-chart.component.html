@@ -1,47 +1,47 @@
 <div class="arbitrage-chart-container">
   <!-- Header -->
-  <div class="chart-header">
+  <div id="chart-header" class="chart-header">
     <div class="header-content">
       <button class="back-button" (click)="goBack()">
-        ← Back
+        ← {{ t('arbitrageChart.back') }}
       </button>
       <h1 class="chart-title">
-        {{ symbol() }} Arbitrage Chart
+        {{ symbol() }} {{ t('arbitrageChart.title') }}
       </h1>
     </div>
   </div>
 
   <!-- Loading State -->
   @if (loading()) {
-    <div class="loading-container">
+    <div id="loading-state" class="loading-container">
       <div class="loading-spinner"></div>
-      <p>Loading chart data...</p>
+      <p>{{ t('arbitrageChart.loading') }}</p>
     </div>
   } @else {
     <!-- Historical Data Loading Indicator -->
     @if (loadingHistoricalData()) {
-      <div class="historical-data-loading">
+      <div id="historical-loading" class="historical-data-loading">
         <div class="loading-spinner-small"></div>
-        <span>Loading historical data...</span>
+        <span>{{ t('arbitrageChart.loadingHistorical') }}</span>
       </div>
     }
     <!-- Main Content Layout: Chart (2/3) + Info Panel (1/3) -->
-    <div class="main-content">
+    <div id="main-content" class="main-content">
       <!-- Left Side: Chart (2/3 width) -->
-      <div class="chart-section">
-        <div class="chart-card">
+      <div id="chart-section" class="chart-section">
+        <div id="chart-card" class="chart-card">
           <div class="chart-card-header">
             <div class="header-left">
               <div class="spread-badges">
                 <div class="spread-badge price-spread"
                      [class.favorable]="getPriceSpreadClass() === 'favorable'"
                      [class.unfavorable]="getPriceSpreadClass() === 'unfavorable'">
-                  Price Spread: {{ spreadPercent() }}%
+                  {{ t('arbitrageChart.priceSpread') }}: {{ spreadPercent() }}%
                 </div>
                 <div class="spread-badge funding-spread"
                      [class.positive]="fundingSpread() > 0"
                      [class.negative]="fundingSpread() < 0">
-                  Funding Spread: {{ formatFundingSpread() }}
+                  {{ t('arbitrageChart.fundingSpread') }}: {{ formatFundingSpread() }}
                 </div>
               </div>
             </div>
@@ -49,8 +49,8 @@
               <button
                 class="fit-content-btn"
                 (click)="fitContent()"
-                title="Fit chart to show all data">
-                <span>📊</span> Fit
+                [title]="t('arbitrageChart.fitTooltip')">
+                <span>📊</span> {{ t('arbitrageChart.fit') }}
               </button>
               <div class="timeframe-selector">
                 <button
@@ -63,294 +63,143 @@
               </div>
             </div>
           </div>
-          <div #chartContainer class="chart-container"></div>
+          <div #chartContainer id="chart-container" class="chart-container">
+            <!-- Chart Tooltip for Spread Information -->
+            <div #chartTooltip class="chart-tooltip" style="display: none;">
+              <div class="tooltip-header">Price Spread</div>
+              <div class="tooltip-row">
+                <span class="tooltip-label">{{ primaryExchange() }}:</span>
+                <span class="tooltip-value primary-value" id="tooltip-primary-price">-</span>
+              </div>
+              <div class="tooltip-row">
+                <span class="tooltip-label">{{ hedgeExchange() }}:</span>
+                <span class="tooltip-value hedge-value" id="tooltip-hedge-price">-</span>
+              </div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row spread-row">
+                <span class="tooltip-label">Absolute Spread:</span>
+                <span class="tooltip-value" id="tooltip-absolute-spread">-</span>
+              </div>
+              <div class="tooltip-row spread-row">
+                <span class="tooltip-label">Spread %:</span>
+                <span class="tooltip-value" id="tooltip-percent-spread">-</span>
+              </div>
+              <div class="tooltip-time" id="tooltip-time">-</div>
+            </div>
+          </div>
         </div>
 
-        <!-- Active Positions Table -->
-        <div class="active-positions-section">
+        <!-- Active Positions Component -->
+        <div id="active-positions-section" class="active-positions-section">
           <div class="section-header">
-            <h2>Active Arbitrage Positions</h2>
-            <span class="positions-count">{{ filteredActivePositions().length }} position(s)</span>
+            <h2>{{ t('arbitrageChart.activePositions') }}</h2>
+            <span class="positions-count">{{ transformedPositions().length }} {{ t('arbitrageChart.positionCount') }}</span>
           </div>
 
-          @if (filteredActivePositions().length === 0) {
-            <div class="no-positions">
-              <span class="icon">📊</span>
-              <p>No active arbitrage positions</p>
-              <small>Start a position using the form above</small>
-            </div>
-          } @else {
-            <div class="positions-table-container">
-              <table class="positions-table">
-                <thead>
-                  <tr>
-                    <th>Position ID</th>
-                    <th>Symbol</th>
-                    <th>Primary Exchange</th>
-                    <th>Hedge Exchange</th>
-                    <th>Status</th>
-                    <th>Started At</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (position of filteredActivePositions(); track position.positionId) {
-                    <!-- Main Row (clickable) -->
-                    <tr class="position-row" [class.expanded]="isRowExpanded(position.positionId)" (click)="toggleRowExpansion(position.positionId)">
-                      <td class="position-id">
-                        <span class="expand-icon">{{ isRowExpanded(position.positionId) ? '▼' : '▶' }}</span>
-                        {{ position.positionId }}
-                      </td>
-                      <td class="symbol">{{ position.symbol }}</td>
-                      <td class="exchange">
-                        <div class="exchange-cell">
-                          <span class="exchange-name">{{ position.primary.exchange }}</span>
-                          <span class="side-badge" [class.long]="position.primary.side === 'long'" [class.short]="position.primary.side === 'short'">
-                            {{ position.primary.side }}
-                          </span>
-                          <span class="leverage">{{ position.primary.leverage }}x</span>
-                        </div>
-                      </td>
-                      <td class="exchange">
-                        <div class="exchange-cell">
-                          <span class="exchange-name">{{ position.hedge.exchange }}</span>
-                          <span class="side-badge" [class.long]="position.hedge.side === 'long'" [class.short]="position.hedge.side === 'short'">
-                            {{ position.hedge.side }}
-                          </span>
-                          <span class="leverage">{{ position.hedge.leverage }}x</span>
-                        </div>
-                      </td>
-                      <td class="status">
-                        <span class="status-badge" [ngClass]="getStatusBadge(position.status).class">
-                          {{ getStatusBadge(position.status).label }}
-                        </span>
-                      </td>
-                      <td class="timestamp">{{ formatTimestamp(position.startedAt) }}</td>
-                      <td class="actions">
-                        <button class="tpsl-button" (click)="syncTpSl(position.positionId); $event.stopPropagation()" title="Set synchronized TP/SL">
-                          TP/SL
-                        </button>
-                        <button
-                          [class.monitoring-enabled]="position.monitoring?.enabled"
-                          [class.monitoring-disabled]="!position.monitoring?.enabled"
-                          (click)="toggleMonitoring(position); $event.stopPropagation()"
-                          [title]="position.monitoring?.enabled ? 'Monitoring Active (click to disable)' : 'Monitoring Disabled (click to enable)'">
-                          {{ position.monitoring?.enabled ? '👁️ ON' : '👁️ OFF' }}
-                        </button>
-                        <button class="stop-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
-                          Stop
-                        </button>
-                      </td>
-                    </tr>
-
-                    <!-- Expanded Details Row -->
-                    @if (isRowExpanded(position.positionId)) {
-                      <tr class="expanded-row">
-                        <td colspan="7">
-                          <div class="position-details">
-                            <table class="details-table">
-                              <thead>
-                                <tr>
-                                  <th>Metric</th>
-                                  <th>Primary ({{ position.primary.exchange }})</th>
-                                  <th>Hedge ({{ position.hedge.exchange }})</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td class="metric-label">Entry Price</td>
-                                  <td class="metric-value">{{ position.primary.entryPrice ? (position.primary.entryPrice | number:'1.2-6') : 'N/A' }}</td>
-                                  <td class="metric-value">{{ position.hedge.entryPrice ? (position.hedge.entryPrice | number:'1.2-6') : 'N/A' }}</td>
-                                </tr>
-                                @if (position.primary.unrealizedProfit !== undefined || position.hedge.unrealizedProfit !== undefined) {
-                                  <tr>
-                                    <td class="metric-label">Unrealized P&L</td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.primary.unrealizedProfit || 0) > 0"
-                                        [class.negative]="(position.primary.unrealizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.primary.unrealizedProfit) }} USDT
-                                    </td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.hedge.unrealizedProfit || 0) > 0"
-                                        [class.negative]="(position.hedge.unrealizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.hedge.unrealizedProfit) }} USDT
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.realizedProfit !== undefined || position.hedge.realizedProfit !== undefined) {
-                                  <tr>
-                                    <td class="metric-label">Realized P&L</td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.primary.realizedProfit || 0) > 0"
-                                        [class.negative]="(position.primary.realizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.primary.realizedProfit) }} USDT
-                                    </td>
-                                    <td class="metric-value"
-                                        [class.positive]="(position.hedge.realizedProfit || 0) > 0"
-                                        [class.negative]="(position.hedge.realizedProfit || 0) < 0">
-                                      {{ formatCurrency(position.hedge.realizedProfit) }} USDT
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.liquidationPrice || position.hedge.liquidationPrice) {
-                                  <tr>
-                                    <td class="metric-label">Liquidation Price</td>
-                                    <td class="metric-value">{{ position.primary.liquidationPrice ? (position.primary.liquidationPrice | number:'1.2-6') : 'N/A' }}</td>
-                                    <td class="metric-value">{{ position.hedge.liquidationPrice ? (position.hedge.liquidationPrice | number:'1.2-6') : 'N/A' }}</td>
-                                  </tr>
-                                }
-                                @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null || position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
-                                  <tr>
-                                    <td class="metric-label">Liquidation Proximity</td>
-                                    <td class="metric-value">
-                                      @if (position.primary.proximityRatio !== undefined && position.primary.proximityRatio !== null) {
-                                        <span class="proximity-value"
-                                              [class.proximity-safe]="position.primary.proximityRatio < 0.7"
-                                              [class.proximity-warning]="position.primary.proximityRatio >= 0.7 && position.primary.proximityRatio < 0.9"
-                                              [class.proximity-danger]="position.primary.proximityRatio >= 0.9">
-                                          {{ (position.primary.proximityRatio * 100) | number:'1.1-1' }}%
-                                          @if (position.primary.inDanger) {
-                                            <span class="danger-badge">DANGER</span>
-                                          }
-                                        </span>
-                                      } @else {
-                                        N/A
-                                      }
-                                    </td>
-                                    <td class="metric-value">
-                                      @if (position.hedge.proximityRatio !== undefined && position.hedge.proximityRatio !== null) {
-                                        <span class="proximity-value"
-                                              [class.proximity-safe]="position.hedge.proximityRatio < 0.7"
-                                              [class.proximity-warning]="position.hedge.proximityRatio >= 0.7 && position.hedge.proximityRatio < 0.9"
-                                              [class.proximity-danger]="position.hedge.proximityRatio >= 0.9">
-                                          {{ (position.hedge.proximityRatio * 100) | number:'1.1-1' }}%
-                                          @if (position.hedge.inDanger) {
-                                            <span class="danger-badge">DANGER</span>
-                                          }
-                                        </span>
-                                      } @else {
-                                        N/A
-                                      }
-                                    </td>
-                                  </tr>
-                                }
-                                @if (position.primary.stopLoss || position.hedge.stopLoss) {
-                                  <tr>
-                                    <td class="metric-label">Stop Loss</td>
-                                    <td class="metric-value">{{ position.primary.stopLoss ? (position.primary.stopLoss | number:'1.2-6') : 'N/A' }}</td>
-                                    <td class="metric-value">{{ position.hedge.stopLoss ? (position.hedge.stopLoss | number:'1.2-6') : 'N/A' }}</td>
-                                  </tr>
-                                }
-                                @if (position.primary.takeProfit || position.hedge.takeProfit) {
-                                  <tr>
-                                    <td class="metric-label">Take Profit</td>
-                                    <td class="metric-value">{{ position.primary.takeProfit ? (position.primary.takeProfit | number:'1.2-6') : 'N/A' }}</td>
-                                    <td class="metric-value">{{ position.hedge.takeProfit ? (position.hedge.takeProfit | number:'1.2-6') : 'N/A' }}</td>
-                                  </tr>
-                                }
-                                <tr>
-                                  <td class="metric-label">Last Funding Paid</td>
-                                  <td class="metric-value">{{ formatCurrency(position.primary.lastFundingPaid) }} USDT</td>
-                                  <td class="metric-value">{{ formatCurrency(position.hedge.lastFundingPaid) }} USDT</td>
-                                </tr>
-                                <tr>
-                                  <td class="metric-label">Total Funding Earned</td>
-                                  <td class="metric-value positive">{{ formatCurrency(position.primary.totalFundingEarned) }} USDT</td>
-                                  <td class="metric-value positive">{{ formatCurrency(position.hedge.totalFundingEarned) }} USDT</td>
-                                </tr>
-                                <tr>
-                                  <td class="metric-label">Entry Fees (Paid)</td>
-                                  <td class="metric-value negative">{{ formatCurrency(position.primary.tradingFees) }} USDT</td>
-                                  <td class="metric-value negative">{{ formatCurrency(position.hedge.tradingFees) }} USDT</td>
-                                </tr>
-                                <tr class="summary-row">
-                                  <td class="metric-label">Gross Profit</td>
-                                  <td colspan="2" class="metric-value gross-profit">{{ formatCurrency(position.grossProfit) }} USDT</td>
-                                </tr>
-                                <tr class="summary-row">
-                                  <td class="metric-label">Net Profit</td>
-                                  <td colspan="2" class="metric-value net-profit" [class.positive]="(position.netProfit || 0) > 0" [class.negative]="(position.netProfit || 0) < 0">
-                                    {{ formatCurrency(position.netProfit) }} USDT
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-
-                            <!-- Error Message Section for ERROR status -->
-                            @if (position.status === 'ERROR' && position.errorMessage) {
-                              <div class="error-message-section">
-                                <div class="error-header">
-                                  <span class="error-icon">⚠️</span>
-                                  <span class="error-title">Position Failed - Troubleshooting Required</span>
-                                </div>
-                                <div class="error-content">
-                                  <div class="error-details">
-                                    <h4>Error Details:</h4>
-                                    <p class="error-text">{{ position.errorMessage }}</p>
-                                  </div>
-
-                                  <div class="troubleshooting-section">
-                                    <h4>How to Fix:</h4>
-                                    <ol class="fix-steps">
-                                      <li>
-                                        <strong>Check Exchange Connectivity:</strong>
-                                        <ul>
-                                          <li>Verify your internet connection is stable</li>
-                                          <li>Check if {{ position.primary.exchange }} and {{ position.hedge.exchange }} APIs are operational</li>
-                                          <li>Look for "fetch failed" or timeout errors in browser console</li>
-                                        </ul>
-                                      </li>
-                                      <li>
-                                        <strong>Verify API Credentials:</strong>
-                                        <ul>
-                                          <li>Go to Profile → Trading Platforms</li>
-                                          <li>Test connection for both exchanges</li>
-                                          <li>Check if API keys have required permissions (trading, reading positions)</li>
-                                        </ul>
-                                      </li>
-                                      <li>
-                                        <strong>Check Exchange Status:</strong>
-                                        <ul>
-                                          <li>Visit exchange websites to verify they're not under maintenance</li>
-                                          <li>Check if your IP is not rate-limited or blocked</li>
-                                        </ul>
-                                      </li>
-                                    </ol>
-                                  </div>
-
-                                  <div class="error-actions">
-                                    <div class="status-info">
-                                      <p class="warning-text">
-                                        ⚠️ <strong>This position is partially filled.</strong> After fixing connectivity issues,
-                                        you should close this position to clean up partial orders on exchanges.
-                                      </p>
-                                    </div>
-                                    <button class="close-error-button" (click)="stopPosition(position.positionId); $event.stopPropagation()">
-                                      Close Position
-                                    </button>
-                                    <p class="error-help-text">
-                                      The "Close Position" button will attempt to close any partial positions on exchanges and mark this as cancelled.
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            }
-                          </div>
-                        </td>
-                      </tr>
-                    }
-                  }
-                </tbody>
-              </table>
-            </div>
+          @if (transformedPositions().length > 0) {
+            <app-active-positions
+              [positions]="transformedPositions()"
+              [primaryPrice]="primaryData().price"
+              [hedgePrice]="hedgeData().price"
+              (syncTpSlClick)="syncTpSl($event)"
+              (toggleMonitoringClick)="toggleMonitoring($event)"
+              (stopPositionClick)="stopPosition($event)">
+            </app-active-positions>
           }
         </div>
       </div>
 
       <!-- Right Side: Info Panel (1/3 width) -->
-      <div class="info-panel">
-        <div class="exchange-info-grid">
-          <div class="exchange-column primary-column">
+      <div id="info-panel" class="info-panel">
+        <!-- Active Signal Monitoring Status -->
+        @if (activeSignalConfig()) {
+          <div id="signal-monitor-status" class="signal-monitor-status">
+            <div class="status-header">
+              <div class="header-left">
+                <span class="status-icon">🎯</span>
+                <h3>Моніторинг Сигналу</h3>
+              </div>
+              <div class="header-right">
+                <button
+                  class="edit-signal-button"
+                  (click)="editSignalConfig()"
+                  title="Редагувати параметри сигналу">
+                  ✏️
+                </button>
+                <span class="status-badge active">АКТИВНИЙ</span>
+              </div>
+            </div>
+
+            <div class="signal-config">
+              <div class="config-row">
+                <span class="config-label">Кількість:</span>
+                <span class="config-value">{{ activeSignalConfig()!.quantity }} &#64; {{ activeSignalConfig()!.leverage }}x</span>
+              </div>
+            </div>
+
+            @if (signalPriceUpdate()) {
+              <div class="signal-conditions">
+                <h4>Умови Спрацювання</h4>
+
+                <!-- Price Spread Condition -->
+                <div class="condition-item">
+                  <div class="condition-header">
+                    <span class="condition-label">Price Spread</span>
+                    <span class="condition-status" [class.met]="signalPriceUpdate()!.priceConditionMet" [class.not-met]="!signalPriceUpdate()!.priceConditionMet">
+                      {{ signalPriceUpdate()!.priceConditionMet ? '✓ Виконано' : '⏳ Очікування' }}
+                    </span>
+                  </div>
+                  <div class="condition-progress">
+                    <div class="progress-bar">
+                      <div class="progress-fill"
+                           [style.width.%]="getPriceSpreadProgress()"
+                           [class.met]="signalPriceUpdate()!.priceConditionMet"></div>
+                    </div>
+                    <div class="progress-text">
+                      <span class="current-value">${{ signalPriceUpdate()!.priceSpreadUsdt.toFixed(2) }} / {{ signalPriceUpdate()!.priceSpreadPercent.toFixed(4) }}%</span>
+                      <span class="target-value">/ {{ activeSignalConfig()!.minPriceSpreadPercent }}%</span>
+                    </div>
+                  </div>
+                  <div class="condition-prices">
+                    <span class="price-item">{{ activeSignalConfig()!.primaryExchange }}: ${{ signalPriceUpdate()!.primaryPrice.toFixed(6) }}</span>
+                    <span class="price-item">{{ activeSignalConfig()!.hedgeExchange }}: ${{ signalPriceUpdate()!.hedgePrice.toFixed(6) }}</span>
+                  </div>
+                </div>
+
+                <!-- Funding Spread Condition (if combined strategy) -->
+                @if (activeSignalConfig()!.strategy === 'combined' && activeSignalConfig()!.minFundingSpreadPercent !== undefined && signalPriceUpdate()!.fundingSpreadPercent !== undefined) {
+                  <div class="condition-item">
+                    <div class="condition-header">
+                      <span class="condition-label">Funding Spread</span>
+                      <span class="condition-status" [class.met]="signalPriceUpdate()!.fundingConditionMet" [class.not-met]="!signalPriceUpdate()!.fundingConditionMet">
+                        {{ signalPriceUpdate()!.fundingConditionMet ? '✓ Виконано' : '⏳ Очікування' }}
+                      </span>
+                    </div>
+                    <div class="condition-progress">
+                      <div class="progress-bar">
+                        <div class="progress-fill"
+                             [style.width.%]="getFundingSpreadProgress()"
+                             [class.met]="signalPriceUpdate()!.fundingConditionMet"></div>
+                      </div>
+                      <div class="progress-text">
+                        <span class="current-value">{{ signalPriceUpdate()!.fundingSpreadPercent!.toFixed(4) }}%</span>
+                        <span class="target-value">/ {{ activeSignalConfig()!.minFundingSpreadPercent }}%</span>
+                      </div>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="signal-waiting">
+                <span class="waiting-icon">⏳</span>
+                <span class="waiting-text">Очікування даних...</span>
+              </div>
+            }
+          </div>
+        }
+
+        <div id="exchange-info-grid-top" class="exchange-info-grid">
+          <div id="primary-exchange-info" class="exchange-column primary-column">
             <button
                 class="column-header primary"
                 (click)="openExchange(primaryExchange())"
@@ -368,12 +217,12 @@
             </button>
 
             <div class="info-items">
-              @if (strategy() === 'combined') {
+              @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
                 <div class="info-item">
-                  <span class="info-label">Funding</span>
+                  <span class="info-label">{{ t('arbitrageChart.exchange.funding') }}</span>
                   <span class="info-value text-sm"
-                        [class.positive]="parseFloat(primaryData().fundingRate) > 0"
-                        [class.negative]="parseFloat(primaryData().fundingRate) < 0">
+                        [class.positive]="parseFundingRate(primaryData().fundingRate) > 0"
+                        [class.negative]="parseFundingRate(primaryData().fundingRate) < 0">
                     {{ primaryFormattedFunding() }}
                   </span>
                 </div>
@@ -381,20 +230,20 @@
 
               <!-- Account Balance -->
               <div class="info-item balance-item">
-                <span class="info-label">Account Balance</span>
+                <span class="info-label">{{ t('arbitrageChart.exchange.accountBalance') }}</span>
                 @if (primaryBalance().loading) {
                   <span class="info-value loading-balance">
                     <span class="balance-spinner"></span>
-                    Loading...
+                    {{ t('arbitrageChart.exchange.loading') }}
                   </span>
                 } @else {
                   <div class="balance-values">
                     <div class="balance-row">
-                      <span class="balance-label">Total:</span>
+                      <span class="balance-label">{{ t('arbitrageChart.exchange.total') }}</span>
                       <span class="balance-value">{{ primaryBalance().totalBalance }} USDT</span>
                     </div>
                     <div class="balance-row">
-                      <span class="balance-label">Available:</span>
+                      <span class="balance-label">{{ t('arbitrageChart.exchange.available') }}</span>
                       <span class="balance-value available">{{ primaryBalance().availableBalance }} USDT</span>
                     </div>
                   </div>
@@ -403,7 +252,7 @@
             </div>
           </div>
           <div class="sync-lock-container"></div>
-          <div class="exchange-column hedge-column">
+          <div id="hedge-exchange-info" class="exchange-column hedge-column">
             <button
                 class="column-header hedge"
                 (click)="openExchange(hedgeExchange())"
@@ -422,30 +271,30 @@
 
             <div class="info-items">
               <div class="info-item">
-                <span class="info-label">Funding</span>
+                <span class="info-label">{{ t('arbitrageChart.exchange.funding') }}</span>
                 <span class="info-value text-sm"
-                      [class.positive]="parseFloat(hedgeData().fundingRate) > 0"
-                      [class.negative]="parseFloat(hedgeData().fundingRate) < 0">
+                      [class.positive]="parseFundingRate(hedgeData().fundingRate) > 0"
+                      [class.negative]="parseFundingRate(hedgeData().fundingRate) < 0">
                   {{ hedgeFormattedFunding() }}
                 </span>
               </div>
 
               <!-- Account Balance -->
               <div class="info-item balance-item">
-                <span class="info-label">Account Balance</span>
+                <span class="info-label">{{ t('arbitrageChart.exchange.accountBalance') }}</span>
                 @if (hedgeBalance().loading) {
                   <span class="info-value loading-balance">
                     <span class="balance-spinner"></span>
-                    Loading...
+                    {{ t('arbitrageChart.exchange.loading') }}
                   </span>
                 } @else {
                   <div class="balance-values">
                     <div class="balance-row">
-                      <span class="balance-label">Total:</span>
+                      <span class="balance-label">{{ t('arbitrageChart.exchange.total') }}</span>
                       <span class="balance-value">{{ hedgeBalance().totalBalance }} USDT</span>
                     </div>
                     <div class="balance-row">
-                      <span class="balance-label">Available:</span>
+                      <span class="balance-label">{{ t('arbitrageChart.exchange.available') }}</span>
                       <span class="balance-value available">{{ hedgeBalance().availableBalance }} USDT</span>
                     </div>
                   </div>
@@ -455,13 +304,29 @@
           </div>
 
         </div>
-        <div class="exchange-info-grid">
+
+        <!-- Profit Calculator Panel -->
+        <app-arbitrage-profit-calculator
+          id="profit-calculator"
+          [strategy]="strategy()"
+          [primaryExchange]="primaryExchange()"
+          [hedgeExchange]="hedgeExchange()"
+          [primaryPrice]="primaryData().price || 0"
+          [hedgePrice]="hedgeData().price || 0"
+          [primaryFundingRate]="parseFundingRate(primaryData().fundingRate || '0')"
+          [hedgeFundingRate]="parseFundingRate(hedgeData().fundingRate || '0')"
+          [fundingInterval]="getMaxFundingInterval()"
+          [positionSize]="primaryAmount()"
+          [leverage]="primaryLeverage()"
+        />
+
+        <div id="exchange-info-grid-bottom" class="exchange-info-grid">
           <!-- Primary Exchange Column -->
-          <div class="exchange-column primary-column">
+          <div id="primary-order-column" class="exchange-column primary-column">
 
 
             <!-- Order Form for Primary Exchange -->
-            <form [formGroup]="primaryOrderForm" class="order-form">
+            <form id="primary-order-form" [formGroup]="primaryOrderForm" class="order-form">
              <!-- <div class="form-header">
                 <h4>Order Parameters</h4>
               </div>-->
@@ -471,29 +336,29 @@
                 <div class="form-field spot-market-info">
                   <div class="info-box">
                     <span class="info-icon">ℹ️</span>
-                    <span class="info-text">Spot market: Buy asset directly (no leverage)</span>
+                    <span class="info-text">{{ t('arbitrageChart.form.spotMarketInfo') }}</span>
                   </div>
                 </div>
               }
 
               <!-- FUTURES MARKET: Show side selector and leverage -->
-              @if (strategy() === 'combined') {
+              @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
                 <div class="form-field">
-                  <label class="form-label">Side</label>
+                  <label class="form-label">{{ t('arbitrageChart.form.side') }}</label>
                   <div class="side-selector">
                     <label class="side-option">
                       <input type="radio" formControlName="side" value="long">
-                      <span class="side-label long">Long</span>
+                      <span class="side-label long">{{ t('arbitrageChart.form.long') }}</span>
                     </label>
                     <label class="side-option">
                       <input type="radio" formControlName="side" value="short">
-                      <span class="side-label short">Short</span>
+                      <span class="side-label short">{{ t('arbitrageChart.form.short') }}</span>
                     </label>
                   </div>
                 </div>
 
                 <div class="form-field">
-                  <label class="form-label">Leverage (1x - 125x)</label>
+                  <label class="form-label">{{ t('arbitrageChart.form.leverage') }}</label>
                   <input
                     type="number"
                     formControlName="leverage"
@@ -550,7 +415,12 @@
                 @if (!primaryValidation().valid && primaryOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
-                    <span class="error-text">{{ primaryValidation().error }}</span>
+                    <div class="error-content">
+                      <div class="error-text">{{ primaryValidation().error }}</div>
+                      @if (primaryValidation().suggestion) {
+                        <div class="suggestion-text">💡 {{ primaryValidation().suggestion }}</div>
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -558,8 +428,8 @@
               @if (strategy() === 'spot_futures') {
                 <!-- Simplified graduated entry for SPOT -->
                 <div class="form-field">
-                  <label class="form-label">Parts (1-5)
-                    <span class="field-hint">Split buy into parts</span>
+                  <label class="form-label">{{ t('arbitrageChart.form.parts') }} {{ t('arbitrageChart.form.partsRangeSpot') }}
+                    <span class="field-hint">{{ t('arbitrageChart.form.splitBuy') }}</span>
                   </label>
                   <input
                     type="number"
@@ -572,8 +442,8 @@
                 </div>
 
                 <div class="form-field">
-                  <label class="form-label">Delay (0.1s - 10s)
-                    <span class="field-hint">Delay between buys</span>
+                  <label class="form-label">{{ t('arbitrageChart.form.delay') }} {{ t('arbitrageChart.form.delayRangeSpot') }}
+                    <span class="field-hint">{{ t('arbitrageChart.form.delayBetweenBuys') }}</span>
                   </label>
                   <input
                     type="number"
@@ -587,7 +457,7 @@
               } @else {
                 <!-- Full graduated entry for FUTURES -->
                 <div class="form-field">
-                  <label class="form-label">Parts (1-20)</label>
+                  <label class="form-label">{{ t('arbitrageChart.form.parts') }} {{ t('arbitrageChart.form.partsRange') }}</label>
                   <input
                     type="number"
                     formControlName="graduatedParts"
@@ -599,7 +469,7 @@
                 </div>
 
                 <div class="form-field">
-                  <label class="form-label">Delay (0.1s - 60s)</label>
+                  <label class="form-label">{{ t('arbitrageChart.form.delay') }} {{ t('arbitrageChart.form.delayRange') }}</label>
                   <input
                     type="number"
                     formControlName="graduatedDelayMs"
@@ -615,14 +485,14 @@
 
           <!-- Sync Lock Button -->
           <div class="sync-lock-container">
-            @if (strategy() === 'combined') {
+            @if (strategy() === 'combined' || strategy() === 'price_only' || strategy() === 'funding_only') {
               <button
                 type="button"
                 class="sync-lock-button"
                 [class.locked]="orderParamsLocked()"
                 [class.unlocked]="!orderParamsLocked()"
                 (click)="toggleOrderParamsLock()"
-                [title]="orderParamsLocked() ? 'Click to unlock and edit parameters independently' : 'Click to lock and synchronize parameters'">
+                [title]="orderParamsLocked() ? t('arbitrageChart.syncLock.locked') : t('arbitrageChart.syncLock.unlocked')">
                 @if (orderParamsLocked()) {
                   <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
@@ -636,7 +506,7 @@
                 }
               </button>
             } @else {
-              <div class="sync-lock-disabled" title="Sync lock not available for spot/futures strategy (different parameter sets)">
+              <div class="sync-lock-disabled" [title]="t('arbitrageChart.syncLock.disabled')">
                 <svg class="lock-icon disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
                   <line x1="4" y1="4" x2="20" y2="20" stroke-width="2"></line>
@@ -646,29 +516,29 @@
           </div>
 
           <!-- Hedge Exchange Column -->
-          <div class="exchange-column hedge-column">
+          <div id="hedge-order-column" class="exchange-column hedge-column">
             <!-- Order Form for Hedge Exchange -->
-            <form [formGroup]="hedgeOrderForm" class="order-form">
+            <form id="hedge-order-form" [formGroup]="hedgeOrderForm" class="order-form">
             <!--  <div class="form-header">
                 <h4>Order Parameters</h4>
               </div>-->
 
               <div class="form-field">
-                <label class="form-label">Side</label>
+                <label class="form-label">{{ t('arbitrageChart.form.side') }}</label>
                 <div class="side-selector">
                   <label class="side-option">
                     <input type="radio" formControlName="side" value="long">
-                    <span class="side-label long">Long</span>
+                    <span class="side-label long">{{ t('arbitrageChart.form.long') }}</span>
                   </label>
                   <label class="side-option">
                     <input type="radio" formControlName="side" value="short">
-                    <span class="side-label short">Short</span>
+                    <span class="side-label short">{{ t('arbitrageChart.form.short') }}</span>
                   </label>
                 </div>
               </div>
 
               <div class="form-field">
-                <label class="form-label">Leverage (1x - 125x)</label>
+                <label class="form-label">{{ t('arbitrageChart.form.leverage') }}</label>
                 <input
                   type="number"
                   formControlName="leverage"
@@ -724,13 +594,18 @@
                 @if (!hedgeValidation().valid && hedgeOrderForm.get('quantity')?.touched) {
                   <div class="validation-error">
                     <span class="error-icon">⚠️</span>
-                    <span class="error-text">{{ hedgeValidation().error }}</span>
+                    <div class="error-content">
+                      <div class="error-text">{{ hedgeValidation().error }}</div>
+                      @if (hedgeValidation().suggestion) {
+                        <div class="suggestion-text">💡 {{ hedgeValidation().suggestion }}</div>
+                      }
+                    </div>
                   </div>
                 }
               </div>
 
               <div class="form-field">
-                <label class="form-label">Parts (1-20)</label>
+                <label class="form-label">{{ t('arbitrageChart.form.parts') }} {{ t('arbitrageChart.form.partsRange') }}</label>
                 <input
                   type="number"
                   formControlName="graduatedParts"
@@ -742,7 +617,7 @@
               </div>
 
               <div class="form-field">
-                <label class="form-label">Delay (0.1s - 60s)</label>
+                <label class="form-label">{{ t('arbitrageChart.form.delay') }} {{ t('arbitrageChart.form.delayRange') }}</label>
                 <input
                   type="number"
                   formControlName="graduatedDelayMs"
@@ -758,27 +633,58 @@
 
         <!-- Credentials Warning -->
         @if (credentialsWarning()) {
-          <div class="credentials-warning">
+          <div id="credentials-warning" class="credentials-warning">
             <span class="warning-icon">⚠️</span>
             <span class="warning-text">{{ credentialsWarning() }}</span>
           </div>
         }
 
-        <!-- START Button for Both Exchanges -->
-        <div class="start-button-container">
+        <!-- START Buttons for Both Exchanges -->
+        <div id="start-button-container" class="start-button-container">
           <button
             class="start-arbitrage-button"
             (click)="startArbitragePosition()"
             [disabled]="isSubmittingOrder() || primaryOrderForm.invalid || hedgeOrderForm.invalid || !hasPrimaryCredentials() || !hasHedgeCredentials()">
             @if (isSubmittingOrder()) {
               <span class="button-spinner"></span>
-              Starting Position...
+              {{ t('arbitrageChart.buttons.startingPosition') }}
             } @else {
-              START ARBITRAGE
+              {{ t('arbitrageChart.buttons.startArbitrage') }}
             }
           </button>
+
+          @if (hasActiveSignal()) {
+            <button
+              class="stop-signal-button"
+              (click)="stopSignal()">
+              <i class="icon-stop"></i>
+              {{ t('arbitrageChart.buttons.stopSignal') }}
+            </button>
+          } @else {
+            <button
+              class="start-signal-button"
+              (click)="openSignalConfigModal()"
+              [disabled]="isSubmittingOrder() || primaryOrderForm.invalid || hedgeOrderForm.invalid || !hasPrimaryCredentials() || !hasHedgeCredentials()">
+              <i class="icon-notifications_active"></i>
+              {{ t('arbitrageChart.buttons.startSignal') }}
+            </button>
+          }
         </div>
       </div>
     </div>
   }
 </div>
+
+<!-- Signal Config Modal -->
+<app-signal-config-modal
+  id="signal-config-modal"
+  [open]="showSignalConfigModal()"
+  [strategy]="strategy()"
+  [symbol]="symbol()"
+  [primaryExchange]="primaryExchange()"
+  [hedgeExchange]="hedgeExchange()"
+  [signalId]="editingSignalId()"
+  [initialConfig]="editingSignalConfig()"
+  (close)="closeSignalConfigModal()"
+  (save)="onSignalConfigSave($event)">
+</app-signal-config-modal>

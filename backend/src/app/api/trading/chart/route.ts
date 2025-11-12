@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
     const resolution = searchParams.get('resolution') || '60'; // Default to 1 hour
     const from = parseInt(searchParams.get('from') || '0');
     const to = parseInt(searchParams.get('to') || String(Date.now()));
-    const firstDataRequest = searchParams.get('firstDataRequest') === 'true';
 
     // Convert TradingView resolution to Bybit interval
     const intervalMap: { [key: string]: string } = {

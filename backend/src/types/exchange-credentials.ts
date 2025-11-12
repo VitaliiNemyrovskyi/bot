@@ -9,7 +9,7 @@ export interface SaveCredentialsRequest {
   exchange: Exchange;
   apiKey: string;
   apiSecret: string;
-  authToken?: string; // Browser session token (for exchanges like MEXC)
+  authToken?: string; // MEXC: browser session token | OKX/BITGET/KUCOIN: API passphrase
   label?: string;
   isActive?: boolean;
 }
@@ -40,7 +40,7 @@ export interface ActiveCredential {
   exchange: Exchange;
   apiKey: string; // Decrypted, for internal use only
   apiSecret: string; // Decrypted, for internal use only
-  authToken?: string; // Decrypted browser session token (for MEXC futures)
+  authToken?: string; // Decrypted: MEXC (browser session token) | OKX/BITGET/KUCOIN (API passphrase)
   label?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -51,7 +51,7 @@ export interface ExchangeCredentialData {
   exchange: Exchange;
   apiKey: string; // Unencrypted
   apiSecret: string; // Unencrypted
-  authToken?: string; // Unencrypted browser session token (for MEXC)
+  authToken?: string; // Unencrypted: MEXC (browser session token) | OKX/BITGET/KUCOIN (API passphrase)
   label?: string;
   isActive?: boolean; // Optional flag to set credential as active
 }

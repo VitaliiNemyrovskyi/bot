@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUser } from '@/middleware/auth';
-import { TradingBot, BotConfiguration } from '@/types/trading-bot';
+import { TradingBot } from '@/types/trading-bot';
 
 // In-memory storage for trading bots
 const gridBots = new Map<string, TradingBot>();

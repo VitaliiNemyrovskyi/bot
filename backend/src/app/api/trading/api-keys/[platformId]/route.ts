@@ -62,7 +62,7 @@ function initMockPlatforms(userId: string) {
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { platformId: string } }
+  { params }: { params: Promise<{ platformId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -74,7 +74,7 @@ export async function DELETE(
       );
     }
 
-    const { platformId } = params;
+    const { platformId } = await params;
 
     initMockPlatforms(authResult.user.userId);
 
@@ -93,8 +93,9 @@ export async function DELETE(
     mockUserTradingPlatforms.delete(userPlatformKey);
 
     return NextResponse.json({ message: 'Platform disconnected successfully' });
-  } catch (error) {
-    console.error('Error disconnecting platform:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error disconnecting platform:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -104,7 +105,7 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { platformId: string } }
+  { params }: { params: Promise<{ platformId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -116,7 +117,7 @@ export async function PUT(
       );
     }
 
-    const { platformId } = params;
+    const { platformId } = await params;
     const { apiKey, secretKey, passphrase } = await request.json();
 
     initMockPlatforms(authResult.user.userId);
@@ -153,8 +154,9 @@ export async function PUT(
     };
 
     return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error updating platform credentials:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error updating platform credentials:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

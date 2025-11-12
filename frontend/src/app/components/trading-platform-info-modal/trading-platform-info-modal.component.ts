@@ -369,7 +369,7 @@ export class TradingPlatformInfoModalComponent implements OnInit, OnDestroy {
   /**
    * Format currency with proper decimals
    */
-  formatCurrency(value: string | number, decimals: number = 2): string {
+  formatCurrency(value: string | number, decimals = 2): string {
     const num = typeof value === 'string' ? parseFloat(value) : value;
 
     if (isNaN(num)) return '0.00';
@@ -402,7 +402,7 @@ export class TradingPlatformInfoModalComponent implements OnInit, OnDestroy {
    * Get order status badge class
    */
   getOrderStatusClass(status: string): string {
-    const statusClasses: { [key: string]: string } = {
+    const statusClasses: Record<string, string> = {
       'Filled': 'badge-success',
       'PartiallyFilled': 'badge-info',
       'Cancelled': 'badge-secondary',

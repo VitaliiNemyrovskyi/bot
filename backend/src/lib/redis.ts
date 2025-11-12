@@ -43,13 +43,26 @@ class RedisService {
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,
         lazyConnect: true,
+        retryStrategy: (times) => {
+          // Stop retrying after 3 attempts
+          if (times > 3) {
+            console.warn('[Redis] Max retry attempts reached, giving up');
+            return null; // Stop retrying
+          }
+          // Wait 1 second between retries
+          return 1000;
+        },
+        reconnectOnError: () => false, // Don't auto-reconnect on errors
       });
 
       await this.client.connect();
 
       this.client.on('error', (err) => {
-        console.error('[Redis] Connection error:', err);
-        this.isConnected = false;
+        // Only log first error, not spam
+        if (this.isConnected) {
+          console.error('[Redis] Connection error:', err.message);
+          this.isConnected = false;
+        }
       });
 
       this.client.on('connect', () => {
@@ -66,6 +79,17 @@ class RedisService {
     } catch (error: any) {
       console.error('[Redis] Failed to connect:', error.message);
       this.isConnected = false;
+
+      // Clean up the client if connection failed
+      if (this.client) {
+        try {
+          await this.client.quit();
+        } catch (quitError) {
+          // Ignore quit errors
+        }
+        this.client = null;
+      }
+
       throw error;
     }
   }
@@ -269,6 +293,57 @@ class RedisService {
       // console.log('[Redis] Cache cleared');
     } catch (error: any) {
       console.error('[Redis] Error flushing cache:', error.message);
+    }
+  }
+
+  /**
+   * Cache bulk funding rates for an exchange
+   * Key format: bulk-funding:{exchange}
+   *
+   * Used by public funding rate endpoints to cache entire response
+   * for ultra-fast subsequent requests (~5ms vs ~200ms)
+   */
+  async cacheBulkFundingRates(exchange: string, data: any, ttlSeconds: number): Promise<void> {
+    if (!this.isReady()) {
+      console.warn('[Redis] Not connected, skipping bulk cache');
+      return;
+    }
+
+    try {
+      const key = `bulk-funding:${exchange.toUpperCase()}`;
+      const cacheData = JSON.stringify({
+        data,
+        timestamp: Date.now(),
+      });
+
+      await this.client!.setex(key, ttlSeconds, cacheData);
+    } catch (error: any) {
+      console.error(`[Redis] Error caching bulk funding rates for ${exchange}:`, error.message);
+    }
+  }
+
+  /**
+   * Get cached bulk funding rates for an exchange
+   *
+   * @returns Object with data and timestamp, or null if not cached
+   */
+  async getBulkFundingRates(exchange: string): Promise<{ data: any; timestamp: number } | null> {
+    if (!this.isReady()) {
+      return null;
+    }
+
+    try {
+      const key = `bulk-funding:${exchange.toUpperCase()}`;
+      const cached = await this.client!.get(key);
+
+      if (!cached) {
+        return null;
+      }
+
+      return JSON.parse(cached);
+    } catch (error: any) {
+      console.error(`[Redis] Error getting bulk funding rates for ${exchange}:`, error.message);
+      return null;
     }
   }
 

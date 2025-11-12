@@ -20,6 +20,7 @@ import { take } from 'rxjs/operators';
 import { TradingPlatformInfoModalComponent } from '../trading-platform-info-modal/trading-platform-info-modal.component';
 import { ConfirmationModalComponent } from '../ui/confirmation-modal/confirmation-modal.component';
 import { ButtonComponent } from '../ui/button/button.component';
+import { IconComponent } from '../ui/icon/icon.component';
 
 interface Tab {
   id: string;
@@ -46,7 +47,7 @@ interface MessageActionLocal {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink, TradingPlatformInfoModalComponent, ConfirmationModalComponent, ButtonComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink, TradingPlatformInfoModalComponent, ConfirmationModalComponent, ButtonComponent, IconComponent],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss'
 })
@@ -82,13 +83,13 @@ export class ProfileComponent implements OnInit {
   // Exchange Credentials State
   credentials = signal<ExchangeCredential[]>([]);
   editingCredentialId = signal<string | null>(null);
-  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string; authToken?: string }>({});
+  editFormData = signal<Partial<ExchangeCredential> & { apiKey?: string; apiSecret?: string; authToken?: string; passphrase?: string }>({});
   showAddCredentialModal = signal<boolean>(false);
   testingConnectionId = signal<string | null>(null);
   deletingCredentialId = signal<string | null>(null);
   savingCredentialId = signal<string | null>(null);
-  showApiSecret = signal<{ [key: string]: boolean }>({});
-  revealedCredentials = signal<{ [key: string]: { apiKey?: string; apiSecret?: string } }>({});
+  showApiSecret = signal<Record<string, boolean>>({});
+  revealedCredentials = signal<Record<string, { apiKey?: string; apiSecret?: string }>>({});
 
   // Toast notification state
   toastMessage = signal<string>('');
@@ -165,7 +166,7 @@ export class ProfileComponent implements OnInit {
     private authService: AuthService,
     private translationService: TranslationService,
     private themeService: ThemeService,
-    private userService: UserService,
+    private _userService: UserService,
     private googleAuthService: GoogleAuthService,
     public exchangeCredentialsService: ExchangeCredentialsService,
     private router: Router
@@ -183,7 +184,23 @@ export class ProfileComponent implements OnInit {
       apiKey: ['', Validators.required],
       apiSecret: ['', Validators.required],
       authToken: [''], // Browser session token for MEXC
+      passphrase: [''], // Passphrase for OKX, Bitget, and KuCoin
       label: ['', [Validators.maxLength(50)]]
+    });
+
+    // Add dynamic validation for passphrase when exchange changes
+    this.newCredentialForm.get('exchange')?.valueChanges.subscribe((exchange: string) => {
+      const passphraseControl = this.newCredentialForm.get('passphrase');
+
+      if (exchange === 'OKX' || exchange === 'BITGET' || exchange === 'KUCOIN') {
+        // Make passphrase required for OKX, Bitget, and KuCoin
+        passphraseControl?.setValidators([Validators.required]);
+      } else {
+        // Remove required validator for other exchanges
+        passphraseControl?.clearValidators();
+      }
+
+      passphraseControl?.updateValueAndValidity();
     });
 
     this.selectedLanguage = this.translationService.currentLanguage();
@@ -337,17 +354,34 @@ export class ProfileComponent implements OnInit {
 
   /**
    * Start editing a credential row
+   * Fetches full credential details including decrypted sensitive fields
    */
   startEditCredential(credential: ExchangeCredential): void {
     this.editingCredentialId.set(credential.id);
-    this.editFormData.set({
-      label: credential.label,
-      apiKey: '',  // Empty string means "keep current"
-      apiSecret: '',  // Empty string means "keep current"
-      authToken: '',  // Empty string means "keep current"
-      // Store original values for canceling
-      _originalLabel: credential.label
-    } as any);
+
+    // Fetch full credential details from backend (includes decrypted authToken)
+    this.exchangeCredentialsService.getCredentialById(credential.id).pipe(take(1)).subscribe({
+      next: (fullCredential: any) => {
+        // For OKX, Bitget, and KuCoin, passphrase is stored in authToken field
+        // Map it back to passphrase field for display/editing
+        const isOkxOrBitgetOrKucoin = fullCredential.exchange === 'OKX' || fullCredential.exchange === 'BITGET' || fullCredential.exchange === 'KUCOIN';
+
+        this.editFormData.set({
+          label: fullCredential.label,
+          apiKey: fullCredential.apiKey || '',  // Show decrypted API key
+          apiSecret: '',  // Empty string means "keep current" - don't show for security
+          authToken: isOkxOrBitgetOrKucoin ? '' : (fullCredential.authToken || ''),  // For MEXC, show authToken; for OKX/Bitget/KuCoin, use passphrase field instead
+          passphrase: isOkxOrBitgetOrKucoin ? (fullCredential.authToken || '') : '',  // For OKX/Bitget/KuCoin, show passphrase (from authToken)
+          // Store original values for canceling
+          _originalLabel: fullCredential.label
+        } as any);
+      },
+      error: (err) => {
+        console.error('Failed to fetch credential details:', err);
+        this.showToast('Failed to load credential details. Please try again.', 'error');
+        this.editingCredentialId.set(null);
+      }
+    });
   }
 
   /**
@@ -390,7 +424,8 @@ export class ProfileComponent implements OnInit {
       exchange: credential.exchange,
       apiKey: apiKey,
       apiSecret: apiSecret,
-      authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined
+      authToken: editData.authToken && editData.authToken.trim() !== '' ? editData.authToken.trim() : undefined,
+      passphrase: editData.passphrase && editData.passphrase.trim() !== '' ? editData.passphrase.trim() : undefined
     };
 
     this.testingConnectionId.set(credential.id);
@@ -448,11 +483,16 @@ export class ProfileComponent implements OnInit {
       updateRequest.authToken = editData.authToken.trim();
     }
 
+    // Include passphrase only if it was changed (non-empty)
+    if (editData.passphrase && editData.passphrase.trim() !== '') {
+      updateRequest.passphrase = editData.passphrase.trim();
+    }
+
     // Set saving state
     this.savingCredentialId.set(credentialId);
 
     this.exchangeCredentialsService.updateCredential(credentialId, updateRequest).pipe(take(1)).subscribe({
-      next: (updated) => {
+      next: (_updated) => {
         // Clear editing and saving state first
         this.editingCredentialId.set(null);
         this.editFormData.set({});
@@ -544,7 +584,7 @@ export class ProfileComponent implements OnInit {
 
     this.exchangeCredentialsService.updateCredential(credential.id, { isActive: isChecked })
       .pipe(take(1)).subscribe({
-      next: (updated) => {
+      next: (_updated) => {
         // Service already updated the state - sync local component state
         this.credentials.set(this.exchangeCredentialsService.credentials());
 
@@ -608,7 +648,8 @@ export class ProfileComponent implements OnInit {
       exchange: this.newCredentialForm.value.exchange,
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
-      authToken: this.newCredentialForm.value.authToken || undefined
+      authToken: this.newCredentialForm.value.authToken || undefined,
+      passphrase: this.newCredentialForm.value.passphrase || undefined
     };
 
     this.testingConnectionId.set('new');
@@ -646,12 +687,13 @@ export class ProfileComponent implements OnInit {
       apiKey: this.newCredentialForm.value.apiKey,
       apiSecret: this.newCredentialForm.value.apiSecret,
       authToken: this.newCredentialForm.value.authToken || undefined,
+      passphrase: this.newCredentialForm.value.passphrase || undefined,
       label: this.newCredentialForm.value.label || undefined,
       isActive: true // Set new credentials as active by default
     };
 
     this.exchangeCredentialsService.createCredential(data).subscribe({
-      next: (newCred) => {
+      next: (_newCred) => {
         // Service already updated the state - sync local component state
         this.credentials.set(this.exchangeCredentialsService.credentials());
 

@@ -41,7 +41,7 @@ A cryptocurrency trading bot platform with real-time market data visualization a
 
 ```typescript
 // CORRECT PATTERN (already implemented):
-getRealTimeKlineData(symbol, interval) {
+getRealTimeKlineData(symbol, interval); {
   // 1. Fetch initial data (REST)
   const initial$ = this.getKlineData(symbol, interval, 100);
 

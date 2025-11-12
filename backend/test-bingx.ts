@@ -59,16 +59,18 @@ async function testBingXAuth() {
       const fundingRate = await testnetService.getFundingRate('BTC-USDT');
       // console.log('✅ Funding rate retrieved:');
       // console.log(JSON.stringify(fundingRate, null, 2));
-    } catch (err: any) {
-      // console.log('ℹ️  Funding rate endpoint may not be available:', err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      // console.log('ℹ️  Funding rate endpoint may not be available:', error.message);
     }
 
     // console.log('\n✅ All tests passed! BingX authentication is working correctly.');
 
-  } catch (error: any) {
-    // console.error('\n❌ Test failed:', error.message);
-    if (error.stack) {
-      // console.error('\nStack trace:', error.stack);
+  } catch (error: unknown) {
+    const err = error as Error;
+    // console.error('\n❌ Test failed:', err.message);
+    if (err.stack) {
+      // console.error('\nStack trace:', err.stack);
     }
   }
 

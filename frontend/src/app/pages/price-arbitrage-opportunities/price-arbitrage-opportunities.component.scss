@@ -364,6 +364,102 @@
   }
 }
 
+// Price Only Strategy Filters Panel
+.price-only-filters-section {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background-color: var(--card-bg, white);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-left: 4px solid rgb(107, 114, 128); // Badge-price-only color
+
+  .price-only-filters-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+
+    .price-only-filters-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a1a);
+      margin: 0;
+
+      ui-icon {
+        color: rgb(107, 114, 128);
+      }
+    }
+  }
+
+  .price-only-filters-content {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+
+    .filter-group {
+      flex: 1;
+      min-width: 250px;
+
+      &.checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 0 1 auto;
+        min-width: auto;
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          cursor: pointer;
+          user-select: none;
+
+          .filter-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary-color, #3b82f6);
+          }
+
+          .checkbox-text {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-primary, #1a1a1a);
+          }
+        }
+
+        .filter-hint {
+          font-size: 0.8rem;
+          color: var(--text-secondary, #666);
+          font-style: italic;
+          margin-left: 1.95rem; // Align with checkbox text
+        }
+      }
+
+      &.slider-group {
+        flex: 1;
+        min-width: 300px;
+
+        .slider-custom-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          color: var(--text-secondary, #666);
+          margin-top: 0.5rem;
+          padding: 0 0.25rem;
+
+          span {
+            font-weight: 500;
+          }
+        }
+      }
+    }
+  }
+}
+
 // Table Container
 .table-container {
   background: var(--card-bg, white);
@@ -444,7 +540,16 @@
           color: var(--primary-color, #3b82f6);
         }
 
-        ui-icon {
+        &.active {
+          color: var(--primary-color, #3b82f6);
+          font-weight: 700;
+
+          i {
+            color: var(--primary-color, #3b82f6);
+          }
+        }
+
+        ui-icon, i {
           margin-left: 0.25rem;
           font-size: 0.75rem;
         }
@@ -946,16 +1051,252 @@
   }
 }
 
-// Dark mode support
-@media (prefers-color-scheme: dark) {
+// Dark theme support using data-theme attribute (primary method)
+[data-theme="dark"] {
   .price-arbitrage-opportunities-container {
+    // Page header
     .page-header {
       .page-title {
-        color: var(--text-primary-dark, #f5f5f5);
+        color: var(--text-primary);
       }
 
       .page-subtitle {
-        color: var(--text-secondary-dark, #a0a0a0);
+        color: var(--text-secondary);
+      }
+    }
+
+    // Controls section
+    .controls-section {
+      .filters {
+        .header-info {
+          .section-title {
+            color: var(--text-primary);
+          }
+        }
+      }
+
+      .status-section {
+        .last-updated {
+          color: var(--text-secondary);
+        }
+      }
+    }
+
+    // Filters section
+    .filters-section {
+      background: var(--background-primary);
+      border-color: var(--border-color);
+
+      .filter-group {
+        label {
+          color: var(--text-secondary);
+        }
+
+        .filter-input,
+        .filter-select {
+          background: var(--background-secondary);
+          border-color: var(--border-color);
+          color: var(--text-primary);
+
+          &:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+          }
+
+          &::placeholder {
+            color: var(--text-muted);
+          }
+        }
+      }
+
+      .filter-group-exchanges {
+        .exchange-checkbox {
+          background: var(--background-secondary);
+          border-color: var(--border-color);
+          color: var(--text-secondary);
+
+          &:hover {
+            background: var(--background-primary);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+          }
+
+          &.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+
+            &:hover {
+              background: var(--primary-hover);
+              border-color: var(--primary-hover);
+            }
+          }
+        }
+
+        .exchange-actions {
+          border-left-color: var(--border-color);
+        }
+      }
+    }
+
+    // Exchanges panel dark mode
+    .exchanges-panel {
+      background: var(--background-primary);
+      border-color: var(--border-color);
+
+      .exchanges-panel-header {
+        border-bottom-color: var(--border-color);
+
+        .exchanges-panel-title {
+          color: var(--text-primary);
+
+          ui-icon {
+            color: var(--primary-color);
+          }
+        }
+
+        .exchanges-count {
+          color: var(--text-secondary);
+          background: var(--background-secondary);
+        }
+      }
+
+      .exchanges-panel-content {
+        .exchange-chip {
+          background: var(--background-secondary);
+          border-color: var(--border-color);
+          color: var(--text-secondary);
+
+          &:hover {
+            background: var(--background-primary);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
+          }
+
+          &.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+
+            &:hover {
+              background: var(--primary-hover);
+              border-color: var(--primary-hover);
+              box-shadow: 0 3px 8px rgba(59, 130, 246, 0.5);
+            }
+          }
+        }
+
+        .exchange-actions {
+          border-top-color: var(--border-color);
+        }
+      }
+    }
+
+    // Price Only filters dark mode
+    .price-only-filters-section {
+      background: var(--background-primary);
+      border-color: var(--border-color);
+      border-left: 4px solid rgb(107, 114, 128);
+
+      .price-only-filters-header {
+        border-bottom-color: var(--border-color);
+
+        .price-only-filters-title {
+          color: var(--text-primary);
+        }
+      }
+
+      .price-only-filters-content {
+        .checkbox-group {
+          .checkbox-label {
+            .checkbox-text {
+              color: var(--text-primary);
+            }
+          }
+
+          .filter-hint {
+            color: var(--text-secondary);
+          }
+        }
+
+        .slider-group {
+          .slider-custom-labels {
+            color: var(--text-secondary);
+          }
+        }
+      }
+    }
+
+    // Table container
+    .table-container {
+      background: var(--background-primary);
+      border-color: var(--border-color);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+
+      &::-webkit-scrollbar-track {
+        background: var(--background-secondary);
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: var(--border-hover);
+
+        &:hover {
+          background: var(--text-muted);
+        }
+      }
+
+      .results-count {
+        background: var(--background-secondary);
+        border-bottom-color: var(--border-color);
+        color: var(--text-secondary);
+      }
+
+      .opportunities-table {
+        thead {
+          background: var(--background-secondary);
+
+          tr {
+            border-bottom-color: var(--border-color);
+          }
+
+          th {
+            color: var(--text-secondary);
+
+            &.sortable {
+              &:hover {
+                color: var(--primary-color);
+              }
+
+              &.active {
+                color: var(--primary-color);
+
+                i {
+                  color: var(--primary-color);
+                }
+              }
+            }
+          }
+        }
+
+        tbody {
+          tr {
+            border-bottom-color: var(--border-color);
+
+            &:hover {
+              background: var(--background-secondary);
+            }
+
+            &.highlight-combined {
+              background-color: rgba(16, 185, 129, 0.05);
+            }
+
+            td {
+              color: var(--text-primary);
+            }
+          }
+        }
       }
     }
 
@@ -964,7 +1305,7 @@
     .futures-price-cell {
       .price-info {
         .price-value {
-          color: var(--text-primary-dark, #f5f5f5);
+          color: var(--text-primary);
         }
 
         .exchange-badge {
@@ -978,7 +1319,7 @@
     .price-spread-cell {
       .price-spread-info {
         .spread-usdt {
-          color: var(--text-secondary-dark, #a0a0a0);
+          color: var(--text-secondary);
         }
 
         &.favorable {
@@ -995,201 +1336,453 @@
       }
     }
 
-    .controls-section {
-      .filters {
-        .header-info {
-          .section-title {
-            color: var(--text-primary-dark, #f5f5f5);
+    // Best Long/Short cells
+    .best-long-cell,
+    .best-short-cell,
+    .best-funding-cell,
+    .best-short-exchange-cell {
+      .best-exchange {
+        .exchange-name {
+          color: var(--primary-color);
+
+          &.clickable:hover {
+            color: var(--primary-hover);
           }
         }
-      }
 
-      .status-section {
-        .last-updated {
-          color: var(--text-secondary-dark, #a0a0a0);
-        }
-      }
-    }
+        .exchange-selector {
+          background: var(--background-primary);
+          border-color: var(--border-color);
+          color: var(--primary-color);
 
-    .filters-section {
-      background: var(--card-bg-dark, #1e1e1e);
-      border: none;
-
-      .filter-group {
-        label {
-          color: var(--text-secondary-dark, #a0a0a0);
-        }
-
-        .filter-input,
-        .filter-select {
-          background: var(--input-bg-dark, #2a2a2a);
-          border-color: var(--border-color-dark, #404040);
-          color: var(--text-primary-dark, #f5f5f5);
+          &:hover {
+            border-color: var(--primary-color);
+            background: var(--background-secondary);
+          }
 
           &:focus {
-            border-color: var(--primary-color, #3b82f6);
-          }
-        }
-      }
-
-      .filter-group-exchanges {
-        .exchange-checkbox {
-          background: var(--background-secondary-dark, #2a2a2a);
-          border-color: var(--border-color-dark, #404040);
-          color: var(--text-secondary-dark, #a0a0a0);
-
-          &:hover {
-            background: var(--card-bg-dark, #1e1e1e);
-            border-color: var(--primary-color, #3b82f6);
-            color: var(--primary-color, #3b82f6);
-          }
-
-          &.active {
-            background: var(--primary-color, #3b82f6);
-            border-color: var(--primary-color, #3b82f6);
-            color: white;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
           }
         }
 
-        .exchange-actions {
-          border-left-color: var(--border-color-dark, #404040);
+        .funding-rate {
+          color: var(--text-secondary);
+
+          &.positive {
+            color: rgb(74, 222, 128);
+          }
+
+          &.negative {
+            color: rgb(248, 113, 113);
+          }
+        }
+
+        .price {
+          color: var(--text-muted);
+        }
+
+        .time-to-funding {
+          color: var(--text-muted);
         }
       }
     }
 
-    // Exchanges panel dark mode
-    .exchanges-panel {
-      background: var(--card-bg-dark, #1e1e1e);
-      border: none;
-
-      .exchanges-panel-header {
-        border-bottom-color: var(--border-color-dark, #404040);
-
-        .exchanges-panel-title {
-          color: var(--text-primary-dark, #f5f5f5);
-
-          ui-icon {
-            color: var(--primary-color, #3b82f6);
-          }
-        }
-
-        .exchanges-count {
-          color: var(--text-secondary-dark, #a0a0a0);
-          background: var(--background-secondary-dark, #2a2a2a);
-        }
-      }
-
-      .exchanges-panel-content {
-        .exchange-chip {
-          background: var(--background-secondary-dark, #2a2a2a);
-          border-color: var(--border-color-dark, #404040);
-          color: var(--text-secondary-dark, #a0a0a0);
-
-          &:hover {
-            background: var(--card-bg-dark, #1e1e1e);
-            border-color: var(--primary-color, #3b82f6);
-            color: var(--primary-color, #3b82f6);
-            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
-          }
-
-          &.active {
-            background: var(--primary-color, #3b82f6);
-            border-color: var(--primary-color, #3b82f6);
-            color: white;
-            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
-
-            &:hover {
-              background: var(--primary-hover, #2563eb);
-              border-color: var(--primary-hover, #2563eb);
-              box-shadow: 0 3px 8px rgba(59, 130, 246, 0.5);
-            }
-          }
-        }
-
-        .exchange-actions {
-          border-top-color: var(--border-color-dark, #404040);
-        }
-      }
-    }
-
-    .table-container {
-      background: var(--card-bg-dark, #1e1e1e);
-      border: none;
-
-      &::-webkit-scrollbar-track {
-        background: var(--scrollbar-track-dark, #2a2a2a);
-      }
-
-      &::-webkit-scrollbar-thumb {
-        background: var(--scrollbar-thumb-dark, #555);
-
-        &:hover {
-          background: var(--scrollbar-thumb-hover-dark, #777);
-        }
-      }
-
-      .results-count {
-        background: var(--card-header-bg-dark, #252525);
-        color: var(--text-secondary-dark, #a0a0a0);
-      }
-
-      .opportunities-table {
-        thead {
-          background: var(--table-header-bg-dark, #252525);
-
-          th {
-            color: var(--text-secondary-dark, #a0a0a0);
-          }
-        }
-
-        tbody {
-          tr {
-            border-color: var(--border-color-dark, #404040);
-
-            &:hover {
-              background: var(--row-hover-bg-dark, #252525);
-            }
-
-            td {
-              color: var(--text-primary-dark, #f5f5f5);
-            }
-          }
-        }
-      }
-    }
-
+    // Help section
     .help-section {
       background-color: rgba(59, 130, 246, 0.1);
       border-left-color: rgb(59, 130, 246);
 
-      h3, li {
-        color: var(--text-primary-dark, #f5f5f5);
+      h3 {
+        color: var(--text-primary);
       }
 
       li {
-        color: var(--text-secondary-dark, #a0a0a0);
+        color: var(--text-secondary);
 
         strong {
-          color: var(--text-primary-dark, #f5f5f5);
+          color: var(--text-primary);
+        }
+      }
+    }
+
+    // Loading and error states
+    .loading-state, .error-state {
+      ui-icon {
+        color: var(--text-secondary);
+      }
+
+      p {
+        color: var(--text-secondary);
+      }
+    }
+
+    .error-state {
+      ui-icon {
+        color: rgb(248, 113, 113);
+      }
+    }
+
+    // Empty row
+    .empty-row {
+      .empty-cell {
+        p {
+          color: var(--text-secondary);
+        }
+
+        ui-icon {
+          color: var(--text-muted);
+        }
+      }
+    }
+
+    // Metric values
+    .metric-value {
+      color: var(--text-primary);
+
+      &.positive {
+        color: rgb(74, 222, 128);
+      }
+
+      &.negative {
+        color: rgb(248, 113, 113);
+      }
+
+      &.metric-highlight {
+        color: var(--primary-color);
+      }
+    }
+
+    // Metric realistic
+    .metric-realistic {
+      .metric-range {
+        .range-separator {
+          color: var(--text-secondary);
         }
       }
     }
   }
 
-  .text-green-400 {
+  // Color classes adjustments for dark theme
+  .text-green-600 {
     color: #4ade80;
   }
 
-  .text-yellow-400 {
-    color: #facc15;
+  .text-yellow-600 {
+    color: #fbbf24;
   }
 
-  .text-red-400 {
+  .text-red-600 {
     color: #f87171;
   }
 
-  .text-gray-400 {
+  .text-gray-600 {
     color: #9ca3af;
+  }
+}
+
+// Fallback: Dark mode support using prefers-color-scheme media query
+@media (prefers-color-scheme: dark) {
+  // Only apply if data-theme is not set
+  :root:not([data-theme]) {
+    .price-arbitrage-opportunities-container {
+      .page-header {
+        .page-title {
+          color: #f9fafb;
+        }
+
+        .page-subtitle {
+          color: #d1d5db;
+        }
+      }
+
+      .controls-section {
+        .filters {
+          .header-info {
+            .section-title {
+              color: #f9fafb;
+            }
+          }
+        }
+
+        .status-section {
+          .last-updated {
+            color: #d1d5db;
+          }
+        }
+      }
+
+      .filters-section {
+        background: #1e1e1e;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .filter-group {
+          label {
+            color: #d1d5db;
+          }
+
+          .filter-input,
+          .filter-select {
+            background: #2d2d2d;
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #f9fafb;
+
+            &:focus {
+              border-color: #3b82f6;
+            }
+
+            &::placeholder {
+              color: #9ca3af;
+            }
+          }
+        }
+
+        .filter-group-exchanges {
+          .exchange-checkbox {
+            background: #2d2d2d;
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #d1d5db;
+
+            &:hover {
+              background: #1e1e1e;
+              border-color: #3b82f6;
+              color: #3b82f6;
+            }
+
+            &.active {
+              background: #3b82f6;
+              border-color: #3b82f6;
+              color: white;
+            }
+          }
+
+          .exchange-actions {
+            border-left-color: rgba(255, 255, 255, 0.1);
+          }
+        }
+      }
+
+      .exchanges-panel {
+        background: #1e1e1e;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .exchanges-panel-header {
+          border-bottom-color: rgba(255, 255, 255, 0.1);
+
+          .exchanges-panel-title {
+            color: #f9fafb;
+          }
+
+          .exchanges-count {
+            color: #d1d5db;
+            background: #2d2d2d;
+          }
+        }
+
+        .exchanges-panel-content {
+          .exchange-chip {
+            background: #2d2d2d;
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #d1d5db;
+
+            &:hover {
+              background: #1e1e1e;
+              border-color: #3b82f6;
+              color: #3b82f6;
+            }
+
+            &.active {
+              background: #3b82f6;
+              border-color: #3b82f6;
+              color: white;
+            }
+          }
+
+          .exchange-actions {
+            border-top-color: rgba(255, 255, 255, 0.1);
+          }
+        }
+      }
+
+      .price-only-filters-section {
+        background: #1e1e1e;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .price-only-filters-header {
+          border-bottom-color: rgba(255, 255, 255, 0.1);
+
+          .price-only-filters-title {
+            color: #f9fafb;
+          }
+        }
+
+        .price-only-filters-content {
+          .checkbox-group {
+            .checkbox-label {
+              .checkbox-text {
+                color: #f9fafb;
+              }
+            }
+
+            .filter-hint {
+              color: #d1d5db;
+            }
+          }
+
+          .slider-group {
+            .slider-custom-labels {
+              color: #d1d5db;
+            }
+          }
+        }
+      }
+
+      .table-container {
+        background: #1e1e1e;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        &::-webkit-scrollbar-track {
+          background: #2d2d2d;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: #555;
+
+          &:hover {
+            background: #777;
+          }
+        }
+
+        .results-count {
+          background: #252525;
+          color: #d1d5db;
+        }
+
+        .opportunities-table {
+          thead {
+            background: #252525;
+
+            th {
+              color: #d1d5db;
+            }
+          }
+
+          tbody {
+            tr {
+              border-color: rgba(255, 255, 255, 0.1);
+
+              &:hover {
+                background: #252525;
+              }
+
+              td {
+                color: #f9fafb;
+              }
+            }
+          }
+        }
+      }
+
+      .spot-price-cell,
+      .futures-price-cell {
+        .price-info {
+          .price-value {
+            color: #f9fafb;
+          }
+
+          .exchange-badge {
+            background-color: rgba(59, 130, 246, 0.2);
+            color: rgb(96, 165, 250);
+          }
+        }
+      }
+
+      .price-spread-cell {
+        .price-spread-info {
+          .spread-usdt {
+            color: #d1d5db;
+          }
+
+          &.favorable {
+            .spread-usdt {
+              color: rgba(74, 222, 128, 0.8);
+            }
+          }
+
+          &.unfavorable {
+            .spread-usdt {
+              color: rgba(248, 113, 113, 0.8);
+            }
+          }
+        }
+      }
+
+      .best-long-cell,
+      .best-short-cell,
+      .best-funding-cell,
+      .best-short-exchange-cell {
+        .best-exchange {
+          .exchange-name {
+            color: #60a5fa;
+
+            &.clickable:hover {
+              color: #3b82f6;
+            }
+          }
+
+          .exchange-selector {
+            background: #1e1e1e;
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #60a5fa;
+
+            &:hover {
+              border-color: #3b82f6;
+              background: #2d2d2d;
+            }
+          }
+
+          .funding-rate {
+            color: #d1d5db;
+          }
+
+          .price {
+            color: #9ca3af;
+          }
+
+          .time-to-funding {
+            color: #9ca3af;
+          }
+        }
+      }
+
+      .help-section {
+        background-color: rgba(59, 130, 246, 0.1);
+
+        h3, li strong {
+          color: #f9fafb;
+        }
+
+        li {
+          color: #d1d5db;
+        }
+      }
+    }
+
+    .text-green-600 {
+      color: #4ade80;
+    }
+
+    .text-yellow-600 {
+      color: #fbbf24;
+    }
+
+    .text-red-600 {
+      color: #f87171;
+    }
+
+    .text-gray-600 {
+      color: #9ca3af;
+    }
   }
 }
 
@@ -1237,6 +1830,35 @@
     .exchange-checkbox {
       font-size: 0.7rem;
       padding: 0.25rem 0.5rem;
+    }
+  }
+
+  // Price Only filters mobile
+  .price-only-filters-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+
+    .price-only-filters-header {
+      .price-only-filters-title {
+        font-size: 0.9rem;
+      }
+    }
+
+    .price-only-filters-content {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+
+      .filter-group {
+        &.checkbox-group {
+          min-width: auto;
+        }
+
+        &.slider-group {
+          min-width: auto;
+          width: 100%;
+        }
+      }
     }
   }
 

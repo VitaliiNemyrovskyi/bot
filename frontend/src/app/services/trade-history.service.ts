@@ -175,7 +175,7 @@ export class TradeHistoryService {
   getTradeHistoryBySymbol(
     symbol: string,
     exchange: string,
-    limit: number = 100
+    limit = 100
   ): Observable<TradeHistoryResponse> {
     return this.getTradeHistory({ symbol, exchange, limit });
   }

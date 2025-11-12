@@ -18,11 +18,6 @@ export const routes: Routes = [
     canActivate: [AuthGuard]
   },
   {
-    path: 'trading',
-    loadComponent: () => import('./components/trading/grid-bot-dashboard/grid-bot-dashboard.component').then(m => m.GridBotDashboardComponent),
-    canActivate: [AuthGuard]
-  },
-  {
     path: 'trading/bot/create',
     loadComponent: () => import('./components/trading/bot-config-page/bot-config-page.component').then(m => m.BotConfigPageComponent),
     canActivate: [AuthGuard],
@@ -43,16 +38,6 @@ export const routes: Routes = [
   {
     path: 'trading/manual',
     loadComponent: () => import('./components/trading/trading-dashboard/trading-dashboard.component').then(m => m.TradingDashboardComponent),
-    canActivate: [AuthGuard]
-  },
-  {
-    path: 'trading/funding-rates',
-    loadComponent: () => import('./components/trading/funding-rates/funding-rates.component').then(m => m.FundingRatesComponent),
-    canActivate: [AuthGuard]
-  },
-  {
-    path: 'trading/funding-revenue',
-    loadComponent: () => import('./components/trading/funding-revenue/funding-revenue.component').then(m => m.FundingRevenueComponent),
     canActivate: [AuthGuard]
   },
   {
@@ -84,11 +69,6 @@ export const routes: Routes = [
   {
     path: 'arbitrage/positions',
     loadComponent: () => import('./pages/active-arbitrage-positions/active-arbitrage-positions.component').then(m => m.ActiveArbitragePositionsComponent),
-    canActivate: [AuthGuard]
-  },
-  {
-    path: 'arbitrage/triangular',
-    loadComponent: () => import('./pages/triangular-arbitrage/triangular-arbitrage.component').then(m => m.TriangularArbitrageComponent),
     canActivate: [AuthGuard]
   },
   {

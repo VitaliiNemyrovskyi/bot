@@ -38,7 +38,7 @@ import { CredentialErrorCode } from '@/types/exchange-credentials';
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authenticate user
@@ -56,7 +56,7 @@ export async function PUT(
     }
 
     const userId = authResult.user.userId;
-    const credentialId = params.id;
+    const { id: credentialId } = await params;
 
     if (!credentialId) {
       return NextResponse.json(
@@ -86,9 +86,11 @@ export async function PUT(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('not found')) {
+      const errorMessage = error instanceof Error ? error.message : '';
+
+      if (errorMessage.includes('not found')) {
         return NextResponse.json(
           {
             success: false,
@@ -100,7 +102,7 @@ export async function PUT(
         );
       }
 
-      if (error.message.includes('Unauthorized')) {
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -114,7 +116,7 @@ export async function PUT(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error activating credential:', error);
 
     return NextResponse.json(

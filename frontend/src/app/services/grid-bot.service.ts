@@ -89,7 +89,7 @@ export class GridBotService {
   }
 
   // Market Data
-  getMarketData(symbol: string, timeframe: string = '1h', limit: number = 100): Observable<any[]> {
+  getMarketData(symbol: string, timeframe = '1h', limit = 100): Observable<any[]> {
     const params = new HttpParams()
       .set('symbol', symbol)
       .set('timeframe', timeframe)
@@ -108,7 +108,7 @@ export class GridBotService {
   }
 
   // Performance Analytics
-  getBotPerformance(botId: string, period: string = '24h'): Observable<any> {
+  getBotPerformance(botId: string, period = '24h'): Observable<any> {
     const params = new HttpParams()
       .set('botId', botId)
       .set('period', period);
@@ -116,7 +116,7 @@ export class GridBotService {
     return this.http.get<any>(`${this.apiUrl}/performance`, { params });
   }
 
-  getBotTrades(botId: string, limit: number = 100): Observable<any[]> {
+  getBotTrades(botId: string, limit = 100): Observable<any[]> {
     const params = new HttpParams()
       .set('botId', botId)
       .set('limit', limit.toString());
@@ -156,7 +156,7 @@ export class GridBotService {
     return this.http.get<any>(`${this.apiUrl}/portfolio/summary`);
   }
 
-  getPortfolioPerformance(period: string = '30d'): Observable<any[]> {
+  getPortfolioPerformance(period = '30d'): Observable<any[]> {
     const params = new HttpParams().set('period', period);
     return this.http.get<any[]>(`${this.apiUrl}/portfolio/performance`, { params });
   }
@@ -190,7 +190,7 @@ export class GridBotService {
     return this.http.post<any>(`${this.apiUrl}/analytics/correlation`, { symbols });
   }
 
-  getOptimalGridParameters(symbol: string, period: string = '30d'): Observable<{
+  getOptimalGridParameters(symbol: string, period = '30d'): Observable<{
     suggestedUpperPrice: number;
     suggestedLowerPrice: number;
     suggestedGridLevels: number;

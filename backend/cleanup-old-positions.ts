@@ -26,7 +26,7 @@ async function cleanupOldPositions() {
       return;
     }
 
-    positions.forEach((pos, index) => {
+    positions.forEach((pos: typeof positions[number], index: number) => {
       console.log(`${index + 1}. ${pos.positionId} - ${pos.symbol} - Status: ${pos.status}`);
     });
 
@@ -47,8 +47,9 @@ async function cleanupOldPositions() {
 
     console.log(`✓ Successfully updated ${result.count} positions to COMPLETED status`);
 
-  } catch (error: any) {
-    console.error('Error cleaning up positions:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('Error cleaning up positions:', err.message);
   } finally {
     await prisma.$disconnect();
   }

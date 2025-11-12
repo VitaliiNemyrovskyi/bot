@@ -8,7 +8,7 @@ async function main() {
   });
   
   console.log('\n📋 Exchange Credentials:');
-  credentials.forEach(cred => {
+  credentials.forEach((cred: typeof credentials[number]) => {
     console.log(`\n${cred.exchange} (${cred.environment}):`);
     console.log(`  ID: ${cred.id}`);
     console.log(`  Label: ${cred.label}`);

@@ -154,12 +154,9 @@ export async function createBybitClientForCredential(
       };
     }
 
-    const testnet = credential.environment === 'TESTNET';
-
     const client = new BybitService({
       apiKey,
       apiSecret,
-      testnet,
       enableRateLimit: true,
       userId: credential.userId
     });

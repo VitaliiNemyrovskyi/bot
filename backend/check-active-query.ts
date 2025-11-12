@@ -19,7 +19,7 @@ async function check() {
 
   console.log(`Found ${positions.length} positions:\n`);
 
-  positions.forEach(pos => {
+  positions.forEach((pos: typeof positions[number]) => {
     console.log(`  Position: ${pos.positionId}`);
     console.log(`  Status: ${pos.status}`);
     console.log(`  Created: ${pos.createdAt}`);

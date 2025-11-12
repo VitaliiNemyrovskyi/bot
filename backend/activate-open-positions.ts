@@ -80,8 +80,9 @@ async function activateOpenPositions() {
     }
 
     console.log('\n=== Done ===\n');
-  } catch (error: any) {
-    console.error('Error:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error:', errorMessage);
   } finally {
     await prisma.$disconnect();
   }
@@ -105,8 +106,6 @@ async function checkPositionOnExchange(
       return false;
     }
 
-    const testnet = credentials.environment === 'TESTNET';
-
     // Normalize symbol for BingX
     let normalizedSymbol = symbol;
     if (exchange === 'BINGX' && !symbol.includes('-')) {
@@ -125,14 +124,12 @@ async function checkPositionOnExchange(
     if (exchange === 'BINGX') {
       connector = new BingXConnector(
         credentials.apiKey,
-        credentials.apiSecret,
-        testnet
+        credentials.apiSecret
       );
     } else if (exchange === 'BYBIT') {
       connector = new BybitConnector(
         credentials.apiKey,
-        credentials.apiSecret,
-        testnet
+        credentials.apiSecret
       );
     } else {
       console.log(`    ⚠️  Unsupported exchange: ${exchange}`);
@@ -145,15 +142,16 @@ async function checkPositionOnExchange(
     const positions = await connector.getPositions(normalizedSymbol);
 
     // Check if position exists and has size > 0
-    const position = positions.find((p: any) => {
+    const position = positions.find((p: typeof positions[number]) => {
       const posSymbol = p.symbol?.replace('-', '')?.toUpperCase();
       const targetSymbol = symbol?.replace('-', '')?.toUpperCase();
       return posSymbol === targetSymbol && Math.abs(p.size || 0) > 0;
     });
 
     return !!position;
-  } catch (error: any) {
-    console.log(`    ❌ Error checking ${exchange}:`, error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.log(`    ❌ Error checking ${exchange}:`, err.message);
     return false;
   }
 }

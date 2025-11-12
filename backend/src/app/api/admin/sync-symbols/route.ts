@@ -7,7 +7,7 @@ import { syncAllExchanges } from '@/services/trading-symbols.service';
  * Triggers a manual sync of all trading symbols from supported exchanges.
  * This endpoint should be protected in production.
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     console.log('🔄 Manual symbol sync triggered...');
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   return NextResponse.json({
     message: 'Use POST to trigger symbol sync',
     endpoint: '/api/admin/sync-symbols',

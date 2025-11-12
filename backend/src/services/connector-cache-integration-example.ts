@@ -58,7 +58,7 @@ export async function getOrCreateConnectorOptimized(
     connector = new BybitConnectorWithCache(
       credential.apiKey,
       credential.apiSecret,
-      credential.environment === 'TESTNET',
+      false,
       userId,          // Pass userId for cache lookup
       credentialId     // Pass credentialId for cache lookup
     );
@@ -67,7 +67,7 @@ export async function getOrCreateConnectorOptimized(
     connector = new BingXConnectorWithCache(
       credential.apiKey,
       credential.apiSecret,
-      credential.environment === 'TESTNET',
+      false,
       userId,          // Pass userId for cache lookup
       credentialId     // Pass credentialId for cache lookup
     );
@@ -84,7 +84,6 @@ export async function getOrCreateConnectorOptimized(
   //   connector,
   //   credentialId,
   //   exchange: credential.exchange,
-  //   environment: credential.environment,
   //   subscriptionIds: new Set(),
   //   lastUsed: Date.now(),
   //   initializationTime: Date.now(),

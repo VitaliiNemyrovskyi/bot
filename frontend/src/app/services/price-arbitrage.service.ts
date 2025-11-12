@@ -345,7 +345,7 @@ export class PriceArbitrageService {
    * @param decimals Number of decimal places
    * @returns Formatted spread string (e.g., "1.50%")
    */
-  formatSpread(spread: number, decimals: number = 2): string {
+  formatSpread(spread: number, decimals = 2): string {
     return `${(spread * 100).toFixed(decimals)}%`;
   }
 
@@ -357,5 +357,60 @@ export class PriceArbitrageService {
    */
   meetsSpreadThreshold(opportunity: PriceArbitrageOpportunity, minSpread: number): boolean {
     return opportunity.spread >= minSpread;
+  }
+
+  /**
+   * Detect and import existing arbitrage positions from exchanges
+   *
+   * Checks both exchanges for open positions that match arbitrage criteria:
+   * - Opposite directions (LONG/SHORT)
+   * - Same quantity
+   * - Same leverage
+   *
+   * If a matching pair is found, it will be automatically imported into the database.
+   *
+   * @param symbol Trading symbol (e.g., AIAUSDT)
+   * @param primaryExchange First exchange (e.g., GATEIO)
+   * @param hedgeExchange Second exchange (e.g., BINGX)
+   * @returns Observable with detection result and imported position (if found)
+   */
+  detectExistingPosition(
+    symbol: string,
+    primaryExchange: string,
+    hedgeExchange: string
+  ): Observable<{
+    detected: boolean;
+    position?: PriceArbitragePositionDTO;
+    message: string;
+    alreadyExists?: boolean;
+  }> {
+    const url = `/api/arbitrage/positions/detect?symbol=${encodeURIComponent(symbol)}&primaryExchange=${encodeURIComponent(primaryExchange)}&hedgeExchange=${encodeURIComponent(hedgeExchange)}`;
+
+    return this.http.get<{
+      success: boolean;
+      detected: boolean;
+      position?: PriceArbitragePositionDTO;
+      message: string;
+      alreadyExists?: boolean;
+    }>(url, {
+      headers: this.getHeaders()
+    }).pipe(
+      map(response => {
+        if (response.success) {
+          return {
+            detected: response.detected,
+            position: response.position,
+            message: response.message,
+            alreadyExists: response.alreadyExists
+          };
+        }
+        throw new Error(response.message || 'Failed to detect existing positions');
+      }),
+      catchError(error => {
+        console.error('Error detecting existing positions:', error);
+        const errorMessage = error.error?.message || error.message || 'Failed to detect existing positions';
+        return throwError(() => new Error(errorMessage));
+      })
+    );
   }
 }

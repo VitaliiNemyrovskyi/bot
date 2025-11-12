@@ -27,6 +27,7 @@ enum Exchange {
   MEXC
   GATEIO
   BITGET
+  KUCOIN
 }
 
 model User {
@@ -982,9 +983,9 @@ model TriangularArbitragePosition {
   leg1Quantity   Float? // Quantity traded
   leg1Price      Float? // Executed price
   leg1OrderId    String? // Exchange order ID
-  leg1FilledQty  Float   @default(0)
+  leg1FilledQty  Float     @default(0)
   leg1AvgPrice   Float? // Average fill price
-  leg1Fees       Float   @default(0)
+  leg1Fees       Float     @default(0)
   leg1Slippage   Float? // Actual slippage %
   leg1ExecutedAt DateTime?
 
@@ -994,9 +995,9 @@ model TriangularArbitragePosition {
   leg2Quantity   Float?
   leg2Price      Float?
   leg2OrderId    String?
-  leg2FilledQty  Float   @default(0)
+  leg2FilledQty  Float     @default(0)
   leg2AvgPrice   Float?
-  leg2Fees       Float   @default(0)
+  leg2Fees       Float     @default(0)
   leg2Slippage   Float?
   leg2ExecutedAt DateTime?
 
@@ -1006,18 +1007,18 @@ model TriangularArbitragePosition {
   leg3Quantity   Float?
   leg3Price      Float?
   leg3OrderId    String?
-  leg3FilledQty  Float   @default(0)
+  leg3FilledQty  Float     @default(0)
   leg3AvgPrice   Float?
-  leg3Fees       Float   @default(0)
+  leg3Fees       Float     @default(0)
   leg3Slippage   Float?
   leg3ExecutedAt DateTime?
 
   // Final results
-  finalQuantity        Float? // Actual final quantity received
-  actualProfitAmount   Float? // Actual profit (final - initial)
-  actualProfitPercent  Float? // Actual profit %
-  totalFees            Float  @default(0)
-  totalSlippage        Float? // Combined slippage across legs
+  finalQuantity       Float? // Actual final quantity received
+  actualProfitAmount  Float? // Actual profit (final - initial)
+  actualProfitPercent Float? // Actual profit %
+  totalFees           Float  @default(0)
+  totalSlippage       Float? // Combined slippage across legs
 
   // Status tracking
   status       TriangularArbStatus @default(SCANNING)
@@ -1025,10 +1026,10 @@ model TriangularArbitragePosition {
   errorMessage String?
 
   // Performance metrics
-  opportunityDetectedAt  DateTime? // When opportunity was detected
-  executionStartedAt     DateTime? // When first leg started
-  executionCompletedAt   DateTime? // When all legs completed
-  totalExecutionTimeMs   Int? // Total execution time
+  opportunityDetectedAt DateTime? // When opportunity was detected
+  executionStartedAt    DateTime? // When first leg started
+  executionCompletedAt  DateTime? // When all legs completed
+  totalExecutionTimeMs  Int? // Total execution time
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -1101,7 +1102,7 @@ model PublicFundingRate {
   exchange Exchange // BINANCE, BYBIT, BINGX, etc.
 
   // Funding rate data
-  fundingRate Float // Current funding rate (e.g., 0.0001 = 0.01%)
+  fundingRate     Float // Current funding rate (e.g., 0.0001 = 0.01%)
   nextFundingTime DateTime // When next funding will occur
   fundingInterval Int // Interval in hours (usually 8)
 

@@ -228,8 +228,6 @@ export class BybitFundingStrategyService extends EventEmitter {
           console.log(`[BybitFundingStrategy] Restoring strategy for ${subscription.symbol} (user: ${subscription.userId})`);
 
           // Restore strategy
-          const testnet = credential.environment === 'TESTNET';
-
           const strategyId = await this.startStrategy(
             {
               userId: subscription.userId,
@@ -243,7 +241,7 @@ export class BybitFundingStrategyService extends EventEmitter {
             },
             credential.apiKey,
             credential.apiSecret,
-            testnet,
+            false,
             credential.id
           );
 

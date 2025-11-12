@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject } from '@angular/core';import { IconComponent } from '../../components/ui/icon/icon.component';
+
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -8,7 +9,6 @@ import { PublicFundingRatesService } from '../../services/public-funding-rates.s
 import { FundingRateOpportunity, SpreadStabilityMetrics } from '../../models/public-funding-rate.model';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../components/ui/card/card.component';
 import { ButtonComponent } from '../../components/ui/button/button.component';
-import { IconComponent } from '../../components/ui/icon/icon.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { TradingSettingsService, TradingSettings } from '../../services/trading-settings.service';
 import { ThemeService } from '../../services/theme.service';
@@ -32,23 +32,7 @@ import { FundingSpreadDetailsComponent } from '../../components/trading/funding-
   selector: 'app-arbitrage-funding',
   standalone: true,
   imports: [
-    CommonModule,
-    FormsModule,
-    RouterModule,
-    CardComponent,
-    CardHeaderComponent,
-    CardTitleComponent,
-    CardContentComponent,
-    ButtonComponent,
-    IconComponent,
-    DialogComponent,
-    DialogHeaderComponent,
-    DialogTitleComponent,
-    DialogContentComponent,
-    DialogFooterComponent,
-    FundingRateSpreadChartComponent,
-    FundingSpreadDetailsComponent,
-  ],
+    IconComponent,CommonModule, FormsModule, RouterModule, CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingRateSpreadChartComponent, FundingSpreadDetailsComponent],
   templateUrl: './arbitrage-funding.component.html',
   styleUrls: ['./arbitrage-funding.component.scss'],
   encapsulation: ViewEncapsulation.None,
@@ -136,7 +120,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     }
 
     // Filter by selected exchanges
-    // Show only opportunities where BOTH bestLong and bestShort exchanges are selected
+    // Show opportunities where BOTH bestLong AND bestShort exchanges are selected
+    // This ensures we only show arbitrage pairs between the selected exchanges
     const selected = this.selectedExchanges();
     if (selected.size > 0) {
       filtered = filtered.filter(opp =>
@@ -230,7 +215,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
       .pipe(
         startWith(0), // Load immediately
-        switchMap(() => this.fundingRatesService.getFundingRatesOpportunities())
+        switchMap(() => this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()))
       )
       .subscribe({
         next: (opportunities) => {
@@ -264,7 +249,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.error.set(null);
 
-    this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+    this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()).subscribe({
       next: (opportunities) => {
         this.opportunities.set(opportunities);
         this.error.set(null);
@@ -313,6 +298,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       selected.add(exchange);
     }
     this.selectedExchanges.set(selected);
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**
@@ -320,6 +307,8 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
    */
   selectAllExchanges(): void {
     this.selectedExchanges.set(new Set(this.availableExchanges()));
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**
@@ -327,14 +316,17 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
    */
   deselectAllExchanges(): void {
     this.selectedExchanges.set(new Set());
+    // Trigger immediate refresh with new exchange selection
+    this.refresh();
   }
 
   /**
    * Check if exchange is selected
+   * Returns a function to be used in templates that properly tracks signal changes
    */
-  isExchangeSelected(exchange: string): boolean {
+  isExchangeSelected = (exchange: string): boolean => {
     return this.selectedExchanges().has(exchange);
-  }
+  };
 
   /**
    * Format funding rate for display
@@ -541,24 +533,15 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
 
   /**
    * Format time to funding with interval like "2h 15m / 8h"
-   * Dynamically calculates the funding interval based on time until next funding
+   * Uses the actual funding interval from the exchange API
    * Uses currentTime signal to avoid NG0100
    */
   formatTimeToFundingWithInterval(exchange: { nextFundingTime: number; fundingInterval?: string }): string {
     const timeToFunding = this.getTimeToFunding(exchange);
 
-    // Calculate interval dynamically based on time until next funding
-    const now = this.currentTime();
-    const timeUntilFunding = exchange.nextFundingTime - now;
-
-    let interval = '8h'; // Default
-    if (timeUntilFunding > 0) {
-      if (timeUntilFunding <= 1 * 60 * 60 * 1000) {
-        interval = '1h';
-      } else if (timeUntilFunding <= 4 * 60 * 60 * 1000) {
-        interval = '4h';
-      }
-    }
+    // Use the actual funding interval from the API - no defaults!
+    // Backend returns '-' when interval is not available
+    const interval = exchange.fundingInterval || '-';
 
     return `${timeToFunding} / ${interval}`;
   }

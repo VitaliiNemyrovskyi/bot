@@ -1,0 +1,159 @@
+@font-face {
+  font-family: 'ui-icons';
+  src: url('/assets/fonts/ui-icons.woff2') format('woff2'),
+       url('/assets/fonts/ui-icons.woff') format('woff'),
+       url('/assets/fonts/ui-icons.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  /* Use 'swap' to prevent FOUC (Flash of Unstyled Content) */
+  font-display: swap;
+}
+
+.ui-icon {
+  font-family: 'ui-icons' !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ui-icon-alert-circle::before {
+  content: "\ea01";
+}
+
+.ui-icon-analytics::before {
+  content: "\ea02";
+}
+
+.ui-icon-arrow_downward::before {
+  content: "\ea03";
+}
+
+.ui-icon-arrow_upward::before {
+  content: "\ea04";
+}
+
+.ui-icon-chart::before {
+  content: "\ea05";
+}
+
+.ui-icon-check_circle::before {
+  content: "\ea06";
+}
+
+.ui-icon-chevron-down::before {
+  content: "\ea07";
+}
+
+.ui-icon-clear::before {
+  content: "\ea08";
+}
+
+.ui-icon-clear_all::before {
+  content: "\ea09";
+}
+
+.ui-icon-clipboard::before {
+  content: "\ea0a";
+}
+
+.ui-icon-close::before {
+  content: "\ea0b";
+}
+
+.ui-icon-done_all::before {
+  content: "\ea0c";
+}
+
+.ui-icon-edit::before {
+  content: "\ea0d";
+}
+
+.ui-icon-error::before {
+  content: "\ea0e";
+}
+
+.ui-icon-eye::before {
+  content: "\ea0f";
+}
+
+.ui-icon-eye-off::before {
+  content: "\ea10";
+}
+
+.ui-icon-filter::before {
+  content: "\ea11";
+}
+
+.ui-icon-info::before {
+  content: "\ea12";
+}
+
+.ui-icon-list::before {
+  content: "\ea13";
+}
+
+.ui-icon-lock::before {
+  content: "\ea14";
+}
+
+.ui-icon-logout::before {
+  content: "\ea15";
+}
+
+.ui-icon-play_arrow::before {
+  content: "\ea16";
+}
+
+.ui-icon-plus::before {
+  content: "\ea17";
+}
+
+.ui-icon-refresh::before {
+  content: "\ea18";
+}
+
+.ui-icon-schedule::before {
+  content: "\ea19";
+}
+
+.ui-icon-settings::before {
+  content: "\ea1a";
+}
+
+.ui-icon-show_chart::before {
+  content: "\ea1b";
+}
+
+.ui-icon-spinner::before {
+  content: "\ea1c";
+}
+
+.ui-icon-swap_horiz::before {
+  content: "\ea1d";
+}
+
+.ui-icon-trash::before {
+  content: "\ea1e";
+}
+
+.ui-icon-trending_down::before {
+  content: "\ea1f";
+}
+
+.ui-icon-trending_up::before {
+  content: "\ea20";
+}
+
+.ui-icon-tune::before {
+  content: "\ea21";
+}
+
+.ui-icon-user::before {
+  content: "\ea22";
+}
+

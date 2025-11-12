@@ -44,7 +44,7 @@ import { CredentialErrorCode } from '@/types/exchange-credentials';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { exchange: string } }
+  { params }: { params: Promise<{ exchange: string }> }
 ) {
   try {
     // Authenticate user
@@ -62,10 +62,11 @@ export async function GET(
     }
 
     const userId = authResult.user.userId;
-    const exchangeParam = params.exchange?.toUpperCase();
+    const { exchange: exchangeParam } = await params;
+    const exchangeUpper = exchangeParam?.toUpperCase();
 
     // Validate exchange parameter
-    if (!exchangeParam || !Object.values(Exchange).includes(exchangeParam as Exchange)) {
+    if (!exchangeUpper || !Object.values(Exchange).includes(exchangeUpper as Exchange)) {
       return NextResponse.json(
         {
           success: false,
@@ -77,7 +78,7 @@ export async function GET(
       );
     }
 
-    const exchange = exchangeParam as Exchange;
+    const exchange = exchangeUpper as Exchange;
 
     // Get active credentials (returns decrypted credentials for internal use)
     const activeCredential = await ExchangeCredentialsService.getActiveCredentials(
@@ -119,8 +120,9 @@ export async function GET(
       },
       { status: 200 }
     );
-  } catch (error: any) {
-    console.error('Error fetching active credentials:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error fetching active credentials:', errorMessage);
 
     return NextResponse.json(
       {

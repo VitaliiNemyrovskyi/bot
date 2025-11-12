@@ -23,12 +23,10 @@ async function testBingXConnector() {
   // Check environment variables
   const apiKey = process.env.BINGX_API_KEY;
   const apiSecret = process.env.BINGX_API_SECRET;
-  const testnet = process.env.BINGX_TESTNET !== 'false';
 
   console.log('[Config] Environment Variables:');
   console.log(`  API Key: ${apiKey ? `${apiKey.substring(0, 10)}...` : 'NOT SET'}`);
   console.log(`  API Secret: ${apiSecret ? `${apiSecret.substring(0, 10)}...` : 'NOT SET'}`);
-  console.log(`  Testnet: ${testnet}`);
   console.log();
 
   if (!apiKey || !apiSecret) {
@@ -39,7 +37,7 @@ async function testBingXConnector() {
 
   try {
     console.log('[Test 1] Creating BingX connector instance...');
-    const connector = new BingXConnector(apiKey, apiSecret, testnet);
+    const connector = new BingXConnector(apiKey, apiSecret);
     console.log('[Test 1] SUCCESS: Connector instance created');
     console.log();
 
@@ -65,16 +63,17 @@ async function testBingXConnector() {
       console.log('ALL TESTS PASSED!');
       console.log('='.repeat(80));
 
-    } catch (initError: any) {
+    } catch (initError: unknown) {
+      const err = initError as Error;
       const duration = Date.now() - startTime;
       console.error(`[Test 2] FAILED after ${duration}ms`);
       console.error('[Error Details]');
-      console.error(`  Message: ${initError.message}`);
-      console.error(`  Stack: ${initError.stack}`);
+      console.error(`  Message: ${err.message}`);
+      console.error(`  Stack: ${err.stack}`);
       console.log();
 
       // Try to extract more details
-      if (initError.message.includes('timestamp')) {
+      if (err.message.includes('timestamp')) {
         console.log('[Diagnosis] This appears to be a timestamp/time sync issue');
         console.log('Possible causes:');
         console.log('  1. System clock is not synchronized');
@@ -88,7 +87,7 @@ async function testBingXConnector() {
         console.log('  3. Check the logs above for time sync details');
       }
 
-      if (initError.message.includes('API error')) {
+      if (err.message.includes('API error')) {
         console.log('[Diagnosis] This appears to be an API authentication issue');
         console.log('Possible causes:');
         console.log('  1. API credentials are incorrect');
@@ -100,10 +99,11 @@ async function testBingXConnector() {
       process.exit(1);
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     console.error('[FATAL ERROR]');
-    console.error(`  Message: ${error.message}`);
-    console.error(`  Stack: ${error.stack}`);
+    console.error(`  Message: ${err.message}`);
+    console.error(`  Stack: ${err.stack}`);
     process.exit(1);
   }
 }

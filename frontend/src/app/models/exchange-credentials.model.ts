@@ -20,7 +20,8 @@ export enum ExchangeType {
   BINGX = 'BINGX',
   MEXC = 'MEXC',
   GATEIO = 'GATEIO',
-  BITGET = 'BITGET'
+  BITGET = 'BITGET',
+  KUCOIN = 'KUCOIN'
 }
 
 
@@ -69,6 +70,7 @@ export interface CreateExchangeCredentialRequest {
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC futures trading)
+  passphrase?: string; // Passphrase (required for OKX)
   label?: string;
   isActive?: boolean; // Optional flag to set credential as active (defaults to true)
 }
@@ -82,6 +84,7 @@ export interface UpdateExchangeCredentialRequest {
   apiKey?: string;
   apiSecret?: string;
   authToken?: string; // Browser session token (for MEXC)
+  passphrase?: string; // Passphrase (required for OKX)
   isActive?: boolean;  // Set active status (true/false) - no automatic deactivation of others
 }
 
@@ -116,6 +119,7 @@ export interface TestConnectionRequest {
   apiKey: string;
   apiSecret: string;
   authToken?: string; // Browser session token (for MEXC)
+  passphrase?: string; // Passphrase (required for OKX)
 }
 
 /**
@@ -356,6 +360,13 @@ export const EXCHANGE_METADATA: Record<ExchangeType, {
     logo: '/assets/images/exchanges/bitget.svg',
     color: '#00F0FF',
     website: 'https://www.bitget.com',
+    supportsTestnet: false
+  },
+  [ExchangeType.KUCOIN]: {
+    name: 'KuCoin',
+    logo: '/assets/images/exchanges/kucoin.svg',
+    color: '#24AE8F',
+    website: 'https://www.kucoin.com',
     supportsTestnet: false
   }
 };

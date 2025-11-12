@@ -5,12 +5,11 @@
       {{ translate('arbitrage.startArbitrage') }}
     </h2>
     <button
-      mat-icon-button
       class="close-button"
       (click)="onCancel()"
       [disabled]="isSubmitting()"
       aria-label="Close">
-      <mat-icon>close</mat-icon>
+      <ui-icon name="close" [size]="24"></ui-icon>
     </button>
   </div>
 
@@ -30,7 +29,7 @@
       <!-- Primary Exchange (Higher Price - SHORT) -->
       <div class="exchange-card primary-exchange">
         <div class="exchange-header">
-          <mat-icon class="exchange-icon">trending_down</mat-icon>
+          <ui-icon name="trending_down" [size]="20" class="exchange-icon"></ui-icon>
           <h4 class="exchange-title">{{ translate('arbitrage.primaryExchange') }}</h4>
         </div>
         <div class="exchange-details">
@@ -43,7 +42,7 @@
       <!-- Hedge Exchange (Lower Price - LONG) -->
       <div class="exchange-card hedge-exchange">
         <div class="exchange-header">
-          <mat-icon class="exchange-icon">trending_up</mat-icon>
+          <ui-icon name="trending_up" [size]="20" class="exchange-icon"></ui-icon>
           <h4 class="exchange-title">{{ translate('arbitrage.hedgeExchange') }}</h4>
         </div>
         <div class="exchange-details">
@@ -59,7 +58,7 @@
       <!-- Primary Exchange Settings -->
       <div class="form-section">
         <h4 class="section-title">
-          <mat-icon>settings</mat-icon>
+          <ui-icon name="settings" [size]="20"></ui-icon>
           {{ translate('arbitrage.primaryExchange') }} {{ translate('arbitrage.configure') }}
         </h4>
 
@@ -111,7 +110,7 @@
       <!-- Hedge Exchange Settings -->
       <div class="form-section">
         <h4 class="section-title">
-          <mat-icon>settings</mat-icon>
+          <ui-icon name="settings" [size]="20"></ui-icon>
           {{ translate('arbitrage.hedgeExchange') }} {{ translate('arbitrage.configure') }}
         </h4>
 
@@ -164,7 +163,7 @@
       <mat-expansion-panel class="advanced-settings-panel" [(expanded)]="showAdvancedSettings">
         <mat-expansion-panel-header>
           <mat-panel-title>
-            <mat-icon>tune</mat-icon>
+            <ui-icon name="tune" [size]="20"></ui-icon>
             Advanced Settings (Optional)
           </mat-panel-title>
         </mat-expansion-panel-header>
@@ -228,14 +227,14 @@
       <!-- Success/Error Messages -->
       @if (successMessage()) {
         <div class="message success-message">
-          <mat-icon>check_circle</mat-icon>
+          <ui-icon name="check_circle" [size]="20"></ui-icon>
           <span>{{ successMessage() }}</span>
         </div>
       }
 
       @if (errorMessage()) {
         <div class="message error-message">
-          <mat-icon>error</mat-icon>
+          <ui-icon name="error" [size]="20"></ui-icon>
           <span>{{ errorMessage() }}</span>
         </div>
       }

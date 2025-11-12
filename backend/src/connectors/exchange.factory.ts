@@ -4,6 +4,7 @@ import { BingXConnector } from './bingx.connector';
 import { BybitConnector } from './bybit.connector';
 import { MEXCConnector } from './mexc.connector';
 import { GateIOSpotConnector } from './gateio-spot.connector';
+import { KuCoinConnector } from './kucoin.connector';
 
 /**
  * Exchange Connector Factory
@@ -26,6 +27,7 @@ export class ExchangeConnectorFactory {
     'BINGX',    // Custom: Time sync, position mode handling
     'MEXC',     // Custom: Symbol format handling, auth token support
     'GATEIO',   // Custom: SPOT connector for triangular arbitrage
+    'KUCOIN',   // Custom: Direct API auth, spot trading
   ]);
 
   /**
@@ -57,7 +59,6 @@ export class ExchangeConnectorFactory {
     'BINANCE',
     'GATE',
     'GATEIO',
-    'KUCOIN',
     'OKX',
   ]);
 
@@ -69,7 +70,7 @@ export class ExchangeConnectorFactory {
    * @param apiSecret - API secret for authentication
    * @param userId - Optional user ID for logging
    * @param credentialId - Optional credential ID for logging
-   * @param authToken - Optional auth token (for exchanges like MEXC)
+   * @param authToken - Optional auth token (for MEXC) or passphrase (for OKX, Bitget, KuCoin)
    * @returns BaseExchangeConnector instance
    */
   static create(
@@ -93,13 +94,13 @@ export class ExchangeConnectorFactory {
     // 2. Check if exchange is supported by CCXT
     if (this.CCXT_SUPPORTED.has(exchange) || this.isCCXTSupported(exchangeName)) {
       console.log(`[ExchangeFactory] Using CCXT connector for ${exchange}`);
-      return this.createCCXTConnector(exchangeName, apiKey, apiSecret, userId, credentialId);
+      return this.createCCXTConnector(exchangeName, apiKey, apiSecret, userId, credentialId, authToken);
     }
 
     // 3. Fallback: Try CCXT anyway (might work for unlisted exchanges)
     console.warn(`[ExchangeFactory] ${exchange} not explicitly listed, attempting CCXT connector`);
     try {
-      return this.createCCXTConnector(exchangeName, apiKey, apiSecret, userId, credentialId);
+      return this.createCCXTConnector(exchangeName, apiKey, apiSecret, userId, credentialId, authToken);
     } catch (error: any) {
       throw new Error(
         `Exchange "${exchange}" is not supported. ` +
@@ -138,6 +139,13 @@ export class ExchangeConnectorFactory {
         // Gate.io SPOT connector for triangular arbitrage
         return new GateIOSpotConnector(apiKey, apiSecret);
 
+      case 'KUCOIN':
+        // KuCoin SPOT connector with direct API authentication
+        if (!authToken) {
+          throw new Error('KuCoin requires a passphrase (authToken parameter)');
+        }
+        return new KuCoinConnector(apiKey, apiSecret, authToken, userId, credentialId);
+
       default:
         throw new Error(`Custom connector not implemented for ${exchange}`);
     }
@@ -151,19 +159,20 @@ export class ExchangeConnectorFactory {
     apiKey: string,
     apiSecret: string,
     userId?: string,
-    credentialId?: string
+    credentialId?: string,
+    authToken?: string
   ): BaseExchangeConnector {
     const exchangeUpper = exchangeName.toUpperCase();
 
     // Convert to ccxt format (lowercase)
-    // Special case: GATEIO -> 'gate' in CCXT
+    // Special cases for CCXT exchange IDs
     let ccxtId = exchangeName.toLowerCase();
     if (exchangeUpper === 'GATEIO' || exchangeUpper === 'GATE') {
       ccxtId = 'gate';
     }
 
     // Determine market type based on exchange
-    // Spot exchanges for triangular arbitrage, swap for others
+    // Spot exchanges for triangular arbitrage, swap/future for others
     const marketType: 'spot' | 'swap' | 'future' | 'margin' =
       this.SPOT_EXCHANGES.has(exchangeUpper) ? 'spot' : 'swap';
 
@@ -176,7 +185,8 @@ export class ExchangeConnectorFactory {
       false, // testnet - default to false for now
       userId,
       credentialId,
-      marketType
+      marketType,
+      authToken // Passphrase for OKX, Bitget, KuCoin
     );
   }
 

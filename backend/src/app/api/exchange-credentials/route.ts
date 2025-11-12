@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
  *
  * Request body:
  * {
- *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE" | "BINGX" | "MEXC" | "GATEIO" | "BITGET",
+ *   "exchange": "BYBIT" | "BINANCE" | "OKX" | "KRAKEN" | "COINBASE" | "BINGX" | "MEXC" | "GATEIO" | "BITGET" | "KUCOIN",
  *   "apiKey": "string",
  *   "apiSecret": "string",
  *   "authToken": "string" (optional, for MEXC browser sessions),
@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = authResult.user.userId;
+    console.log('[API] User authenticated:', { userId, email: authResult.user.email });
 
     // Parse and validate request body
     const bodySchema = z.object({
@@ -183,7 +184,8 @@ export async function POST(request: NextRequest) {
       }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
-      authToken: z.string().optional(), // Browser session token for MEXC
+      authToken: z.string().optional(), // Browser session token for MEXC, OR passphrase for OKX/Bitget/KuCoin
+      passphrase: z.string().optional(), // Passphrase for OKX/Bitget/KuCoin (will be stored in authToken)
       label: z.string().optional(),
       isActive: z.boolean().optional(),
     });
@@ -191,8 +193,11 @@ export async function POST(request: NextRequest) {
     let body: SaveCredentialsRequest;
     try {
       const rawBody = await request.json();
+      console.log('[API] Received raw body:', JSON.stringify(rawBody, null, 2));
       body = bodySchema.parse(rawBody);
+      console.log('[API] Validated body:', JSON.stringify(body, null, 2));
     } catch (error: any) {
+      console.error('[API] Validation error:', error);
       return NextResponse.json(
         {
           success: false,
@@ -207,11 +212,16 @@ export async function POST(request: NextRequest) {
 
     // Save credentials (includes validation)
     try {
+      // For OKX, Bitget, and KuCoin, store passphrase in authToken field
+      const authTokenValue = (body.exchange === 'OKX' || body.exchange === 'BITGET' || body.exchange === 'KUCOIN')
+        ? body.passphrase
+        : body.authToken;
+
       const result = await ExchangeCredentialsService.saveCredentials(userId, {
         exchange: body.exchange,
         apiKey: body.apiKey,
         apiSecret: body.apiSecret,
-        authToken: body.authToken, // Browser session token for MEXC
+        authToken: authTokenValue, // Browser session token for MEXC, OR passphrase for OKX/Bitget/KuCoin
         label: body.label,
         isActive: body.isActive ?? true, // Default to true for new credentials
       });

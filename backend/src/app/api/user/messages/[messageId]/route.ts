@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-
-// Mock data store for messages
-const mockMessages = new Map<string, {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  content: string;
-  read: boolean;
-  createdAt: Date;
-  actions?: any;
-  metadata?: any;
-}>();
+import prisma from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params }: { params: Promise<{ messageId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -28,11 +16,13 @@ export async function PATCH(
       );
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
     const body = await request.json();
 
     // Find and verify message belongs to user
-    const message = mockMessages.get(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
 
     if (!message || message.userId !== authResult.user.userId) {
       return NextResponse.json(
@@ -41,12 +31,13 @@ export async function PATCH(
       );
     }
 
-    // Update message
-    if (body.read !== undefined) {
-      message.read = body.read;
-    }
-    mockMessages.set(messageId, message);
-    const updatedMessage = message;
+    // Update message in database
+    const updatedMessage = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        read: body.read !== undefined ? body.read : message.read,
+      },
+    });
 
     return NextResponse.json({
       id: updatedMessage.id,
@@ -58,8 +49,9 @@ export async function PATCH(
       actions: updatedMessage.actions as any,
       metadata: updatedMessage.metadata as any
     });
-  } catch (error) {
-    console.error('Error updating message:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error updating message:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -69,7 +61,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { messageId: string } }
+  { params }: { params: Promise<{ messageId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -81,10 +73,12 @@ export async function DELETE(
       );
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
 
     // Find and verify message belongs to user
-    const message = mockMessages.get(messageId);
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+    });
 
     if (!message || message.userId !== authResult.user.userId) {
       return NextResponse.json(
@@ -93,12 +87,15 @@ export async function DELETE(
       );
     }
 
-    // Delete message
-    mockMessages.delete(messageId);
+    // Delete message from database
+    await prisma.message.delete({
+      where: { id: messageId },
+    });
 
     return NextResponse.json({ message: 'Message deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting message:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error deleting message:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

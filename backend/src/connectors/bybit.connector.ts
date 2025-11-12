@@ -771,16 +771,23 @@ export class BybitConnector extends BaseExchangeConnector {
           }
 
           const tickerData = data.data;
-          const price = parseFloat(tickerData.lastPrice);
+          const now = Date.now();
+
+          // Try to extract price from multiple possible fields
+          // Bybit ticker can be "snapshot" (full data) or "delta" (changed fields)
+          const price = parseFloat(tickerData.lastPrice || tickerData.markPrice || tickerData.indexPrice);
           const timestamp = data.ts || Date.now();
 
           if (!isNaN(price) && price > 0) {
             callback(price, timestamp);
           } else {
             // Throttle warnings to prevent log spam
-            const now = Date.now();
             if (now - lastWarnTime > WARN_THROTTLE_MS) {
-              console.warn(`[BybitConnector] Invalid price in WebSocket update for ${symbol}:`, tickerData.lastPrice);
+              console.warn(`[BybitConnector] Invalid price in WebSocket update for ${symbol}`);
+              console.warn(`[BybitConnector] Message type: ${data.type}`);
+              console.warn(`[BybitConnector] Full message:`, JSON.stringify(data, null, 2));
+              console.warn(`[BybitConnector] Ticker data:`, JSON.stringify(tickerData, null, 2));
+              console.warn(`[BybitConnector] lastPrice value:`, tickerData.lastPrice);
               lastWarnTime = now;
             }
           }

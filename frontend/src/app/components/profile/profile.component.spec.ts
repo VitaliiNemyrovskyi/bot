@@ -128,7 +128,7 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
       it('should set default values when optional properties are not provided', () => {
         const mockCallback = jasmine.createSpy('onConfirm');
         mockTranslationService.translate.and.callFake((key: string) => {
-          const translations: { [key: string]: string } = {
+          const translations: Record<string, string> = {
             'modal.confirmTitle': 'Confirm',
             'modal.confirm': 'OK',
             'modal.cancel': 'Cancel'
@@ -532,7 +532,7 @@ describe('ProfileComponent - Confirmation Modal Tests', () => {
     describe('Integration: Unsaved Changes Flow', () => {
       it('should show confirmation modal when closing Add Credential modal with dirty form', () => {
         mockTranslationService.translate.and.callFake((key: string) => {
-          const translations: { [key: string]: string } = {
+          const translations: Record<string, string> = {
             'modal.unsavedChangesTitle': 'Unsaved Changes',
             'modal.unsavedChangesMessage': 'You have unsaved changes. Discard?',
             'modal.confirm': 'Discard'

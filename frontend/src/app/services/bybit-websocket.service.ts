@@ -279,7 +279,7 @@ export class BybitWebSocketService implements OnDestroy {
   /**
    * Subscribe to kline data for a specific symbol and interval
    */
-  subscribeToKline(symbol: string, interval: string = '1'): Observable<CandlestickData> {
+  subscribeToKline(symbol: string, interval = '1'): Observable<CandlestickData> {
     const topic = `kline.${interval}.${symbol}`;
     const subscriptionKey = `${symbol}_${interval}`;
 
@@ -346,7 +346,7 @@ export class BybitWebSocketService implements OnDestroy {
   /**
    * Unsubscribe from kline data
    */
-  unsubscribeFromKline(symbol: string, interval: string = '1'): void {
+  unsubscribeFromKline(symbol: string, interval = '1'): void {
     const topic = `kline.${interval}.${symbol}`;
     const subscriptionKey = `${symbol}_${interval}`;
 
@@ -602,7 +602,7 @@ export class BybitWebSocketService implements OnDestroy {
   /**
    * Subscribe to orderbook data for a specific symbol (Bybit V5 format)
    */
-  subscribeToOrderbook(symbol: string, depth: number = 50): Observable<OrderbookData> {
+  subscribeToOrderbook(symbol: string, depth = 50): Observable<OrderbookData> {
     const topic = `orderbook.${depth}.${symbol}`;
     const subscriptionKey = `orderbook_${symbol}_${depth}`;
 
@@ -819,7 +819,7 @@ export class BybitWebSocketService implements OnDestroy {
   /**
    * Unsubscribe from orderbook data
    */
-  unsubscribeFromOrderbook(symbol: string, depth: number = 50): void {
+  unsubscribeFromOrderbook(symbol: string, depth = 50): void {
     const topic = `orderbook.${depth}.${symbol}`;
     const subscriptionKey = `orderbook_${symbol}_${depth}`;
 

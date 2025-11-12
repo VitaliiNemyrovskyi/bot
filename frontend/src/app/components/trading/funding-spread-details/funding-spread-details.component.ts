@@ -1,4 +1,4 @@
-import { Component, Input, signal, computed } from '@angular/core';
+import { Component, Input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FundingRateSpreadChartComponent } from '../funding-rate-spread-chart/funding-rate-spread-chart.component';
 

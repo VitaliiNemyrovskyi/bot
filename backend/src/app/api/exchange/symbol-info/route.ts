@@ -3,7 +3,7 @@
  * Get trading symbol information including minimum order requirements
  *
  * Query params:
- * - exchange: BINGX | BINANCE | BYBIT | MEXC | GATEIO | BITGET
+ * - exchange: BINGX | BINANCE | BYBIT | MEXC | GATEIO | BITGET | KUCOIN
  * - symbol: Trading symbol (e.g., BTC-USDT for BingX, BTCUSDT for Bybit/Binance)
  */
 
@@ -22,6 +22,7 @@ interface SymbolInfo {
   qtyPrecision: number;
   maxOrderQty?: number;
   maxLeverage?: number;
+  quantoMultiplier?: number; // Gate.io quanto multiplier - quantity must be multiple of this
 }
 
 /**
@@ -146,6 +147,9 @@ export async function GET(request: NextRequest) {
         const mexcSymbol = normalizeSymbolForMEXC(symbol);
         console.log(`[API] MEXC symbol normalized: ${symbol} -> ${mexcSymbol}`);
         symbolInfo = await getMEXCSymbolInfo(mexcSymbol);
+        break;
+      case 'KUCOIN':
+        symbolInfo = await getKuCoinSymbolInfo(symbol);
         break;
       default:
         return NextResponse.json(
@@ -399,9 +403,15 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
         return null;
       }
 
+      // CRITICAL: Gate.io uses quanto_multiplier for contract-to-base-currency conversion
+      // Example: AIA_USDT has quanto_multiplier=10, meaning 1 contract = 10 AIA
+      // We MUST multiply minOrderQty and qtyStep by quanto_multiplier to get values in base currency
+      const quantoMultiplier = parseFloat(contract.quanto_multiplier || '1');
+
       console.log(`[Gate.io] Found contract for ${symbol}:`, {
         order_size_min: contract.order_size_min,
         order_size_max: contract.order_size_max,
+        quanto_multiplier: contract.quanto_multiplier,
         order_price_round: contract.order_price_round,
         mark_price_round: contract.mark_price_round,
         leverage_max: contract.leverage_max,
@@ -411,16 +421,22 @@ async function getGateIOSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
       const pricePrecision = contract.mark_price_round ? contract.mark_price_round.split('.')[1]?.length || 2 : 2;
       const qtyPrecision = contract.order_size_min ? Math.abs(Math.log10(parseFloat(contract.order_size_min))) : 3;
 
+      // Convert contract sizes to base currency amounts by multiplying with quanto_multiplier
+      const minOrderQtyInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+      const qtyStepInBaseCurrency = parseFloat(contract.order_size_min || '1') * quantoMultiplier;
+      const maxOrderQtyInBaseCurrency = contract.order_size_max ? parseFloat(contract.order_size_max) * quantoMultiplier : undefined;
+
       return {
         symbol: contract.name,
         exchange: 'GATEIO',
-        minOrderQty: parseFloat(contract.order_size_min || '1'),
+        minOrderQty: minOrderQtyInBaseCurrency,
         minOrderValue: undefined,
-        qtyStep: parseFloat(contract.order_size_min || '1'),
+        qtyStep: qtyStepInBaseCurrency,
         pricePrecision: parseInt(pricePrecision.toString()),
         qtyPrecision: Math.ceil(qtyPrecision),
-        maxOrderQty: contract.order_size_max ? parseFloat(contract.order_size_max) : undefined,
+        maxOrderQty: maxOrderQtyInBaseCurrency,
         maxLeverage: contract.leverage_max ? parseInt(contract.leverage_max) : undefined,
+        quantoMultiplier: quantoMultiplier,
       };
     } catch (fetchError: any) {
       clearTimeout(timeout);
@@ -610,7 +626,6 @@ async function getBinanceSymbolInfo(symbol: string): Promise<SymbolInfo | null> 
       // Extract filters
       const lotSizeFilter = symbolData.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
       const minNotionalFilter = symbolData.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
-      const priceFilter = symbolData.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
 
       return {
         symbol: symbolData.symbol,
@@ -634,6 +649,95 @@ async function getBinanceSymbolInfo(symbol: string): Promise<SymbolInfo | null> 
     }
   } catch (error: any) {
     console.error('[Binance] Error getting symbol info:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get KuCoin Futures symbol information
+ */
+async function getKuCoinSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
+  try {
+    // KuCoin uses format like XBTUSDTM (BTC -> XBT, add USDTM suffix)
+    let kucoinSymbol = symbol;
+
+    // Convert symbol format if needed
+    if (!symbol.endsWith('M')) {
+      const base = symbol.replace(/USDT$/, '');
+      // BTC -> XBT for KuCoin
+      const kucoinBase = base === 'BTC' ? 'XBT' : base;
+      kucoinSymbol = `${kucoinBase}USDTM`;
+    }
+
+    const url = `https://api-futures.kucoin.com/api/v1/contracts/${kucoinSymbol}`;
+
+    console.log(`[KuCoin] Fetching contract info for ${kucoinSymbol}...`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`[KuCoin] Symbol ${kucoinSymbol} not found`);
+          return null;
+        }
+        throw new Error(`KuCoin API error: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.code !== '200000' || !result.data) {
+        throw new Error(`KuCoin API error: ${result.msg || 'Unknown error'}`);
+      }
+
+      const contract = result.data;
+
+      console.log(`[KuCoin] Found contract for ${kucoinSymbol}:`, {
+        symbol: contract.symbol,
+        multiplier: contract.multiplier,
+        lotSize: contract.lotSize,
+        tickSize: contract.tickSize,
+        maxLeverage: contract.maxLeverage,
+      });
+
+      // Calculate precisions
+      const pricePrecision = contract.tickSize ? Math.abs(Math.log10(parseFloat(contract.tickSize))) : 2;
+      const qtyPrecision = contract.lotSize ? Math.abs(Math.log10(parseFloat(contract.lotSize))) : 0;
+
+      return {
+        symbol: contract.symbol,
+        exchange: 'KUCOIN',
+        minOrderQty: parseFloat(contract.lotSize || '1'),
+        minOrderValue: undefined,
+        qtyStep: parseFloat(contract.lotSize || '1'),
+        pricePrecision: Math.ceil(pricePrecision),
+        qtyPrecision: Math.ceil(qtyPrecision),
+        maxOrderQty: contract.maxOrderQty ? parseFloat(contract.maxOrderQty) : undefined,
+        maxLeverage: contract.maxLeverage ? parseFloat(contract.maxLeverage) : undefined,
+      };
+    } catch (fetchError: any) {
+      clearTimeout(timeout);
+
+      if (fetchError.name === 'AbortError') {
+        throw new Error('KuCoin API request timed out after 30 seconds');
+      }
+
+      throw fetchError;
+    }
+  } catch (error: any) {
+    console.error('[KuCoin] Error getting symbol info:', error.message);
     throw error;
   }
 }

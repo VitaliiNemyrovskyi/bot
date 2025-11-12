@@ -8,7 +8,9 @@ const originalConsoleLog = console.log;
 const originalConsoleDebug = console.debug;
 
 // Override console.log to do nothing
+// eslint-disable-next-line @typescript-eslint/no-empty-function
 console.log = () => {};
+// eslint-disable-next-line @typescript-eslint/no-empty-function
 console.debug = () => {};
 
 // Keep error and warn for important messages
@@ -21,6 +23,8 @@ export const enableLogs = () => {
 };
 
 export const disableLogs = () => {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   console.log = () => {};
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   console.debug = () => {};
 };

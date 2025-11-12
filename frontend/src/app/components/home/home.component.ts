@@ -25,8 +25,9 @@ export class HomeComponent implements AfterViewInit, OnDestroy {
   ) {
     // React to theme and language changes and reload widget
     effect(() => {
-      const theme = this.currentTheme();
-      const language = this.currentLanguage();
+      // Trigger reload when theme or language changes
+      this.currentTheme();
+      this.currentLanguage();
       if (this.tradingviewWidget?.nativeElement && this.scriptElement) {
         this.reloadWidget();
       }
@@ -66,7 +67,8 @@ export class HomeComponent implements AfterViewInit, OnDestroy {
     }
 
     // Clear the container
-    this.tradingviewWidget.nativeElement.innerHTML = '';
+    const containerElement = this.tradingviewWidget.nativeElement as HTMLElement;
+    containerElement.innerHTML = '';
 
     // Recreate the widget
     this.createWidget();
@@ -105,6 +107,7 @@ export class HomeComponent implements AfterViewInit, OnDestroy {
       "autosize": true
     });
 
-    this.tradingviewWidget.nativeElement.appendChild(this.scriptElement);
+    const containerElement = this.tradingviewWidget.nativeElement as HTMLElement;
+    containerElement.appendChild(this.scriptElement);
   }
 }

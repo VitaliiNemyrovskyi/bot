@@ -44,7 +44,7 @@ function initMockPlatforms(userId: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { platformId: string } }
+  { params }: { params: Promise<{ platformId: string }> }
 ) {
   try {
     // Get user from authentication
@@ -56,7 +56,7 @@ export async function POST(
       );
     }
 
-    const { platformId } = params;
+    const { platformId } = await params;
 
     initMockPlatforms(authResult.user.userId);
 
@@ -99,8 +99,9 @@ export async function POST(
         message: 'Failed to connect to trading platform'
       });
     }
-  } catch (error) {
-    console.error('Error testing platform connection:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error testing platform connection:', errorMessage);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

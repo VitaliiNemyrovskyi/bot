@@ -315,7 +315,7 @@ export class ChartService {
   }
 
   // Get bars in TradingView format
-  getChartBars(symbolInfo: LibrarySymbolInfo, resolution: string, from: number, to: number, firstDataRequest: boolean = false): Observable<GetBarsResult> {
+  getChartBars(symbolInfo: LibrarySymbolInfo, resolution: string, from: number, to: number, firstDataRequest = false): Observable<GetBarsResult> {
     const request: ChartDataRequest = {
       symbol: symbolInfo.name,
       resolution: resolution,

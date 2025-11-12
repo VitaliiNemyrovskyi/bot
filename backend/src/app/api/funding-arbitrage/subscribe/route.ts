@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { fundingArbitrageService } from '@/services/funding-arbitrage.service';
-import { BybitConnector } from '@/connectors/bybit.connector';
-import { BingXConnector } from '@/connectors/bingx.connector';
+// import { BybitConnector } from '@/connectors/bybit.connector';
+// import { BingXConnector } from '@/connectors/bingx.connector';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import prisma from '@/lib/prisma';
 

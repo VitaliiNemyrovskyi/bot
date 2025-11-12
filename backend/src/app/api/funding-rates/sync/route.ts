@@ -26,15 +26,10 @@ export async function POST(request: NextRequest) {
 
     const userId = authResult.user.userId;
 
-    // 2. Get query parameters
-    const { searchParams } = new URL(request.url);
-    const environment = searchParams.get('environment')?.toUpperCase() || 'TESTNET';
-
-    // 3. Load credentials
-    const credentials = await ExchangeCredentialsService.getCredentialsByEnvironment(
+    // 2. Load credentials
+    const credentials = await ExchangeCredentialsService.getActiveCredentials(
       userId,
-      'BYBIT' as any,
-      environment as any
+      'BYBIT' as any
     );
 
     if (!credentials) {
@@ -42,21 +37,20 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'API credentials not configured',
-          message: `Please configure your Bybit ${environment} API credentials first.`,
+          message: `Please configure your Bybit API credentials first.`,
           timestamp: new Date().toISOString()
         },
         { status: 403 }
       );
     }
 
-    // 4. Sync funding rates
-    console.log(`[FundingSync] Starting sync for user: ${userId}, environment: ${environment}`);
+    // 3. Sync funding rates
+    console.log(`[FundingSync] Starting sync for user: ${userId}`);
 
-    const isTestnet = credentials.environment === 'TESTNET';
     const syncedCount = await syncBybitFundingRates(
       credentials.apiKey,
       credentials.apiSecret,
-      isTestnet
+      false
     );
 
     console.log(`[FundingSync] Synced ${syncedCount} funding rates successfully`);
@@ -67,7 +61,6 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Funding rates synchronized successfully',
         syncedCount,
-        environment: credentials.environment,
         timestamp: new Date().toISOString()
       },
       { status: 200 }
@@ -90,13 +83,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   return NextResponse.json({
     message: 'Use POST to trigger funding rate sync',
     endpoint: '/api/funding-rates/sync',
-    method: 'POST',
-    queryParams: {
-      environment: 'TESTNET or MAINNET (optional, default: TESTNET)'
-    }
+    method: 'POST'
   });
 }

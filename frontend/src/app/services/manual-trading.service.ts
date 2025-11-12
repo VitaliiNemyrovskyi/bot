@@ -344,7 +344,7 @@ export class ManualTradingService {
    * @param intervalMs - Refresh interval in milliseconds (default: 10000ms = 10s)
    * @returns Observable that triggers data refresh
    */
-  setupAutoRefresh(exchange: Exchange, intervalMs: number = 10000): Observable<number> {
+  setupAutoRefresh(exchange: Exchange, intervalMs = 10000): Observable<number> {
     return interval(intervalMs).pipe(
       tap(() => this.refreshAll(exchange))
     );

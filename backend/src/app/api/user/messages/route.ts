@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-
-// Mock data store for messages
-const mockMessages = new Map<string, {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  content: string;
-  read: boolean;
-  createdAt: Date;
-  actions?: any;
-  metadata?: any;
-}>();
-
-// Generate mock messages for demo
-function generateMockId(): string {
-  return Math.random().toString(36).substr(2, 9);
-}
+import prisma from '@/lib/prisma';
+import { MessageType, Message } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,21 +31,24 @@ export async function GET(request: NextRequest) {
       whereClause.read = false;
     }
 
-    // Get messages from mock data
-    const allUserMessages = Array.from(mockMessages.values())
-      .filter(msg => msg.userId === authResult.user.userId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-    const filteredMessages = unreadOnly
-      ? allUserMessages.filter(msg => !msg.read)
-      : allUserMessages;
-
-    const messages = filteredMessages.slice(skip, skip + limit);
-    const totalCount = allUserMessages.length;
-    const unreadCount = allUserMessages.filter(msg => !msg.read).length;
+    // Get messages from database
+    const [messages, totalCount, unreadCount] = await Promise.all([
+      prisma.message.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.message.count({
+        where: { userId: authResult.user.userId },
+      }),
+      prisma.message.count({
+        where: { userId: authResult.user.userId, read: false },
+      }),
+    ]);
 
     // Transform response to match frontend interface
-    const transformedMessages = messages.map(message => ({
+    const transformedMessages = messages.map((message: Message) => ({
       id: message.id,
       type: message.type.toLowerCase(),
       title: message.title,
@@ -106,20 +93,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create new message
-    const messageId = generateMockId();
-    const message = {
-      id: messageId,
-      userId: authResult.user.userId,
-      type: type.toUpperCase(),
-      title,
-      content,
-      read: false,
-      createdAt: new Date(),
-      actions: actions || null,
-      metadata: metadata || null
-    };
-    mockMessages.set(messageId, message);
+    // Validate message type
+    const messageType = type.toUpperCase() as MessageType;
+    if (!Object.values(MessageType).includes(messageType)) {
+      return NextResponse.json(
+        { error: 'Invalid message type. Must be one of: INFO, WARNING, SUCCESS, ERROR, TRADE' },
+        { status: 400 }
+      );
+    }
+
+    // Create new message in database
+    const message = await prisma.message.create({
+      data: {
+        userId: authResult.user.userId,
+        type: messageType,
+        title,
+        content,
+        read: false,
+        actions: actions || null,
+        metadata: metadata || null,
+      },
+    });
 
     // Transform response
     const response = {

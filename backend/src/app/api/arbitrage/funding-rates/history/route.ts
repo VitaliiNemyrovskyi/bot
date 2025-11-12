@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
  * GET /api/arbitrage/funding-rates/history
  *
  * Fetches historical funding rates for spread stability analysis (Phase 2)
- * Currently supports Bybit with planned BingX/MEXC/Gate.io/Bitget support
+ * Currently supports Bybit and KuCoin with planned BingX/MEXC/Gate.io/Bitget support
  *
  * Query Parameters:
  * - symbol: Trading symbol (e.g., BTCUSDT)
- * - exchange: Exchange name (BYBIT, BINGX, MEXC, GATEIO, BITGET)
+ * - exchange: Exchange name (BYBIT, KUCOIN, BINGX, MEXC, GATEIO, BITGET)
  * - days: Number of days (7 or 30)
  *
  * Response:
@@ -52,6 +52,16 @@ export async function GET(request: NextRequest) {
         // If no data from Bybit API, use mock data for demonstration
         if (fundingRates.length === 0) {
           console.warn(`[Funding History] No data from Bybit, using mock data for demonstration`);
+          fundingRates = generateMockFundingRates(startTime, endTime, days);
+        }
+        break;
+
+      case 'KUCOIN':
+        fundingRates = await fetchKuCoinFundingHistory(symbol, startTime, endTime);
+
+        // If no data from KuCoin API, use mock data for demonstration
+        if (fundingRates.length === 0) {
+          console.warn(`[Funding History] No data from KuCoin, using mock data for demonstration`);
           fundingRates = generateMockFundingRates(startTime, endTime, days);
         }
         break;
@@ -161,6 +171,79 @@ async function fetchBybitFundingHistory(
 
   } catch (error: any) {
     console.error('[Bybit Funding History] Error:', error.message);
+    // Return empty array instead of throwing for graceful degradation
+    return [];
+  }
+}
+
+/**
+ * Fetch KuCoin historical funding rates
+ * API: GET /api/v1/contract/funding-rates
+ */
+async function fetchKuCoinFundingHistory(
+  symbol: string,
+  startTime: number,
+  endTime: number
+): Promise<Array<{ timestamp: number; fundingRate: number }>> {
+  try {
+    // KuCoin uses format like XBTUSDTM (BTC -> XBT, add USDTM suffix)
+    // Symbol format: BTCUSDT -> XBTUSDTM, ETHUSDT -> ETHUSDTM, AIAUSDT -> AIAUSDTM
+    const normalizedSymbol = symbol.replace(/[-/]/g, '').toUpperCase();
+    const base = normalizedSymbol.replace('USDT', '');
+    // BTC -> XBT for KuCoin, others stay the same
+    const kucoinBase = base === 'BTC' ? 'XBT' : base;
+    const kucoinSymbol = `${kucoinBase}USDTM`;
+
+    const results: Array<{ timestamp: number; fundingRate: number }> = [];
+
+    // KuCoin funding rates API endpoint
+    // Note: KuCoin's historical funding rate API may have limitations
+    const url = `https://api-futures.kucoin.com/api/v1/contract/funding-rates?symbol=${kucoinSymbol}&from=${startTime}&to=${endTime}`;
+
+    console.log(`[KuCoin Funding History] Fetching ${kucoinSymbol} from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+    console.log(`[KuCoin Funding History] URL: ${url}`);
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000), // 10 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`[KuCoin Funding History] API returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+
+    console.log(`[KuCoin Funding History] Response code: ${data.code}`);
+
+    if (data.code !== '200000') {
+      console.error(`[KuCoin Funding History] API error: ${data.msg || 'Unknown error'}`);
+      return [];
+    }
+
+    const list = data.data || [];
+    console.log(`[KuCoin Funding History] Fetched ${list.length} records`);
+
+    // Convert and add to results
+    for (const item of list) {
+      results.push({
+        timestamp: parseInt(item.timePoint || item.timestamp || '0'),
+        fundingRate: parseFloat(item.fundingRate || '0')
+      });
+    }
+
+    // Sort by timestamp ascending (oldest first)
+    results.sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`[KuCoin Funding History] Total records returned: ${results.length}`);
+    return results;
+
+  } catch (error: any) {
+    console.error('[KuCoin Funding History] Error:', error.message);
     // Return empty array instead of throwing for graceful degradation
     return [];
   }

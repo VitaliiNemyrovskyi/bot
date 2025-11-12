@@ -81,24 +81,31 @@ export class BingXService {
    * Get BingX server time (V2 endpoint - still valid for time sync)
    * Endpoint: GET /openApi/swap/v2/server/time
    * Returns: { code: 0, msg: '', data: { serverTime: number } }
+   *
+   * NOTE: Uses axios instead of fetch() to avoid undici connection timeout issues
+   * that can occur with Windows Firewall or antivirus software
    */
   async getServerTime(): Promise<number> {
     try {
       const url = `${this.baseUrl}/openApi/swap/v2/server/time`;
 
-      const response = await fetch(url, {
-        method: 'GET',
+      // Use axios instead of fetch to avoid undici connection timeouts
+      // axios uses Node's http/https modules which are more reliable with firewalls
+      const axios = (await import('axios')).default;
+
+      const response = await axios.get(url, {
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000, // 30 second timeout
+        validateStatus: () => true // Don't throw on non-2xx status codes
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`BingX server time API error: ${response.status} ${response.statusText} - ${errorText}`);
+      if (response.status !== 200) {
+        throw new Error(`BingX server time API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.code !== 0) {
         throw new Error(`Failed to get server time: ${data.msg}`);

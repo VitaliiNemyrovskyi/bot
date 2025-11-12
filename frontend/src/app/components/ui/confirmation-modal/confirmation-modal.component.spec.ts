@@ -25,7 +25,7 @@ describe('ConfirmationModalComponent', () => {
 
     // Set up default translation mock
     translationService.translate.and.callFake((key: string, params?: Record<string, string>) => {
-      const translations: { [key: string]: string } = {
+      const translations: Record<string, string> = {
         'modal.confirmTitle': 'Confirm Action',
         'modal.confirm': 'Confirm',
         'modal.cancel': 'Cancel'

@@ -75,7 +75,7 @@ async function testBingX(): Promise<TestResult> {
 
     // Verify position is open
     const positions = await connector.getPositions(TEST_SYMBOL);
-    const openPosition = positions.find((p: any) => Math.abs(parseFloat(p.positionAmt || p.size || 0)) > 0);
+    const openPosition = positions.find((p: typeof positions[number]) => Math.abs(parseFloat(p.positionAmt || p.size || 0)) > 0);
 
     if (openPosition) {
       console.log('✓ Position verified open:', openPosition);
@@ -95,7 +95,7 @@ async function testBingX(): Promise<TestResult> {
 
     // Verify position is closed
     const finalPositions = await connector.getPositions(TEST_SYMBOL);
-    const stillOpen = finalPositions.find((p: any) => Math.abs(parseFloat(p.positionAmt || p.size || 0)) > 0);
+    const stillOpen = finalPositions.find((p: typeof finalPositions[number]) => Math.abs(parseFloat(p.positionAmt || p.size || 0)) > 0);
 
     if (!stillOpen) {
       console.log('✓ Position verified closed');
@@ -106,9 +106,10 @@ async function testBingX(): Promise<TestResult> {
 
     console.log('\n✅ BINGX test PASSED\n');
 
-  } catch (error: any) {
-    console.error('\n❌ BINGX test FAILED:', error.message);
-    result.error = error.message;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n❌ BINGX test FAILED:', err.message);
+    result.error = err.message;
   }
 
   return result;
@@ -158,7 +159,7 @@ async function testBybit(): Promise<TestResult> {
 
     // Verify position is open
     const positions = await connector.getPositions(TEST_SYMBOL);
-    const openPosition = positions.find((p: any) => Math.abs(parseFloat(p.size || p.positionAmt || 0)) > 0);
+    const openPosition = positions.find((p: typeof positions[number]) => Math.abs(parseFloat(p.size || p.positionAmt || 0)) > 0);
 
     if (openPosition) {
       console.log('✓ Position verified open:', openPosition);
@@ -178,7 +179,7 @@ async function testBybit(): Promise<TestResult> {
 
     // Verify position is closed
     const finalPositions = await connector.getPositions(TEST_SYMBOL);
-    const stillOpen = finalPositions.find((p: any) => Math.abs(parseFloat(p.size || p.positionAmt || 0)) > 0);
+    const stillOpen = finalPositions.find((p: typeof finalPositions[number]) => Math.abs(parseFloat(p.size || p.positionAmt || 0)) > 0);
 
     if (!stillOpen) {
       console.log('✓ Position verified closed');
@@ -189,9 +190,10 @@ async function testBybit(): Promise<TestResult> {
 
     console.log('\n✅ BYBIT test PASSED\n');
 
-  } catch (error: any) {
-    console.error('\n❌ BYBIT test FAILED:', error.message);
-    result.error = error.message;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n❌ BYBIT test FAILED:', err.message);
+    result.error = err.message;
   }
 
   return result;

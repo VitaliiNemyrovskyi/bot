@@ -56,7 +56,7 @@ import prisma from '@/lib/prisma';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 1. Authenticate user
@@ -77,7 +77,7 @@ export async function POST(
     }
 
     const userId = authResult.user.userId;
-    const positionId = params.id;
+    const { id: positionId } = await params;
 
     console.log('[PriceArbitrageAPI] User authenticated:', userId);
     console.log('[PriceArbitrageAPI] Closing position:', positionId);
@@ -208,17 +208,20 @@ export async function POST(
         { status: 500 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     console.error('[PriceArbitrageAPI] Unexpected error in close endpoint:', {
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
     });
 
     return NextResponse.json(
       {
         success: false,
         error: 'Internal server error',
-        message: error.message || 'An unexpected error occurred',
+        message: errorMessage,
         code: 'INTERNAL_ERROR',
         timestamp: new Date().toISOString(),
       },

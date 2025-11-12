@@ -61,8 +61,9 @@ async function testBingXTimeSync() {
     }
 
     console.log('\n✓ BingX time synchronization tests completed successfully');
-  } catch (error: any) {
-    console.error('\n✗ BingX time synchronization test failed:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n✗ BingX time synchronization test failed:', err.message);
     throw error;
   }
 }
@@ -119,8 +120,9 @@ async function testBybitTimeSync() {
     }
 
     console.log('\n✓ Bybit time synchronization tests completed successfully');
-  } catch (error: any) {
-    console.error('\n✗ Bybit time synchronization test failed:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n✗ Bybit time synchronization test failed:', err.message);
     throw error;
   }
 }
@@ -158,8 +160,9 @@ async function testPeriodicSync() {
     console.log('  ✓ Periodic sync stopped');
 
     console.log('\n✓ Periodic synchronization tests completed successfully');
-  } catch (error: any) {
-    console.error('\n✗ Periodic synchronization test failed:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n✗ Periodic synchronization test failed:', err.message);
     throw error;
   }
 }
@@ -177,7 +180,7 @@ async function main() {
     console.log('\n' + '='.repeat(60));
     console.log('✓ All tests completed successfully');
     console.log('='.repeat(60) + '\n');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('\n' + '='.repeat(60));
     console.error('✗ Tests failed');
     console.error('='.repeat(60) + '\n');

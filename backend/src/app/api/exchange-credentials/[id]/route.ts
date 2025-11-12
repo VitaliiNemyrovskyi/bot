@@ -95,9 +95,10 @@ export async function GET(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -111,7 +112,7 @@ export async function GET(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error getting credential:', error);
 
     return NextResponse.json(
@@ -202,14 +203,14 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { label, apiKey, apiSecret, authToken, isActive } = body;
+    const { label, apiKey, apiSecret, authToken, passphrase, isActive } = body;
 
     // Validate that at least one field is provided
-    if (label === undefined && apiKey === undefined && apiSecret === undefined && authToken === undefined && isActive === undefined) {
+    if (label === undefined && apiKey === undefined && apiSecret === undefined && authToken === undefined && passphrase === undefined && isActive === undefined) {
       return NextResponse.json(
         {
           success: false,
-          error: 'At least one field (label, apiKey, apiSecret, authToken, isActive) must be provided',
+          error: 'At least one field (label, apiKey, apiSecret, authToken, passphrase, isActive) must be provided',
           code: CredentialErrorCode.VALIDATION_ERROR,
           timestamp: new Date().toISOString(),
         },
@@ -218,36 +219,9 @@ export async function PATCH(
     }
 
     try {
-      // Update credential
-      const updated = await ExchangeCredentialsService.updateCredential(
-        userId,
-        credentialId,
-        { label, apiKey, apiSecret, authToken, isActive }
-      );
-
-      return NextResponse.json(
-        {
-          success: true,
-          data: updated,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 200 }
-      );
-    } catch (error: any) {
-      // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'You do not have permission to update this credential',
-            code: CredentialErrorCode.AUTH_REQUIRED,
-            timestamp: new Date().toISOString(),
-          },
-          { status: 403 }
-        );
-      }
-
-      if (error.message.includes('not found')) {
+      // Get existing credential to check exchange type
+      const existingCredential = await ExchangeCredentialsService.getCredentialById(userId, credentialId);
+      if (!existingCredential) {
         return NextResponse.json(
           {
             success: false,
@@ -259,11 +233,79 @@ export async function PATCH(
         );
       }
 
-      if (error.message.includes('Invalid API credentials')) {
+      // For OKX and Bitget, if passphrase is provided, store it in authToken field
+      // If neither passphrase nor authToken is provided, don't update authToken (keep existing)
+      const isOkxOrBitget = existingCredential.exchange === 'OKX' || existingCredential.exchange === 'BITGET';
+      let authTokenValue: string | undefined = undefined;
+
+      if (isOkxOrBitget) {
+        // For OKX/Bitget: use passphrase if provided, otherwise don't update authToken
+        if (passphrase !== undefined) {
+          authTokenValue = passphrase;
+        }
+        // If passphrase is undefined, authTokenValue stays undefined = don't update
+      } else {
+        // For other exchanges: use authToken if provided
+        if (authToken !== undefined) {
+          authTokenValue = authToken;
+        }
+      }
+
+      // Build update object with only defined fields
+      const updateData: { label?: string; apiKey?: string; apiSecret?: string; authToken?: string; isActive?: boolean } = {};
+      if (label !== undefined) updateData.label = label;
+      if (apiKey !== undefined) updateData.apiKey = apiKey;
+      if (apiSecret !== undefined) updateData.apiSecret = apiSecret;
+      if (authTokenValue !== undefined) updateData.authToken = authTokenValue;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
+      // Update credential
+      const updated = await ExchangeCredentialsService.updateCredential(
+        userId,
+        credentialId,
+        updateData
+      );
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: updated,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 200 }
+      );
+    } catch (error: unknown) {
+      // Handle specific error cases
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
-            error: error.message,
+            error: 'You do not have permission to update this credential',
+            code: CredentialErrorCode.AUTH_REQUIRED,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 403 }
+        );
+      }
+
+      if (errorMessage.includes('not found')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Credential not found',
+            code: CredentialErrorCode.NOT_FOUND,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 }
+        );
+      }
+
+      if (errorMessage.includes('Invalid API credentials')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: errorMessage,
             code: CredentialErrorCode.VALIDATION_FAILED,
             timestamp: new Date().toISOString(),
           },
@@ -273,7 +315,7 @@ export async function PATCH(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating credential:', error);
 
     return NextResponse.json(
@@ -371,9 +413,10 @@ export async function DELETE(
         },
         { status: 200 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.message.includes('Unauthorized')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Unauthorized')) {
         return NextResponse.json(
           {
             success: false,
@@ -387,7 +430,7 @@ export async function DELETE(
 
       throw error;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting credential:', error);
 
     return NextResponse.json(

@@ -16,7 +16,7 @@ import { BinanceSpotWebSocketAdapter } from './websocket-adapters/binance-spot-w
 /**
  * Supported exchanges
  */
-export type SupportedExchange = 'BYBIT' | 'BINGX' | 'GATE' | 'GATEIO' | 'BINANCE' | 'MEXC';
+export type SupportedExchange = 'BYBIT' | 'BINGX' | 'GATE' | 'GATEIO' | 'BINANCE' | 'MEXC' | 'KUCOIN';
 
 /**
  * Market Data Manager
@@ -90,6 +90,10 @@ export class MarketDataManager extends EventEmitter {
 
       case 'MEXC':
         // TODO: Implement adapter for MEXC
+        throw new Error(`Exchange ${exchange} WebSocket adapter not implemented yet. Please use CCXT REST API for now.`);
+
+      case 'KUCOIN':
+        // TODO: Implement adapter for KuCoin
         throw new Error(`Exchange ${exchange} WebSocket adapter not implemented yet. Please use CCXT REST API for now.`);
 
       default:

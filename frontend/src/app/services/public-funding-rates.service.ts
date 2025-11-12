@@ -1,8 +1,56 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay } from 'rxjs';
+import { Observable, forkJoin, of, catchError, map, firstValueFrom, shareReplay, take, timeout } from 'rxjs';
 import { ExchangeFundingRate, FundingRateOpportunity, SpreadStabilityMetrics } from '../models/public-funding-rate.model';
 import { StatisticalUtilsService } from './statistical-utils.service';
+import { normalizeFundingRateTo1h } from '@shared/lib';
+
+/**
+ * Intermediate data structures for refactored calculateOpportunities method
+ */
+interface PriceSpreadData {
+  priceSpread: number;
+  priceSpreadPercent: string;
+  priceSpreadUsdt: string;
+  bestLongPrice: number;
+  bestShortPrice: number;
+}
+
+interface AdvancedMetrics {
+  fundingSpread: number;
+  fundingSpreadPercent: string;
+  fundingPeriodicity: string;
+  timeToFunding: string;
+  estimatedAPR: number;
+  estimatedAPRFormatted: string;
+  totalFees: number;
+  totalFeesFormatted: string;
+  netAPR: number;
+  netAPRFormatted: string;
+  volume24h: number | undefined;
+  volume24hFormatted: string | undefined;
+  openInterest: number | undefined;
+  openInterestFormatted: string | undefined;
+  volatility24h: number | undefined;
+  volatility24hFormatted: string | undefined;
+}
+
+interface StrategyInfo {
+  recommendedStrategy: 'cross-exchange' | 'spot-futures';
+  spotFuturesBestExchange: ExchangeFundingRate | undefined;
+}
+
+interface StrategyMetricsData {
+  strategyMetrics: {
+    combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+  };
+  strategyType: 'price_only' | 'funding_only' | 'combined';
+  combinedScore: number | undefined;
+  expectedDailyReturn: number | undefined;
+  estimatedMonthlyROI: number | undefined;
+}
 
 /**
  * Public Funding Rates Service
@@ -16,24 +64,73 @@ import { StatisticalUtilsService } from './statistical-utils.service';
 export class PublicFundingRatesService {
   // Exchange trading fees (taker fees per trade)
   // Arbitrage requires 4 trades: open long, open short, close long, close short
-  private readonly EXCHANGE_FEES = {
+  private readonly EXCHANGE_FEES: Record<string, number> = {
     BYBIT: 0.055,   // 0.055% per trade × 4 = 0.22% total
     BINGX: 0.05,    // 0.05% per trade × 4 = 0.20% total
     MEXC: 0.03,     // 0.03% per trade × 4 = 0.12% total
     BINANCE: 0.04,  // 0.04% per trade × 4 = 0.16% total
     GATEIO: 0.05,   // 0.05% per trade × 4 = 0.20% total
     BITGET: 0.06,   // 0.06% per trade × 4 = 0.24% total
+    OKX: 0.05,      // 0.05% per trade × 4 = 0.20% total
+    KUCOIN: 0.06,   // 0.06% per trade × 4 = 0.24% total
   };
 
   // Cache for the funding rates observable to prevent duplicate HTTP requests
   private fundingRatesCache$?: Observable<FundingRateOpportunity[]>;
-  private lastFetchTime: number = 0;
-  private readonly CACHE_DURATION_MS = 5000; // Cache for 5 seconds
+  private lastFetchTime = 0;
+  private readonly CACHE_DURATION_MS = 0; // No cache - always fetch fresh data
 
   constructor(
     private http: HttpClient,
     private statisticalUtils: StatisticalUtilsService // PHASE2: Statistical calculations
   ) {}
+
+  /**
+   * Refresh funding rates by fetching directly from exchange APIs
+   * This provides real-time data when user opens a trading pair
+   *
+   * @param exchanges - Array of exchange names (e.g., ['GATEIO', 'BINGX'])
+   * @param symbol - Trading symbol (e.g., 'AVNTUSDT')
+   * @returns Observable of fresh funding rate data
+   */
+  refreshFundingRates(exchanges: string[], symbol: string): Observable<{
+    exchange: string;
+    symbol: string;
+    fundingRate: string;
+    nextFundingTime: number;
+    fundingInterval: string;
+  }[]> {
+    const url = `/api/arbitrage/refresh-funding-rate`;
+    const body = { exchanges, symbol };
+
+    console.log(`[PublicFundingRatesService] Refreshing funding rates from exchanges for ${exchanges.join(', ')} - ${symbol}`);
+
+    return this.http.post<{
+      success: boolean;
+      data: {
+        exchange: string;
+        symbol: string;
+        fundingRate: string;
+        nextFundingTime: number;
+        fundingInterval: string;
+      }[];
+      timestamp: string;
+    }>(url, body).pipe(
+      map(response => {
+        if (!response.success) {
+          console.error('[PublicFundingRatesService] API error:', response);
+          return [];
+        }
+
+        console.log(`[PublicFundingRatesService] Refreshed ${response.data.length} funding rates`);
+        return response.data;
+      }),
+      catchError(error => {
+        console.error('[PublicFundingRatesService] Error refreshing funding rates:', error);
+        return of([]);
+      })
+    );
+  }
 
   /**
    * Fetch funding rates for specific exchanges and symbol
@@ -43,13 +140,13 @@ export class PublicFundingRatesService {
    * @param symbol - Trading symbol (e.g., 'AVNTUSDT')
    * @returns Observable of funding rate data for specified exchanges
    */
-  getArbitrageFundingRates(exchanges: string[], symbol: string): Observable<Array<{
+  getArbitrageFundingRates(exchanges: string[], symbol: string): Observable<{
     exchange: string;
     symbol: string;
     fundingRate: string;
     nextFundingTime: number;
     fundingInterval: string;
-  }>> {
+  }[]> {
     const exchangesParam = exchanges.join(',');
     const url = `/api/arbitrage/public-funding-rates?exchanges=${exchangesParam}&symbol=${symbol}`;
 
@@ -57,13 +154,13 @@ export class PublicFundingRatesService {
 
     return this.http.get<{
       success: boolean;
-      data: Array<{
+      data: {
         exchange: string;
         symbol: string;
         fundingRate: string;
         nextFundingTime: number;
         fundingInterval: string;
-      }>;
+      }[];
       timestamp: string;
     }>(url).pipe(
       map(response => {
@@ -83,13 +180,16 @@ export class PublicFundingRatesService {
   }
 
   /**
-   * Fetch funding rates from all supported exchanges
+   * Fetch funding rates from selected exchanges
    * Returns array of opportunities sorted by funding spread
    *
    * IMPORTANT: This method implements request caching to prevent duplicate HTTP requests.
    * Multiple subscriptions within 5 seconds will share the same cached Observable.
+   *
+   * @param selectedExchanges - Set of exchange names to fetch (e.g., new Set(['BYBIT', 'BINGX']))
+   *                           If not provided or empty, fetches from all exchanges
    */
-  getFundingRatesOpportunities(): Observable<FundingRateOpportunity[]> {
+  getFundingRatesOpportunities(selectedExchanges?: Set<string>): Observable<FundingRateOpportunity[]> {
     const now = Date.now();
     const cacheExpired = (now - this.lastFetchTime) > this.CACHE_DURATION_MS;
 
@@ -100,30 +200,43 @@ export class PublicFundingRatesService {
       return this.fundingRatesCache$;
     }
 
-    // Cache expired or doesn't exist - create new observable
-    console.log('[PublicFundingRatesService] Fetching fresh data from all exchanges...');
+    // Determine which exchanges to fetch from
+    const shouldFetch = (exchange: string) => {
+      if (!selectedExchanges || selectedExchanges.size === 0) {
+        return true; // Fetch all if no filter specified
+      }
+      return selectedExchanges.has(exchange.toUpperCase());
+    };
+
+    // Build requests object dynamically based on selected exchanges
+    const requests: Record<string, Observable<ExchangeFundingRate[]>> = {};
+
+    if (shouldFetch('BYBIT')) requests['bybit'] = this.fetchBybitFundingRates();
+    if (shouldFetch('BINGX')) requests['bingx'] = this.fetchBingXFundingRates();
+    if (shouldFetch('MEXC')) requests['mexc'] = this.fetchMEXCFundingRates();
+    if (shouldFetch('BINANCE')) requests['binance'] = this.fetchBinanceFundingRates();
+    if (shouldFetch('GATEIO')) requests['gateio'] = this.fetchGateIOFundingRates();
+    if (shouldFetch('BITGET')) requests['bitget'] = this.fetchBitgetFundingRates();
+    if (shouldFetch('OKX')) requests['okx'] = this.fetchOKXFundingRates();
+    if (shouldFetch('KUCOIN')) requests['kucoin'] = this.fetchKuCoinFundingRates();
+
+    const exchangeNames = Object.keys(requests).map(k => k.toUpperCase()).join(', ');
+    console.log(`[PublicFundingRatesService] Fetching fresh data from: ${exchangeNames || 'NO EXCHANGES SELECTED'}`);
     this.lastFetchTime = now;
 
-    // Fetch from all exchanges in parallel
-    this.fundingRatesCache$ = forkJoin({
-      bybit: this.fetchBybitFundingRates(),
-      bingx: this.fetchBingXFundingRates(),
-      mexc: this.fetchMEXCFundingRates(),
-      binance: this.fetchBinanceFundingRates(),
-      gateio: this.fetchGateIOFundingRates(),
-      bitget: this.fetchBitgetFundingRates(),
-    }).pipe(
+    // If no exchanges selected, return empty array immediately
+    if (Object.keys(requests).length === 0) {
+      console.log('[PublicFundingRatesService] No exchanges selected, returning empty array');
+      return of([]);
+    }
+
+    // Fetch from selected exchanges in parallel
+    this.fundingRatesCache$ = forkJoin(requests).pipe(
+      take(1),
       map(results => {
         // Combine all exchange data
-        const allRates: ExchangeFundingRate[] = [
-          ...results.bybit,
-          ...results.bingx,
-          ...results.mexc,
-          ...results.binance,
-          ...results.gateio,
-          ...results.bitget,
-        ];
-
+        const allRates: ExchangeFundingRate[] = Object.values(results).flat();
+        console.log(`[PublicFundingRatesService] Received ${allRates.length} funding rates from ${Object.keys(requests).length} exchanges`);
         // Calculate opportunities
         return this.calculateOpportunities(allRates);
       }),
@@ -141,44 +254,86 @@ export class PublicFundingRatesService {
   }
 
   /**
-   * Fetch funding rates from Bybit public API
-   * Endpoint: GET https://api.bybit.com/v5/market/tickers?category=linear
-   * Documentation: https://bybit-exchange.github.io/docs/v5/market/tickers
+   * Universal parser for unified backend response format
+   * ALL exchanges now return the same format: {code: '0', msg: '', data: [...]}
+   *
+   * Unified Response Format:
+   * {
+   *   code: '0',
+   *   msg: '',
+   *   data: [
+   *     {
+   *       symbol: 'BTCUSDT',           // Normalized (no separators/suffixes)
+   *       fundingRate: '0.0001',
+   *       nextFundingTime: '1234567890',
+   *       fundingInterval: 8,          // NUMBER (hours)
+   *       last: '50000',
+   *       markPx: '50000',
+   *       idxPx: '50000'
+   *     }
+   *   ]
+   * }
+   *
+   * @param url - Backend proxy endpoint URL
+   * @param exchangeName - Exchange name (e.g., 'BYBIT', 'BINANCE')
+   * @returns Observable of ExchangeFundingRate array
    */
-  private fetchBybitFundingRates(): Observable<ExchangeFundingRate[]> {
-    const url = 'https://api.bybit.com/v5/market/tickers?category=linear';
+  private fetchUnifiedFundingRates(url: string, exchangeName: string): Observable<ExchangeFundingRate[]> {
+    interface UnifiedResponse {
+      code: string;
+      msg: string;
+      data: {
+        symbol: string;
+        fundingRate: string;
+        nextFundingTime: string;
+        fundingInterval: number;
+        last: string;
+        markPx: string;
+        idxPx: string;
+      }[];
+    }
 
-    return this.http.get<any>(url).pipe(
+    return this.http.get<UnifiedResponse>(url).pipe(
       map(response => {
-        if (response.retCode !== 0 || !response.result?.list) {
-          console.error('[Bybit] API error:', response.retMsg);
+        if (response.code !== '0' || !response.data) {
+          console.error(`[${exchangeName}] API error:`, response.msg);
           return [];
         }
 
-        const tickers = response.result.list;
-        console.log(`[Bybit] Fetched ${tickers.length} tickers`);
+        const data = response.data;
+        console.log(`[${exchangeName}] Fetched ${data.length} funding rates via unified format`);
 
-        return tickers
-          .filter((t: any) => t.symbol && t.fundingRate && t.lastPrice)
-          .map((t: any) => ({
-            exchange: 'BYBIT',
-            symbol: t.symbol.replace(/[\/\-_:]/g, ''), // BTCUSDT
-            originalSymbol: t.symbol, // BTC/USDT:USDT
-            fundingRate: t.fundingRate,
-            nextFundingTime: parseInt(t.nextFundingTime) || 0,
-            lastPrice: t.lastPrice,
-            fundingInterval: t.fundingIntervalHour ? `${t.fundingIntervalHour}h` : '8h', // Use API-provided interval
-            volume24h: t.turnover24h, // Bybit uses 'turnover24h' for volume in USDT
-            openInterest: t.openInterest,
-            high24h: t.highPrice24h,
-            low24h: t.lowPrice24h,
+        return data
+          .filter(item => item.symbol && item.fundingRate && item.last)
+          .map(item => ({
+            exchange: exchangeName,
+            symbol: item.symbol, // Already normalized by backend
+            originalSymbol: item.symbol,
+            fundingRate: item.fundingRate,
+            nextFundingTime: parseInt(item.nextFundingTime) || 0,
+            lastPrice: item.last || item.markPx,
+            fundingInterval: item.fundingInterval ? `${item.fundingInterval}h` : '-',
+            volume24h: undefined,
+            openInterest: undefined,
+            high24h: undefined,
+            low24h: undefined,
           } as ExchangeFundingRate));
       }),
-      catchError(error => {
-        console.error('[Bybit] Failed to fetch funding rates:', error.message);
+      catchError((error: Error) => {
+        console.error(`[${exchangeName}] Failed to fetch funding rates:`, error.message);
         return of([]);
       })
     );
+  }
+
+  /**
+   * Fetch funding rates from Bybit via backend proxy
+   * Backend proxies requests to bypass CORS restrictions and use Redis/DB cache
+   * Endpoint: GET /api/bybit/public-funding-rates
+   * Documentation: https://bybit-exchange.github.io/docs/v5/market/tickers
+   */
+  private fetchBybitFundingRates(): Observable<ExchangeFundingRate[]> {
+    return this.fetchUnifiedFundingRates('/api/bybit/public-funding-rates', 'BYBIT');
   }
 
   /**
@@ -188,39 +343,7 @@ export class PublicFundingRatesService {
    * Documentation: https://binance-docs.github.io/apidocs/futures/en/#mark-price
    */
   private fetchBinanceFundingRates(): Observable<ExchangeFundingRate[]> {
-    // Use backend proxy to bypass CORS
-    const url = '/api/binance/public-funding-rates';
-
-    return this.http.get<any>(url).pipe(
-      map(response => {
-        if (!Array.isArray(response)) {
-          console.error('[Binance] Invalid response format');
-          return [];
-        }
-
-        console.log(`[Binance] Fetched ${response.length} premium index entries via proxy`);
-
-        return response
-          .filter((p: any) => p.symbol && p.lastFundingRate && p.markPrice)
-          .map((p: any) => ({
-            exchange: 'BINANCE',
-            symbol: p.symbol, // Already in format BTCUSDT
-            originalSymbol: p.symbol,
-            fundingRate: p.lastFundingRate,
-            nextFundingTime: parseInt(p.nextFundingTime) || 0,
-            lastPrice: p.markPrice,
-            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
-            volume24h: '0', // Not provided in premium index endpoint
-            openInterest: '0', // Not provided in premium index endpoint
-            high24h: '0',
-            low24h: '0',
-          } as ExchangeFundingRate));
-      }),
-      catchError(error => {
-        console.error('[Binance] Failed to fetch funding rates via proxy:', error.message);
-        return of([]);
-      })
-    );
+    return this.fetchUnifiedFundingRates('/api/binance/public-funding-rates', 'BINANCE');
   }
 
   /**
@@ -230,39 +353,8 @@ export class PublicFundingRatesService {
    * Documentation: https://bingx-api.github.io/docs/#/en-us/swapV2/market-api.html
    */
   private fetchBingXFundingRates(): Observable<ExchangeFundingRate[]> {
-    // Use backend proxy to bypass CORS
-    const url = '/api/bingx/public-funding-rates';
-
-    return this.http.get<any>(url).pipe(
-      map(response => {
-        if (response.code !== 0 || !response.data) {
-          console.error('[BingX] API error:', response.msg);
-          return [];
-        }
-
-        const premiumIndex = response.data;
-        console.log(`[BingX] Fetched ${premiumIndex.length} premium index entries via proxy`);
-
-        return premiumIndex
-          .filter((p: any) => p.symbol && p.lastFundingRate && p.markPrice)
-          .map((p: any) => ({
-            exchange: 'BINGX',
-            symbol: p.symbol.replace(/[\/\-_:]/g, ''), // BTC-USDT -> BTCUSDT
-            originalSymbol: p.symbol, // BTC-USDT
-            fundingRate: p.lastFundingRate,
-            nextFundingTime: parseInt(p.nextFundingTime) || 0,
-            lastPrice: p.markPrice,
-            fundingInterval: p.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
-            volume24h: p.volume24h,
-            openInterest: p.openInterest,
-            high24h: p.high24h,
-            low24h: p.low24h,
-          } as ExchangeFundingRate));
-      }),
-      catchError(error => {
-        console.error('[BingX] Failed to fetch funding rates via proxy:', error.message);
-        return of([]);
-      })
+    return this.fetchUnifiedFundingRates('/api/bingx/public-funding-rates', 'BINGX').pipe(
+      timeout(20000) // 20 second timeout (BingX is slow)
     );
   }
 
@@ -273,45 +365,7 @@ export class PublicFundingRatesService {
    * Documentation: https://mexcdevelop.github.io/apidocs/contract_v1_en/#k-line-data
    */
   private fetchMEXCFundingRates(): Observable<ExchangeFundingRate[]> {
-    // Use backend proxy to bypass CORS
-    const url = '/api/mexc/public-funding-rates';
-
-    return this.http.get<any>(url).pipe(
-      map(response => {
-        if (response.code !== 0 || !response.data) {
-          console.error('[MEXC] API error:', response.msg);
-          return [];
-        }
-
-        const tickers = response.data;
-        console.log(`[MEXC] Fetched ${tickers.length} tickers via proxy`);
-
-        return tickers
-          .filter((t: any) =>
-            t.symbol &&
-            t.fundingRate !== undefined &&
-            t.fundingRate !== 0 &&
-            (t.lastPrice > 0 || t.fairPrice > 0)
-          )
-          .map((t: any) => ({
-            exchange: 'MEXC',
-            symbol: t.symbol.replace(/[\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
-            originalSymbol: t.symbol, // BTC_USDT
-            fundingRate: t.fundingRate.toString(),
-            nextFundingTime: 0, // MEXC doesn't provide nextFundingTime in tickers
-            lastPrice: t.lastPrice > 0 ? t.lastPrice.toString() : t.fairPrice.toString(),
-            fundingInterval: t.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
-            volume24h: t.volume24 ? t.volume24.toString() : undefined,
-            openInterest: t.holdVol ? t.holdVol.toString() : undefined,
-            high24h: t.high24Price ? t.high24Price.toString() : undefined,
-            low24h: t.low24Price ? t.low24Price.toString() : undefined,
-          } as ExchangeFundingRate));
-      }),
-      catchError(error => {
-        console.error('[MEXC] Failed to fetch funding rates via proxy:', error.message);
-        return of([]);
-      })
-    );
+    return this.fetchUnifiedFundingRates('/api/mexc/public-funding-rates', 'MEXC');
   }
 
   /**
@@ -321,45 +375,7 @@ export class PublicFundingRatesService {
    * Documentation: https://www.gate.io/docs/developers/apiv4/#list-all-futures-contracts
    */
   private fetchGateIOFundingRates(): Observable<ExchangeFundingRate[]> {
-    // Use backend proxy to bypass CORS
-    const url = '/api/gateio/public-funding-rates';
-
-    return this.http.get<any>(url).pipe(
-      map(response => {
-        if (!Array.isArray(response)) {
-          console.error('[Gate.io] API error: Expected array response');
-          return [];
-        }
-
-        const contracts = response;
-        console.log(`[Gate.io] Fetched ${contracts.length} contracts via proxy`);
-
-        return contracts
-          .filter((c: any) =>
-            c.name &&
-            c.funding_rate &&
-            c.last_price &&
-            !c.in_delisting
-          )
-          .map((c: any) => ({
-            exchange: 'GATEIO',
-            symbol: c.name.replace(/[\/\-_:]/g, ''), // BTC_USDT -> BTCUSDT
-            originalSymbol: c.name, // BTC_USDT
-            fundingRate: c.funding_rate,
-            nextFundingTime: parseInt(c.funding_next_apply) * 1000 || 0, // Convert to ms
-            lastPrice: c.last_price,
-            fundingInterval: c.fundingInterval || '8h', // Use API-provided interval, fallback to 8h
-            volume24h: c.trade_size,
-            openInterest: c.position_size,
-            high24h: undefined,
-            low24h: undefined,
-          } as ExchangeFundingRate));
-      }),
-      catchError(error => {
-        console.error('[Gate.io] Failed to fetch funding rates via proxy:', error.message);
-        return of([]);
-      })
-    );
+    return this.fetchUnifiedFundingRates('/api/gateio/public-funding-rates', 'GATEIO');
   }
 
   /**
@@ -369,301 +385,382 @@ export class PublicFundingRatesService {
    * Documentation: https://www.bitget.com/api-doc/contract/market/Get-Current-Funding-Rate
    */
   private fetchBitgetFundingRates(): Observable<ExchangeFundingRate[]> {
-    // Use backend proxy to bypass CORS
-    const url = '/api/bitget/public-funding-rates';
+    return this.fetchUnifiedFundingRates('/api/bitget/public-funding-rates', 'BITGET');
+  }
 
-    return this.http.get<any>(url).pipe(
-      map(response => {
-        if (response.code !== '00000' || !response.data) {
-          console.error('[Bitget] API error:', response.msg);
-          return [];
-        }
+  /**
+   * Fetch funding rates from OKX via backend proxy
+   * Backend proxies requests to bypass CORS restrictions
+   * Endpoint: GET /api/okx/public-funding-rates
+   * Documentation: https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate
+   */
+  private fetchOKXFundingRates(): Observable<ExchangeFundingRate[]> {
+    return this.fetchUnifiedFundingRates('/api/okx/public-funding-rates', 'OKX').pipe(
+      take(1)
+    );
+  }
 
-        const fundingRates = response.data;
-        console.log(`[Bitget] Fetched ${fundingRates.length} funding rates via proxy`);
-
-        return fundingRates
-          .filter((fr: any) =>
-            fr.symbol &&
-            fr.fundingRate !== undefined
-          )
-          .map((fr: any) => ({
-            exchange: 'BITGET',
-            symbol: fr.symbol.replace(/[\/\-_:]/g, ''), // BTCUSDT
-            originalSymbol: fr.symbol, // BTCUSDT
-            fundingRate: fr.fundingRate,
-            nextFundingTime: parseInt(fr.nextUpdate) || 0,
-            lastPrice: '0', // Bitget funding rate endpoint doesn't include price, will be 0
-            fundingInterval: fr.fundingRateInterval ? `${fr.fundingRateInterval}h` : '8h', // Use API-provided interval
-            volume24h: undefined,
-            openInterest: undefined,
-            high24h: undefined,
-            low24h: undefined,
-          } as ExchangeFundingRate));
-      }),
-      catchError(error => {
-        console.error('[Bitget] Failed to fetch funding rates via proxy:', error.message);
-        return of([]);
-      })
+  private fetchKuCoinFundingRates(): Observable<ExchangeFundingRate[]> {
+    return this.fetchUnifiedFundingRates('/api/kucoin/public-funding-rates', 'KUCOIN').pipe(
+      take(1)
     );
   }
 
   /**
-   * Calculate funding interval based on time until next funding
-   * Uses REAL data from exchange API instead of hardcoded assumptions
-   */
-  private calculateFundingInterval(nextFundingTime: number): string {
-    const now = Date.now();
-    const timeUntilFunding = nextFundingTime - now;
-
-    if (timeUntilFunding <= 0) {
-      return '8h'; // Default if funding time is in the past
-    }
-
-    const hoursUntilFunding = timeUntilFunding / (1000 * 60 * 60);
-
-    // Determine interval based on actual time until next funding
-    if (hoursUntilFunding <= 1.5) {
-      return '1h';  // GATEIO, some MEXC symbols
-    } else if (hoursUntilFunding <= 5) {
-      return '4h';  // Some MEXC symbols
-    } else {
-      return '8h';  // BYBIT, BINANCE, BINGX, OKX, most symbols
-    }
-  }
-
-  /**
-   * Normalize funding rate to 8-hour interval for fair comparison
+   * Normalize funding rate to 1-hour interval for fair comparison
    * Different exchanges use different intervals (1h, 4h, 8h)
+   *
+   * ✅ Uses centralized function from @shared/lib to ensure consistency
+   * across the entire application (frontend, backend, calculator components)
    */
-  private normalizeFundingRateTo8h(fundingRate: string, fundingInterval: string = '8h'): number {
-    const rate = parseFloat(fundingRate);
+  private normalizeFundingRate(fundingRate: string | number, fundingInterval: string | number | undefined = '-'): number {
+    // Parse funding rate
+    const rate = typeof fundingRate === 'string' ? parseFloat(fundingRate) : fundingRate;
 
-    // Normalization multipliers to convert to 8h interval
-    const multipliers: Record<string, number> = {
-      '1h': 8,   // 8 hourly payments = 1 eight-hour period
-      '4h': 2,   // 2 four-hour payments = 1 eight-hour period
-      '8h': 1,   // Already 8h interval
-    };
+    // Ensure fundingInterval is a string
+    const intervalStr = fundingInterval ? String(fundingInterval) : '-';
 
-    const multiplier = multipliers[fundingInterval] || 1;
-    return rate * multiplier;
+    // Extract numeric interval from string format ('1h' -> 1, '4h' -> 4, '8h' -> 8, '8' -> 8)
+    const intervalMatch = parseInt(intervalStr.replace('h', '')) ; //.match(/^(\d+)h?$/);
+    const intervalHours = isNaN(intervalMatch) ? 1 : intervalMatch;
+
+    // Use centralized normalization function from @shared/lib
+    // This ensures ALL funding rate calculations use the same logic
+    return normalizeFundingRateTo1h(rate, intervalHours);
   }
 
   /**
    * Calculate arbitrage opportunities from exchange data
    * Groups by symbol and calculates spreads
-   * IMPORTANT: Normalizes all funding rates to 8h intervals for fair comparison
+   * IMPORTANT: Normalizes all funding rates to 1h intervals for fair comparison
    */
   private calculateOpportunities(rates: ExchangeFundingRate[]): FundingRateOpportunity[] {
-    // Group by normalized symbol
+    const symbolMap = this.groupRatesBySymbol(rates);
+    const opportunities: FundingRateOpportunity[] = [];
+
+    symbolMap.forEach((exchanges: ExchangeFundingRate[], symbol: string) => {
+      if (exchanges.length < 2) {
+        return;
+      }
+
+      const sortedExchanges: ExchangeFundingRate[] = this.sortExchangesByPrice(exchanges); //  this.sortExchangesByFundingRate(exchanges);
+      const bestLong: ExchangeFundingRate = sortedExchanges[0];
+      const bestShort: ExchangeFundingRate = sortedExchanges[sortedExchanges.length - 1];
+
+      const priceSpreadData: PriceSpreadData = this.calculatePriceSpreadData(bestLong, bestShort);
+
+      if (!this.validateOpportunityData(symbol, priceSpreadData)) {
+        return;
+      }
+
+      const nextFundingTime: number = this.getEarliestFundingTime(exchanges);
+      const advancedMetrics = this.calculateAdvancedMetrics(bestLong, bestShort, exchanges, nextFundingTime);
+      const strategyInfo = this.determineRecommendedStrategy(bestLong, bestShort);
+      const strategyMetrics = this.calculateAllStrategyMetrics(priceSpreadData, advancedMetrics.fundingSpread);
+
+      const opportunity = this.buildOpportunityObject(
+        symbol,
+        sortedExchanges,
+        bestLong,
+        bestShort,
+        priceSpreadData,
+        advancedMetrics,
+        strategyInfo,
+        strategyMetrics,
+        nextFundingTime
+      );
+
+      opportunities.push(opportunity);
+    });
+
+    opportunities.sort((a, b) => Math.abs((b.fundingSpread || 0)) - Math.abs((a.fundingSpread || 0)));
+    console.log(`[PublicFundingRates] Calculated ${opportunities.length} opportunities`);
+
+    return opportunities;
+  }
+
+  /**
+   * Group exchange rates by normalized symbol and normalize funding rates
+   */
+  private groupRatesBySymbol(rates: ExchangeFundingRate[]): Map<string, ExchangeFundingRate[]> {
     const symbolMap = new Map<string, ExchangeFundingRate[]>();
 
-    // Add normalized funding rates and calculate intervals based on real data
-    rates.forEach(rate => {
+    rates.forEach((rate: ExchangeFundingRate) => {
       if (!symbolMap.has(rate.symbol)) {
         symbolMap.set(rate.symbol, []);
       }
 
-      // Calculate funding interval from actual nextFundingTime (not hardcoded!)
-      if (!rate.fundingInterval && rate.nextFundingTime) {
-        rate.fundingInterval = this.calculateFundingInterval(rate.nextFundingTime);
-      }
-
-      // Normalize funding rate to 8h interval using calculated interval
-      rate.fundingRateNormalized = this.normalizeFundingRateTo8h(
+      rate.fundingRateNormalized = this.normalizeFundingRate(
         rate.fundingRate,
-        rate.fundingInterval || '8h'
+        rate.fundingInterval || '-'
       );
-
-      console.log(`[FundingInterval] ${rate.exchange} ${rate.symbol}: interval=${rate.fundingInterval}, nextFunding=${new Date(rate.nextFundingTime).toLocaleTimeString()}, rate=${rate.fundingRate}, normalized=${rate.fundingRateNormalized.toFixed(6)}`);
 
       symbolMap.get(rate.symbol)!.push(rate);
     });
 
-    const opportunities: FundingRateOpportunity[] = [];
+    return symbolMap;
+  }
 
-    // Calculate opportunities for each symbol
-    symbolMap.forEach((exchanges, symbol) => {
-      // Skip symbols with only one exchange
-      if (exchanges.length < 2) return;
+  /**
+   * Sort exchanges by normalized funding rate (lowest to highest)
+   */
+  private sortExchangesByFundingRate(exchanges: ExchangeFundingRate[]): ExchangeFundingRate[] {
+    return [...exchanges].sort(
+      (a: ExchangeFundingRate, b: ExchangeFundingRate) =>
+        (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
+    );
+  }
 
-      // Sort by NORMALIZED funding rate (lowest to highest) - CRITICAL for fair comparison!
-      const sortedExchanges = [...exchanges].sort(
-        (a, b) => (a.fundingRateNormalized || 0) - (b.fundingRateNormalized || 0)
+  private sortExchangesByPrice(exchanges: ExchangeFundingRate[]): ExchangeFundingRate[] {
+    return [...exchanges].sort(
+        (a: ExchangeFundingRate, b: ExchangeFundingRate) => Math.abs(parseFloat(a.lastPrice) - parseFloat(b.lastPrice))
+    );
+  }
+
+  /**
+   * Calculate price spread data between two exchanges
+   */
+  private calculatePriceSpreadData(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate
+  ): PriceSpreadData {
+    const bestLongPrice = parseFloat(bestLong.lastPrice);
+    const bestShortPrice = parseFloat(bestShort.lastPrice);
+    const priceSpread = Math.abs(bestShortPrice - bestLongPrice) / bestLongPrice;
+    const priceSpreadPercent = Math.abs(priceSpread * 100).toFixed(2);
+    const priceSpreadUsdt = Math.abs(bestShortPrice - bestLongPrice).toFixed(2);
+
+    return {
+      priceSpread,
+      priceSpreadPercent,
+      priceSpreadUsdt,
+      bestLongPrice,
+      bestShortPrice
+    };
+  }
+
+  /**
+   * Validate opportunity data to filter out invalid entries
+   */
+  private validateOpportunityData(
+    symbol: string,
+    priceSpreadData: { priceSpread: number; priceSpreadPercent: string; bestLongPrice: number; bestShortPrice: number }
+  ): boolean {
+    if (Math.abs(priceSpreadData.priceSpread) > 1.0) {
+      console.debug(
+        `[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadData.priceSpreadPercent}%`
       );
+      return false;
+    }
 
-      const bestLong = sortedExchanges[0]; // Lowest (most negative) normalized funding rate
-      const bestShort = sortedExchanges[sortedExchanges.length - 1]; // Highest normalized funding rate
+    if (priceSpreadData.bestLongPrice <= 0 || priceSpreadData.bestShortPrice <= 0) {
+      console.debug(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
+      return false;
+    }
 
-      // Calculate funding spread using NORMALIZED rates
-      const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
-      const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
+    return true;
+  }
 
-      // Calculate price spread
-      const bestLongPrice = parseFloat(bestLong.lastPrice);
-      const bestShortPrice = parseFloat(bestShort.lastPrice);
-      const priceSpread = (bestShortPrice - bestLongPrice) / bestLongPrice;
-      const priceSpreadPercent = (priceSpread * 100).toFixed(2);
-      const priceSpreadUsdt = (bestShortPrice - bestLongPrice).toFixed(2);
+  /**
+   * Get earliest next funding time from exchanges
+   */
+  private getEarliestFundingTime(exchanges: ExchangeFundingRate[]): number {
+    const fundingTimes = exchanges
+      .map((e: ExchangeFundingRate) => e.nextFundingTime)
+      .filter(t => t > 0);
+    return fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
+  }
 
-      // Get earliest next funding time
-      const fundingTimes = exchanges.map(e => e.nextFundingTime).filter(t => t > 0);
-      const nextFundingTime = fundingTimes.length > 0 ? Math.min(...fundingTimes) : 0;
+  /**
+   * Calculate advanced metrics including funding spread, APR, fees, volume, etc.
+   */
+  private calculateAdvancedMetrics(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate,
+    exchanges: ExchangeFundingRate[],
+    nextFundingTime: number
+  ): AdvancedMetrics {
+    const fundingSpread = (bestShort.fundingRateNormalized || 0) - (bestLong.fundingRateNormalized || 0);
+    const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
+    const fundingPeriodicity = this.calculateFundingPeriodicity(nextFundingTime);
+    const timeToFunding = this.calculateTimeToFunding(nextFundingTime);
+    const estimatedAPR = this.calculateEstimatedAPR(fundingSpread);
+    const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
+    const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
+    const totalFeesFormatted = (totalFees * 100).toFixed(2) + '%';
+    const netAPR = this.calculateNetAPR(estimatedAPR, totalFees);
+    const netAPRFormatted = (netAPR * 100).toFixed(2) + '%';
+    const volume24h = this.calculateVolume24h(exchanges);
+    const volume24hFormatted = volume24h !== undefined ? '$' + this.formatLargeNumber(volume24h) : undefined;
+    const openInterest = this.calculateOpenInterest(exchanges);
+    const openInterestFormatted = openInterest !== undefined ? '$' + this.formatLargeNumber(openInterest) : undefined;
+    const volatility24h = this.calculateVolatility24h(exchanges);
+    const volatility24hFormatted = volatility24h !== undefined ? (volatility24h * 100).toFixed(2) + '%' : undefined;
 
-      // Calculate funding periodicity
-      const fundingPeriodicity = this.calculateFundingPeriodicity(nextFundingTime);
+    return {
+      fundingSpread,
+      fundingSpreadPercent,
+      fundingPeriodicity,
+      timeToFunding,
+      estimatedAPR,
+      estimatedAPRFormatted,
+      totalFees,
+      totalFeesFormatted,
+      netAPR,
+      netAPRFormatted,
+      volume24h,
+      volume24hFormatted,
+      openInterest,
+      openInterestFormatted,
+      volatility24h,
+      volatility24hFormatted
+    };
+  }
 
-      // Filter out unrealistic spreads (> 100%)
-      if (Math.abs(priceSpread) > 1.0) {
-        console.debug(`[PublicFundingRates] Filtered ${symbol}: unrealistic price spread ${priceSpreadPercent}%`);
-        return;
-      }
+  /**
+   * Determine recommended strategy (spot-futures vs cross-exchange)
+   */
+  private determineRecommendedStrategy(
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate
+  ): StrategyInfo {
+    const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
+    const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
 
-      // Filter out invalid prices
-      if (bestLongPrice <= 0 || bestShortPrice <= 0) {
-        console.debug(`[PublicFundingRates] Filtered ${symbol}: invalid prices`);
-        return;
-      }
+    if (bestLongFundingNormalized > 0 && bestShortFundingNormalized > 0) {
+      return {
+        recommendedStrategy: 'spot-futures',
+        spotFuturesBestExchange: bestShort
+      };
+    }
 
-      // ===== Phase 1 Advanced Metrics Calculations =====
+    return {
+      recommendedStrategy: 'cross-exchange',
+      spotFuturesBestExchange: undefined
+    };
+  }
 
-      // 1. Time to Funding
-      const timeToFunding = this.calculateTimeToFunding(nextFundingTime);
+  /**
+   * Calculate metrics for all applicable strategies
+   */
+  private calculateAllStrategyMetrics(
+    priceSpreadData: { priceSpread: number },
+    fundingSpread: number
+  ): StrategyMetricsData {
+    const strategyMetrics: {
+      combined?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+      priceOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+      fundingOnly?: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number };
+    } = {};
 
-      // 2. Estimated APR (gross, before fees)
-      const estimatedAPR = this.calculateEstimatedAPR(fundingSpread);
-      const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
+    const priceSpreadPct = priceSpreadData.priceSpread * 100;
+    const fundingDifferentialPct = fundingSpread * 100;
+    const dailyFundingReturn = fundingDifferentialPct * 3;
 
-      // 3. Total Fees
-      const totalFees = this.calculateTotalFees(bestLong.exchange, bestShort.exchange);
-      const totalFeesFormatted = (totalFees * 100).toFixed(2) + '%';
+    if (Math.abs(fundingSpread) > 0.0001 && Math.abs(priceSpreadData.priceSpread) > 0.0001) {
+      strategyMetrics.combined = {
+        expectedDailyReturn: priceSpreadPct + dailyFundingReturn,
+        estimatedMonthlyROI: priceSpreadPct + (dailyFundingReturn * 30),
+        combinedScore: priceSpreadPct + (dailyFundingReturn * 7)
+      };
+    }
 
-      // 4. Net APR (after fees)
-      const netAPR = this.calculateNetAPR(estimatedAPR, totalFees);
-      const netAPRFormatted = (netAPR * 100).toFixed(2) + '%';
+    if (Math.abs(priceSpreadData.priceSpread) > 0.0001) {
+      strategyMetrics.priceOnly = {
+        combinedScore: priceSpreadPct,
+        expectedDailyReturn: priceSpreadPct,
+        estimatedMonthlyROI: priceSpreadPct
+      };
+    }
 
-      // 5. 24h Volume (optional)
-      const volume24h = this.calculateVolume24h(exchanges);
-      const volume24hFormatted = volume24h !== undefined ? '$' + this.formatLargeNumber(volume24h) : undefined;
+    if (Math.abs(fundingSpread) > 0.0001) {
+      strategyMetrics.fundingOnly = {
+        combinedScore: dailyFundingReturn * 7,
+        expectedDailyReturn: dailyFundingReturn,
+        estimatedMonthlyROI: dailyFundingReturn * 30
+      };
+    }
 
-      // 6. Open Interest (optional)
-      const openInterest = this.calculateOpenInterest(exchanges);
-      const openInterestFormatted = openInterest !== undefined ? '$' + this.formatLargeNumber(openInterest) : undefined;
+    let strategyType: 'price_only' | 'funding_only' | 'combined' = 'combined';
+    let combinedScore: number | undefined;
+    let expectedDailyReturn: number | undefined;
+    let estimatedMonthlyROI: number | undefined;
 
-      // 7. Volatility 24h (optional)
-      const volatility24h = this.calculateVolatility24h(exchanges);
-      const volatility24hFormatted = volatility24h !== undefined ? (volatility24h * 100).toFixed(2) + '%' : undefined;
+    if (strategyMetrics.combined) {
+      strategyType = 'combined';
+      combinedScore = strategyMetrics.combined.combinedScore;
+      expectedDailyReturn = strategyMetrics.combined.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.combined.estimatedMonthlyROI;
+    } else if (strategyMetrics.priceOnly) {
+      strategyType = 'price_only';
+      combinedScore = strategyMetrics.priceOnly.combinedScore;
+      expectedDailyReturn = strategyMetrics.priceOnly.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.priceOnly.estimatedMonthlyROI;
+    } else if (strategyMetrics.fundingOnly) {
+      strategyType = 'funding_only';
+      combinedScore = strategyMetrics.fundingOnly.combinedScore;
+      expectedDailyReturn = strategyMetrics.fundingOnly.expectedDailyReturn;
+      estimatedMonthlyROI = strategyMetrics.fundingOnly.estimatedMonthlyROI;
+    }
 
-      // 8. Determine Recommended Strategy (spot-futures vs cross-exchange)
-      let recommendedStrategy: 'cross-exchange' | 'spot-futures' = 'cross-exchange';
-      let spotFuturesBestExchange: ExchangeFundingRate | undefined;
+    return {
+      strategyMetrics,
+      strategyType,
+      combinedScore,
+      expectedDailyReturn,
+      estimatedMonthlyROI
+    };
+  }
 
-      const bestLongFundingNormalized = bestLong.fundingRateNormalized || 0;
-      const bestShortFundingNormalized = bestShort.fundingRateNormalized || 0;
-
-      // If BOTH funding rates are positive, spot-futures is more profitable
-      // Spot-futures: Buy spot + Short futures on same exchange = earn full funding rate
-      // Cross-exchange: Short on high funding - Long on low funding = earn only the spread
-      if (bestLongFundingNormalized > 0 && bestShortFundingNormalized > 0) {
-        recommendedStrategy = 'spot-futures';
-        // Choose exchange with highest funding rate for spot-futures
-        spotFuturesBestExchange = bestShort; // Highest funding rate
-        console.log(`[PublicFundingRates] ${symbol}: Spot-futures recommended (both normalized fundings positive: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
-      } else {
-        recommendedStrategy = 'cross-exchange';
-        console.log(`[PublicFundingRates] ${symbol}: Cross-exchange recommended (normalized fundings: ${(bestLongFundingNormalized*100).toFixed(4)}%, ${(bestShortFundingNormalized*100).toFixed(4)}% per 8h)`);
-      }
-
-      // 9. Combined Strategy Metrics (price spread + funding differential)
-      // Calculate combined score only if we have both price and funding data
-      let combinedScore: number | undefined;
-      let expectedDailyReturn: number | undefined;
-      let estimatedMonthlyROI: number | undefined;
-      let strategyType: 'price_only' | 'funding_only' | 'combined' = 'price_only';
-
-      // Check if we have valid funding spread (not just price data)
-      if (Math.abs(fundingSpread) > 0.0001) {
-        // We have funding data - calculate combined metrics
-
-        // Convert price spread to percentage
-        const priceSpreadPercent = priceSpread * 100;
-
-        // Funding differential per 8h period (as percentage)
-        const fundingDifferentialPercent = fundingSpread * 100;
-
-        // Expected daily return = price spread (one-time) + funding differential (3 times per day)
-        // Assumption: price convergence happens within 1 day
-        const dailyFundingReturn = fundingDifferentialPercent * 3; // 3 funding periods per day (every 8h)
-        expectedDailyReturn = priceSpreadPercent + dailyFundingReturn;
-
-        // Estimated monthly ROI = price spread (one-time) + funding for 30 days
-        estimatedMonthlyROI = priceSpreadPercent + (dailyFundingReturn * 30);
-
-        // Combined score = immediate price spread + projected funding for 7 days
-        combinedScore = priceSpreadPercent + (dailyFundingReturn * 7);
-
-        strategyType = 'combined';
-      } else if (Math.abs(priceSpread) > 0.0001) {
-        // We have price spread but minimal/no funding data
-        strategyType = 'price_only';
-        combinedScore = priceSpread * 100; // Just the price spread
-        expectedDailyReturn = priceSpread * 100;
-        estimatedMonthlyROI = priceSpread * 100;
-      } else if (Math.abs(fundingSpread) > 0.0001) {
-        // We have funding but minimal/no price spread
-        strategyType = 'funding_only';
-        const dailyFundingReturn = fundingSpread * 100 * 3;
-        combinedScore = dailyFundingReturn * 7;
-        expectedDailyReturn = dailyFundingReturn;
-        estimatedMonthlyROI = dailyFundingReturn * 30;
-      }
-
-      opportunities.push({
-        symbol,
-        exchanges: sortedExchanges,
-        maxFundingSpread: fundingSpread, // LEGACY - kept for backward compatibility
-        maxFundingSpreadPercent: fundingSpreadPercent + '%', // LEGACY
-        fundingSpread: fundingSpread, // Normalized funding spread (8h basis)
-        fundingSpreadPercent: fundingSpreadPercent + '%', // Normalized funding spread percentage
-        bestLong,
-        bestShort,
-        priceSpread,
-        priceSpreadPercent: priceSpreadPercent + '%',
-        priceSpreadUsdt: '$' + priceSpreadUsdt,
-        fundingPeriodicity,
-        nextFundingTime,
-        // Phase 1 Advanced Metrics
-        timeToFunding,
-        estimatedAPR,
-        estimatedAPRFormatted,
-        totalFees,
-        totalFeesFormatted,
-        netAPR,
-        netAPRFormatted,
-        volume24h,
-        volume24hFormatted,
-        openInterest,
-        openInterestFormatted,
-        volatility24h,
-        volatility24hFormatted,
-        // Combined Strategy Metrics
-        combinedScore,
-        expectedDailyReturn,
-        estimatedMonthlyROI,
-        strategyType,
-        // Recommended Strategy
-        recommendedStrategy,
-        spotFuturesBestExchange,
-      });
-    });
-
-    // Sort by NORMALIZED funding spread (highest first) - uses fundingSpread which is now normalized
-    opportunities.sort((a, b) => Math.abs((b.fundingSpread || 0)) - Math.abs((a.fundingSpread || 0)));
-
-    console.log(`[PublicFundingRates] Calculated ${opportunities.length} opportunities`);
-
-    return opportunities;
+  /**
+   * Build final opportunity object with all calculated data
+   */
+  private buildOpportunityObject(
+    symbol: string,
+    sortedExchanges: ExchangeFundingRate[],
+    bestLong: ExchangeFundingRate,
+    bestShort: ExchangeFundingRate,
+    priceSpreadData: PriceSpreadData,
+    advancedMetrics: AdvancedMetrics,
+    strategyInfo: StrategyInfo,
+    strategyMetricsData: StrategyMetricsData,
+    nextFundingTime: number
+  ): FundingRateOpportunity {
+    return {
+      symbol,
+      exchanges: sortedExchanges,
+      maxFundingSpread: advancedMetrics.fundingSpread,
+      maxFundingSpreadPercent: advancedMetrics.fundingSpreadPercent + '%',
+      fundingSpread: advancedMetrics.fundingSpread,
+      fundingSpreadPercent: advancedMetrics.fundingSpreadPercent + '%',
+      bestLong,
+      bestShort,
+      priceSpread: priceSpreadData.priceSpread,
+      priceSpreadPercent: priceSpreadData.priceSpreadPercent + '%',
+      priceSpreadUsdt: '$' + priceSpreadData.priceSpreadUsdt,
+      fundingPeriodicity: advancedMetrics.fundingPeriodicity,
+      nextFundingTime,
+      timeToFunding: advancedMetrics.timeToFunding,
+      estimatedAPR: advancedMetrics.estimatedAPR,
+      estimatedAPRFormatted: advancedMetrics.estimatedAPRFormatted,
+      totalFees: advancedMetrics.totalFees,
+      totalFeesFormatted: advancedMetrics.totalFeesFormatted,
+      netAPR: advancedMetrics.netAPR,
+      netAPRFormatted: advancedMetrics.netAPRFormatted,
+      volume24h: advancedMetrics.volume24h,
+      volume24hFormatted: advancedMetrics.volume24hFormatted,
+      openInterest: advancedMetrics.openInterest,
+      openInterestFormatted: advancedMetrics.openInterestFormatted,
+      volatility24h: advancedMetrics.volatility24h,
+      volatility24hFormatted: advancedMetrics.volatility24hFormatted,
+      strategyMetrics: strategyMetricsData.strategyMetrics,
+      combinedScore: strategyMetricsData.combinedScore,
+      expectedDailyReturn: strategyMetricsData.expectedDailyReturn,
+      estimatedMonthlyROI: strategyMetricsData.estimatedMonthlyROI,
+      strategyType: strategyMetricsData.strategyType,
+      recommendedStrategy: strategyInfo.recommendedStrategy,
+      spotFuturesBestExchange: strategyInfo.spotFuturesBestExchange
+    };
   }
 
   /**
@@ -722,13 +819,20 @@ export class PublicFundingRatesService {
 
   /**
    * Calculate Estimated APR from funding spread
-   * Formula: funding spread × funding periods per year × 100
-   * 8h intervals = 3 times per day × 365 days = 1095 funding periods per year
-   * @param fundingSpread - Funding rate spread (decimal)
-   * @returns Annual Percentage Rate (decimal)
+   *
+   * ⚠️ CRITICAL: This method expects fundingSpread to be NORMALIZED TO 1H intervals!
+   * Since we normalize all funding rates to 1h using @shared/lib utilities,
+   * we must use 1h-based periods for accurate APR calculation.
+   *
+   * Formula: funding spread (per hour) × hours per year × 100
+   * 1h intervals = 24 times per day × 365 days = 8760 funding periods per year
+   *
+   * @param fundingSpread - Funding rate spread normalized to 1h (decimal, e.g., 0.0004)
+   * @returns Annual Percentage Rate (decimal, e.g., 3.504)
    */
   private calculateEstimatedAPR(fundingSpread: number): number {
-    const fundingPeriodsPerYear = 3 * 365; // 8h intervals
+    // ✅ Updated to reflect 1h normalization (24 periods/day instead of 3)
+    const fundingPeriodsPerYear = 24 * 365; // 1h intervals = 8760 periods per year
     return fundingSpread * fundingPeriodsPerYear;
   }
 
@@ -739,8 +843,8 @@ export class PublicFundingRatesService {
    * @returns Total fees as decimal (e.g., 0.0022 = 0.22%)
    */
   private calculateTotalFees(longExchange: string, shortExchange: string): number {
-    const longFee = (this.EXCHANGE_FEES as any)[longExchange] || 0.055;
-    const shortFee = (this.EXCHANGE_FEES as any)[shortExchange] || 0.055;
+    const longFee = this.EXCHANGE_FEES[longExchange] || 0.055;
+    const shortFee = this.EXCHANGE_FEES[shortExchange] || 0.055;
 
     // 4 trades: open long, open short, close long, close short
     return (longFee + shortFee) * 2 / 100; // Convert from percentage to decimal
@@ -910,14 +1014,14 @@ export class PublicFundingRatesService {
     symbol: string,
     exchange: string,
     days: 7 | 30
-  ): Promise<Array<{ timestamp: number; fundingRate: number }>> {
+  ): Promise<{ timestamp: number; fundingRate: number }[]> {
     const url = `/api/arbitrage/funding-rates/history?symbol=${symbol}&exchange=${exchange}&days=${days}`;
 
     try {
       const response = await firstValueFrom(
         this.http.get<{
           success: boolean;
-          data: Array<{ timestamp: number; fundingRate: number }>;
+          data: { timestamp: number; fundingRate: number }[];
         }>(url)
       );
 
@@ -943,11 +1047,11 @@ export class PublicFundingRatesService {
    * @returns Array of spread data points with timestamps and values
    */
   private calculateSpreads(
-    longRates: Array<{ timestamp: number; fundingRate: number }>,
-    shortRates: Array<{ timestamp: number; fundingRate: number }>
-  ): Array<{ timestamp: number; spread: number }> {
+    longRates: { timestamp: number; fundingRate: number }[],
+    shortRates: { timestamp: number; fundingRate: number }[]
+  ): { timestamp: number; spread: number }[] {
     // Match timestamps and calculate spreads
-    const spreads: Array<{ timestamp: number; spread: number }> = [];
+    const spreads: { timestamp: number; spread: number }[] = [];
 
     for (const longRate of longRates) {
       const shortRate = shortRates.find(s => s.timestamp === longRate.timestamp);
@@ -972,7 +1076,7 @@ export class PublicFundingRatesService {
    * @returns Complete spread stability metrics
    */
   private calculateStabilityMetrics(
-    spreads: Array<{ timestamp: number; spread: number }>,
+    spreads: { timestamp: number; spread: number }[],
     periodDays: 7 | 30,
     expectedSamples: number
   ): SpreadStabilityMetrics {

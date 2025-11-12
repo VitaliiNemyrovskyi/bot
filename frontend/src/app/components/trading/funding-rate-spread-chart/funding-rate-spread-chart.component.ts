@@ -266,7 +266,7 @@ export class FundingRateSpreadChartComponent implements OnInit, AfterViewInit, O
       if (this.isDestroyed || !this.chart) return;
 
       if (entries.length > 0) {
-        const { width } = entries[0].contentRect;
+        const { width } = entries[0]!.contentRect;
         if (width > 0) {
           this.chart.applyOptions({ width });
         }

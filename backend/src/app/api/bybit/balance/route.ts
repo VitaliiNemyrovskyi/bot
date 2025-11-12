@@ -47,7 +47,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const accountType = (searchParams.get('accountType') || 'UNIFIED').toUpperCase();
     const coin = searchParams.get('coin') || undefined;
-    const environment = searchParams.get('environment')?.toUpperCase() || 'TESTNET';
 
     // 3. Validate accountType
     const validAccountTypes = ['UNIFIED', 'CONTRACT', 'SPOT', 'INVESTMENT', 'OPTION', 'FUND'];
@@ -65,22 +64,21 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Load credentials
-    console.log(`[Balance] Loading credentials for user: ${userId}, environment: ${environment}`);
+    console.log(`[Balance] Loading credentials for user: ${userId}`);
     const { ExchangeCredentialsService } = await import('@/lib/exchange-credentials-service');
 
-    const credentials = await ExchangeCredentialsService.getCredentialsByEnvironment(
+    const credentials = await ExchangeCredentialsService.getActiveCredentials(
       userId,
-      'BYBIT' as any,
-      environment as any
+      'BYBIT' as any
     );
 
     if (!credentials) {
-      console.warn(`[Balance] No ${environment} API keys found for user: ${userId}`);
+      console.warn(`[Balance] No API keys found for user: ${userId}`);
       return NextResponse.json(
         {
           success: false,
           error: 'API credentials not configured',
-          message: `Please configure your Bybit ${environment} API credentials first.`,
+          message: `Please configure your Bybit API credentials first.`,
           code: 'NO_API_KEYS',
           timestamp: new Date().toISOString(),
         },
@@ -88,19 +86,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`[Balance] Credentials loaded - environment: ${credentials.environment}`);
+    console.log(`[Balance] Credentials loaded`);
 
     // 5. Create BybitService
-    const isTestnet = credentials.environment === 'TESTNET';
     const bybitService = new BybitService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId,
     });
 
-    console.log(`[Balance] Bybit service created - testnet: ${isTestnet}`);
+    console.log(`[Balance] Bybit service created`);
 
     // 6. Fetch wallet balance
     console.log(`[Balance] Fetching balance - accountType: ${accountType}, coin: ${coin || 'all'}`);
@@ -118,7 +114,6 @@ export async function GET(request: NextRequest) {
         data: walletBalance,
         accountType,
         ...(coin && { coin }),
-        testnet: isTestnet,
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

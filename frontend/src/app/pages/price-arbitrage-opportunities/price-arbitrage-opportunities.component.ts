@@ -2,16 +2,17 @@ import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, inje
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { interval, Subscription, forkJoin, of } from 'rxjs';
-import { startWith, switchMap, catchError } from 'rxjs/operators';
+import { Subscription, take } from 'rxjs';
 import { PublicFundingRatesService } from '../../services/public-funding-rates.service';
 import { FundingRateOpportunity } from '../../models/public-funding-rate.model';
-import { IconComponent } from '../../components/ui/icon/icon.component';
 import { ButtonComponent } from '../../components/ui/button/button.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
 import { DropdownComponent, DropdownOption } from '../../components/ui/dropdown/dropdown.component';
 import { InputComponent } from '../../components/ui/input/input.component';
+import { SliderComponent } from '../../components/ui/slider/slider.component';
+import { IconComponent } from '../../components/ui/icon/icon.component';
+import { calculateCombinedFundingSpread } from '@shared/lib';
 
 /**
  * Unified opportunity type that supports all strategies
@@ -57,21 +58,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 @Component({
   selector: 'app-price-arbitrage-opportunities',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    RouterModule,
-    IconComponent,
-    ButtonComponent,
-    DialogComponent,
-    DialogHeaderComponent,
-    DialogTitleComponent,
-    DialogContentComponent,
-    DialogFooterComponent,
-    FundingSpreadDetailsComponent,
-    DropdownComponent,
-    InputComponent,
-  ],
+  imports: [CommonModule, FormsModule, RouterModule, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingSpreadDetailsComponent, DropdownComponent, InputComponent, SliderComponent, IconComponent],
   templateUrl: './price-arbitrage-opportunities.component.html',
   styleUrls: ['./price-arbitrage-opportunities.component.scss'],
   encapsulation: ViewEncapsulation.None
@@ -80,7 +67,7 @@ type UnifiedOpportunity = FundingRateOpportunity & {
 export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   private fundingRatesService = inject(PublicFundingRatesService);
   private router = inject(Router);
-
+    
   // State
   opportunities = signal<UnifiedOpportunity[]>([]);
   isLoading = signal<boolean>(false);
@@ -95,15 +82,14 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     fundingDataAvailable: boolean;
   } | null>(null);
 
-  // Auto-refresh
+  // Auto-refresh (disabled)
   private refreshSubscription?: Subscription;
-  private readonly REFRESH_INTERVAL_MS = 30 * 1000; // 30 seconds
 
   // LocalStorage keys
   private readonly SELECTED_EXCHANGES_KEY = 'priceArbitrage_selectedExchanges';
 
   // Available exchanges
-  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET'];
+  availableExchanges = ['BINGX', 'BYBIT', 'BINANCE', 'MEXC', 'GATEIO', 'BITGET', 'OKX', 'KUCOIN'];
 
   // Strategy type dropdown options
   strategyTypeOptions: DropdownOption[] = [
@@ -118,17 +104,64 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   minCombinedScore = signal<number | null>(null);
   minFundingRate = signal<number | null>(null);
   minPriceSpread = signal<number | null>(null);
-  strategyTypeFilter = signal<'combined' | 'price_only' | 'spot_futures' | 'funding_farm'>('combined');
+  strategyTypeFilter = signal<'combined' | 'price_only' | 'funding_only' | 'spot_futures' | 'funding_farm'>('combined');
   selectedExchanges = signal<string[]>([]);
 
   // Sorting
-  sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI' | 'volatility'>('combinedScore');
+  sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'expectedDailyReturn' | 'volatility'>('fundingDifferential');
   sortDirection = signal<'asc' | 'desc'>('desc');
+
+  // Price Only strategy filters
+  filterByMaxFunding = signal<boolean>(false);
+  maxFundingValue = signal<number>(0.01); // Default: 1%
+
+  // Format slider value as percentage
+  formatSliderValue = (value: number): string => {
+    return this.formatPercent(value * 100, 3);
+  };
+
+  /**
+   * Helper function to get strategy-specific metric value
+   * Returns the appropriate metric based on the selected strategy filter
+   */
+  private getStrategyMetric(
+    opportunity: FundingRateOpportunity,
+    metric: 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI',
+    strategyFilter: string
+  ): number {
+    // Try to get from strategyMetrics first
+    if (opportunity.strategyMetrics) {
+      let strategyData: { combinedScore: number; expectedDailyReturn: number; estimatedMonthlyROI: number; } | undefined;
+      switch (strategyFilter) {
+        case 'combined':
+          strategyData = opportunity.strategyMetrics.combined;
+          break;
+        case 'price_only':
+          strategyData = opportunity.strategyMetrics.priceOnly;
+          break;
+        case 'funding_only':
+          strategyData = opportunity.strategyMetrics.fundingOnly;
+          break;
+      }
+
+      if (strategyData && strategyData[metric] !== undefined) {
+        return strategyData[metric];
+      }
+    }
+
+    // Fallback to legacy fields
+    const legacyValue = opportunity[metric];
+    if (legacyValue !== undefined) {
+      return legacyValue;
+    }
+
+    // Ultimate fallback
+    return (opportunity.priceSpread || 0) * 100;
+  }
 
   // Current time for time-since-update display
   private currentTime = signal<number>(Date.now());
   private timeUpdateInterval?: any;
-  private _debugLogged = false;
 
   // Modal for detailed spread stability metrics
   showDetailsModal = signal<boolean>(false);
@@ -153,16 +186,15 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     return `${minutes}m ago`;
   });
 
-  // Check if spot-futures filter is active
-  isSpotFuturesMode = computed(() => {
-    return this.strategyTypeFilter() === 'spot_futures';
-  });
-
   // Check if funding farm filter is active
   isFundingFarmMode = computed(() => {
     return this.strategyTypeFilter() === 'funding_farm';
   });
 
+  // Check if spot+futures filter is active
+  isSpotFuturesMode = computed(() => {
+    return this.strategyTypeFilter() === 'spot_futures';
+  });
 
   // Computed filtered & sorted opportunities
   filteredOpportunities = computed(() => {
@@ -184,7 +216,26 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // (we'll compensate price difference with delta-neutral hedging)
       filtered = filtered.filter(o => o.maxFundingSpread && o.maxFundingSpread > 0);
     } else {
-      filtered = filtered.filter(o => o.strategyType === strategyFilter);
+      // Filter by strategy: check if opportunity has applicable strategy metrics
+      // Each opportunity can have multiple strategies calculated
+      filtered = filtered.filter(o => {
+        if (!o.strategyMetrics) {
+          // Fallback to legacy strategyType if strategyMetrics not available
+          return o.strategyType === strategyFilter;
+        }
+
+        // Check if opportunity has the selected strategy metrics
+        switch (strategyFilter) {
+          case 'combined':
+            return !!o.strategyMetrics.combined;
+          case 'price_only':
+            return !!o.strategyMetrics.priceOnly;
+          case 'funding_only':
+            return !!o.strategyMetrics.fundingOnly;
+          default:
+            return true;
+        }
+      });
     }
 
     // Filter by selected exchanges (case-insensitive comparison)
@@ -215,7 +266,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     const minScore = this.minCombinedScore();
     if (minScore !== null) {
       filtered = filtered.filter(o => {
-        const score = o.combinedScore !== undefined ? o.combinedScore : ((o.priceSpread || 0) * 100);
+        const score = this.getStrategyMetric(o, 'combinedScore', strategyFilter);
         return score >= minScore;
       });
     }
@@ -238,57 +289,76 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       });
     }
 
+    // Filter by maximum funding rate (for Price Only strategy)
+    // Only apply if Price Only strategy is selected AND filter is enabled
+    if (strategyFilter === 'price_only' && this.filterByMaxFunding()) {
+      const maxFunding = this.maxFundingValue();
+      filtered = filtered.filter(o => {
+        const fundingRate = Math.abs(o.maxFundingSpread || 0);
+        return fundingRate <= maxFunding;
+      });
+    }
+
     // Sort
     const column = this.sortColumn();
     const direction = this.sortDirection();
 
-    filtered.sort((a, b) => {
-      let aValue: number;
-      let bValue: number;
+    // Special handling for 'price_only' strategy: compound sorting
+    if (strategyFilter === 'price_only') {
+      filtered.sort((a, b) => {
+        // Primary: Sort by price spread (largest first - descending)
+        const aPriceSpread = (a.priceSpread || 0) * 100;
+        const bPriceSpread = (b.priceSpread || 0) * 100;
 
-      switch (column) {
-        case 'symbol':
-          return direction === 'asc'
-            ? a.symbol.localeCompare(b.symbol)
-            : b.symbol.localeCompare(a.symbol);
+        if (Math.abs(aPriceSpread - bPriceSpread) > 0.001) {
+          return bPriceSpread - aPriceSpread; // Descending (largest first)
+        }
 
-        case 'spreadPercent':
-          aValue = (a.priceSpread || 0) * 100;
-          bValue = (b.priceSpread || 0) * 100;
-          break;
+        // Secondary: Sort by funding rates (minimal first - ascending by absolute value)
+        const aFunding = Math.abs(a.maxFundingSpread || 0) * 100;
+        const bFunding = Math.abs(b.maxFundingSpread || 0) * 100;
+        return aFunding - bFunding; // Ascending (minimal first)
+      });
+    } else {
+      // Existing sorting logic for other strategies
+      filtered.sort((a, b) => {
+        let aValue: number;
+        let bValue: number;
 
-        case 'fundingDifferential':
-          aValue = (a.maxFundingSpread ?? 0) * 100;
-          bValue = (b.maxFundingSpread ?? 0) * 100;
-          break;
+        switch (column) {
+          case 'symbol':
+            return direction === 'asc'
+              ? a.symbol.localeCompare(b.symbol)
+              : b.symbol.localeCompare(a.symbol);
 
-        case 'combinedScore':
-          aValue = a.combinedScore ?? ((a.priceSpread || 0) * 100);
-          bValue = b.combinedScore ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'spreadPercent':
+            aValue = (a.priceSpread || 0) * 100;
+            bValue = (b.priceSpread || 0) * 100;
+            break;
 
-        case 'expectedDailyReturn':
-          aValue = a.expectedDailyReturn ?? ((a.priceSpread || 0) * 100);
-          bValue = b.expectedDailyReturn ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'fundingDifferential':
+            aValue = (a.maxFundingSpread ?? 0) * 100;
+            bValue = (b.maxFundingSpread ?? 0) * 100;
+            break;
 
-        case 'estimatedMonthlyROI':
-          aValue = a.estimatedMonthlyROI ?? ((a.priceSpread || 0) * 100);
-          bValue = b.estimatedMonthlyROI ?? ((b.priceSpread || 0) * 100);
-          break;
+          case 'expectedDailyReturn':
+            aValue = this.getStrategyMetric(a, 'expectedDailyReturn', strategyFilter);
+            bValue = this.getStrategyMetric(b, 'expectedDailyReturn', strategyFilter);
+            break;
 
-        case 'volatility':
-          aValue = a.volatility24h ?? 0;
-          bValue = b.volatility24h ?? 0;
-          break;
+          case 'volatility':
+            aValue = a.volatility24h ?? 0;
+            bValue = b.volatility24h ?? 0;
+            break;
 
-        default:
-          aValue = 0;
-          bValue = 0;
-      }
+          default:
+            aValue = 0;
+            bValue = 0;
+        }
 
-      return direction === 'asc' ? aValue - bValue : bValue - aValue;
-    });
+        return direction === 'asc' ? aValue - bValue : bValue - aValue;
+      });
+    }
 
     return filtered;
   });
@@ -301,29 +371,22 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     this.timeUpdateInterval = setInterval(() => {
       const now = Date.now();
       this.currentTime.set(now);
-      // DEBUG: Log every 10 seconds to check if time is correct
-      if (now % 10000 < 1000) {
-        console.error('[DEBUG currentTime]', {
-          now,
-          nowUTC: new Date(now).toISOString(),
-          nowLocal: new Date(now).toString()
-        });
-      }
     }, 1000);
 
     // Initial load
     this.loadOpportunities();
 
-    // Setup auto-refresh
-    this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
-      .pipe(
-        startWith(0),
-        switchMap(() => {
-          this.loadOpportunities();
-          return [];
-        })
-      )
-      .subscribe();
+    // Auto-refresh disabled to prevent data flickering
+    // User can manually refresh using the refresh button
+    // this.refreshSubscription = interval(this.REFRESH_INTERVAL_MS)
+    //   .pipe(
+    //     startWith(0),
+    //     switchMap(() => {
+    //       this.loadOpportunities();
+    //       return [];
+    //     })
+    //   )
+    //   .subscribe();
   }
 
   ngOnDestroy(): void {
@@ -346,7 +409,9 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     if (strategyFilter === 'spot_futures') {
       // Load spot + futures opportunities (filter for positive funding only)
-      this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+      // Convert selectedExchanges array to Set for service
+      const exchangesSet = new Set(this.selectedExchanges());
+      this.fundingRatesService.getFundingRatesOpportunities(exchangesSet).subscribe({
         next: (allOpportunities: FundingRateOpportunity[]) => {
           // Filter: only show coins with positive funding rate on at least one exchange
           const spotFuturesOpportunities = allOpportunities
@@ -376,6 +441,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             .filter(opp => opp !== null) as UnifiedOpportunity[];
 
           this.opportunities.set(spotFuturesOpportunities);
+          // this.dataStorage.setOpportunities(spotFuturesOpportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -387,9 +453,12 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       });
     } else {
       // Load cross-exchange opportunities (existing behavior)
-      this.fundingRatesService.getFundingRatesOpportunities().subscribe({
+      // Convert selectedExchanges array to Set for service
+      const exchangesSet = new Set(this.selectedExchanges());
+      this.fundingRatesService.getFundingRatesOpportunities(exchangesSet).pipe(take(1)).subscribe({
         next: (opportunities: FundingRateOpportunity[]) => {
           this.opportunities.set(opportunities as UnifiedOpportunity[]);
+          // this.dataStorage.setOpportunities(opportunities);
           this.error.set(null);
           this.isLoading.set(false);
           this.lastUpdated.set(new Date());
@@ -405,7 +474,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Set sorting column
    */
-  setSortColumn(column: 'symbol' | 'spreadPercent' | 'fundingDifferential' | 'combinedScore' | 'expectedDailyReturn' | 'estimatedMonthlyROI' | 'volatility'): void {
+  setSortColumn(column: 'symbol' | 'spreadPercent' | 'fundingDifferential' | 'expectedDailyReturn' | 'volatility'): void {
     if (this.sortColumn() === column) {
       // Toggle direction
       this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
@@ -419,7 +488,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   /**
    * Format percentage for display
    */
-  formatPercent(value: number | undefined, decimals: number = 2): string {
+  formatPercent(value: number | undefined, decimals = 2): string {
     if (value === undefined || value === null) return '—';
     return `${value.toFixed(decimals)}%`;
   }
@@ -493,21 +562,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       ? nextFundingTime
       : (typeof nextFundingTime === 'string' ? new Date(nextFundingTime).getTime() : nextFundingTime.getTime());
     const diff = fundingTime - now;
-
-    // DEBUG
-    if (!this._debugLogged) {
-      this._debugLogged = true;
-      console.error('[DEBUG getSpotFuturesTimeToFunding]', {
-        nextFundingTime,
-        nextFundingTimeType: typeof nextFundingTime,
-        fundingTime,
-        fundingTimeUTC: new Date(fundingTime).toISOString(),
-        now,
-        nowUTC: new Date(now).toISOString(),
-        diff,
-        diffMinutes: Math.floor(diff / (1000 * 60))
-      });
-    }
 
     if (diff <= 0) return '0m';
 
@@ -590,6 +644,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     this.minPriceSpread.set(null);
     this.strategyTypeFilter.set('combined');
     this.selectedExchanges.set([...this.availableExchanges]); // Select all exchanges
+    this.filterByMaxFunding.set(false); // Clear Price Only filters
+    this.maxFundingValue.set(0.01); // Reset to default 1%
     this.saveExchangeFilters(); // Save cleared state to localStorage
   }
 
@@ -603,7 +659,18 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
         const exchanges = JSON.parse(saved) as string[];
         // Validate that saved exchanges are still in availableExchanges
         const validExchanges = exchanges.filter(ex => this.availableExchanges.includes(ex));
-        this.selectedExchanges.set(validExchanges);
+
+        // ✅ FIX: Auto-add any NEW exchanges that were added to availableExchanges
+        // but aren't in the saved list (e.g., OKX)
+        const newExchanges = this.availableExchanges.filter(ex => !exchanges.includes(ex));
+        const mergedExchanges = [...validExchanges, ...newExchanges];
+
+        this.selectedExchanges.set(mergedExchanges);
+
+        // Save merged list back to localStorage
+        if (newExchanges.length > 0) {
+          this.saveExchangeFilters();
+        }
       } else {
         // Default: select all exchanges on first load
         this.selectedExchanges.set([...this.availableExchanges]);
@@ -637,6 +704,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       this.selectedExchanges.set([...current, exchange]);
     }
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -652,6 +721,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   selectAllExchanges(): void {
     this.selectedExchanges.set([...this.availableExchanges]);
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -660,6 +731,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   deselectAllExchanges(): void {
     this.selectedExchanges.set([]);
     this.saveExchangeFilters();
+    // Trigger immediate refresh with new exchange selection
+    this.loadOpportunities();
   }
 
   /**
@@ -732,34 +805,40 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     indicator: string;
     colorClass: string;
   } {
-    const spotPrice = this.getSpotPrice(opp);
-    const futuresPrice = this.getFuturesPrice(opp);
+    // Get prices directly from bestLong and bestShort
+    const bestLongPrice = opp.bestLong?.lastPrice ? parseFloat(opp.bestLong.lastPrice) : null;
+    const bestShortPrice = opp.bestShort?.lastPrice ? parseFloat(opp.bestShort.lastPrice) : null;
 
-    if (!spotPrice || !futuresPrice) {
+    if (!bestLongPrice || !bestShortPrice) {
       return {
         spread: 0,
         spreadPercent: 0,
         spreadUsdt: 0,
         isFavorable: false,
-        indicator: '⚪',
+        indicator: '',
         colorClass: 'neutral'
       };
     }
 
-    const spreadUsdt = futuresPrice - spotPrice;
-    const spreadPercent = (spreadUsdt / spotPrice) * 100;
-
-    // For funding arbitrage: LONG price > SHORT price is favorable (inverted from price arbitrage)
-    // spotPrice = bestLong (LONG position), futuresPrice = bestShort (SHORT position)
-    // We want LONG price > SHORT price for entry spread profit
-    const isFavorable = spotPrice > futuresPrice; // LONG > SHORT is favorable
+    // Price spread calculation between Best Long and Best Short exchanges
+    // bestLongPrice = price on exchange where we BUY (go LONG)
+    // bestShortPrice = price on exchange where we SELL (go SHORT)
+    //
+    // For profitable arbitrage:
+    // - We want to BUY LOW on Best Long exchange
+    // - We want to SELL HIGH on Best Short exchange
+    // - FAVORABLE: bestShortPrice > bestLongPrice (sell high, buy low = profit)
+    // - Larger positive spread = more profit
+    const spreadUsdt = bestShortPrice - bestLongPrice;
+    const spreadPercent = (spreadUsdt / bestLongPrice) * 100;
+    const isFavorable = bestShortPrice > bestLongPrice;
 
     return {
       spread: opp.priceSpread || 0,
       spreadPercent,
       spreadUsdt,
       isFavorable,
-      indicator: isFavorable ? '🟢' : '🔴',
+      indicator: '',
       colorClass: isFavorable ? 'favorable' : 'unfavorable'
     };
   }
@@ -882,7 +961,8 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     console.log('[PriceArbitrageOpportunities] Starting position for:', opportunity.symbol);
 
     // Determine strategy type based on current filter
-    const strategy = this.strategyTypeFilter();
+    // Use 'price_only' as default if filter is 'all'
+    const strategy = this.strategyTypeFilter() || 'price_only';
 
     if (strategy === 'spot_futures') {
       // For spot_futures strategy (spot + futures)
@@ -891,6 +971,22 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // Use bestShort exchange (highest funding rate) for futures
       const futuresExchange = graduatedOpp.bestShort?.exchange || '';
       const spotExchange = graduatedOpp.bestLong?.exchange || futuresExchange; // TODO: use actual spot exchange
+
+      // Extract funding intervals from exchange data
+      const fundingOpp = this.asFundingRateOpportunity(graduatedOpp);
+      const primaryInterval = fundingOpp?.bestLong?.fundingInterval ? this.parseFundingInterval(fundingOpp.bestLong.fundingInterval) : null;
+      const hedgeInterval = fundingOpp?.bestShort?.fundingInterval ? this.parseFundingInterval(fundingOpp.bestShort.fundingInterval) : null;
+
+      // Store navigation data in service
+      // this.navigationService.setNavigationData({
+      //   symbol: graduatedOpp.symbol,
+      //   primaryExchange: spotExchange,
+      //   hedgeExchange: futuresExchange,
+      //   primaryFundingInterval: primaryInterval,
+      //   hedgeFundingInterval: hedgeInterval,
+      //   strategy: 'spot_futures'
+      // });
+
       this.router.navigate([
         '/arbitrage/chart',
         graduatedOpp.symbol,
@@ -903,6 +999,20 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       // Use effective exchanges (respects user's dropdown selection)
       const longExchange = this.getEffectiveLongExchange(opportunity);
       const shortExchange = this.getEffectiveShortExchange(opportunity);
+
+      // Extract funding intervals from exchange data
+      const primaryInterval = longExchange?.fundingInterval ? this.parseFundingInterval(longExchange.fundingInterval) : null;
+      const hedgeInterval = shortExchange?.fundingInterval ? this.parseFundingInterval(shortExchange.fundingInterval) : null;
+
+      // Store navigation data in service
+      // this.navigationService.setNavigationData({
+      //   symbol: opportunity.symbol,
+      //   primaryExchange: longExchange.exchange,
+      //   hedgeExchange: shortExchange.exchange,
+      //   primaryFundingInterval: primaryInterval,
+      //   hedgeFundingInterval: hedgeInterval,
+      //   strategy
+      // });
 
       // Navigate to arbitrage chart with symbol, exchanges, and strategy
       // Format: /arbitrage/chart/:symbol/:longExchange/:shortExchange/:strategy
@@ -961,7 +1071,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     if (!opp) return;
 
     // Only load for FundingRateOpportunity (not SpotFutures)
-    if (!!this.isSpotFuturesStrategy(opp)) return;
+    if (this.isSpotFuturesStrategy(opp)) return;
 
     // Set loading
     const loading = new Set(this.loadingPhase2Metrics());
@@ -1058,20 +1168,6 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     const now = this.currentTime();
     const diff = nextFundingTime - now;
-
-    // DEBUG: Log first call to see values
-    if (!this._debugLogged) {
-      this._debugLogged = true;
-      console.error('[DEBUG formatTimeToNextFunding]', {
-        nextFundingTime,
-        nextFundingTimeType: typeof nextFundingTime,
-        nextFundingTimeUTC: new Date(nextFundingTime).toISOString(),
-        now,
-        nowUTC: new Date(now).toISOString(),
-        diff,
-        diffMinutes: Math.floor(diff / (1000 * 60))
-      });
-    }
 
     if (diff <= 0) return '0m';
 
@@ -1212,7 +1308,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
 
     if (!longExchange || !shortExchange) return null;
 
-    // Calculate funding spread using normalized rates
+    // Calculate funding spread using normalized rates and centralized calculation
     const longRate = longExchange.fundingRateNormalized !== undefined
       ? longExchange.fundingRateNormalized
       : parseFloat(longExchange.fundingRate);
@@ -1221,11 +1317,25 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       ? shortExchange.fundingRateNormalized
       : parseFloat(shortExchange.fundingRate);
 
-    const fundingSpread = shortRate - longRate;
+    // Use centralized spread calculation function
+    const spreadResult = calculateCombinedFundingSpread(
+      {
+        rate: longRate,
+        intervalHours: 1, // Already normalized to 1h
+        exchange: longExchange.exchange,
+      },
+      {
+        rate: shortRate,
+        intervalHours: 1, // Already normalized to 1h
+        exchange: shortExchange.exchange,
+      }
+    );
+
+    const fundingSpread = spreadResult.spreadPerHour;
     const fundingSpreadPercent = (fundingSpread * 100).toFixed(4);
 
     // Estimated APR (gross)
-    const fundingPeriodsPerYear = 3 * 365; // 8h intervals (normalized)
+    const fundingPeriodsPerYear = 3 * 365; // 3 funding periods per day (8h intervals), normalized to 1h
     const estimatedAPR = fundingSpread * fundingPeriodsPerYear;
     const estimatedAPRFormatted = (estimatedAPR * 100).toFixed(2) + '%';
 
@@ -1258,6 +1368,27 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
       dailyReturn,
       monthlyROI
     };
+  }
+
+  /**
+   * Parse funding interval string to number
+   * Converts "8h", "4h", "1h" to 8, 4, 1
+   */
+  private parseFundingInterval(interval: string | number): number | null {
+    if (!interval && interval !== 0) return null;
+
+    // If already a number, return it
+    if (typeof interval === 'number') {
+      return interval > 0 ? interval : null;
+    }
+
+    // If string, extract number from string like "8h", "4h", "1h"
+    const match = interval.match(/(\d+)/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+
+    return null;
   }
 
   /**

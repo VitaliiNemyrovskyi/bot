@@ -110,6 +110,18 @@ export interface MEXCFundingRate {
   lastPrice?: number; // Last price from ticker data
 }
 
+export interface MEXCFundingRateHistoryItem {
+  symbol: string;
+  fundingRate: number;
+  settleTime: number;
+  collectCycle: number; // Funding interval in hours
+}
+
+export interface MEXCFundingRateHistoryResponse {
+  pageSize: number;
+  resultList: MEXCFundingRateHistoryItem[];
+}
+
 export interface MEXCApiResponse<T> {
   success: boolean;
   code: number;

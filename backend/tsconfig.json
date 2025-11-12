@@ -14,15 +14,34 @@
     "jsx": "preserve",
     "incremental": true,
     "skipDefaultLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "plugins": [
       {
         "name": "next"
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/lib": ["../shared/lib"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "scripts/**/*",
+    "activate-open-positions.ts",
+    "check-*.ts",
+    "cleanup-*.ts",
+    "close-*.ts",
+    "diagnose-*.ts",
+    "dry-run-*.ts",
+    "migrate-*.ts",
+    "test-*.ts"
+  ]
 }

@@ -30,6 +30,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
    * @param userId - Optional user ID for logging/tracking
    * @param credentialId - Optional credential ID for logging/tracking
    * @param marketType - Market type: 'spot', 'swap' (perpetual futures), 'future', 'margin' (default: 'spot')
+   * @param passphrase - Optional passphrase (required for OKX, Bitget, KuCoin)
    */
   constructor(
     exchangeId: string,
@@ -38,7 +39,8 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
     testnet: boolean = true,
     private userId?: string,
     private credentialId?: string,
-    private marketType: 'spot' | 'swap' | 'future' | 'margin' = 'spot'
+    private marketType: 'spot' | 'swap' | 'future' | 'margin' = 'spot',
+    private passphrase?: string
   ) {
     super();
 
@@ -60,6 +62,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
       // This is a common source of signature verification failures
       const trimmedApiKey = apiKey.trim();
       const trimmedApiSecret = apiSecret.trim();
+      const trimmedPassphrase = passphrase?.trim();
 
       console.log(`[CCXTConnector] API Key Debug:`, {
         originalLength: apiKey.length,
@@ -67,6 +70,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
         apiKeyPrefix: trimmedApiKey.substring(0, 10) + '...',
         apiKeySuffix: '...' + trimmedApiKey.substring(trimmedApiKey.length - 10),
         secretLength: trimmedApiSecret.length,
+        hasPassphrase: !!trimmedPassphrase,
         marketType: this.marketType
       });
 
@@ -74,6 +78,8 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
       this.exchange = new ExchangeClass({
         apiKey: trimmedApiKey,
         secret: trimmedApiSecret,
+        // Add passphrase for exchanges that require it (OKX, Bitget, KuCoin)
+        ...(trimmedPassphrase && { password: trimmedPassphrase }),
         enableRateLimit: true, // Built-in rate limiting
         timeout: 30000, // 30 seconds timeout (default is 10s) - helps with slow APIs like Gate.io
         options: {
@@ -323,6 +329,48 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
       return positions[0];
     } catch (error: any) {
       console.error(`[CCXTConnector] Error getting position:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all positions or positions for a specific symbol
+   *
+   * @param symbol - Optional trading pair to filter by
+   * @returns Array of positions
+   */
+  async getPositions(symbol?: string): Promise<any[]> {
+    if (!this.isInitialized) {
+      throw new Error(`${this.exchangeName} connector not initialized`);
+    }
+
+    try {
+      let positions: any[];
+
+      if (symbol) {
+        // Fetch positions for specific symbol
+        const normalizedSymbol = this.normalizeSymbol(symbol);
+        positions = await this.exchange.fetchPositions([normalizedSymbol]);
+      } else {
+        // Fetch all positions
+        positions = await this.exchange.fetchPositions();
+      }
+
+      // Filter out zero-size positions
+      const activePositions = positions.filter((p: any) => {
+        const contracts = Math.abs(parseFloat(p.contracts || p.info?.size || '0'));
+        return contracts > 0;
+      });
+
+      console.log(`[CCXTConnector] Positions retrieved:`, {
+        total: positions.length,
+        active: activePositions.length,
+        symbol: symbol || 'all',
+      });
+
+      return activePositions;
+    } catch (error: any) {
+      console.error(`[CCXTConnector] Error getting positions:`, error.message);
       throw error;
     }
   }

@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+// Use Node.js runtime instead of Edge runtime for database access
+export const runtime = 'nodejs';
+
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
+
+/**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
 
 /**
  * Public Bybit Funding Rates with DB Cache
@@ -54,24 +69,22 @@ export async function GET(request: NextRequest) {
       });
 
 
-      // Transform DB format to Bybit API format
-      const transformedData = {
-        retCode: 0,
-        retMsg: 'OK',
-        result: {
-          category: 'linear',
-          list: cachedRates.map(rate => ({
-            symbol: rate.symbol.replace('/', ''), // BTC/USDT → BTCUSDT
-            fundingRate: rate.fundingRate.toString(),
-            fundingRateTimestamp: Math.floor(rate.nextFundingTime.getTime()).toString(),
-            fundingInterval: `${rate.fundingInterval}h`, // From DB
-            markPrice: rate.markPrice?.toString() || '0',
-            indexPrice: rate.indexPrice?.toString() || '0',
-          })),
-        },
+      // Transform DB format to unified format
+      const unifiedData = {
+        code: '0',
+        msg: '',
+        data: cachedRates.map(rate => ({
+          symbol: normalizeSymbol(rate.symbol),
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: rate.nextFundingTime.getTime().toString(),
+          fundingInterval: rate.fundingInterval,
+          last: rate.markPrice?.toString() || '0',
+          markPx: rate.markPrice?.toString() || '0',
+          idxPx: rate.indexPrice?.toString() || '0',
+        })),
       };
 
-      return NextResponse.json(transformedData, {
+      return NextResponse.json(unifiedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
@@ -105,7 +118,7 @@ export async function GET(request: NextRequest) {
 
       // Parse funding interval from API
       // fundingIntervalHour can be a number or string like "8", "1", "4"
-      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '8');
+      const fundingIntervalHour = parseInt(item.fundingIntervalHour || '0');
 
       // Convert symbol format: BTCUSDT → BTC/USDT
       const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
@@ -141,19 +154,22 @@ export async function GET(request: NextRequest) {
     await Promise.all(upsertPromises);
 
 
-    // Step 5: Return data with funding intervals from API
-    const enrichedData = {
-      ...rawData,
-      result: {
-        ...rawData.result,
-        list: data.map((item: any) => ({
-          ...item,
-          fundingInterval: `${parseInt(item.fundingIntervalHour || '8')}h`,
-        })),
-      },
+    // Step 5: Return data with unified format
+    const unifiedData = {
+      code: '0',
+      msg: '',
+      data: data.map((item: any) => ({
+        symbol: normalizeSymbol(item.symbol),
+        fundingRate: item.fundingRate || '0',
+        nextFundingTime: (item.nextFundingTime || '0').toString(),
+        fundingInterval: parseInt(item.fundingIntervalHour || '0'),
+        last: item.markPrice || item.lastPrice || '0',
+        markPx: item.markPrice || '0',
+        idxPx: item.indexPrice || '0',
+      })),
     };
 
-    return NextResponse.json(enrichedData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',

@@ -3,7 +3,7 @@ import { AuthService } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { PriceArbitragePositionDTO } from '@/types/price-arbitrage';
 import { PriceArbitrageStatus } from '@prisma/client';
-import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
+// import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
 
 /**
  * GET /api/arbitrage/positions
@@ -212,8 +212,10 @@ export async function GET(request: NextRequest) {
         hedgeExchange: position.hedgeExchange,
         primaryLeverage: position.primaryLeverage,
         primaryMargin: position.primaryMargin,
+        primaryQuantity: position.primaryQuantity,
         hedgeLeverage: position.hedgeLeverage,
         hedgeMargin: position.hedgeMargin,
+        hedgeQuantity: position.hedgeQuantity,
         entryPrimaryPrice: position.entryPrimaryPrice,
         entryHedgePrice: position.entryHedgePrice,
         entrySpread: position.entrySpread,

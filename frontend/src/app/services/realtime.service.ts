@@ -45,7 +45,7 @@ export class RealtimeService implements OnDestroy {
   ) as Observable<PriceUpdate>;
 
   // Connection status
-  private connectionStatusSubject = new BehaviorSubject<{ [symbol: string]: boolean }>({});
+  private connectionStatusSubject = new BehaviorSubject<Record<string, boolean>>({});
   public connectionStatus$ = this.connectionStatusSubject.asObservable();
 
   private baseUrl = '/api/trading';
@@ -192,7 +192,7 @@ export class RealtimeService implements OnDestroy {
   }
 
   // Get market summary for connected symbols
-  getMarketSummary(): Observable<{ [symbol: string]: PriceUpdate }> {
+  getMarketSummary(): Observable<Record<string, PriceUpdate>> {
     return this.price$.pipe(
       map(update => {
         // This is a simplified implementation

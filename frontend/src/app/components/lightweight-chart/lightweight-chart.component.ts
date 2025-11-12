@@ -6,7 +6,7 @@ import { ThemeService } from '../../services/theme.service';
 import { BybitService } from '../../services/bybit.service';
 import { Subscription } from 'rxjs';
 import { TranslationService } from '../../services/translation.service';
-import { SelectComponent, SelectOption } from '../ui/select/select.component';
+import { SelectComponent } from '../ui/select/select.component';
 import { DropdownComponent, DropdownOption } from '../ui/dropdown/dropdown.component';
 import { ButtonComponent } from '../ui/button/button.component';
 
@@ -389,7 +389,9 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
               //   close: lastCandle.close
               // });
 
-              this.candlestickSeries.update(lastCandle);
+              if (lastCandle) {
+                this.candlestickSeries.update(lastCandle);
+              }
               // console.log('[CHART] *** CHART UPDATE COMPLETED ***');
             }
           } else {
@@ -404,7 +406,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
           this.loading = false;
         }
       },
-      error: (error) => {
+      error: (_error) => {
         // console.error('[CHART] Error loading real-time market data from Bybit:', error);
         this.error = this.translate('chart.failedToLoadData');
         this.loading = false;
@@ -484,7 +486,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
     return apiSymbol;
   }
 
-  private loadData(data: ChartData[]): void {
+  private _loadData(data: ChartData[]): void {
     if (!this.candlestickSeries) return;
 
     const formattedData: CandlestickData<Time>[] = data.map(item => ({
@@ -505,7 +507,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
       // Clear existing grid lines
       this.gridLines.forEach(line => {
         try {
-          this.candlestickSeries?.removePriceLine(line);
+          this.candlestickSeries?.removePriceLine(line as any);
         } catch (e) {
           console.warn('Failed to remove grid line:', e);
         }
@@ -544,7 +546,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
   private setupResizeHandler(): void {
     const resizeObserver = new ResizeObserver(entries => {
       if (this.chart && entries.length > 0) {
-        const { width, height } = entries[0].contentRect;
+        const { width } = entries[0]!.contentRect;
         this.chart.applyOptions({ width, height: this.chartHeight });
       }
     });

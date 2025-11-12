@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { BybitService } from '@/lib/bybit';
-import { BybitBalanceResponse, GetBybitBalanceRequest } from '@/types/bybit';
+import { BybitBalanceResponse } from '@/types/bybit';
 
 // In-memory storage for user Bybit API keys (should be database in production)
 const userBybitKeys = new Map<string, { apiKey: string; apiSecret: string; testnet: boolean }>();

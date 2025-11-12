@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { BybitService } from '@/lib/bybit';
-import { BybitPositionsResponse, GetBybitPositionsRequest } from '@/types/bybit';
+import { BybitPositionsResponse } from '@/types/bybit';
 
 // In-memory storage for user Bybit API keys (should be database in production)
 const userBybitKeys = new Map<string, { apiKey: string; apiSecret: string; testnet: boolean }>();
@@ -90,7 +90,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const category = (searchParams.get('category') as 'linear' | 'spot' | 'option') || 'linear';
     const symbol = searchParams.get('symbol') || undefined;
-    const settleCoin = searchParams.get('settleCoin') || undefined;
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
 
     // Validate category

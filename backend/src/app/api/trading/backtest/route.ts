@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateUser } from '@/middleware/auth';
-import { BacktestRequest, BacktestResult, BacktestTrade, BotConfiguration } from '@/types/trading-bot';
+import { BacktestResult, BacktestTrade, BotConfiguration } from '@/types/trading-bot';
 
 const backtests = new Map<string, BacktestResult>();
 
@@ -13,7 +13,7 @@ function simulateBacktest(
   startDate: Date,
   endDate: Date,
   initialBalance: number,
-  timeframe: string
+  _timeframe: string
 ): Omit<BacktestResult, 'id' | 'createdAt' | 'executionTime'> {
   const trades: BacktestTrade[] = [];
   const dailyReturns: Array<{ date: Date; return: number }> = [];

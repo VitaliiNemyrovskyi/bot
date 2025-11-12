@@ -1,0 +1,57 @@
+@if (open()) {
+  <div class="modal-overlay" (click)="onClose()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Configure Signal Monitor</h2>
+        <button class="close-button" (click)="onClose()">×</button>
+      </div>
+
+      <form [formGroup]="signalForm" (ngSubmit)="onSave()">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="quantity">Quantity (USDT)</label>
+            <input id="quantity" type="number" formControlName="quantity" step="0.01" min="0.01" />
+          </div>
+
+          <div class="form-group">
+            <label for="leverage">Leverage</label>
+            <input id="leverage" type="number" formControlName="leverage" min="1" max="125" />
+          </div>
+
+          <div class="form-group">
+            <label for="minPriceSpreadPercent">Min Price Spread (%)</label>
+            <input id="minPriceSpreadPercent" type="number" formControlName="minPriceSpreadPercent" step="0.01" min="0" />
+          </div>
+
+          @if (strategy() === 'combined') {
+            <div class="form-group">
+              <label for="minFundingSpreadPercent">Min Funding Spread (%)</label>
+              <input id="minFundingSpreadPercent" type="number" formControlName="minFundingSpreadPercent" step="0.01" min="0" />
+            </div>
+          }
+
+          <div class="form-group">
+            <label for="primarySide">Primary Side</label>
+            <select id="primarySide" formControlName="primarySide">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="hedgeSide">Hedge Side</label>
+            <select id="hedgeSide" formControlName="hedgeSide">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" (click)="onClose()">Cancel</button>
+          <button type="submit" class="btn-save" [disabled]="!signalForm.valid">Start Signal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

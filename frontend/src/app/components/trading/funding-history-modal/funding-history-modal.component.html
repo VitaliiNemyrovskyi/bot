@@ -1,0 +1,262 @@
+<!-- Modal Overlay -->
+@if (open()) {
+  <div class="modal-overlay" (click)="handleOverlayClick()">
+    <div class="funding-history-modal" (click)="handleContentClick($event)">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div class="header-content">
+          <h2 class="modal-title">
+            <span class="symbol">{{ symbol() }}</span>
+            <span class="separator">-</span>
+            <span class="exchange">{{ exchange() }}</span>
+          </h2>
+          <div class="period-selector">
+            <button
+              class="period-btn"
+              [class.active]="selectedPeriod() === 7"
+              (click)="switchPeriod(7)"
+              [disabled]="isLoading()">
+              7d
+            </button>
+            <button
+              class="period-btn"
+              [class.active]="selectedPeriod() === 30"
+              (click)="switchPeriod(30)"
+              [disabled]="isLoading()">
+              30d
+            </button>
+          </div>
+        </div>
+        <button class="close-btn" (click)="onClose()">
+          <span class="close-icon">✕</span>
+        </button>
+      </div>
+
+      <!-- Modal Content - Always in DOM -->
+      <div class="modal-content">
+        <!-- Loading Overlay -->
+        @if (isLoading() && !fundingData()) {
+          <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading funding rate history...</p>
+          </div>
+        }
+
+        <!-- Error State -->
+        @if (errorMessage() && !isLoading()) {
+          <div class="error-container">
+            <span class="error-icon">⚠️</span>
+            <p>{{ errorMessage() }}</p>
+            <ui-button variant="primary" (clicked)="loadHistoricalData()">
+              Retry
+            </ui-button>
+          </div>
+        }
+
+        <!-- Content - shown when we have data -->
+        @if (fundingData()) {
+          <!-- Chart Section - always in DOM -->
+          <div class="chart-section">
+            <h3 class="section-title">Funding Rate History</h3>
+            <div #chartContainer class="chart-container"></div>
+            @if (isLoading()) {
+              <div class="chart-loading-overlay">
+                <div class="spinner-small"></div>
+              </div>
+            }
+          </div>
+
+          <!-- Stability Metrics Grid -->
+          <div class="metrics-section">
+            <h3 class="section-title">Stability & Volatility Metrics</h3>
+            <div class="metrics-grid">
+              <!-- Stability Score Card -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">Stability Score</span>
+                  <span class="badge" [ngClass]="'badge-' + stabilityRating()">
+                    {{ stabilityRating() }}
+                  </span>
+                </div>
+                <div class="metric-value">
+                  <span class="score-value" [style.color]="stabilityColor()">
+                    {{ fundingData()!.stability.stabilityScore }}
+                  </span>
+                  <span class="metric-unit">/100</span>
+                </div>
+                <div class="metric-description">
+                  Overall stability based on consistency and trend
+                </div>
+              </div>
+
+              <!-- Volatility Card -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">Volatility</span>
+                  <span class="badge" [ngClass]="'badge-' + volatilityRating()">
+                    {{ volatilityRating() }}
+                  </span>
+                </div>
+                <div class="metric-value">
+                  {{ formatPercent(fundingData()!.stability.volatility) }}
+                </div>
+                <div class="metric-description">
+                  Standard deviation of funding rate fluctuations
+                </div>
+              </div>
+
+              <!-- Trend Direction Card -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">Trend Direction</span>
+                </div>
+                <div class="metric-value">
+                  <span class="trend-indicator" [ngClass]="'trend-' + fundingData()!.stability.trendDirection">
+                    {{ fundingData()!.stability.trendDirection }}
+                  </span>
+                </div>
+                <div class="metric-description">
+                  Recent funding rate movement pattern
+                </div>
+              </div>
+
+              <!-- Average Rate 7d -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">7-Day Average</span>
+                </div>
+                <div class="metric-value">
+                  {{ formatPercent(fundingData()!.statistics.avgRate7d) }}
+                </div>
+                <div class="metric-description">
+                  Average funding rate over last 7 days
+                </div>
+              </div>
+
+              <!-- Average Rate 30d -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">30-Day Average</span>
+                </div>
+                <div class="metric-value">
+                  {{ formatPercent(fundingData()!.statistics.avgRate30d) }}
+                </div>
+                <div class="metric-description">
+                  Average funding rate over last 30 days
+                </div>
+              </div>
+
+              <!-- Trend Strength -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label">Trend Strength</span>
+                </div>
+                <div class="metric-value">
+                  {{ (fundingData()!.stability.trendStrength * 100).toFixed(1) }}%
+                </div>
+                <div class="metric-description">
+                  Strength of current trend (-100% to +100%)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prediction Section -->
+          <div class="prediction-section">
+            <h3 class="section-title">
+              Funding Rate Prediction
+              <span class="confidence-badge">
+                Confidence: {{ predictionConfidence() }}%
+              </span>
+            </h3>
+            <div class="prediction-grid">
+              <div class="prediction-card">
+                <div class="prediction-label">Next (1st)</div>
+                <div class="prediction-value">
+                  {{ formatPercent(fundingData()!.prediction.next1) }}
+                </div>
+              </div>
+              <div class="prediction-card">
+                <div class="prediction-label">Next (2nd)</div>
+                <div class="prediction-value">
+                  {{ formatPercent(fundingData()!.prediction.next2) }}
+                </div>
+              </div>
+              <div class="prediction-card">
+                <div class="prediction-label">Next (3rd)</div>
+                <div class="prediction-value">
+                  {{ formatPercent(fundingData()!.prediction.next3) }}
+                </div>
+              </div>
+            </div>
+            <div class="prediction-method">
+              Method: {{ fundingData()!.prediction.method.replace('_', ' ') }}
+            </div>
+          </div>
+
+          <!-- Market Metrics Section -->
+          <div class="market-metrics-section">
+            <h3 class="section-title">Market Metrics</h3>
+            <div class="market-metrics-grid">
+              <div class="market-metric">
+                <span class="metric-label">Open Interest</span>
+                <span class="metric-value">
+                  {{ formatLargeNumber(fundingData()!.marketMetrics.openInterest) }}
+                </span>
+              </div>
+              <div class="market-metric">
+                <span class="metric-label">24h Volume</span>
+                <span class="metric-value">
+                  {{ formatLargeNumber(fundingData()!.marketMetrics.volume24h) }}
+                </span>
+              </div>
+              <div class="market-metric">
+                <span class="metric-label">Mark Price</span>
+                <span class="metric-value">
+                  {{ fundingData()!.marketMetrics.markPrice !== null
+                     ? '$' + fundingData()!.marketMetrics.markPrice!.toFixed(2)
+                     : 'N/A' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Exchange Comparison Section -->
+          @if (fundingData()!.comparison.length > 0) {
+            <div class="comparison-section">
+              <h3 class="section-title">Comparison with Other Exchanges</h3>
+              <div class="comparison-table">
+                <div class="comparison-header">
+                  <div class="col">Exchange</div>
+                  <div class="col">Current Rate</div>
+                  <div class="col">7d Avg</div>
+                  <div class="col">30d Avg</div>
+                  <div class="col">Stability</div>
+                </div>
+                @for (comp of fundingData()!.comparison; track comp.exchange) {
+                  <div class="comparison-row" [class.highlighted]="comp.exchange === exchange()">
+                    <div class="col exchange-name">
+                      <span class="exchange-badge">{{ comp.exchange }}</span>
+                    </div>
+                    <div class="col">{{ formatPercent(comp.currentRate) }}</div>
+                    <div class="col">{{ formatPercent(comp.avgRate7d) }}</div>
+                    <div class="col">{{ formatPercent(comp.avgRate30d) }}</div>
+                    <div class="col">
+                      <span class="stability-badge" [style.background-color]="
+                        comp.stabilityScore >= 80 ? '#10b981' :
+                        comp.stabilityScore >= 60 ? '#3b82f6' :
+                        comp.stabilityScore >= 40 ? '#f59e0b' : '#ef4444'
+                      ">
+                        {{ comp.stabilityScore }}
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </div>
+}

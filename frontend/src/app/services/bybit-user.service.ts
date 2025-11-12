@@ -192,21 +192,21 @@ export interface BybitDeleteApiKeysResponse {
 export interface BybitWalletBalanceResponse {
   success: boolean;
   data: {
-    list: Array<{
+    list: {
       accountType: string;
       totalEquity: string;
       totalWalletBalance: string;
       totalAvailableBalance: string;
       totalMarginBalance?: string;
-      coin: Array<{
+      coin: {
         coin: string;
         equity: string;
         walletBalance: string;
         availableToWithdraw: string;
         locked: string;
         usdValue: string;
-      }>;
-    }>;
+      }[];
+    }[];
   };
   accountType: string;
   timestamp: string;

@@ -37,7 +37,7 @@ import { DropdownComponent } from '../../ui/dropdown/dropdown.component';
 import { BybitFundingStrategyService } from '../../../services/bybit-funding-strategy.service';
 import { TranslationService } from '../../../services/translation.service';
 import type {
-  PositionSideConfig,
+
   StartPreciseTimingStrategyRequest,
 } from '../../../models/bybit-funding-strategy.model';
 

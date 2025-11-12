@@ -115,19 +115,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[Tickers] Credentials loaded - ID: ${credentials.id}, environment: ${credentials.environment}`);
+    console.log(`[Tickers] Credentials loaded - ID: ${credentials.id}`);
 
     // 5. Create BybitService
-    const isTestnet = credentials.environment === 'TESTNET';
     const bybitService = new BybitService({
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
-      testnet: isTestnet,
       enableRateLimit: true,
       userId,
     });
 
-    console.log(`[Tickers] Bybit service created - testnet: ${isTestnet}`);
+    console.log(`[Tickers] Bybit service created`);
 
     // 6. Fetch tickers
     console.log(`[Tickers] Fetching tickers - category: ${category}, symbol: ${symbol || 'all'}`);
@@ -145,7 +143,6 @@ export async function GET(request: NextRequest) {
         data: tickers,
         category,
         ...(symbol && { symbol }),
-        testnet: isTestnet,
         count: tickers.length,
         timestamp: new Date().toISOString(),
       },

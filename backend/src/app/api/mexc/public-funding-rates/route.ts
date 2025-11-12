@@ -2,7 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { MEXCService } from '@/lib/mexc';
 
+// Use Node.js runtime instead of Edge runtime for database access
+export const runtime = 'nodejs';
+
 const CACHE_TTL_SECONDS = 30; // Cache data for 30 seconds
+
+/**
+ * Normalize symbol by removing separators and suffixes
+ * Examples: BTC-USDT-SWAP → BTCUSDT, BTC/USDT → BTCUSDT, BTC_USDT_PERP → BTCUSDT
+ */
+function normalizeSymbol(symbol: string): string {
+  // Remove separators
+  let normalized = symbol.replace(/[-_/:]/g, '');
+  // Remove suffixes
+  normalized = normalized.replace(/(SWAP|PERP|PERPETUAL|FUTURES?)$/i, '');
+  return normalized;
+}
 
 /**
  * MEXC Public Funding Rates with Dynamic Intervals
@@ -47,19 +62,22 @@ export async function GET(request: NextRequest) {
       });
 
 
-      // Transform DB format to API format
-      const transformedData = {
-        success: true,
-        code: 0,
+      // Transform DB format to unified format
+      const unifiedData = {
+        code: '0',
+        msg: '',
         data: cachedRates.map(rate => ({
-          symbol: rate.symbol.replace('/', '_'), // BTC/USDT → BTC_USDT
-          fundingRate: rate.fundingRate,
-          fundingInterval: rate.fundingInterval > 0 ? `${rate.fundingInterval}h` : 'unknown',
-          nextFundingTime: rate.nextFundingTime.getTime(),
+          symbol: normalizeSymbol(rate.symbol),
+          fundingRate: rate.fundingRate.toString(),
+          nextFundingTime: rate.nextFundingTime.getTime().toString(),
+          fundingInterval: rate.fundingInterval,
+          last: rate.markPrice?.toString() || '0',
+          markPx: rate.markPrice?.toString() || '0',
+          idxPx: rate.indexPrice?.toString() || '0',
         })),
       };
 
-      return NextResponse.json(transformedData, {
+      return NextResponse.json(unifiedData, {
         headers: {
           'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
           'X-Data-Source': 'database-cache',
@@ -83,7 +101,7 @@ export async function GET(request: NextRequest) {
     // Step 4: Upsert records (update existing or create new)
     const upsertPromises = fundingRates.map((rate: any) => {
       const symbol = rate.symbol.replace('_', '/'); // BTC_USDT → BTC/USDT
-      const fundingIntervalHours = rate.collectCycle || 8; // Use actual collectCycle or default to 8h
+      const fundingIntervalHours = rate.collectCycle || 0; // Use actual collectCycle
 
       return prisma.publicFundingRate.upsert({
         where: {
@@ -116,19 +134,22 @@ export async function GET(request: NextRequest) {
     await Promise.all(upsertPromises);
 
 
-    // Step 5: Return with actual intervals
-    const responseData = {
-      success: true,
-      code: 0,
+    // Step 5: Return with unified format
+    const unifiedData = {
+      code: '0',
+      msg: '',
       data: fundingRates.map((rate: any) => ({
-        symbol: rate.symbol, // BTC_USDT format
-        fundingRate: rate.fundingRate,
-        fundingInterval: rate.collectCycle ? `${rate.collectCycle}h` : '8h',
-        nextFundingTime: rate.nextSettleTime || 0,
+        symbol: normalizeSymbol(rate.symbol),
+        fundingRate: (rate.fundingRate || '0').toString(),
+        nextFundingTime: (rate.nextSettleTime || '0').toString(),
+        fundingInterval: rate.collectCycle || 0,
+        last: (rate.lastPrice || '0').toString(),
+        markPx: (rate.lastPrice || '0').toString(),
+        idxPx: (rate.lastPrice || '0').toString(),
       })),
     };
 
-    return NextResponse.json(responseData, {
+    return NextResponse.json(unifiedData, {
       headers: {
         'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
         'X-Data-Source': 'api-fresh',

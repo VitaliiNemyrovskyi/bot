@@ -3,6 +3,7 @@ const eslint = require("@eslint/js");
 const tseslint = require("typescript-eslint");
 const angular = require("@angular-eslint/eslint-plugin");
 const angularTemplate = require("@angular-eslint/eslint-plugin-template");
+const angularTemplateParser = require("@angular-eslint/template-parser");
 
 module.exports = tseslint.config(
   {
@@ -12,7 +13,15 @@ module.exports = tseslint.config(
       ...tseslint.configs.recommended,
       ...tseslint.configs.stylistic,
     ],
-    processor: angular.processInlineTemplates,
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
+      },
+    },
+    plugins: {
+      "@angular-eslint": angular,
+    },
     rules: {
       "@angular-eslint/directive-selector": [
         "error",
@@ -30,14 +39,25 @@ module.exports = tseslint.config(
           style: "kebab-case",
         },
       ],
+      "@typescript-eslint/no-explicit-any": "error", // Fail build on explicit any
+      "@typescript-eslint/no-unused-vars": "error", // Fail build on unused variables
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
     },
   },
   {
     files: ["**/*.html"],
-    extends: [
-      ...angularTemplate.configs.recommended,
-      ...angularTemplate.configs.accessibility,
-    ],
-    rules: {},
+    languageOptions: {
+      parser: angularTemplateParser,
+    },
+    plugins: {
+      "@angular-eslint/template": angularTemplate,
+    },
+    rules: {
+      ...angularTemplate.configs.recommended.rules,
+      ...angularTemplate.configs.accessibility.rules,
+    },
   }
 );

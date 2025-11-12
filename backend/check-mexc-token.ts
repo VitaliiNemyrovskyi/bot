@@ -12,7 +12,7 @@ async function main() {
     return;
   }
 
-  mexcCreds.forEach((cred, index) => {
+  mexcCreds.forEach((cred: typeof mexcCreds[number], index: number) => {
     console.log(`\n${index + 1}. MEXC Credential:`);
     console.log('   ID:', cred.id);
     console.log('   Label:', cred.label);
@@ -23,7 +23,7 @@ async function main() {
     console.log('   Created:', cred.createdAt);
   });
 
-  const activeCred = mexcCreds.find(c => c.isActive);
+  const activeCred = mexcCreds.find((c: typeof mexcCreds[number]) => c.isActive);
   if (activeCred) {
     console.log('\n✅ Active MEXC credential found');
     console.log('   Has authToken:', !!activeCred.authToken);

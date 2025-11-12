@@ -18,11 +18,11 @@ import { MEXCService } from '@/lib/mexc';
  * }
  */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { symbol: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ symbol: string }> }
 ) {
   try {
-    const symbol = params.symbol;
+    const { symbol } = await params;
 
     if (!symbol) {
       return NextResponse.json(
@@ -55,17 +55,18 @@ export async function GET(
       fundingRate: fundingData.fundingRate,
       nextSettleTime: fundingData.nextSettleTime,
       collectCycle: fundingData.collectCycle,
-      fundingInterval: fundingData.collectCycle ? `${fundingData.collectCycle}h` : '8h',
+      fundingInterval: fundingData.collectCycle || 0,
     }, {
       headers: {
         'Cache-Control': 'public, max-age=30', // Cache for 30 seconds
       },
     });
 
-  } catch (error: any) {
-    console.error('[MEXC Single Funding Rate] Error:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[MEXC Single Funding Rate] Error:', errorMessage);
     return NextResponse.json(
-      { error: 'Failed to fetch funding rate', details: error.message },
+      { error: 'Failed to fetch funding rate', details: errorMessage },
       { status: 500 }
     );
   }

@@ -111,7 +111,7 @@ private async getOrCreateConnector(
     connector = new BybitConnectorWithCache(
       credential.apiKey,
       credential.apiSecret,
-      credential.environment === 'TESTNET',
+      false,
       userId,          // Enable cache lookup
       credentialId     // Enable cache lookup
     );
@@ -120,7 +120,7 @@ private async getOrCreateConnector(
     connector = new BingXConnectorWithCache(
       credential.apiKey,
       credential.apiSecret,
-      credential.environment === 'TESTNET',
+      false,
       userId,          // Enable cache lookup
       credentialId     // Enable cache lookup
     );
@@ -136,7 +136,6 @@ private async getOrCreateConnector(
     connector,
     credentialId,
     exchange: credential.exchange,
-    environment: credential.environment,
     subscriptionIds: new Set(),
     lastUsed: Date.now(),
     initializationTime: Date.now(),

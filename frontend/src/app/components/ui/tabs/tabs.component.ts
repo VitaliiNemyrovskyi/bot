@@ -17,10 +17,10 @@ export interface Tab {
 })
 export class TabsComponent {
   @Input() tabs: Tab[] = [];
-  @Input() activeTabId: string = '';
+  @Input() activeTabId = '';
   @Input() variant: 'default' | 'pills' | 'underline' = 'default';
   @Input() size: 'small' | 'medium' | 'large' = 'medium';
-  @Input() fullWidth: boolean = false;
+  @Input() fullWidth = false;
 
   @Output() tabChange = new EventEmitter<string>();
 
@@ -71,6 +71,6 @@ export class TabsComponent {
   styleUrls: ['./tab-content.component.css']
 })
 export class TabContentComponent {
-  @Input() tabId: string = '';
-  @Input() active: boolean = false;
+  @Input() tabId = '';
+  @Input() active = false;
 }

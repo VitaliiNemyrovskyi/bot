@@ -1,242 +1,292 @@
-<div class="active-positions-container">
-  <!-- Header -->
-  <div class="positions-header">
-    <h2 class="positions-title">{{ translate('arbitrage.activePositions') }}</h2>
-    <div class="positions-actions">
-      <ui-button
-        variant="ghost"
-        size="small"
-        (clicked)="loadPositions()"
-        [loading]="isLoading()"
-        aria-label="Refresh positions">
-        <span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M21.5 2V8M21.5 8H15.5M21.5 8L18.5 5C17.3 3.8 15.7 3 14 3C10.1 3 7 6.1 7 10M2.5 22V16M2.5 16H8.5M2.5 16L5.5 19C6.7 20.2 8.3 21 10 21C13.9 21 17 17.9 17 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          {{ translate('funding.refresh') }}
-        </span>
-      </ui-button>
+<!-- Active Positions Component -->
+<div class="active-positions-section">
+  @if (enhancedPositions().length === 0) {
+    <div class="empty-state">
+      <p>{{ t('arbitrage.noActivePositions') }}</p>
     </div>
-  </div>
+  } @else {
+    <div class="positions-table-container">
+      <table class="positions-table">
+        <thead>
+          <tr>
+            <th>{{ t('arbitrage.positionId') }}</th>
+            <th>{{ t('arbitrage.symbol') }}</th>
+            <th>{{ t('arbitrage.primary') }}</th>
+            <th>{{ t('arbitrage.hedge') }}</th>
+            <th>{{ t('arbitrage.status') }}</th>
+            <th>{{ t('arbitrage.startedAt') }}</th>
+            <th>{{ t('arbitrage.actions') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (position of enhancedPositions(); track position.positionId) {
+            <tr (click)="toggleRowExpansion(position.positionId)">
+              <td class="position-id-cell">
+                <div class="exchange-info">
+                  <button class="expand-btn" (click)="toggleRowExpansion(position.positionId)" [attr.aria-expanded]="isRowExpanded(position.positionId)">
+                   {{ isRowExpanded(position.positionId) ? '▼' : '▶' }}
+                  </button>
+                  <span class="position-id-text">{{ position.positionId.slice(0, 8) }}...</span>
+                </div>
 
-  <!-- Status Filter Tabs -->
-  <div class="status-filters">
-    <button
-      class="status-filter-btn"
-      [class.active]="selectedStatus() === 'ALL'"
-      (click)="changeStatusFilter('ALL')">
-      {{ translate('arbitrage.status.all') }} ({{ positions().length }})
-    </button>
-    <button
-      class="status-filter-btn"
-      [class.active]="selectedStatus() === 'ACTIVE'"
-      (click)="changeStatusFilter('ACTIVE')">
-      {{ translate('arbitrage.status.active') }} ({{ activeCount() }})
-    </button>
-    <button
-      class="status-filter-btn"
-      [class.active]="selectedStatus() === 'COMPLETED'"
-      (click)="changeStatusFilter('COMPLETED')">
-      {{ translate('arbitrage.status.completed') }} ({{ completedCount() }})
-    </button>
-    <button
-      class="status-filter-btn"
-      [class.active]="selectedStatus() === 'ERROR'"
-      (click)="changeStatusFilter('ERROR')">
-      {{ translate('arbitrage.status.error') }} ({{ errorCount() }})
-    </button>
-  </div>
+              </td>
+              <td class="symbol-cell">
+                <strong>{{ position.symbol }}</strong>
+              </td>
+              <td class="exchange-cell">
+                <div class="exchange-info">
+                  <span class="side-badge" [class.side-long]="position.primary.side.toUpperCase() === 'LONG'" [class.side-short]="position.primary.side.toUpperCase() === 'SHORT'">
+                    {{ position.primary.exchange }}
+                  </span>
+                  <span class="leverage-text">{{ position.primary.leverage }}x</span>
+                </div>
+              </td>
+              <td class="exchange-cell">
+                <div class="exchange-info">
+                  <span class="side-badge" [class.side-long]="position.hedge.side.toUpperCase() === 'LONG'" [class.side-short]="position.hedge.side.toUpperCase() === 'SHORT'">
+                    {{ position.hedge.exchange }}
+                  </span>
+                  <span class="leverage-text">{{ position.hedge.leverage }}x</span>
+                </div>
+              </td>
+              <td class="status-cell">
+                <span
+                  class="status-badge"
+                  [class]="getStatusBadge(position.status).class">
+                  {{ getStatusBadge(position.status).label }}
+                </span>
+                @if (position.errorMessage) {
+                  <span class="error-icon" [title]="position.errorMessage">⚠️</span>
+                }
+              </td>
+              <td class="time-cell">
+                {{ position.startedAt | relativeTime }}
+              </td>
+              <td class="actions-cell">
+                @if (position.status.toUpperCase() === 'ACTIVE') {
+                  <button
+                    class="action-btn sync-btn"
+                    (click)="syncTpSlClick.emit(position.positionId)"
+                    title="{{ t('arbitrage.syncTpSl') }}">
+                    🔄
+                  </button>
+                  <button
+                    class="action-btn monitor-btn"
+                    [class.monitoring-active]="position.monitoring?.enabled"
+                    (click)="toggleMonitoringClick.emit(position)"
+                    title="{{ t('arbitrage.toggleMonitoring') }}">
+                    {{ position.monitoring?.enabled ? '👁️' : '⚫' }}
+                  </button>
+                  <button
+                    class="action-btn stop-btn"
+                    (click)="stopPositionClick.emit(position.positionId)"
+                    title="{{ t('arbitrage.stopPosition') }}">
+                    ✖️
+                  </button>
+                }
+                @if (position.status.toUpperCase() === 'ERROR') {
+                  <button
+                    class="action-btn delete-btn"
+                    (click)="deletePosition(position.positionId)"
+                    title="Видалити позицію з помилкою">
+                    🗑️
+                  </button>
+                }
+              </td>
+            </tr>
 
-  <!-- Positions Card -->
-  <ui-card variant="outlined" class="positions-card">
-    <ui-card-content>
-      @if (isLoading() && positions().length === 0) {
-        <div class="loading-state">
-          <span>{{ translate('arbitrage.loading') }}</span>
-        </div>
-      } @else if (error()) {
-        <div class="error-state">
-          <p>{{ error() }}</p>
-          <ui-button variant="primary" size="small" (clicked)="loadPositions()">
-            {{ translate('funding.retry') }}
-          </ui-button>
-        </div>
-      } @else if (filteredPositions().length === 0) {
-        <div class="empty-state">
-          <p>{{ translate('arbitrage.noPositions') }}</p>
-          <p class="help-text">{{ translate('arbitrage.noPositionsHelp') }}</p>
-        </div>
-      } @else {
-        <!-- Positions Table -->
-        <div class="positions-table-wrapper">
-          <table class="positions-table" role="table" aria-label="Active arbitrage positions">
-            <thead>
-              <tr>
-                <th>{{ translate('arbitrage.table.symbol') }}</th>
-                <th class="text-center">{{ translate('arbitrage.positions.primary') }}</th>
-                <th class="text-center">{{ translate('arbitrage.positions.hedge') }}</th>
-                <th class="text-center">{{ translate('arbitrage.entrySpread') }}</th>
-                <th class="text-center">{{ translate('arbitrage.currentSpread') }}</th>
-                <th class="text-center">{{ translate('arbitrage.unrealizedPnl') }}</th>
-                <th class="text-center">{{ translate('arbitrage.holdingTime') }}</th>
-                <th class="text-center">{{ translate('arbitrage.status.label') }}</th>
-                <th class="text-center">{{ translate('arbitrage.actions') }}</th>
+            <!-- Expanded Row Details -->
+            @if (isRowExpanded(position.positionId)) {
+              <tr class="expanded-row">
+                <td colspan="7">
+                  <div class="position-details">
+                    <!-- Error Messages -->
+                    @if (position.status.toUpperCase() === 'ERROR' && (position.errorMessage || position.primary.errorMessage || position.hedge.errorMessage)) {
+                      <div class="error-banner">
+                        <div class="error-icon-large">⚠️</div>
+                        <div class="error-content">
+                          <h4>Position Error</h4>
+                          @if (position.errorMessage) {
+                            <p><strong>Error:</strong> {{ position.errorMessage }}</p>
+                          }
+                          @if (position.primary.errorMessage) {
+                            <p><strong>{{ position.primary.exchange }} Error:</strong> {{ position.primary.errorMessage }}</p>
+                          }
+                          @if (position.hedge.errorMessage) {
+                            <p><strong>{{ position.hedge.exchange }} Error:</strong> {{ position.hedge.errorMessage }}</p>
+                          }
+                          @if (!position.primary.entryPrice || !position.hedge.entryPrice) {
+                            <p class="error-note"><em>Note: No entry prices available because orders were not executed on the exchange(s).</em></p>
+                          }
+                        </div>
+                      </div>
+                    }
+                    <div class="details-grid">
+                      <!-- Primary Exchange Details -->
+                      <div class="detail-section primary-section">
+                        <h4>{{ t('arbitrage.primary') }} ({{ position.primary.exchange }})</h4>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.entryPrice') }}:</span>
+                          <span class="detail-value">
+                            @if (position.primary.entryPrice && position.primary.entryPrice > 0) {
+                              ${{ formatCurrency(position.primary.entryPrice) }}
+                            } @else {
+                              <span class="no-data">-</span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.currentPrice') }}:</span>
+                          <span class="detail-value">${{ formatCurrency(position.primary.currentPrice) }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.quantity') }}:</span>
+                          <span class="detail-value">{{ formatCurrency(position.primary.filledQuantity || position.primary.quantity) }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.unrealizedPnl') }}:</span>
+                          <span class="detail-value" [class.profit-positive]="(position.primary.unrealizedProfit || 0) > 0" [class.profit-negative]="(position.primary.unrealizedProfit || 0) < 0">
+                            ${{ formatCurrency(position.primary.unrealizedProfit) }}
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.lastFundingPaid') }}:</span>
+                          <span class="detail-value">
+                            @if (hasFundingData(position)) {
+                              ${{ formatCurrency(position.primary.lastFundingPaid) }}
+                            } @else {
+                              <span class="no-data">- </span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.totalFundingEarned') }}:</span>
+                          <span class="detail-value" [class.profit-positive]="(position.primary.totalFundingEarned || 0) > 0">
+                            @if (hasFundingData(position)) {
+                              ${{ formatCurrency(position.primary.totalFundingEarned) }}
+                            } @else {
+                              <span class="no-data">- </span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.tradingFees') }}:</span>
+                          <span class="detail-value profit-negative">-${{ formatCurrency(position.primary.tradingFees) }}</span>
+                        </div>
+                        @if (position.primary.liquidationPrice) {
+                          <div class="detail-row">
+                            <span class="detail-label">{{ t('arbitrage.liquidationPrice') }}:</span>
+                            <span class="detail-value" [class.danger-zone]="position.primary.inDanger">
+                              ${{ formatCurrency(position.primary.liquidationPrice) }}
+                              @if (position.primary.proximityRatio) {
+                                <span class="proximity-ratio">({{ (position.primary.proximityRatio * 100).toFixed(1) }}%)</span>
+                              }
+                            </span>
+                          </div>
+                        }
+                      </div>
+
+                      <!-- Hedge Exchange Details -->
+                      <div class="detail-section hedge-section">
+                        <h4>{{ t('arbitrage.hedge') }} ({{ position.hedge.exchange }})</h4>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.entryPrice') }}:</span>
+                          <span class="detail-value">
+                            @if (position.hedge.entryPrice && position.hedge.entryPrice > 0) {
+                              ${{ formatCurrency(position.hedge.entryPrice) }}
+                            } @else {
+                              <span class="no-data">-</span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.currentPrice') }}:</span>
+                          <span class="detail-value">${{ formatCurrency(position.hedge.currentPrice) }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.quantity') }}:</span>
+                          <span class="detail-value">{{ formatCurrency(position.hedge.filledQuantity || position.hedge.quantity) }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.unrealizedPnl') }}:</span>
+                          <span class="detail-value" [class.profit-positive]="(position.hedge.unrealizedProfit || 0) > 0" [class.profit-negative]="(position.hedge.unrealizedProfit || 0) < 0">
+                            ${{ formatCurrency(position.hedge.unrealizedProfit) }}
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.lastFundingPaid') }}:</span>
+                          <span class="detail-value">
+                            @if (hasFundingData(position)) {
+                              ${{ formatCurrency(position.hedge.lastFundingPaid) }}
+                            } @else {
+                              <span class="no-data">- </span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.totalFundingEarned') }}:</span>
+                          <span class="detail-value" [class.profit-positive]="(position.hedge.totalFundingEarned || 0) > 0">
+                            @if (hasFundingData(position)) {
+                              ${{ formatCurrency(position.hedge.totalFundingEarned) }}
+                            } @else {
+                              <span class="no-data">- </span>
+                            }
+                          </span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">{{ t('arbitrage.tradingFees') }}:</span>
+                          <span class="detail-value profit-negative">-${{ formatCurrency(position.hedge.tradingFees) }}</span>
+                        </div>
+                        @if (position.hedge.liquidationPrice) {
+                          <div class="detail-row">
+                            <span class="detail-label">{{ t('arbitrage.liquidationPrice') }}:</span>
+                            <span class="detail-value" [class.danger-zone]="position.hedge.inDanger">
+                              ${{ formatCurrency(position.hedge.liquidationPrice) }}
+                              @if (position.hedge.proximityRatio) {
+                                <span class="proximity-ratio">({{ (position.hedge.proximityRatio * 100).toFixed(1) }}%)</span>
+                              }
+                            </span>
+                          </div>
+                        }
+                      </div>
+
+                      <!-- Overall Position Metrics -->
+                      <div class="detail-section metrics-section">
+                        <h4>{{ t('arbitrage.totalMetrics') }}</h4>
+                        <div class="detail-row highlight-row">
+                          <span class="detail-label">{{ t('arbitrage.grossProfit') }}:</span>
+                          <span class="detail-value profit-main" [class.profit-positive]="position.grossProfit > 0" [class.profit-negative]="position.grossProfit < 0">
+                            ${{ formatCurrency(position.grossProfit) }}
+                          </span>
+                        </div>
+                        <div class="detail-row highlight-row">
+                          <span class="detail-label">{{ t('arbitrage.netProfit') }}:</span>
+                          <span class="detail-value profit-main" [class.profit-positive]="position.netProfit > 0" [class.profit-negative]="position.netProfit < 0">
+                            ${{ formatCurrency(position.netProfit) }}
+                          </span>
+                        </div>
+                        @if (position.monitoring) {
+                          <div class="detail-row">
+                            <span class="detail-label">{{ t('arbitrage.monitoring') }}:</span>
+                            <span class="detail-value">
+                              <span class="monitoring-status" [class.enabled]="position.monitoring.enabled">
+                                {{ position.monitoring.enabled ? t('arbitrage.enabled') : t('arbitrage.disabled') }}
+                              </span>
+                              @if (position.monitoring.lastCheck) {
+                                <span class="last-check">({{ position.monitoring.lastCheck | relativeTime }})</span>
+                              }
+                            </span>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              @for (position of filteredPositions(); track position.id) {
-                <tr [class.position-active]="position.status === 'ACTIVE'">
-                  <!-- Symbol -->
-                  <td class="symbol-cell">
-                    <span class="symbol-text">{{ position.symbol }}</span>
-                    @if (position.currentPrimaryPrice) {
-                      <span class="symbol-price">${{ position.currentPrimaryPrice.toFixed(2) }}</span>
-                    }
-                  </td>
-
-                  <!-- Primary Exchange (SHORT) -->
-                  <td class="text-center exchange-cell">
-                    <div class="exchange-info">
-                      <span class="exchange-name">{{ position.primaryExchange }}</span>
-                      <span class="position-type short-position">SHORT</span>
-                      <span class="leverage-badge">{{ position.primaryLeverage }}x</span>
-                      @if (position.currentPrimaryPrice) {
-                        <span class="price-value">${{ position.currentPrimaryPrice.toFixed(2) }}</span>
-                      }
-                    </div>
-                  </td>
-
-                  <!-- Hedge Exchange (LONG) -->
-                  <td class="text-center exchange-cell">
-                    <div class="exchange-info">
-                      <span class="exchange-name">{{ position.hedgeExchange }}</span>
-                      <span class="position-type long-position">LONG</span>
-                      <span class="leverage-badge">{{ position.hedgeLeverage }}x</span>
-                      @if (position.currentHedgePrice) {
-                        <span class="price-value">${{ position.currentHedgePrice.toFixed(2) }}</span>
-                      }
-                    </div>
-                  </td>
-
-                  <!-- Entry Spread -->
-                  <td class="text-center spread-cell">
-                    <span class="spread-value">{{ getEntrySpreadDisplay(position) }}</span>
-                  </td>
-
-                  <!-- Current Spread -->
-                  <td class="text-center spread-cell">
-                    <span class="spread-value">{{ getCurrentSpreadDisplay(position) }}</span>
-                  </td>
-
-                  <!-- Unrealized P&L -->
-                  <td class="text-center pnl-cell">
-                    @if (position.status === 'ACTIVE') {
-                      <span [class]="getPnlDisplay(position).textClass">
-                        {{ formatPnl(getUnrealizedPnl(position)) }}
-                      </span>
-                    } @else {
-                      <span [class]="getPnlDisplay(position).textClass">
-                        {{ formatPnl(position.totalPnl) }}
-                      </span>
-                    }
-                  </td>
-
-                  <!-- Holding Time -->
-                  <td class="text-center time-cell">
-                    @if (position.status === 'ACTIVE') {
-                      <span>{{ getHoldingTimeDisplay(position) }}</span>
-                    } @else if (position.holdingTimeSeconds) {
-                      <span>{{ (position.holdingTimeSeconds / 3600).toFixed(2) }}h</span>
-                    } @else {
-                      <span>N/A</span>
-                    }
-                  </td>
-
-                  <!-- Status -->
-                  <td class="text-center status-cell">
-                    <span [class]="'status-badge ' + getStatusClass(position.status)">
-                      {{ translate('arbitrage.status.' + position.status.toLowerCase()) }}
-                    </span>
-                    @if (position.errorMessage) {
-                      <span class="error-message" [title]="position.errorMessage">⚠️</span>
-                    }
-                  </td>
-
-                  <!-- Actions -->
-                  <td class="text-center action-cell">
-                    @if (position.status === 'ACTIVE') {
-                      <ui-button
-                        variant="ghost"
-                        size="small"
-                        (clicked)="openCloseDialog(position)"
-                        className="close-position-btn">
-                        {{ translate('arbitrage.close') }}
-                      </ui-button>
-                    } @else {
-                      <span class="text-gray-400">-</span>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
-    </ui-card-content>
-  </ui-card>
-
-  <!-- Close Position Confirmation Dialog -->
-  <ui-dialog
-    [open]="showCloseDialog()"
-    (openChange)="showCloseDialog.set($event)"
-    (close)="cancelClose()"
-    [title]="translate('arbitrage.confirmClose')"
-    size="small">
-
-    <ui-dialog-content>
-      @if (positionToClose()) {
-        <div class="close-dialog-content">
-          <p class="close-warning">{{ translate('arbitrage.closeWarning') }}</p>
-
-          <div class="position-summary">
-            <div class="summary-row">
-              <span class="summary-label">{{ translate('arbitrage.table.symbol') }}:</span>
-              <span class="summary-value">{{ positionToClose()!.symbol }}</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">{{ translate('arbitrage.positions.primary') }}:</span>
-              <span class="summary-value">{{ positionToClose()!.primaryExchange }}</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">{{ translate('arbitrage.positions.hedge') }}:</span>
-              <span class="summary-value">{{ positionToClose()!.hedgeExchange }}</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">{{ translate('arbitrage.unrealizedPnl') }}:</span>
-              <span [class]="getPnlDisplay(positionToClose()!).textClass">
-                {{ formatPnl(getUnrealizedPnl(positionToClose()!)) }}
-              </span>
-            </div>
-          </div>
-
-          <p class="close-confirmation">{{ translate('arbitrage.closeConfirmation') }}</p>
-        </div>
-      }
-    </ui-dialog-content>
-
-    <ui-dialog-footer>
-      <ui-button
-        variant="ghost"
-        (clicked)="cancelClose()"
-        [disabled]="isClosing()">
-        {{ translate('fundingRates.actions.cancel') }}
-      </ui-button>
-      <ui-button
-        variant="primary"
-        (clicked)="confirmClose()"
-        [loading]="isClosing()">
-        {{ translate('arbitrage.closePosition') }}
-      </ui-button>
-    </ui-dialog-footer>
-  </ui-dialog>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
 </div>

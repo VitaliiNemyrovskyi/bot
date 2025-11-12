@@ -139,7 +139,7 @@ export class BotConfigPageComponent implements OnInit {
     this.goBack();
   }
 
-  onBotEdit(botData: any) {
+  onBotEdit(_botData: any) {
     // Switch to edit mode
     this.mode = 'edit';
     this.updatePageTitle();

@@ -36,8 +36,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = authResult.user;
-
     const body = await request.json().catch(() => ({}));
     const { credentialId } = body;
 
@@ -98,8 +96,6 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
-
-    const user = authResult.user;
 
     const { searchParams } = new URL(request.url);
     const credentialId = searchParams.get('credentialId');

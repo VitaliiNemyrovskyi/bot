@@ -25,6 +25,8 @@ import { PriceArbitrageStatus, PriceArbitragePosition } from '@prisma/client';
 import { BybitConnector } from '@/connectors/bybit.connector';
 import { BingXConnector } from '@/connectors/bingx.connector';
 import { MEXCConnector } from '@/connectors/mexc.connector';
+import { GateIOConnector } from '@/connectors/gateio.connector';
+import { KuCoinConnector } from '@/connectors/kucoin.connector';
 import { BaseExchangeConnector } from '@/connectors/base-exchange.connector';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
 import { EventEmitter } from 'events';
@@ -982,6 +984,13 @@ class PriceArbitrageService extends EventEmitter {
         return new BingXConnector(apiKey, apiSecret, testnet);
       case 'MEXC':
         return new MEXCConnector(apiKey, apiSecret, testnet, authToken);
+      case 'GATEIO':
+        return new GateIOConnector(apiKey, apiSecret, testnet);
+      case 'KUCOIN':
+        if (!authToken) {
+          throw new Error('KuCoin requires passphrase (authToken)');
+        }
+        return new KuCoinConnector(apiKey, apiSecret, authToken);
       default:
         throw new Error(`Unsupported exchange: ${exchange}`);
     }

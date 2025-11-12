@@ -12,13 +12,13 @@ import { TranslationService } from '../../../services/translation.service';
   styleUrls: ['./confirmation-modal.component.css']
 })
 export class ConfirmationModalComponent {
-  @Input() open: boolean = false;
-  @Input() title: string = '';
-  @Input() message: string = '';
-  @Input() confirmText: string = '';
-  @Input() cancelText: string = '';
+  @Input() open = false;
+  @Input() title = '';
+  @Input() message = '';
+  @Input() confirmText = '';
+  @Input() cancelText = '';
   @Input() confirmVariant: 'primary' | 'danger' | 'warning' = 'primary';
-  @Input() loading: boolean = false;
+  @Input() loading = false;
 
   @Output() openChange = new EventEmitter<boolean>();
   @Output() confirm = new EventEmitter<void>();

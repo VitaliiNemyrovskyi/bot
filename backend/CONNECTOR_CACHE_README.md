@@ -70,7 +70,7 @@ if (credential.exchange === 'BYBIT') {
   connector = new BybitConnectorWithCache(
     credential.apiKey,
     credential.apiSecret,
-    credential.environment === 'TESTNET',
+    false,
     userId,          // Enable cache
     credentialId     // Enable cache
   );
@@ -78,7 +78,7 @@ if (credential.exchange === 'BYBIT') {
   connector = new BingXConnectorWithCache(
     credential.apiKey,
     credential.apiSecret,
-    credential.environment === 'TESTNET',
+    false,
     userId,          // Enable cache
     credentialId     // Enable cache
   );

@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
 
         // Subscribe to each exchange-symbol pair
         exchanges.forEach((config: any) => {
-          const { exchange, symbol, credentialId, apiKey, apiSecret, authToken, environment } = config;
+          const { exchange, symbol, credentialId, environment } = config;
 
           console.log(`[ArbitrageStream] Subscribing to ${exchange}:${symbol}`);
 
@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
                   const symbolPrices: Array<{ exchange: string; price: number }> = [];
                   for (const [key, value] of priceCache.entries()) {
                     const [ex, sym] = key.split(':');
-                    if (sym === symbol) {
+                    if (sym === symbol && ex) {
                       symbolPrices.push({ exchange: ex, price: value.price });
                     }
                   }

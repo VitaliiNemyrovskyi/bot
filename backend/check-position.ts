@@ -24,12 +24,13 @@ async function checkPosition() {
       });
 
       console.log(`\nFound ${recent.length} recent positions:`);
-      recent.forEach(p => {
+      recent.forEach((p: typeof recent[number]) => {
         console.log(`  - ${p.id} (${p.status}) - ${p.symbol} - ${p.createdAt}`);
       });
     }
-  } catch (error: any) {
-    console.error('\n❌ Error querying database:', error.message);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('\n❌ Error querying database:', err.message);
   } finally {
     await prisma.$disconnect();
   }

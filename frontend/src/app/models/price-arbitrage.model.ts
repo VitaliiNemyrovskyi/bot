@@ -128,12 +128,12 @@ export interface PriceArbitrageOpportunity {
   arbitrageOpportunity: boolean; // true if spread > threshold
 
   // Additional exchange data
-  allExchanges: Array<{
+  allExchanges: {
     exchange: string;
     credentialId: string;
     price: number;
     environment: string;
-  }>;
+  }[];
 
   // NEW FIELDS FOR COMBINED STRATEGY
   // Funding rate data (optional - may not be available for all symbols)

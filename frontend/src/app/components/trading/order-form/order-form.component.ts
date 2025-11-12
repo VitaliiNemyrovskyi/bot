@@ -14,7 +14,7 @@ import { ManualTradingService } from '../../../services/manual-trading.service';
 import { BybitService } from '../../../services/bybit.service';
 
 // Models
-import { OrderRequest, OrderSide, OrderType, TimeInForce, Balance } from '../../../models/trading.model';
+import { OrderSide, TimeInForce, Balance } from '../../../models/trading.model';
 
 /**
  * Margin mode type
@@ -101,8 +101,8 @@ export class OrderFormComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   // Inputs
-  @Input() selectedSymbol: string = 'BTCUSDT';
-  @Input() currentPrice: number = 0;
+  @Input() selectedSymbol = 'BTCUSDT';
+  @Input() currentPrice = 0;
   @Input() set balance(value: Balance | null) {
     this._balance.set(value);
   }
@@ -167,7 +167,7 @@ export class OrderFormComponent implements OnInit, OnDestroy {
   liquidationPrice = computed(() => {
     const price = this.orderForm?.get('price')?.value || this.lastPrice();
     const lev = this._leverage();
-    const marginMode = this._marginMode();
+    const _marginMode = this._marginMode();
 
     // Simplified liquidation price calculation
     // For long: liq = entry - (entry / leverage)

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+// Use Node.js runtime instead of Edge runtime for database access
+export const runtime = 'nodejs';
+
 /**
  * GET /api/arbitrage/public-funding-rates
  *
@@ -62,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     // Normalize symbol to different formats for matching
     // Handle: AVNTUSDT, AVNT-USDT, AVNT/USDT
-    const normalizedSymbol = symbolParam.replace(/-/g, '').replace(/\//g, '');
+    const normalizedSymbol = symbolParam.replace(/-/g, '').replace(/\//g, '').toUpperCase();
     const symbolVariations = [
       symbolParam,                                    // Original (e.g., "AVNTUSDT")
       symbolParam.replace(/-/g, '/'),                 // AVNT-USDT -> AVNT/USDT
@@ -71,6 +74,10 @@ export async function GET(request: NextRequest) {
       normalizedSymbol.replace(/USDT$/, '/USDT'),     // AVNTUSDT -> AVNT/USDT
       normalizedSymbol.replace(/USDT$/, '-USDT'),     // AVNTUSDT -> AVNT-USDT
     ];
+
+    console.log(`[Arbitrage] Request: exchanges=${exchanges.join(',')}, symbol=${symbolParam}`);
+    console.log(`[Arbitrage] Normalized symbol: ${normalizedSymbol}`);
+    console.log(`[Arbitrage] Symbol variations:`, symbolVariations);
 
 
     // Fetch latest funding rates from DB (data should be fresh, populated by public endpoints)
@@ -125,9 +132,106 @@ export async function GET(request: NextRequest) {
             const response = await fetch(publicUrl.toString());
 
             if (!response.ok) {
+              console.warn(`[Arbitrage] Failed to fetch from ${exchange}: ${response.statusText}`);
               return null;
             }
 
+            const responseData = await response.json();
+
+            // Handle different response formats from different exchanges
+            let exchangeData: any[] = [];
+
+            // BYBIT format: { retCode: 0, result: { list: [...] } }
+            if (responseData.retCode === 0 && responseData.result?.list) {
+              exchangeData = responseData.result.list;
+            }
+            // BINANCE format: array of objects
+            else if (Array.isArray(responseData)) {
+              exchangeData = responseData;
+            }
+            // BINGX format: { code: 0, data: [...] }
+            else if (responseData.code === 0 && responseData.data) {
+              exchangeData = responseData.data;
+            }
+            // KUCOIN format: { code: '0', data: [...] }
+            else if (responseData.code === '0' && responseData.data) {
+              exchangeData = responseData.data;
+            }
+            // GATEIO format: array of objects
+            else if (Array.isArray(responseData)) {
+              exchangeData = responseData;
+            }
+            // Generic format with data field
+            else if (responseData.data) {
+              exchangeData = Array.isArray(responseData.data) ? responseData.data : [responseData.data];
+            }
+
+            // Find matching symbol in exchange data
+            console.log(`[Arbitrage] Searching for ${symbolParam} (normalized: ${normalizedSymbol}) on ${exchange}`);
+            console.log(`[Arbitrage] ${exchange} has ${exchangeData.length} symbols`);
+
+            const matchingSymbol = exchangeData.find((item: any) => {
+              // Different exchanges use different field names: symbol, name, contract
+              const rawSymbol = item.symbol || item.name || item.contract || '';
+              const itemSymbol = rawSymbol.replace(/[-_/:]/g, '').toUpperCase();
+              const matches = itemSymbol === normalizedSymbol;
+
+              // Log first few attempts for debugging
+              if (exchangeData.indexOf(item) < 3) {
+                console.log(`[Arbitrage] Comparing: "${itemSymbol}" vs "${normalizedSymbol}" = ${matches}`);
+              }
+
+              return matches;
+            });
+
+            if (matchingSymbol) {
+              const foundSymbol = matchingSymbol.symbol || matchingSymbol.name || matchingSymbol.contract || 'unknown';
+              console.log(`[Arbitrage] Found match on ${exchange}: ${foundSymbol}`);
+              // Extract funding data based on exchange format
+              let fundingRate = '0';
+              let nextFundingTime = 0;
+              let fundingInterval: number | string = 0;
+
+              if (exchange === 'BYBIT') {
+                fundingRate = matchingSymbol.fundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.fundingRateTimestamp || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'BINANCE') {
+                fundingRate = matchingSymbol.lastFundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'BINGX') {
+                fundingRate = matchingSymbol.lastFundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'GATEIO') {
+                fundingRate = matchingSymbol.funding_rate || '0';
+                nextFundingTime = parseInt(matchingSymbol.funding_next_apply || '0') * 1000; // GATEIO uses seconds
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'BITGET') {
+                fundingRate = matchingSymbol.fundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextUpdate || '0');
+                fundingInterval = matchingSymbol.fundingRateInterval ? `${matchingSymbol.fundingRateInterval}h` : 0;
+              } else if (exchange === 'OKX') {
+                fundingRate = matchingSymbol.fundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              } else if (exchange === 'KUCOIN') {
+                fundingRate = matchingSymbol.fundingRate || '0';
+                nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
+                fundingInterval = matchingSymbol.fundingInterval || 0;
+              }
+
+              return {
+                exchange,
+                symbol: symbolParam,
+                fundingRate,
+                nextFundingTime,
+                fundingInterval,
+              };
+            }
+
+            console.log(`[Arbitrage] Symbol ${symbolParam} not found on ${exchange}`);
           }
         } catch (error: any) {
         }
@@ -167,7 +271,7 @@ export async function GET(request: NextRequest) {
           symbol: rate.symbol,
           fundingRate: rate.fundingRate.toString(),
           nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-          fundingInterval: `${rate.fundingInterval}h`,
+          fundingInterval: rate.fundingInterval,
         }));
 
         // Combine direct results with DB data
@@ -191,7 +295,7 @@ export async function GET(request: NextRequest) {
       symbol: rate.symbol,
       fundingRate: rate.fundingRate.toString(),
       nextFundingTime: Math.floor(rate.nextFundingTime.getTime()),
-      fundingInterval: `${rate.fundingInterval}h`,
+      fundingInterval: rate.fundingInterval,
     }));
 
 

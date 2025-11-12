@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
       // 11. Return response based on results
       if (failedClosures.length > 0) {
         // Partial success
-        const { response, status } = createSuccessResponse(
+        const { response } = createSuccessResponse(
           {
             closedCount: successfulClosures.length,
             failedCount: failedClosures.length,
