@@ -1,65 +1,148 @@
-<div class="farm-container">
-  <h1>Funding Farm</h1>
-  <p>Top funding rate opportunities across all exchanges, sorted by the highest absolute rate.</p>
-
-  <div class="filters-container">
-    <h3>Filter by Exchange:</h3>
-    <div class="exchange-filters">
+<div class="farm-container" *ngIf="filteredOpportunities$ | async as opportunities; else loading">
+  <!-- Left Panel: Table (collapses to sidebar) -->
+  <aside class="table-panel" [class.collapsed]="isTableCollapsed">
+    <!-- Filters (hidden when collapsed) -->
+    <div class="filters-section">
       <ui-button
         *ngFor="let exchange of availableExchanges; trackBy: trackByExchange"
         (clicked)="toggleExchangeFilter(exchange)"
         [variant]="isExchangeSelected(exchange) ? 'primary' : 'secondary'"
         size="small"
-        className="filter-button"
       >
         {{ exchange }}
       </ui-button>
     </div>
-  </div>
 
-  <div class="table-container" *ngIf="filteredOpportunities$ | async as opportunities; else loading">
-    <table class="farm-table" *ngIf="opportunities.length > 0; else noData">
-      <thead>
-        <tr>
-          <th>Exchange</th>
-          <th>Symbol</th>
-          <th class="text-right">Funding Rate (1h)</th>
-          <th>Next Funding</th>
-          <th class="text-right">Mark Price</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let op of opportunities">
-          <td><span class="exchange-badge exchange-{{ op.exchange.toLowerCase() }}">{{ op.exchange }}</span></td>
-          <td>{{ op.symbol }}</td>
-          <td class="text-right">
-            <span [ngClass]="{
-              'positive-rate': op.fundingRate > 0,
-              'negative-rate': op.fundingRate < 0
-            }">
-              {{ (op.fundingRate * 100).toFixed(4) }}%
-            </span>
-          </td>
-          <td>
-            <ng-container *ngIf="currentTime$ | async">
-              {{ getCountdown(op.nextFundingTime) }}
-            </ng-container>
-          </td>
-          <td class="text-right">{{ op.markPrice.toFixed(4) }}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <ng-template #noData>
-      <div class="no-data-message">
-        <p>No funding rate opportunities found for the selected exchanges.</p>
-        <p>Try adjusting your filters or check back later.</p>
+    <!-- Table Header (hidden when collapsed) -->
+    <div class="panel-header">
+      <h3>Funding Rates</h3>
+      <div class="panel-actions">
+        <span class="selection-count" *ngIf="selectedPairs.size > 0">
+          {{ selectedPairs.size }}/{{ MAX_SELECTED_PAIRS }} selected
+        </span>
+        <button class="clear-btn" *ngIf="selectedPairs.size > 0" (click)="clearSelections()">
+          Clear
+        </button>
       </div>
-    </ng-template>
-  </div>
+    </div>
 
-  <ng-template #loading>
-    <div class="loading-spinner"></div>
-    <p class="loading-text">Loading funding opportunities...</p>
-  </ng-template>
+    <!-- Table Container (hidden when collapsed) -->
+    <div class="table-container">
+      <table class="farm-table" *ngIf="opportunities.length > 0; else noData">
+        <thead>
+          <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" disabled>
+            </th>
+            <th>Exchange</th>
+            <th>Symbol</th>
+            <th class="text-right">Funding Rate (1h)</th>
+            <th>Next Funding</th>
+            <th class="text-right">Mark Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let op of opportunities"
+            [class.selected]="isPairSelected(op)"
+            (click)="togglePairSelection(op)"
+          >
+            <td class="checkbox-col">
+              <input
+                type="checkbox"
+                [checked]="isPairSelected(op)"
+                (click)="$event.stopPropagation(); togglePairSelection(op)"
+              >
+            </td>
+            <td><span class="exchange-badge exchange-{{ op.exchange.toLowerCase() }}">{{ op.exchange }}</span></td>
+            <td>{{ op.symbol }}</td>
+            <td class="text-right">
+              <span [ngClass]="{
+                'positive-rate': op.fundingRate > 0,
+                'negative-rate': op.fundingRate < 0
+              }">
+                {{ (op.fundingRate * 100).toFixed(4) }}%
+              </span>
+            </td>
+            <td>
+              <ng-container *ngIf="currentTime$ | async">
+                {{ getCountdown(op.nextFundingTime) }}
+              </ng-container>
+            </td>
+            <td class="text-right">{{ op.markPrice.toFixed(4) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ng-template #noData>
+        <div class="no-data-message">
+          <p>No funding rate opportunities found.</p>
+        </div>
+      </ng-template>
+    </div>
+
+    <!-- Collapsed View: Sidebar List -->
+    <div class="crypto-sidebar-collapsed">
+      <div
+        *ngFor="let op of opportunities"
+        class="crypto-item"
+        [class.selected]="isPairSelected(op)"
+        (click)="togglePairSelection(op)"
+      >
+        <div class="crypto-symbol">{{ op.symbol.replace('USDT', '') }}</div>
+        <div class="crypto-rate" [ngClass]="{
+          'positive': op.fundingRate > 0,
+          'negative': op.fundingRate < 0
+        }">
+          {{ op.fundingRate > 0 ? '+' : '' }}{{ (op.fundingRate * 100).toFixed(3) }}%
+        </div>
+      </div>
+    </div>
+
+    <!-- Collapse/Expand Button -->
+    <button
+      class="collapse-btn"
+      (click)="toggleTableCollapse()"
+      [title]="isTableCollapsed ? 'Expand table' : 'Collapse table'"
+    >
+      <span class="collapse-icon">{{ isTableCollapsed ? '›' : '‹' }}</span>
+    </button>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+    <!-- Header -->
+    <header class="content-header">
+      <h1>Selected Pairs</h1>
+      <p>Displaying graphs for pairs selected from the list.</p>
+    </header>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid" *ngIf="selectedPairs.size > 0">
+      <ng-container *ngFor="let op of opportunities; trackBy: trackByPair">
+        <div class="chart-card" *ngIf="isPairSelected(op)">
+          <app-funding-rate-mini-chart
+            [symbol]="op.symbol"
+            [exchange]="op.exchange"
+          ></app-funding-rate-mini-chart>
+          <button class="collect-btn">
+            <span class="btn-icon">⚡</span>
+            Collect Funding for {{ op.symbol.replace('USDT', '') }}
+          </button>
+        </div>
+      </ng-container>
+    </div>
+
+    <!-- No Selection Message -->
+    <div class="no-selection" *ngIf="selectedPairs.size === 0">
+      <p>Select pairs from the left sidebar to display funding rate charts.</p>
+    </div>
+  </main>
 </div>
+
+<ng-template #loading>
+  <div class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>Loading funding opportunities...</p>
+  </div>
+</ng-template>

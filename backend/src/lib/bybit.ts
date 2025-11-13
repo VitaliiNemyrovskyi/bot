@@ -258,7 +258,8 @@ export interface DelistingInfo {
 
 export class BybitService {
   private restClient: RestClientV5;
-  private wsClient?: WebsocketClient;
+  private wsClientPrivate?: WebsocketClient; // Private WebSocket (requires auth) - orders, positions, wallet
+  private wsClientPublic: WebsocketClient; // Public WebSocket (no auth) - tickers, orderbook, kline
   private config: BybitConfig;
   private keysLoadedFromDb: boolean = false;
   private timeOffset: number = 0;
@@ -291,15 +292,28 @@ export class BybitService {
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
 
+    // IMPORTANT: Bybit has TWO separate WebSocket connections:
+    // 1. Public WebSocket (no auth) - for market data (tickers, orderbook, kline)
+    // 2. Private WebSocket (auth required) - for account data (orders, positions, wallet)
+
+    // Always create public WebSocket client (no credentials needed for market data)
+    this.wsClientPublic = new WebsocketClient({
+      market: 'v5',
+      testnet: false,
+    });
+    console.log('[BybitService] Public WebSocket client initialized (market data)');
+
+    // Create private WebSocket client only if credentials provided
     if (this.config.apiKey && this.config.apiSecret) {
-      this.wsClient = new WebsocketClient({
+      this.wsClientPrivate = new WebsocketClient({
         key: this.config.apiKey,
         secret: this.config.apiSecret,
-        testnet: false, // Mainnet only
+        market: 'v5',
+        testnet: false,
       });
-      // console.log('[BybitService] WebSocket client initialized');
+      console.log('[BybitService] Private WebSocket client initialized (account data)');
     } else {
-      // console.log('[BybitService] WebSocket client not initialized (no credentials)');
+      console.log('[BybitService] Private WebSocket client not initialized (no credentials)');
     }
   }
 
@@ -1474,54 +1488,83 @@ export class BybitService {
   }
 
   // WebSocket Methods
+  /**
+   * Subscribe to ticker updates (PUBLIC data - no auth required)
+   * Uses public WebSocket connection
+   */
   subscribeToTicker(symbol: string, callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
-    }
+    console.log(`[BybitService] Subscribing to ticker: ${symbol} on PUBLIC WebSocket`);
 
-    this.wsClient.subscribeV5(`tickers.${symbol}`, 'linear');
-    this.wsClient.on('update', callback);
-  }
+    this.wsClientPublic.subscribeV5(`tickers.${symbol}`, 'linear');
+    this.wsClientPublic.on('update', callback);
 
-  subscribeToKline(symbol: string, interval: string, callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
-    }
-
-    this.wsClient.subscribeV5(`kline.${interval}.${symbol}`, 'linear');
-    this.wsClient.on('update', callback);
-  }
-
-  subscribeToOrderbook(symbol: string, depth: number = 1, callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
-    }
-
-    this.wsClient.subscribeV5(`orderbook.${depth}.${symbol}`, 'linear');
-    this.wsClient.on('update', callback);
-  }
-
-  subscribeToPositions(callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
-    }
-
-    this.wsClient.subscribeV5('position', 'linear');
-    this.wsClient.on('update', callback);
-  }
-
-  subscribeToOrders(callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
-    }
-
-    this.wsClient.subscribeV5('order', 'linear');
-    this.wsClient.on('update', callback);
+    console.log(`[BybitService] Ticker subscription active for ${symbol}`);
   }
 
   /**
-   * Subscribe to wallet balance updates via WebSocket
+   * Subscribe to kline/candlestick updates (PUBLIC data - no auth required)
+   * Uses public WebSocket connection
+   */
+  subscribeToKline(symbol: string, interval: string, callback: (data: any) => void) {
+    console.log(`[BybitService] Subscribing to kline: ${symbol} ${interval} on PUBLIC WebSocket`);
+
+    this.wsClientPublic.subscribeV5(`kline.${interval}.${symbol}`, 'linear');
+    this.wsClientPublic.on('update', callback);
+
+    console.log(`[BybitService] Kline subscription active for ${symbol} ${interval}`);
+  }
+
+  /**
+   * Subscribe to orderbook updates (PUBLIC data - no auth required)
+   * Uses public WebSocket connection
+   */
+  subscribeToOrderbook(symbol: string, depth: number = 1, callback: (data: any) => void) {
+    console.log(`[BybitService] Subscribing to orderbook: ${symbol} depth ${depth} on PUBLIC WebSocket`);
+
+    this.wsClientPublic.subscribeV5(`orderbook.${depth}.${symbol}`, 'linear');
+    this.wsClientPublic.on('update', callback);
+
+    console.log(`[BybitService] Orderbook subscription active for ${symbol}`);
+  }
+
+  /**
+   * Subscribe to position updates (PRIVATE data - auth required)
+   * Uses private WebSocket connection
+   */
+  subscribeToPositions(callback: (data: any) => void) {
+    if (!this.wsClientPrivate) {
+      throw new Error('Private WebSocket client not initialized. API credentials required.');
+    }
+
+    console.log('[BybitService] Subscribing to positions on PRIVATE WebSocket');
+
+    this.wsClientPrivate.subscribeV5('position', 'linear');
+    this.wsClientPrivate.on('update', callback);
+
+    console.log('[BybitService] Position subscription active');
+  }
+
+  /**
+   * Subscribe to order updates (PRIVATE data - auth required)
+   * Uses private WebSocket connection
+   */
+  subscribeToOrders(callback: (data: any) => void) {
+    if (!this.wsClientPrivate) {
+      throw new Error('Private WebSocket client not initialized. API credentials required.');
+    }
+
+    console.log('[BybitService] Subscribing to orders on PRIVATE WebSocket');
+
+    this.wsClientPrivate.subscribeV5('order', 'linear');
+    this.wsClientPrivate.on('update', callback);
+
+    console.log('[BybitService] Order subscription active');
+  }
+
+  /**
+   * Subscribe to wallet balance updates via WebSocket (PRIVATE data - auth required)
    * This is used to monitor funding fee credits in real-time
+   * Uses private WebSocket connection
    *
    * Topic: 'wallet'
    * Updates include: balance changes, funding fee settlements, transfers, etc.
@@ -1546,19 +1589,32 @@ export class BybitService {
    * }
    */
   subscribeToWallet(callback: (data: any) => void) {
-    if (!this.wsClient) {
-      throw new Error('WebSocket client not initialized. API credentials required.');
+    if (!this.wsClientPrivate) {
+      throw new Error('Private WebSocket client not initialized. API credentials required.');
     }
 
-    // console.log('[BybitService] Subscribing to wallet updates via WebSocket...');
-    this.wsClient.subscribeV5('wallet', 'linear');
-    this.wsClient.on('update', callback);
-    // console.log('[BybitService] Wallet subscription active');
+    console.log('[BybitService] Subscribing to wallet updates on PRIVATE WebSocket');
+    this.wsClientPrivate.subscribeV5('wallet', 'linear');
+    this.wsClientPrivate.on('update', callback);
+    console.log('[BybitService] Wallet subscription active');
   }
 
+  /**
+   * Unsubscribe from all WebSocket connections and close them
+   */
   unsubscribeAll() {
-    if (this.wsClient) {
-      this.wsClient.closeAll();
+    console.log('[BybitService] Closing all WebSocket connections...');
+
+    // Close public WebSocket
+    if (this.wsClientPublic) {
+      this.wsClientPublic.closeAll();
+      console.log('[BybitService] Public WebSocket closed');
+    }
+
+    // Close private WebSocket
+    if (this.wsClientPrivate) {
+      this.wsClientPrivate.closeAll();
+      console.log('[BybitService] Private WebSocket closed');
     }
   }
 
@@ -1571,7 +1627,9 @@ export class BybitService {
     this.config.apiKey = apiKey;
     this.config.apiSecret = apiSecret;
 
-    // Reinitialize clients with new credentials (mainnet only)
+    console.log('[BybitService] Updating credentials and reinitializing clients...');
+
+    // Reinitialize REST client with new credentials
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
@@ -1580,11 +1638,21 @@ export class BybitService {
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
 
-    this.wsClient = new WebsocketClient({
-      key: this.config.apiKey,
-      secret: this.config.apiSecret,
+    // Public WebSocket doesn't need credentials, so recreate it
+    this.wsClientPublic = new WebsocketClient({
+      market: 'v5',
       testnet: false,
     });
+    console.log('[BybitService] Public WebSocket client reinitialized');
+
+    // Reinitialize Private WebSocket with new credentials
+    this.wsClientPrivate = new WebsocketClient({
+      key: this.config.apiKey,
+      secret: this.config.apiSecret,
+      market: 'v5',
+      testnet: false,
+    });
+    console.log('[BybitService] Private WebSocket client reinitialized');
   }
 }
 
