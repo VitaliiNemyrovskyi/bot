@@ -31,8 +31,8 @@ describe('Price Monitoring Integration Tests', () => {
       // Initialize with test credentials
       // Replace with your actual Bybit testnet credentials
       connector = new BybitConnector(
-        process.env.BYBIT_API_KEY || 'your-api-key',
-        process.env.BYBIT_API_SECRET || 'your-api-secret',
+        process.env['BYBIT_API_KEY'] || 'your-api-key',
+        process.env['BYBIT_API_SECRET'] || 'your-api-secret',
         true // testnet
       );
     });
@@ -242,8 +242,8 @@ describe('Price Monitoring Integration Tests', () => {
 
     beforeAll(async () => {
       bybitConnector = new BybitConnector(
-        process.env.BYBIT_API_KEY || 'your-api-key',
-        process.env.BYBIT_API_SECRET || 'your-api-secret',
+        process.env['BYBIT_API_KEY'] || 'your-api-key',
+        process.env['BYBIT_API_SECRET'] || 'your-api-secret',
         true
       );
 

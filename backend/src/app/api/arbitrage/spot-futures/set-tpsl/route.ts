@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
       try {
         const result = await primaryConnector.setTradingStop({
           symbol: position.symbol,
-          side: position.primarySide as 'long' | 'short',
+          side: position.primarySide as any,
           takeProfit: primaryTakeProfit,
           stopLoss: primaryStopLoss,
         });
@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
       try {
         const result = await hedgeConnector.setTradingStop({
           symbol: position.symbol,
-          side: position.hedgeSide as 'long' | 'short',
+          side: position.hedgeSide as any,
           takeProfit: hedgeTakeProfit,
           stopLoss: hedgeStopLoss,
         });

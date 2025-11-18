@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { AuthService } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -21,16 +20,16 @@ const globalForSignalEvents = globalThis as unknown as {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get user session
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // Authenticate user
+    const auth = await AuthService.authenticateRequest(request);
+    if (!auth.success || !auth.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const userId = session.user.id;
+    const userId = auth.user.userId;
 
     console.log('[SignalStream] Starting SSE stream for user', userId);
 

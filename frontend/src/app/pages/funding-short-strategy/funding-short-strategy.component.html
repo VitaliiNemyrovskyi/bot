@@ -1,0 +1,304 @@
+<div class="funding-short-strategy">
+  <div class="page-header">
+    <h1>Funding SHORT Strategy (-500ms)</h1>
+    <p class="subtitle">Automated SHORT trading strategy with optimal -500ms entry timing</p>
+  </div>
+
+  <!-- Error Alert -->
+  @if (error()) {
+    <div class="alert alert-error">
+      <span class="alert-icon">⚠️</span>
+      <span>{{ error() }}</span>
+      <button class="alert-close" (click)="error.set(null)">×</button>
+    </div>
+  }
+
+  <!-- Control Panel -->
+  <div class="control-panel card">
+    <div class="panel-header">
+      <h2>Strategy Control</h2>
+      <div class="status-badge" [class.running]="isRunning()" [class.stopped]="!isRunning()">
+        <span class="status-dot"></span>
+        {{ isRunning() ? 'RUNNING' : 'STOPPED' }}
+      </div>
+    </div>
+
+    <div class="panel-content">
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="label">Mode:</span>
+          <span class="value">{{ config()?.paperTradingMode ? 'Paper Trading' : 'Live Trading' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Entry Timing:</span>
+          <span class="value">{{ config()?.entryOffsetMs }}ms before funding</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Exit Timing:</span>
+          <span class="value">+{{ config()?.exitOffsetMs && (config()!.exitOffsetMs / 1000) }}s after funding</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Position Size:</span>
+          <span class="value">{{ formatCurrency(config()?.maxPositionSizeUSDT || 0) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Next Funding:</span>
+          <span class="value time-countdown">{{ timeUntilFunding() }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Funding Time:</span>
+          <span class="value">{{ formatDate(nextFundingTime()) }}</span>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        @if (!isRunning()) {
+          <button
+            class="btn btn-primary btn-lg"
+            (click)="startStrategy()"
+            [disabled]="isLoading()">
+            <span class="btn-icon">▶</span>
+            Start Strategy
+          </button>
+        } @else {
+          <button
+            class="btn btn-danger btn-lg"
+            (click)="stopStrategy()"
+            [disabled]="isLoading()">
+            <span class="btn-icon">⏹</span>
+            Stop Strategy
+          </button>
+        }
+
+        <button
+          class="btn btn-secondary"
+          (click)="enableEditMode()"
+          [disabled]="isRunning() || isLoading()">
+          <span class="btn-icon">⚙️</span>
+          Configure
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuration Editor -->
+  @if (editMode()) {
+    <div class="config-editor card">
+      <div class="panel-header">
+        <h2>Strategy Configuration</h2>
+      </div>
+
+      <div class="panel-content">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Paper Trading Mode</label>
+            <select [(ngModel)]="editedConfig().paperTradingMode" class="form-control">
+              <option [value]="true">Paper Trading (Safe)</option>
+              <option [value]="false">Live Trading (Real Money)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Entry Timing (ms before funding)</label>
+            <input
+              type="number"
+              [(ngModel)]="editedConfig().entryOffsetMs"
+              class="form-control"
+              placeholder="-500">
+            <small class="form-hint">Recommended: -500ms</small>
+          </div>
+
+          <div class="form-group">
+            <label>Exit Timing (ms after funding)</label>
+            <input
+              type="number"
+              [(ngModel)]="editedConfig().exitOffsetMs"
+              class="form-control"
+              placeholder="30000">
+            <small class="form-hint">Recommended: 30000ms (30s)</small>
+          </div>
+
+          <div class="form-group">
+            <label>Max Position Size (USDT)</label>
+            <input
+              type="number"
+              [(ngModel)]="editedConfig().maxPositionSizeUSDT"
+              class="form-control"
+              placeholder="100">
+          </div>
+
+          <div class="form-group">
+            <label>Min Funding Rate (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              [(ngModel)]="editedConfig().minFundingRate"
+              class="form-control"
+              placeholder="-0.01">
+            <small class="form-hint">Only trade if funding rate below this (negative)</small>
+          </div>
+
+          <div class="form-group">
+            <label>Stop Loss (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              [(ngModel)]="editedConfig().stopLossPercent"
+              class="form-control"
+              placeholder="3">
+          </div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn btn-primary" (click)="saveConfig()" [disabled]="isLoading()">
+            Save Configuration
+          </button>
+          <button class="btn btn-secondary" (click)="cancelEdit()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Statistics Dashboard -->
+  @if (statistics()) {
+    <div class="statistics-grid">
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value">{{ statistics()!.totalTrades }}</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon success">✅</div>
+        <div class="stat-content">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-value">{{ formatPercent(statistics()!.winRate) }}</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-content">
+          <div class="stat-label">Total Profit</div>
+          <div class="stat-value" [class.profit]="(statistics()!.totalProfitUSDT || 0) > 0" [class.loss]="(statistics()!.totalProfitUSDT || 0) < 0">
+            {{ formatCurrency(statistics()!.totalProfitUSDT || 0) }}
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">📈</div>
+        <div class="stat-content">
+          <div class="stat-label">Avg Profit %</div>
+          <div class="stat-value" [class.profit]="(statistics()!.avgProfitPercent || 0) > 0" [class.loss]="(statistics()!.avgProfitPercent || 0) < 0">
+            {{ formatPercent(statistics()!.avgProfitPercent || 0) }}
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Active Trades -->
+  @if (activeTrades().length > 0) {
+    <div class="active-trades card">
+      <div class="panel-header">
+        <h2>Active Trades ({{ activeTrades().length }})</h2>
+      </div>
+
+      <div class="panel-content">
+        <div class="table-container">
+          <table class="trades-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Entry Price</th>
+                <th>Entry Time</th>
+                <th>Funding Time</th>
+                <th>Position Size</th>
+                <th>Status</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (trade of activeTrades(); track trade.id) {
+                <tr>
+                  <td class="symbol">{{ trade.symbol }}</td>
+                  <td>{{ formatCurrency(trade.entryPrice) }}</td>
+                  <td>{{ formatDate(trade.entryTime) }}</td>
+                  <td>{{ formatDate(trade.fundingPaymentTime) }}</td>
+                  <td>{{ formatCurrency(trade.positionSizeUSDT) }}</td>
+                  <td>
+                    <span class="status-badge" [class]="getStatusClass(trade.status)">
+                      {{ trade.status }}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="mode-badge" [class.paper]="trade.paperTrade" [class.live]="!trade.paperTrade">
+                      {{ trade.paperTrade ? 'Paper' : 'Live' }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Recent Trades -->
+  @if (recentTrades().length > 0) {
+    <div class="recent-trades card">
+      <div class="panel-header">
+        <h2>Recent Trades</h2>
+      </div>
+
+      <div class="panel-content">
+        <div class="table-container">
+          <table class="trades-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>Price Move</th>
+                <th>Funding Paid</th>
+                <th>Net Profit</th>
+                <th>Time</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (trade of recentTrades(); track trade.tradeId) {
+                <tr>
+                  <td class="symbol">{{ trade.symbol }}</td>
+                  <td>{{ formatCurrency(trade.entryPrice) }}</td>
+                  <td>{{ formatCurrency(trade.exitPrice || 0) }}</td>
+                  <td [class.profit]="(trade.priceMove || 0) > 0" [class.loss]="(trade.priceMove || 0) < 0">
+                    {{ formatPercent(trade.priceMove || 0) }}
+                  </td>
+                  <td [class.profit]="(trade.fundingPaid || 0) >= 0" [class.loss]="(trade.fundingPaid || 0) < 0">
+                    {{ formatPercent(trade.fundingPaid || 0) }}
+                  </td>
+                  <td [class.profit]="(trade.realizedPnL || 0) > 0" [class.loss]="(trade.realizedPnL || 0) < 0">
+                    {{ formatCurrency(trade.realizedPnL || 0) }}
+                  </td>
+                  <td>{{ formatDate(trade.exitTime) }}</td>
+                  <td>
+                    <span class="mode-badge" [class.paper]="trade.paperTrade" [class.live]="!trade.paperTrade">
+                      {{ trade.paperTrade ? 'Paper' : 'Live' }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+</div>

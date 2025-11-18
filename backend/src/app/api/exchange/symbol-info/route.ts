@@ -243,25 +243,30 @@ async function getBybitSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
     }
 
     const instrument = response.list[0];
+    if (!instrument) {
+      console.warn(`[Bybit] Instrument data unavailable for ${symbol}`);
+      return null;
+    }
 
+    const lotSize = instrument.lotSizeFilter as any;
     console.log(`[Bybit] Found instrument for ${symbol}:`, {
-      minOrderQty: instrument.lotSizeFilter?.minOrderQty,
-      minOrderAmt: instrument.lotSizeFilter?.minOrderAmt,
-      qtyStep: instrument.lotSizeFilter?.qtyStep,
-      basePrecision: instrument.lotSizeFilter?.basePrecision,
-      quotePrecision: instrument.lotSizeFilter?.quotePrecision,
+      minOrderQty: lotSize?.minOrderQty,
+      minOrderAmt: lotSize?.minOrderAmt,
+      qtyStep: lotSize?.qtyStep,
+      basePrecision: lotSize?.basePrecision,
+      quotePrecision: lotSize?.quotePrecision,
     });
 
     return {
       symbol: instrument.symbol,
       exchange: 'BYBIT',
-      minOrderQty: parseFloat(instrument.lotSizeFilter?.minOrderQty || '0.001'),
-      minOrderValue: instrument.lotSizeFilter?.minOrderAmt ? parseFloat(instrument.lotSizeFilter.minOrderAmt) : undefined,
-      qtyStep: parseFloat(instrument.lotSizeFilter?.qtyStep || '0.001'),
-      pricePrecision: parseInt(instrument.priceFilter?.tickSize?.split('.')[1]?.length || '2'),
-      qtyPrecision: parseInt(instrument.lotSizeFilter?.basePrecision || '3'),
-      maxOrderQty: instrument.lotSizeFilter?.maxOrderQty ? parseFloat(instrument.lotSizeFilter.maxOrderQty) : undefined,
-      maxLeverage: instrument.leverageFilter?.maxLeverage ? parseFloat(instrument.leverageFilter.maxLeverage) : undefined,
+      minOrderQty: parseFloat(lotSize?.minOrderQty || '0.001'),
+      minOrderValue: lotSize?.minOrderAmt ? parseFloat(lotSize.minOrderAmt) : undefined,
+      qtyStep: parseFloat(lotSize?.qtyStep || '0.001'),
+      pricePrecision: instrument.priceFilter?.tickSize?.split('.')[1]?.length || 2,
+      qtyPrecision: parseInt(lotSize?.basePrecision || '3'),
+      maxOrderQty: lotSize?.maxOrderQty ? parseFloat(lotSize.maxOrderQty) : undefined,
+      maxLeverage: (instrument as any).leverageFilter?.maxLeverage ? parseFloat((instrument as any).leverageFilter.maxLeverage) : undefined,
     };
   } catch (error: any) {
     console.error('[Bybit] Error getting symbol info:', error.message);

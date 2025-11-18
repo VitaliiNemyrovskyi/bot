@@ -14,7 +14,7 @@ async function exampleUsage() {
       return;
     }
 
-    console.log(`🔗 Connected to Bybit ${bybitService.isTestnet() ? 'Testnet' : 'Mainnet'}`);
+    console.log(`🔗 Connected to Bybit Mainnet`); // Testnet is deprecated
 
     // 1. Get account information
     console.log('\n📊 Fetching account info...');
@@ -131,7 +131,6 @@ function exampleCustomInstance() {
   const customBybit = new BybitService({
     apiKey: 'your-api-key',
     apiSecret: 'your-api-secret',
-    testnet: true,
     enableRateLimit: true
   });
 

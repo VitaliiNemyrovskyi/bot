@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, CandlestickSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
 import { ThemeService } from '../../services/theme.service';
 import { ExchangeWebSocketService, WebSocketData } from '../../services/exchange-websocket.service';
 
@@ -36,18 +36,25 @@ interface CandleData {
   template: `
     <div class="mini-chart-container">
       <div class="chart-header">
-        <h4>{{ symbol }}</h4>
+        <h4 class="symbol-title">{{ symbol }}</h4>
         <span class="exchange-badge">{{ exchange }}</span>
+        <div class="info-item">
+          <span class="info-label">Rate:</span>
+          <span class="info-value" [ngClass]="{
+            'positive-rate': fundingRate && fundingRate > 0,
+            'negative-rate': fundingRate && fundingRate < 0
+          }">{{ getFundingRateText() }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Next:</span>
+          <span class="info-value countdown">{{ getCountdown() }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Interval:</span>
+          <span class="info-value">{{ getFundingIntervalText() }}</span>
+        </div>
       </div>
       <div #chartContainer class="chart-wrapper"></div>
-      <div class="chart-footer">
-        <button
-          *ngFor="let period of periods"
-          [class.active]="selectedPeriod() === period"
-          (click)="switchPeriod(period)">
-          {{ period === 60 ? '1h' : period === 240 ? '4h' : '24h' }}
-        </button>
-      </div>
     </div>
   `,
   styles: [`
@@ -62,57 +69,70 @@ interface CandleData {
 
     .chart-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+      background: rgba(59, 130, 246, 0.05);
+      flex-wrap: wrap;
     }
 
-    .chart-header h4 {
+    .symbol-title {
       margin: 0;
-      font-size: 14px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--text-primary, #fff);
     }
 
     .exchange-badge {
-      font-size: 11px;
-      padding: 2px 8px;
+      font-size: 12px;
+      padding: 4px 12px;
       border-radius: 4px;
       background: var(--primary-color, #3b82f6);
       color: white;
+      font-weight: 600;
+    }
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: var(--text-secondary, #9ca3af);
+      font-weight: 500;
+    }
+
+    .info-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary, #fff);
+    }
+
+    .info-value.countdown {
+      font-family: monospace;
+      color: var(--success-color, #10b981);
+    }
+
+    .info-value.positive-rate {
+      color: var(--success-color, #10b981);
+    }
+
+    .info-value.negative-rate {
+      color: var(--danger-color, #ef4444);
     }
 
     .chart-wrapper {
       flex: 1;
       min-height: 300px;
+      position: relative;
     }
 
-    .chart-footer {
-      display: flex;
-      gap: 4px;
-      margin-top: 8px;
-      justify-content: center;
-    }
-
-    .chart-footer button {
-      padding: 4px 12px;
-      border: 1px solid var(--border-color, #374151);
-      background: transparent;
-      color: var(--text-secondary, #9ca3af);
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
-    }
-
-    .chart-footer button:hover {
-      background: var(--hover-bg, #374151);
-    }
-
-    .chart-footer button.active {
-      background: var(--primary-color, #3b82f6);
-      color: white;
-      border-color: var(--primary-color, #3b82f6);
+    .chart-wrapper > div {
+      height: 100% !important;
     }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -122,15 +142,21 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
 
   @Input({ required: true }) symbol!: string;
   @Input({ required: true }) exchange!: string;
+  @Input() nextFundingTime?: Date;
+  @Input() fundingInterval?: number;
+  @Input() fundingRate?: number;
 
   selectedPeriod = signal<60 | 240 | 1440>(60); // 1h, 4h, 24h (in minutes)
   periods: (60 | 240 | 1440)[] = [60, 240, 1440];
+  currentTime = signal<number>(Date.now());
 
   private chart: IChartApi | null = null;
   private candlestickSeries: ISeriesApi<'Candlestick'> | null = null;
   private isDestroyed = false;
   private wsDisconnect: (() => void) | null = null;
   private currentCandle: CandlestickData | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private timeUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
   private http = inject(HttpClient);
   private themeService = inject(ThemeService);
@@ -139,6 +165,14 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
 
   ngOnInit(): void {
     console.log(`[FundingRateMiniChart] Init for ${this.symbol} on ${this.exchange}`);
+
+    // Update current time every second for countdown
+    this.timeUpdateInterval = setInterval(() => {
+      if (!this.isDestroyed) {
+        this.currentTime.set(Date.now());
+        this.cdr.detectChanges();
+      }
+    }, 1000);
   }
 
   ngAfterViewInit(): void {
@@ -156,10 +190,22 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
     console.log(`[FundingRateMiniChart] Destroying component for ${this.symbol} on ${this.exchange}`);
     this.isDestroyed = true;
 
+    // Clear time update interval
+    if (this.timeUpdateInterval) {
+      clearInterval(this.timeUpdateInterval);
+      this.timeUpdateInterval = null;
+    }
+
     // Disconnect WebSocket
     if (this.wsDisconnect) {
       this.wsDisconnect();
       this.wsDisconnect = null;
+    }
+
+    // Disconnect ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
     }
 
     // Remove chart
@@ -189,7 +235,7 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
 
     this.chart = createChart(container, {
       width: container.clientWidth,
-      height: 300,
+      height: container.clientHeight || 300,
       layout: {
         background: { color: colors.background },
         textColor: colors.textColor,
@@ -232,7 +278,7 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
       },
     });
 
-    this.candlestickSeries = this.chart.addSeries(CandlestickSeries, {
+    this.candlestickSeries = this.chart.addCandlestickSeries( {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -242,13 +288,13 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
     });
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(entries => {
+    this.resizeObserver = new ResizeObserver(entries => {
       if (this.chart && entries.length > 0) {
-        const { width } = entries[0].contentRect;
-        this.chart.applyOptions({ width });
+        const { width, height } = entries[0].contentRect;
+        this.chart.applyOptions({ width, height: height || 300 });
       }
     });
-    resizeObserver.observe(container);
+    this.resizeObserver.observe(container);
   }
 
   /**
@@ -379,5 +425,45 @@ export class FundingRateMiniChartComponent implements OnInit, AfterViewInit, OnD
     } catch (error) {
       console.error('[FundingRateMiniChart] Error loading data:', error);
     }
+  }
+
+  /**
+   * Get countdown to next funding time
+   */
+  getCountdown(): string {
+    if (!this.nextFundingTime) return '--:--:--';
+
+    const now = this.currentTime();
+    const fundingTime = this.nextFundingTime.getTime();
+    const diff = fundingTime - now;
+
+    if (diff <= 0) return '00:00:00';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    return `${this.pad(hours)}:${this.pad(minutes)}:${this.pad(seconds)}`;
+  }
+
+  /**
+   * Format funding interval
+   */
+  getFundingIntervalText(): string {
+    if (!this.fundingInterval) return '--';
+    return `${this.fundingInterval}h`;
+  }
+
+  /**
+   * Format funding rate as percentage
+   */
+  getFundingRateText(): string {
+    if (this.fundingRate === undefined || this.fundingRate === null) return '--';
+    const percentage = (this.fundingRate * 100).toFixed(4);
+    return `${this.fundingRate > 0 ? '+' : ''}${percentage}%`;
+  }
+
+  private pad(num: number): string {
+    return num.toString().padStart(2, '0');
   }
 }

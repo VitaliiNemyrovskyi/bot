@@ -115,7 +115,7 @@ export async function GET(_request: NextRequest) {
       };
 
       // Cache in Redis
-      await redisService.cacheBulkFundingRates('BINANCE', unifiedData);
+      await redisService.cacheBulkFundingRates('BINANCE', unifiedData, CACHE_TTL_SECONDS);
 
       const totalTime = Date.now() - requestStartTime;
       console.log(`[Binance] ✅ Served from DB cache in ${totalTime}ms`);
@@ -229,7 +229,7 @@ export async function GET(_request: NextRequest) {
     };
 
     // Cache in Redis
-    await redisService.cacheBulkFundingRates('BINANCE', unifiedData);
+    await redisService.cacheBulkFundingRates('BINANCE', unifiedData, CACHE_TTL_SECONDS);
 
     const totalTime = Date.now() - requestStartTime;
     console.log(`[Binance] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);

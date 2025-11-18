@@ -163,7 +163,6 @@ export async function GET(request: NextRequest) {
         data: walletBalance,
         accountType,
         ...(coin && { coin }),
-        testnet: isTestnet,
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

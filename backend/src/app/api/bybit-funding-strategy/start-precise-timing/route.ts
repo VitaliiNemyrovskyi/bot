@@ -130,8 +130,7 @@ export async function POST(request: NextRequest) {
         enableWebSocketMonitoring,
       },
       credentials.apiKey,
-      credentials.apiSecret,
-      credentials.id // Pass credential ID for persistence
+      credentials.apiSecret
     );
 
     console.log(`[API] Precise Timing Strategy started successfully: ${strategyId}`);

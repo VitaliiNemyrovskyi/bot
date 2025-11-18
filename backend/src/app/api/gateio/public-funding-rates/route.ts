@@ -37,7 +37,7 @@ function normalizeSymbol(symbol: string): string {
  *
  * GET /api/gateio/public-funding-rates
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const requestStartTime = Date.now();
 
   try {
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
       };
 
       // Cache in Redis for next request
-      await redisService.cacheBulkFundingRates('GATEIO', unifiedData);
+      await redisService.cacheBulkFundingRates('GATEIO', unifiedData, CACHE_TTL_SECONDS);
 
       const totalTime = Date.now() - requestStartTime;
       console.log(`[GateIO] ✅ Served from DB cache in ${totalTime}ms`);
@@ -250,7 +250,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Cache in Redis for next request
-    await redisService.cacheBulkFundingRates('GATEIO', unifiedData);
+    await redisService.cacheBulkFundingRates('GATEIO', unifiedData, CACHE_TTL_SECONDS);
 
     const totalTime = Date.now() - requestStartTime;
     console.log(`[GateIO] ✅ Request completed in ${(totalTime / 1000).toFixed(1)}s (${totalTime}ms)`);

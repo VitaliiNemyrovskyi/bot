@@ -7,13 +7,20 @@
  */
 
 import { EventEmitter } from 'events';
-import { PrismaClient, RecordingStatus, Exchange } from '@prisma/client';
+import { RecordingStatus, Exchange } from '@prisma/client';
 import { BybitService } from '@/lib/bybit';
+import { BinanceService } from '@/lib/binance';
+import { OKXService } from '@/lib/okx';
+import { BitgetService } from '@/lib/bitget';
+import { GateIORecorderService } from '@/lib/gateio-recorder';
+import { KuCoinRecorderService } from '@/lib/kucoin-recorder';
+import prisma from '@/lib/prisma';
 
-const prisma = new PrismaClient();
+// Type for supported exchange services
+export type ExchangeService = BybitService | BinanceService | OKXService | BitgetService | GateIORecorderService | KuCoinRecorderService;
 
 export interface RecordingConfig {
-  userId: string;
+  userId?: string; // Optional for automated recordings
   symbol: string;
   exchange: Exchange;
   fundingRate: number;
@@ -32,9 +39,9 @@ export interface TimeSyncResult {
 }
 
 export interface RecordedDataPoint {
-  bybitTimestamp: bigint;
+  bybitTimestamp: bigint; // Exchange server timestamp (Bybit/Binance) - field name kept for DB compatibility
   localTimestamp: bigint;
-  relativeTimeMs: number;
+  relativeTimeMs: number; // Time relative to funding payment (calculated using exchange timestamp)
   lastPrice: number;
   markPrice?: number;
   indexPrice?: number;
@@ -63,7 +70,7 @@ export interface RecordedDataPoint {
 export class RecordingSession extends EventEmitter {
   private sessionId?: string;
   private config: Required<RecordingConfig>;
-  private bybitService: BybitService;
+  private exchangeService: ExchangeService;
   private status: RecordingStatus = 'PREPARING';
   private dataBuffer: RecordedDataPoint[] = [];
   private recordingStartTime?: number;
@@ -73,7 +80,7 @@ export class RecordingSession extends EventEmitter {
   private recordingTimer?: NodeJS.Timeout;
   private statusUpdateTimer?: NodeJS.Timeout;
 
-  constructor(config: RecordingConfig, bybitService: BybitService) {
+  constructor(config: RecordingConfig, exchangeService: ExchangeService) {
     super();
 
     this.config = {
@@ -82,7 +89,7 @@ export class RecordingSession extends EventEmitter {
       postRecordingSeconds: config.postRecordingSeconds ?? 30,
     };
 
-    this.bybitService = bybitService;
+    this.exchangeService = exchangeService;
     this.fundingPaymentTimestamp = this.config.fundingPaymentTime.getTime();
   }
 
@@ -109,8 +116,8 @@ export class RecordingSession extends EventEmitter {
       this.sessionId = session.id;
       console.log(`[RecordingSession] Session created: ${this.sessionId}`);
 
-      // Sync time with Bybit
-      await this.syncTimeWithBybit();
+      // Sync time with exchange
+      await this.syncTimeWithExchange();
 
       // Calculate when to start recording
       const now = Date.now();
@@ -150,19 +157,20 @@ export class RecordingSession extends EventEmitter {
   }
 
   /**
-   * Sync time with Bybit server and measure latency
+   * Sync time with exchange server and measure latency
    */
-  private async syncTimeWithBybit(): Promise<void> {
+  private async syncTimeWithExchange(): Promise<void> {
     try {
-      console.log('[RecordingSession] Syncing time with Bybit...');
+      const exchangeName = this.config.exchange;
+      console.log(`[RecordingSession] Syncing time with ${exchangeName}...`);
 
       // Perform multiple sync attempts and take the best one
-      const attempts = 5;
+      const attempts = 2;
       const results: TimeSyncResult[] = [];
 
       for (let i = 0; i < attempts; i++) {
         const startTime = Date.now();
-        const serverTimeMs = await this.bybitService.getServerTime();
+        const serverTimeMs = await this.exchangeService.getServerTime();
         const endTime = Date.now();
 
         const roundTripTime = endTime - startTime;
@@ -191,7 +199,7 @@ export class RecordingSession extends EventEmitter {
 
       this.timeSyncResult = bestResult;
 
-      console.log('[RecordingSession] Time sync completed:', {
+      console.log(`[RecordingSession] Time sync completed with ${exchangeName}:`, {
         attempts,
         bestLatency: bestResult.networkLatencyMs.toFixed(2) + 'ms',
         timeOffset: bestResult.timeOffset.toFixed(2) + 'ms',
@@ -246,19 +254,23 @@ export class RecordingSession extends EventEmitter {
   }
 
   /**
-   * Subscribe to Bybit WebSocket for price data
+   * Subscribe to exchange WebSocket for price data
    */
   private async subscribeToWebSocket(): Promise<void> {
     try {
-      console.log(`[RecordingSession] Subscribing to WebSocket for ${this.config.symbol}...`);
+      const exchangeName = this.config.exchange;
+      console.log(`[RecordingSession] Subscribing to ${exchangeName} WebSocket for ${this.config.symbol}...`);
 
-      // Use BybitService WebSocket subscription (via bybit-api SDK)
-      // Note: This requires the bybitService to have valid credentials
-      this.bybitService.subscribeToTicker(this.config.symbol, (data: any) => {
+      // Convert symbol format: "ZORA/USDT" -> "ZORAUSDT"
+      const normalizedSymbol = this.config.symbol.replace('/', '');
+      console.log(`[RecordingSession] Using symbol format: ${normalizedSymbol}`);
+
+      // Use exchange service WebSocket subscription
+      this.exchangeService.subscribeToTicker(normalizedSymbol, (data: any) => {
         this.handleWebSocketData(data);
       });
 
-      console.log('[RecordingSession] WebSocket subscription active');
+      console.log(`[RecordingSession] ${exchangeName} WebSocket subscription active`);
     } catch (error: any) {
       console.error('[RecordingSession] Failed to subscribe to WebSocket:', error.message);
       throw error;
@@ -270,14 +282,24 @@ export class RecordingSession extends EventEmitter {
    */
   private handleWebSocketData(data: any): void {
     try {
+      // Debug: Log all incoming data to diagnose issues
+      if (this.dataBuffer.length === 0) {
+        console.log('[RecordingSession] First WebSocket data received:', JSON.stringify(data).substring(0, 200));
+      }
+
       // Skip if not recording
       if (this.status !== 'RECORDING') {
+        console.log('[RecordingSession] Skipping data - status:', this.status);
         return;
       }
 
-      // Extract data from Bybit v5 WebSocket format
+      // Extract data from exchange WebSocket format
+      // Both Bybit and Binance services transform data to consistent format:
       // { topic: 'tickers.BTCUSDT', type: 'snapshot', data: {...}, ts: 1234567890 }
-      if (!data.topic || !data.topic.includes(`tickers.${this.config.symbol}`)) {
+      // Convert symbol format for comparison: "ZORA/USDT" -> "ZORAUSDT"
+      const normalizedSymbol = this.config.symbol.replace('/', '');
+      if (!data.topic || !data.topic.includes(`tickers.${normalizedSymbol}`)) {
+        console.log(`[RecordingSession] Skipping data - topic mismatch. Expected: tickers.${normalizedSymbol}, Got: ${data.topic}`);
         return;
       }
 
@@ -286,9 +308,10 @@ export class RecordingSession extends EventEmitter {
       }
 
       const ticker = data.data;
-      const bybitTimestamp = BigInt(data.ts || Date.now());
+      const exchangeTimestamp = BigInt(data.ts || Date.now()); // Exchange server timestamp (Bybit or Binance)
       const localTimestamp = BigInt(Date.now());
-      const relativeTimeMs = Number(localTimestamp) - this.fundingPaymentTimestamp;
+      // Use exchange timestamp for accurate timing relative to exchange server time
+      const relativeTimeMs = Number(exchangeTimestamp) - this.fundingPaymentTimestamp;
 
       // Parse price data
       const lastPrice = parseFloat(ticker.lastPrice);
@@ -303,7 +326,7 @@ export class RecordingSession extends EventEmitter {
 
       // Create data point
       const dataPoint: RecordedDataPoint = {
-        bybitTimestamp,
+        bybitTimestamp: exchangeTimestamp, // Store as bybitTimestamp for DB compatibility
         localTimestamp,
         relativeTimeMs,
         lastPrice,
@@ -323,6 +346,11 @@ export class RecordingSession extends EventEmitter {
 
       // Add to buffer
       this.dataBuffer.push(dataPoint);
+
+      // Log progress every 10 data points
+      if (this.dataBuffer.length % 10 === 1) {
+        console.log(`[RecordingSession] Captured ${this.dataBuffer.length} data points (relativeTime: ${relativeTimeMs}ms, price: ${lastPrice})`);
+      }
 
       // Emit data point for real-time UI updates
       this.emit('dataPoint', {
@@ -346,7 +374,7 @@ export class RecordingSession extends EventEmitter {
       if (this.wsUnsubscribe) {
         this.wsUnsubscribe();
       }
-      this.bybitService.unsubscribeAll();
+      this.exchangeService.unsubscribeAll();
 
       // Stop timers
       if (this.recordingTimer) {
@@ -578,7 +606,7 @@ export class RecordingSession extends EventEmitter {
     if (this.wsUnsubscribe) {
       this.wsUnsubscribe();
     }
-    this.bybitService.unsubscribeAll();
+    this.exchangeService.unsubscribeAll();
 
     // Update status
     await this.updateStatus('CANCELLED');
@@ -602,24 +630,33 @@ export class RecordingSession extends EventEmitter {
   }
 }
 
+// Global session storage to persist across Next.js hot reloads
+declare global {
+  var __fundingPaymentRecordingSessions: Map<string, RecordingSession> | undefined;
+}
+
+global.__fundingPaymentRecordingSessions = global.__fundingPaymentRecordingSessions || new Map();
+
 /**
  * Funding Payment Recorder Service
  *
  * Manages multiple recording sessions
  */
 export class FundingPaymentRecorderService {
-  private static activeSessions = new Map<string, RecordingSession>();
+  private static get activeSessions(): Map<string, RecordingSession> {
+    return global.__fundingPaymentRecordingSessions!;
+  }
 
   /**
    * Start a new recording session
    */
   static async startRecording(
     config: RecordingConfig,
-    bybitService: BybitService
+    exchangeService: ExchangeService
   ): Promise<RecordingSession> {
     console.log('[FundingPaymentRecorderService] Starting new recording session:', config);
 
-    const session = new RecordingSession(config, bybitService);
+    const session = new RecordingSession(config, exchangeService);
     const sessionId = await session.start();
 
     this.activeSessions.set(sessionId, session);

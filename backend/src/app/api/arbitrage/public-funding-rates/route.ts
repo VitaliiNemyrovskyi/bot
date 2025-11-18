@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     const fundingRates = await prisma.publicFundingRate.findMany({
       where: {
         exchange: {
-          in: exchanges,
+          in: exchanges as any[], // Type casting for string array to Exchange enum
         },
         symbol: {
           in: symbolVariations,
@@ -249,7 +249,7 @@ export async function GET(request: NextRequest) {
         const refreshedRates = await prisma.publicFundingRate.findMany({
           where: {
             exchange: {
-              in: exchanges.filter(e => e !== 'MEXC'), // Exclude MEXC, we have direct data
+              in: (exchanges.filter(e => e !== 'MEXC') as any[]), // Exclude MEXC, we have direct data
             },
             symbol: {
               in: symbolVariations,

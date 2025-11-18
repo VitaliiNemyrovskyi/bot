@@ -109,7 +109,6 @@ export async function GET(request: NextRequest) {
           failed,
           healthStatus,
         },
-        testnet: keys.testnet,
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

@@ -115,7 +115,6 @@ export async function GET(request: NextRequest) {
         data: assetInfo,
         ...(accountType && { accountType }),
         ...(coin && { coin }),
-        testnet: bybitService.isTestnet(),
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

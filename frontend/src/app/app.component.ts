@@ -23,6 +23,7 @@ export class AppComponent {
   });
   readonly currentUser = computed(() => this.authService.currentUser());
   readonly isLoading = computed(() => this.authService.isLoading());
+  readonly isAdmin = computed(() => this.currentUser()?.role === 'ADMIN');
 
   // Translation service properties
   readonly currentLanguage = this.translationService.currentLanguage;

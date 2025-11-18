@@ -55,13 +55,13 @@ function initMockData() {
 // }
 
 // Encryption key for API keys (in production, use proper key management)
-const ENCRYPTION_KEY = process.env.API_KEY_ENCRYPTION_KEY || 'default-key-change-in-production';
+const ENCRYPTION_KEY = process.env['API_KEY_ENCRYPTION_KEY'] || 'default-key-change-in-production';
 
 function encryptApiKey(text: string): string {
   const algorithm = 'aes-256-cbc';
   const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
-  // const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipher(algorithm, key);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   return iv.toString('hex') + ':' + encrypted;
@@ -134,13 +134,13 @@ export async function POST(request: NextRequest) {
       platformId: platformId,
       apiKey: encryptedApiKey,
       secretKey: encryptedSecretKey,
-      passphrase: encryptedPassphrase,
+      passphrase: encryptedPassphrase ?? undefined,
       isConnected: true,
       connectedAt: new Date(),
       lastSync: new Date(),
       platform: platform
     };
-    mockUserTradingPlatforms.set(userPlatformKey, userPlatform);
+    mockUserTradingPlatforms.set(userPlatformKey, userPlatform as any);
 
     // Return response matching frontend interface
     const response = {
@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
 
     // Get all user's connected platforms
     const userPlatforms = Array.from(mockUserTradingPlatforms.values())
-      .filter(up => up.userId === authResult.user.userId && up.isConnected)
+      .filter(up => up.userId === authResult.user!.userId && up.isConnected)
       .sort((a, b) => (b.connectedAt?.getTime() || 0) - (a.connectedAt?.getTime() || 0));
 
     const response = userPlatforms.map(up => ({

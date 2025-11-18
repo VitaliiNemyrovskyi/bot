@@ -1,0 +1,202 @@
+<div class="recordings-container">
+  <!-- Header -->
+  <div class="header">
+    <h1>Recording Sessions Viewer</h1>
+    <button class="btn-refresh" (click)="loadSessions()" [disabled]="loading()">
+      {{ loading() ? 'Loading...' : 'Refresh' }}
+    </button>
+  </div>
+
+  <!-- Error message -->
+  @if (error()) {
+    <div class="error-message">
+      {{ error() }}
+    </div>
+  }
+
+  <div class="content-layout">
+    <!-- Left: Sessions Table -->
+    <div class="sessions-panel">
+      <h2>Recording Sessions ({{ sessions().length }})</h2>
+
+      @if (loading() && sessions().length === 0) {
+        <div class="loading">Loading sessions...</div>
+      } @else if (sessions().length === 0) {
+        <div class="empty-state">No recording sessions found</div>
+      } @else {
+        <div class="sessions-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Exchange</th>
+                <th>Symbol</th>
+                <th>Date/Time</th>
+                <th>Data Points</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (session of sessions(); track session.id) {
+                <tr
+                  (click)="selectSession(session)"
+                  [class.selected]="selectedSession()?.id === session.id"
+                  class="session-row">
+                  <td>{{ session.exchange }}</td>
+                  <td>{{ session.symbol }}</td>
+                  <td>{{ formatDate(session.createdAt) }}</td>
+                  <td>{{ session.totalDataPoints }}</td>
+                  <td>
+                    <span class="status" [attr.data-status]="session.status">
+                      {{ session.status }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <!-- Right: Viewer -->
+    <div class="viewer-panel">
+      @if (!selectedSession()) {
+        <div class="empty-viewer">
+          <p>Select a recording session to view</p>
+        </div>
+      } @else {
+        <!-- Session Info -->
+        <div class="session-info">
+          <h2>{{ selectedSession()!.exchange }} - {{ selectedSession()!.symbol }}</h2>
+          <div class="session-meta">
+            <span>Created: {{ formatDate(selectedSession()!.createdAt) }}</span>
+            <span>Data Points: {{ selectedSession()!.totalDataPoints }}</span>
+            @if (selectedSession()!.fundingRate) {
+              <span>Funding Rate: {{ formatNumber(selectedSession()!.fundingRate! * 100, 4) }}%</span>
+            }
+          </div>
+        </div>
+
+        <div class="viewer-content">
+          <!-- Chart and Order Book -->
+          <div class="chart-orderbook-layout">
+            <!-- Price Chart -->
+            <div class="chart-container">
+              @if (loading()) {
+                <div class="loading">Loading data...</div>
+              } @else if (recordingData().length === 0) {
+                <div class="empty-state">No data available</div>
+              } @else {
+                <div class="price-display">
+                  <div class="price-label">Current Price</div>
+                  <div class="price-value">
+                    {{ formatNumber(currentDataPoint()?.price, 4) }}
+                  </div>
+                  @if (currentDataPoint()?.timestamp) {
+                    <div class="time-label">
+                      {{ formatTime(currentDataPoint()!.timestamp) }}
+                    </div>
+                  }
+                </div>
+
+                <!-- TradingView Lightweight Chart -->
+                <div #chartContainer class="tv-chart"></div>
+              }
+            </div>
+
+            <!-- Order Book -->
+            <div class="orderbook-container">
+              <h3>Order Book</h3>
+              @if (orderBook()) {
+                <div class="orderbook">
+                  <!-- Asks -->
+                  <div class="orderbook-section asks">
+                    <div class="orderbook-header">
+                      <span>Price (Ask)</span>
+                      <span>Size</span>
+                    </div>
+                    @for (ask of orderBook()!.asks; track $index) {
+                      <div class="orderbook-row ask">
+                        <span class="price">{{ formatNumber(ask.price, 4) }}</span>
+                        <span class="size">{{ formatNumber(ask.size, 2) }}</span>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Current Price -->
+                  <div class="current-price-row">
+                    <span class="current-price">
+                      {{ formatNumber(currentDataPoint()?.price, 4) }}
+                    </span>
+                  </div>
+
+                  <!-- Bids -->
+                  <div class="orderbook-section bids">
+                    <div class="orderbook-header">
+                      <span>Price (Bid)</span>
+                      <span>Size</span>
+                    </div>
+                    @for (bid of orderBook()!.bids; track $index) {
+                      <div class="orderbook-row bid">
+                        <span class="price">{{ formatNumber(bid.price, 4) }}</span>
+                        <span class="size">{{ formatNumber(bid.size, 2) }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              } @else {
+                <div class="empty-state">No order book data</div>
+              }
+            </div>
+          </div>
+
+          <!-- Player Controls -->
+          @if (recordingData().length > 0) {
+            <div class="player-controls">
+              <!-- Progress Bar -->
+              <div class="progress-container" (click)="onProgressBarClick($event)">
+                <div class="progress-bar">
+                  <div class="progress-fill" [style.width.%]="progress()"></div>
+                </div>
+                <div class="progress-info">
+                  <span>{{ currentIndex() + 1 }} / {{ recordingData().length }}</span>
+                  <span>{{ progress().toFixed(1) }}%</span>
+                </div>
+              </div>
+
+              <!-- Control Buttons -->
+              <div class="control-buttons">
+                @if (!isPlaying()) {
+                  <button class="btn-control btn-play" (click)="play()">
+                    ▶ Play
+                  </button>
+                } @else {
+                  <button class="btn-control btn-pause" (click)="pause()">
+                    ⏸ Pause
+                  </button>
+                }
+
+                <button class="btn-control btn-stop" (click)="stop()">
+                  ⏹ Stop
+                </button>
+
+                <!-- Speed Controls -->
+                <div class="speed-controls">
+                  <span>Speed:</span>
+                  @for (speed of [1, 2, 5, 10]; track speed) {
+                    <button
+                      class="btn-speed"
+                      [class.active]="playbackSpeed() === speed"
+                      (click)="setSpeed(speed)">
+                      {{ speed }}x
+                    </button>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

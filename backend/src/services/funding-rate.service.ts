@@ -50,6 +50,7 @@ export interface ArbitrageOpportunity {
   fundingRate: number;
   annualizedRate: number;
   nextFundingTime: Date;
+  fundingInterval?: number; // Funding interval in hours
   estimatedProfit8h: number; // Profit per funding period
   estimatedProfitAnnual: number; // Annualized profit
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -297,6 +298,7 @@ export async function getArbitrageOpportunities(
         symbol,
         "fundingRate",
         "nextFundingTime",
+        "fundingInterval",
         "markPrice",
         0 as volume24h,
         0 as "openInterest",
@@ -340,6 +342,7 @@ export async function getArbitrageOpportunities(
           fundingRate: rate.fundingRate,
           annualizedRate,
           nextFundingTime: new Date(rate.nextFundingTime),
+          fundingInterval: rate.fundingInterval,
           estimatedProfit8h,
           estimatedProfitAnnual,
           riskLevel,

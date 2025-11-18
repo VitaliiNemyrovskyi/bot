@@ -13,8 +13,8 @@ async function testBybit() {
   console.log('\n=== Testing Bybit Connector ===\n');
 
   const connector = new BybitConnector(
-    process.env.BYBIT_API_KEY || 'test-key',
-    process.env.BYBIT_API_SECRET || 'test-secret',
+    process.env['BYBIT_API_KEY'] || 'test-key',
+    process.env['BYBIT_API_SECRET'] || 'test-secret',
     true
   );
 

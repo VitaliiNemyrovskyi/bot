@@ -1,6 +1,7 @@
-import { PrismaClient, Exchange } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import { fetchWithTimeout } from '../lib/fetch-with-timeout';
 import { EXCHANGE_ENDPOINTS } from '../lib/exchange-api-endpoints';
+import prisma from '../lib/prisma';
 
 /**
  * Unified Funding Interval Service
@@ -20,7 +21,7 @@ import { EXCHANGE_ENDPOINTS } from '../lib/exchange-api-endpoints';
  * ```
  */
 export class FundingIntervalService {
-  private static prisma = new PrismaClient();
+  private static prisma = prisma;
   private static readonly CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
   /**

@@ -1,6 +1,5 @@
-import { PrismaClient, MessageType } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { MessageType } from '@prisma/client';
+import prisma from './prisma';
 
 export interface CreateMessageInput {
   userId: string;

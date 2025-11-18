@@ -126,14 +126,22 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Get credentials for both exchanges
-    const primaryCredentials = await ExchangeCredentialsService.getActiveCredentials(
-      userId,
-      primaryExchange as any
-    );
-    const hedgeCredentials = await ExchangeCredentialsService.getActiveCredentials(
-      userId,
-      hedgeExchange as any
-    );
+    let primaryCredentials, hedgeCredentials;
+    try {
+      primaryCredentials = await ExchangeCredentialsService.getActiveCredentials(
+        userId,
+        primaryExchange as any
+      );
+      hedgeCredentials = await ExchangeCredentialsService.getActiveCredentials(
+        userId,
+        hedgeExchange as any
+      );
+    } catch (error: any) {
+      console.error('[DetectPositionAPI] Error fetching credentials:', error.message);
+      // If database error, treat as no credentials found
+      primaryCredentials = null;
+      hedgeCredentials = null;
+    }
 
     if (!primaryCredentials || !hedgeCredentials) {
       return NextResponse.json(
@@ -156,7 +164,6 @@ export async function GET(request: NextRequest) {
         primaryExchange,
         primaryCredentials.apiKey,
         primaryCredentials.apiSecret,
-        primaryCredentials.environment === 'TESTNET',
         primaryCredentials.authToken,
         userId,
         primaryCredentials.id
@@ -165,7 +172,6 @@ export async function GET(request: NextRequest) {
         hedgeExchange,
         hedgeCredentials.apiKey,
         hedgeCredentials.apiSecret,
-        hedgeCredentials.environment === 'TESTNET',
         hedgeCredentials.authToken,
         userId,
         hedgeCredentials.id
@@ -188,16 +194,20 @@ export async function GET(request: NextRequest) {
 
     // 6. Get positions from both exchanges
     console.log('[DetectPositionAPI] Fetching positions from exchanges...');
-    const [primaryPositions, hedgePositions] = await Promise.all([
-      primaryConnector.getPositions(symbol).catch((err) => {
+    const [primaryPositionsRaw, hedgePositionsRaw] = await Promise.all([
+      primaryConnector.getPosition(symbol).catch((err) => {
         console.error(`[DetectPositionAPI] Error fetching ${primaryExchange} positions:`, err.message);
         return [];
       }),
-      hedgeConnector.getPositions(symbol).catch((err) => {
+      hedgeConnector.getPosition(symbol).catch((err) => {
         console.error(`[DetectPositionAPI] Error fetching ${hedgeExchange} positions:`, err.message);
         return [];
       }),
     ]);
+
+    // Ensure positions are arrays (handle null returns)
+    const primaryPositions = Array.isArray(primaryPositionsRaw) ? primaryPositionsRaw : [];
+    const hedgePositions = Array.isArray(hedgePositionsRaw) ? hedgePositionsRaw : [];
 
     console.log('[DetectPositionAPI] Positions found:', {
       primary: primaryPositions.length,
@@ -205,13 +215,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 7. Find matching arbitrage pairs
-    const matchedPair = findMatchingArbitragePair(
-      primaryPositions,
-      hedgePositions,
-      symbol,
-      primaryExchange,
-      hedgeExchange
-    );
+    const matchedPair = findMatchingArbitragePair(primaryPositions, hedgePositions, primaryExchange, hedgeExchange);
 
     if (!matchedPair) {
       console.log('[DetectPositionAPI] No matching arbitrage pairs found');
@@ -286,7 +290,6 @@ function getConnector(
   exchange: string,
   apiKey: string,
   apiSecret: string,
-  isTestnet: boolean,
   authToken?: string | null,
   userId?: string,
   credentialId?: string
@@ -307,7 +310,6 @@ function getConnector(
 function findMatchingArbitragePair(
   primaryPositions: any[],
   hedgePositions: any[],
-  symbol: string,
   primaryExchange: string,
   hedgeExchange: string
 ): {

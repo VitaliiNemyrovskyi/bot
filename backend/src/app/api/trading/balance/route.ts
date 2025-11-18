@@ -57,11 +57,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    initMockPlatforms(authResult.user.userId);
+    const userId = authResult.user.userId;
+    initMockPlatforms(userId);
 
     // Get all user's connected platforms with balance info
     const userPlatforms = Array.from(mockUserTradingPlatforms.values())
-      .filter(up => up.userId === authResult.user.userId && up.isConnected);
+      .filter(up => up.userId === userId && up.isConnected);
 
     // Calculate totals
     let totalBalance = 0;

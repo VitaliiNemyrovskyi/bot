@@ -103,5 +103,5 @@ function formatSymbol(symbolData: any, exchange: Exchange): TradingViewSymbol {
 
 function getDecimalPlaces(tickSize: string): number {
   const parts = tickSize.split('.');
-  return parts.length > 1 ? parts[1].length : 0;
+  return parts.length > 1 ? (parts[1]?.length ?? 0) : 0;
 }

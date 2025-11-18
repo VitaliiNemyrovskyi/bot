@@ -6,12 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, Exchange } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import { FundingPaymentRecorderService, RecordingConfig } from '@/services/funding-payment-recorder.service';
 import { BybitService } from '@/lib/bybit';
-import { auth } from '@/lib/auth';
-
-const prisma = new PrismaClient();
+import { AuthService } from '@/lib/auth';
+import prisma from '@/lib/prisma';
 
 /**
  * POST /api/funding-payment/recordings
@@ -20,12 +19,12 @@ const prisma = new PrismaClient();
 export async function POST(request: NextRequest) {
   try {
     // Authenticate user
-    const session = await auth(request);
-    if (!session) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.userId;
+    const userId = authResult.user.userId;
 
     // Parse request body
     const body = await request.json();
@@ -151,12 +150,13 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user
-    const session = await auth(request);
-    if (!session) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.userId;
+    const userId = authResult.user.userId;
+    const userRole = authResult.user.role;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -165,8 +165,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build query
-    const where: any = { userId };
+    // Build query based on user role
+    const where: any = userRole === 'ADMIN'
+      ? {} // Admins see ALL recordings (their own + public with NULL userId)
+      : { userId }; // Regular users see only their own recordings
+
+    // Apply filters
     if (status) {
       where.status = status;
     }

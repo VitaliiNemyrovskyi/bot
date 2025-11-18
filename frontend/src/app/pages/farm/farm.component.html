@@ -1,6 +1,15 @@
 <div class="farm-container" *ngIf="filteredOpportunities$ | async as opportunities; else loading">
   <!-- Left Panel: Table (collapses to sidebar) -->
   <aside class="table-panel" [class.collapsed]="isTableCollapsed">
+    <!-- Collapse/Expand Button (always visible) -->
+    <button
+      class="collapse-btn"
+      (click)="toggleTableCollapse()"
+      [title]="isTableCollapsed ? 'Expand table' : 'Collapse table'"
+    >
+      <span class="collapse-icon">{{ isTableCollapsed ? '›' : '‹' }}</span>
+    </button>
+
     <!-- Filters (hidden when collapsed) -->
     <div class="filters-section">
       <ui-button
@@ -36,9 +45,12 @@
             </th>
             <th>Exchange</th>
             <th>Symbol</th>
-            <th class="text-right">Funding Rate (1h)</th>
+            <th class="text-right">Funding Rate</th>
+            <th class="text-right">Liquidity</th>
+            <th class="text-right">Est. Drop</th>
+            <th class="text-right">Net Return</th>
+            <th>Opportunity</th>
             <th>Next Funding</th>
-            <th class="text-right">Mark Price</th>
           </tr>
         </thead>
         <tbody>
@@ -64,12 +76,38 @@
                 {{ (op.fundingRate * 100).toFixed(4) }}%
               </span>
             </td>
+            <td class="text-right">
+              <span *ngIf="op.liquidityScore !== undefined" [title]="'Bid: ' + (op.bidSize || 0) + ' / Ask: ' + (op.askSize || 0)">
+                {{ op.liquidityScore.toFixed(2) }}
+              </span>
+              <span *ngIf="op.liquidityScore === undefined" class="text-muted">N/A</span>
+            </td>
+            <td class="text-right">
+              <span *ngIf="op.estimatedPriceDropPercent !== undefined" class="negative-rate">
+                {{ op.estimatedPriceDropPercent.toFixed(2) }}%
+              </span>
+              <span *ngIf="op.estimatedPriceDropPercent === undefined" class="text-muted">N/A</span>
+            </td>
+            <td class="text-right">
+              <span *ngIf="op.expectedNetReturnPercent !== undefined" [ngClass]="{
+                'positive-rate': op.expectedNetReturnPercent > 0,
+                'negative-rate': op.expectedNetReturnPercent < 0
+              }">
+                {{ op.expectedNetReturnPercent >= 0 ? '+' : '' }}{{ op.expectedNetReturnPercent.toFixed(2) }}%
+              </span>
+              <span *ngIf="op.expectedNetReturnPercent === undefined" class="text-muted">N/A</span>
+            </td>
+            <td>
+              <span *ngIf="op.riskLevel" class="risk-badge risk-{{ op.riskLevel.toLowerCase() }}" [title]="op.liquidityDescription">
+                {{ op.riskLevel }}
+              </span>
+              <span *ngIf="!op.riskLevel" class="text-muted">N/A</span>
+            </td>
             <td>
               <ng-container *ngIf="currentTime$ | async">
                 {{ getCountdown(op.nextFundingTime) }}
               </ng-container>
             </td>
-            <td class="text-right">{{ op.markPrice.toFixed(4) }}</td>
           </tr>
         </tbody>
       </table>
@@ -98,19 +136,39 @@
         </div>
       </div>
     </div>
-
-    <!-- Collapse/Expand Button -->
-    <button
-      class="collapse-btn"
-      (click)="toggleTableCollapse()"
-      [title]="isTableCollapsed ? 'Expand table' : 'Collapse table'"
-    >
-      <span class="collapse-icon">{{ isTableCollapsed ? '›' : '‹' }}</span>
-    </button>
   </aside>
 
   <!-- Main Content Area -->
   <main class="main-content">
+    <!-- Bot Status Banner (0s strategy - shows when bot is running) -->
+    <div class="bot-status-banner" *ngIf="isBotRunning && botStatus">
+      <div class="status-content">
+        <div class="status-icon">⚡</div>
+        <div class="status-info">
+          <div class="status-title">Strategy Running (0s): {{ botStatus.symbol }}</div>
+          <div class="status-detail">Funding Rate: {{ (botStatus.fundingRate * 100).toFixed(4) }}%</div>
+        </div>
+        <button class="emergency-stop-btn" (click)="emergencyStop()">Emergency Stop</button>
+      </div>
+    </div>
+
+    <!-- SHORT -500ms Strategy Status Banner (shows when strategy is running) -->
+    <div class="bot-status-banner short-strategy-banner" *ngIf="shortStrategyStatus?.isRunning">
+      <div class="status-content">
+        <div class="status-icon">🎯</div>
+        <div class="status-info">
+          <div class="status-title">SHORT -500ms Strategy Running</div>
+          <div class="status-detail" *ngIf="shortStrategyStatus?.statistics as stats">
+            Trades: {{ stats.totalTrades }} |
+            Win Rate: {{ (stats.winRate * 100).toFixed(1) }}% |
+            Profit: {{ stats.totalProfitUSDT.toFixed(2) }} USDT |
+            Mode: {{ shortStrategyStatus?.config?.paperTradingMode ? 'Paper Trading' : 'Live Trading' }}
+          </div>
+        </div>
+        <button class="emergency-stop-btn" (click)="stopShortStrategy()">Stop Strategy</button>
+      </div>
+    </div>
+
     <!-- Header -->
     <header class="content-header">
       <h1>Selected Pairs</h1>
@@ -124,11 +182,142 @@
           <app-funding-rate-mini-chart
             [symbol]="op.symbol"
             [exchange]="op.exchange"
+            [nextFundingTime]="op.nextFundingTime"
+            [fundingInterval]="op.fundingInterval"
+            [fundingRate]="op.fundingRate"
           ></app-funding-rate-mini-chart>
-          <button class="collect-btn">
-            <span class="btn-icon">⚡</span>
-            Collect Funding for {{ op.symbol.replace('USDT', '') }}
-          </button>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button class="test-record-btn" (click)="startTestRecording(op)" [disabled]="op.exchange !== 'BYBIT' || getRecordingStatus(op)" title="Test recording with 30s delay">
+              <span class="btn-icon">🧪</span>
+              Test
+            </button>
+            <button class="record-btn" (click)="openRecordModal(op)" [disabled]="op.exchange !== 'BYBIT' || getRecordingStatus(op)">
+              <span class="btn-icon">📊</span>
+              Record
+            </button>
+            <button class="execute-btn" (click)="openExecutionPanel(op)" [disabled]="op.exchange !== 'BYBIT' || isBotRunning || selectedForExecution || shortStrategyStatus?.isRunning" title="Execute 0s strategy">
+              <span class="btn-icon">⚡</span>
+              Execute (0s)
+            </button>
+            <button class="execute-short-btn" (click)="openShortStrategyPanel(op)" [disabled]="op.exchange !== 'BYBIT' || isBotRunning || shortStrategyStatus?.isRunning || selectedForShortStrategy" title="Execute -500ms strategy">
+              <span class="btn-icon">🎯</span>
+              Execute (-500ms)
+            </button>
+          </div>
+
+          <!-- Execution Panel (shows when selected for execution) -->
+          <div class="execution-panel" *ngIf="selectedForExecution && getPairKey(selectedForExecution) === getPairKey(op)">
+            <div class="panel-header">
+              <h4>Execute Strategy</h4>
+              <button class="close-btn" (click)="cancelExecution()">×</button>
+            </div>
+
+            <div class="panel-body">
+              <div class="form-group">
+                <label>Position Size:</label>
+                <input type="text" [(ngModel)]="positionSize" placeholder="0.01" class="form-input">
+                <small>Amount in base currency (e.g., BTC for BTCUSDT)</small>
+              </div>
+
+              <div class="strategy-info">
+                <p><strong>Strategy (SHORT After Funding):</strong></p>
+                <ol>
+                  <li>Wait for funding payment (no position before 0s)</li>
+                  <li>SHORT entry at <strong>0s</strong> (moment of funding, via WebSocket API)</li>
+                  <li>SHORT exit at <strong>+3s</strong> after funding (capture price drop)</li>
+                </ol>
+                <p style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-color-secondary);">
+                  Expected: +0.6-1.7% profit in 3s | Ultra-low latency WebSocket API (5-20ms)
+                </p>
+              </div>
+
+              <div class="panel-actions">
+                <button class="btn-execute" (click)="executeStrategy()" [disabled]="executionLoading">
+                  {{ executionLoading ? 'Starting...' : 'Execute' }}
+                </button>
+                <button class="btn-cancel" (click)="cancelExecution()">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHORT -500ms Execution Panel (shows when selected for SHORT strategy) -->
+          <div class="execution-panel short-strategy-panel" *ngIf="selectedForShortStrategy && getPairKey(selectedForShortStrategy) === getPairKey(op)">
+            <div class="panel-header">
+              <h4>Execute SHORT -500ms Strategy</h4>
+              <button class="close-btn" (click)="cancelShortStrategy()">×</button>
+            </div>
+
+            <div class="panel-body">
+              <div class="form-group">
+                <label>Position Size (USDT):</label>
+                <input type="number" [(ngModel)]="shortStrategyConfig.maxPositionSizeUSDT" placeholder="100" class="form-input">
+                <small>Amount in USDT per trade (recommended: 100 USDT)</small>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" [(ngModel)]="shortStrategyConfig.paperTradingMode" class="form-checkbox">
+                  Paper Trading Mode (recommended for testing)
+                </label>
+              </div>
+
+              <div class="strategy-info">
+                <p><strong>Strategy (SHORT -500ms):</strong></p>
+                <ol>
+                  <li>Entry at <strong>-500ms</strong> (0.5 seconds BEFORE funding payment)</li>
+                  <li>Hold through funding payment (likely avoided in ±5s uncertainty window)</li>
+                  <li>Exit at <strong>+30s</strong> after funding payment</li>
+                </ol>
+                <div class="backtest-results">
+                  <p><strong>Backtesting Results:</strong></p>
+                  <ul>
+                    <li>Success Rate: <strong>100%</strong> (8/8 trades profitable)</li>
+                    <li>Median Profit: <strong>+1.59%</strong> per trade</li>
+                    <li>Expected Monthly ROI: <strong>+14%</strong> (1000 USDT capital)</li>
+                  </ul>
+                </div>
+                <p style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-color-secondary);">
+                  ⚠️ Entry at -500ms is within Bybit's ±5s uncertainty window. Funding payment may or may not be charged.
+                  If charged, profit drops from ~1.6% to ~0.4% (still profitable).
+                </p>
+              </div>
+
+              <div class="panel-actions">
+                <button class="btn-execute" (click)="startShortStrategy()" [disabled]="shortStrategyLoading">
+                  {{ shortStrategyLoading ? 'Starting...' : 'Start Strategy' }}
+                </button>
+                <button class="btn-cancel" (click)="cancelShortStrategy()">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recording Status (shows when recording is active) -->
+          <div class="recording-status" *ngIf="getRecordingStatus(op)">
+            <div class="status-header">
+              <span class="status-badge status-{{ getRecordingStatus(op)?.status }}">
+                {{ getRecordingStatus(op)?.status }}
+              </span>
+              <button class="cancel-btn" (click)="cancelRecording(op)" *ngIf="canCancelRecording(op)">
+                Cancel
+              </button>
+            </div>
+
+            <!-- Countdown Timer -->
+            <div class="countdown-timer" *ngIf="getRecordingStatus(op)?.millisecondsUntilPayment !== undefined">
+              <div class="timer-label">Funding payment in:</div>
+              <div class="timer-value">{{ formatCountdown(getRecordingStatus(op)!.millisecondsUntilPayment || 0) }}</div>
+            </div>
+
+            <!-- Progress Info -->
+            <div class="progress-info">
+              <div class="progress-label">{{ getRecordingStatusMessage(op) }}</div>
+              <div class="data-points" *ngIf="getRecordingStatus(op)?.dataPointsRecorded">
+                {{ getRecordingStatus(op)?.dataPointsRecorded }} data points
+              </div>
+            </div>
+          </div>
         </div>
       </ng-container>
     </div>

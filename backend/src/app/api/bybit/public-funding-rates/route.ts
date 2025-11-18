@@ -37,7 +37,7 @@ function normalizeSymbol(symbol: string): string {
  *
  * GET /api/bybit/public-funding-rates
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const now = new Date();
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);

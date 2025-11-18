@@ -5,7 +5,7 @@ import { EXCHANGE_ENDPOINTS } from '@/lib/exchange-api-endpoints';
 export const runtime = 'nodejs';
 const CACHE_TTL_SECONDS = 30;
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const now = new Date();
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);

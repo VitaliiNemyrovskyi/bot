@@ -15,6 +15,7 @@
 import { PrismaClient } from '@prisma/client';
 import { LiquidationCalculator } from '@/lib/liquidation-calculator';
 import { EventEmitter } from 'events';
+import prisma from '@/lib/prisma';
 
 interface MonitorConfig {
   checkIntervalMs: number;        // How often to check (default: 10000ms = 10s)
@@ -48,7 +49,7 @@ export class LiquidationMonitorService extends EventEmitter {
 
   constructor(config?: Partial<MonitorConfig>) {
     super();
-    this.prisma = new PrismaClient();
+    this.prisma = prisma;
     this.config = {
       checkIntervalMs: config?.checkIntervalMs || 10000, // 10 seconds
       dangerThreshold: config?.dangerThreshold || 0.8,   // 80%

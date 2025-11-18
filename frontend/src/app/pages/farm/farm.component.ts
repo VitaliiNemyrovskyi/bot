@@ -1,8 +1,8 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Observable, BehaviorSubject, combineLatest, interval, Subject } from 'rxjs';
+import { Observable, BehaviorSubject, combineLatest, interval, Subject, firstValueFrom } from 'rxjs';
 import { map, startWith, switchMap, takeUntil } from 'rxjs/operators';
-import { FarmService, FundingOpportunity } from '../../services/farm.service';
+import { FarmService, FundingOpportunity, ShortStrategyConfig, ShortStrategyStatus } from '../../services/farm.service';
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent } from '../../components/ui/button/button.component';
 import { FundingRateMiniChartComponent } from '../../components/funding-rate-mini-chart/funding-rate-mini-chart.component';
@@ -42,6 +42,27 @@ export class FarmComponent implements OnInit, OnDestroy {
   public recordingSessions = new Map<string, RecordingStatus>();
   private sseConnections = new Map<string, EventSource>();
 
+  // Execution state (0s strategy)
+  public selectedForExecution: FundingOpportunity | null = null;
+  public positionSize = '0.01';
+  public executionLoading = false;
+  public isBotRunning = false;
+  public botStatus: { symbol: string; fundingRate: number } | null = null;
+  public userId = '';
+
+  // SHORT -500ms strategy state
+  public selectedForShortStrategy: FundingOpportunity | null = null;
+  public shortStrategyStatus: ShortStrategyStatus | null = null;
+  public shortStrategyConfig: Partial<ShortStrategyConfig> = {
+    paperTradingMode: true,
+    entryOffsetMs: -500,
+    exitOffsetMs: 30000,
+    maxPositionSizeUSDT: 100,
+    minFundingRate: -0.01,
+    stopLossPercent: 3
+  };
+  public shortStrategyLoading = false;
+
   private selectedExchangesSubject = new BehaviorSubject<string[]>([]);
   private destroy$ = new Subject<void>();
 
@@ -58,6 +79,25 @@ export class FarmComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Load user profile to get userId
+    this.loadUserProfile();
+
+    // Check bot status periodically (0s strategy)
+    interval(5000).pipe(
+      startWith(0),
+      takeUntil(this.destroy$)
+    ).subscribe(() => {
+      this.checkBotStatus();
+    });
+
+    // Check SHORT -500ms strategy status periodically
+    interval(5000).pipe(
+      startWith(0),
+      takeUntil(this.destroy$)
+    ).subscribe(() => {
+      this.loadShortStrategyStatus();
+    });
+
     // Update current time every second for countdown
     this.currentTime$ = interval(1000).pipe(
       startWith(0),
@@ -66,6 +106,7 @@ export class FarmComponent implements OnInit, OnDestroy {
     );
 
     // Poll for funding opportunities every 30 seconds
+    // Using standard endpoint with liquidity analysis for BYBIT
     this.allOpportunities$ = interval(30000).pipe(
       startWith(0), // Start immediately
       switchMap(() => this.farmService.getFundingOpportunities()),
@@ -79,7 +120,7 @@ export class FarmComponent implements OnInit, OnDestroy {
           this.selectedExchangesSubject.next(this.selectedExchanges);
         }
 
-        console.log(`[Farm] Fetched ${opportunities.length} funding opportunities`);
+        console.log(`[Farm] Fetched ${opportunities.length} funding opportunities (liquidity data for BYBIT)`);
         return opportunities;
       }),
       takeUntil(this.destroy$)
@@ -165,13 +206,13 @@ export class FarmComponent implements OnInit, OnDestroy {
     return this.selectedExchanges.includes(exchange);
   }
 
-  trackByExchange(index: number, exchange: string): string { return exchange; }
+  trackByExchange(_index: number, exchange: string): string { return exchange; }
 
   /**
    * Track by function for opportunities list
    * Prevents re-rendering of chart components when opportunities list updates
    */
-  trackByPair(index: number, op: FundingOpportunity): string {
+  trackByPair(_index: number, op: FundingOpportunity): string {
     return `${op.symbol}-${op.exchange}`;
   }
 
@@ -265,10 +306,10 @@ export class FarmComponent implements OnInit, OnDestroy {
       console.log(`[Farm] Starting TEST recording for ${key}`);
 
       // Call TEST API endpoint
-      const response = await this.http.post<any>('/api/funding-payment/recordings/test', {
+      const response = await firstValueFrom(this.http.post<any>('/api/funding-payment/recordings/test', {
         symbol: op.symbol,
         delaySeconds: 30, // Funding payment in 30 seconds
-      }).toPromise();
+      }));
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to start test recording');
@@ -302,7 +343,7 @@ export class FarmComponent implements OnInit, OnDestroy {
       console.log(`[Farm] Starting recording for ${key}`);
 
       // Call API to start recording
-      const response = await this.http.post<any>('/api/funding-payment/recordings', {
+      const response = await firstValueFrom(this.http.post<any>('/api/funding-payment/recordings', {
         symbol: op.symbol,
         exchange: op.exchange,
         fundingRate: op.fundingRate,
@@ -310,7 +351,7 @@ export class FarmComponent implements OnInit, OnDestroy {
         fundingInterval: op.fundingInterval,
         preRecordingSeconds: 5,
         postRecordingSeconds: 30,
-      }).toPromise();
+      }));
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to start recording');
@@ -411,7 +452,7 @@ export class FarmComponent implements OnInit, OnDestroy {
       }
     });
 
-    eventSource.addEventListener('heartbeat', (event: MessageEvent) => {
+    eventSource.addEventListener('heartbeat', (_event: MessageEvent) => {
       // Keep-alive
     });
 
@@ -439,7 +480,7 @@ export class FarmComponent implements OnInit, OnDestroy {
     try {
       console.log(`[Farm] Cancelling recording: ${status.sessionId}`);
 
-      await this.http.post<any>(`/api/funding-payment/recordings/${status.sessionId}/cancel`, {}).toPromise();
+      await firstValueFrom(this.http.post<any>(`/api/funding-payment/recordings/${status.sessionId}/cancel`, {}));
 
       console.log(`[Farm] Recording cancelled: ${status.sessionId}`);
 
@@ -511,5 +552,245 @@ export class FarmComponent implements OnInit, OnDestroy {
     const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000);
 
     return `${this.pad(hours)}:${this.pad(minutes)}:${this.pad(seconds)}`;
+  }
+
+  /**
+   * Load user profile
+   */
+  private loadUserProfile(): void {
+    this.http.get<any>('/api/user/profile').subscribe({
+      next: (response) => {
+        if (response.success && response.user) {
+          this.userId = response.user.id;
+          console.log('[Farm] User ID loaded:', this.userId);
+        }
+      },
+      error: (err) => {
+        console.error('[Farm] Failed to load user profile:', err);
+      }
+    });
+  }
+
+  /**
+   * Check bot status
+   */
+  private checkBotStatus(): void {
+    this.http.get<any>('/api/funding-arb/status').subscribe({
+      next: (response) => {
+        this.isBotRunning = response.isRunning;
+        this.botStatus = response.result;
+      },
+      error: () => {
+        // Silently fail - bot might not be running
+      }
+    });
+  }
+
+  /**
+   * Open execution panel for opportunity
+   */
+  openExecutionPanel(op: FundingOpportunity): void {
+    if (op.exchange !== 'BYBIT') {
+      alert('Execution is only supported for BYBIT exchange');
+      return;
+    }
+
+    if (this.isBotRunning) {
+      alert('Another bot is already running. Stop it first.');
+      return;
+    }
+
+    this.selectedForExecution = op;
+  }
+
+  /**
+   * Cancel execution panel
+   */
+  cancelExecution(): void {
+    this.selectedForExecution = null;
+  }
+
+  /**
+   * Execute strategy
+   */
+  async executeStrategy(): Promise<void> {
+    if (!this.selectedForExecution || !this.userId) {
+      alert('Please select an opportunity and ensure you are logged in');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Execute SHORT After Funding strategy on ${this.selectedForExecution.symbol}?\n\n` +
+      `Funding Rate: ${(this.selectedForExecution.fundingRate * 100).toFixed(4)}%\n` +
+      `Position Size: ${this.positionSize}\n\n` +
+      `The bot will:\n` +
+      `1. Wait for funding payment (no position before 0s)\n` +
+      `2. Open SHORT at 0s (moment of funding, WebSocket API)\n` +
+      `3. Close SHORT at +3s after funding\n\n` +
+      `Expected: +0.6-1.7% profit in 3s\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    this.executionLoading = true;
+
+    try {
+      const response = await firstValueFrom(this.http.post<any>('/api/funding-arb/execute', {
+        symbol: this.selectedForExecution.symbol,
+        positionSize: this.positionSize,
+        userId: this.userId
+      }));
+
+      if (response.success) {
+        alert(`Bot started successfully!`);
+        this.isBotRunning = true;
+        this.selectedForExecution = null;
+      } else {
+        alert(`Failed to start bot: ${response.error}`);
+      }
+    } catch (error: any) {
+      console.error('[Farm] Failed to execute strategy:', error);
+      alert(`Failed to execute strategy: ${error.error?.error || error.message}`);
+    } finally {
+      this.executionLoading = false;
+    }
+  }
+
+  /**
+   * Emergency stop (0s strategy)
+   */
+  async emergencyStop(): Promise<void> {
+    const confirmed = confirm('Emergency stop will attempt to close all open positions. Continue?');
+    if (!confirmed) return;
+
+    try {
+      const response = await firstValueFrom(this.http.post<any>('/api/funding-arb/stop', {}));
+      if (response.success) {
+        alert('Bot stopped successfully');
+        this.isBotRunning = false;
+        this.botStatus = response.result;
+      }
+    } catch (error: any) {
+      console.error('[Farm] Failed to stop bot:', error);
+      alert(`Failed to stop bot: ${error.message}`);
+    }
+  }
+
+  /**
+   * Load SHORT -500ms strategy status
+   */
+  private loadShortStrategyStatus(): void {
+    this.farmService.getShortStrategyStatus().subscribe({
+      next: (status) => {
+        this.shortStrategyStatus = status;
+      },
+      error: (err) => {
+        // Silently fail - strategy might not be configured
+      }
+    });
+  }
+
+  /**
+   * Open SHORT -500ms strategy panel
+   */
+  openShortStrategyPanel(op: FundingOpportunity): void {
+    if (op.exchange !== 'BYBIT') {
+      alert('SHORT -500ms strategy is only supported for BYBIT exchange');
+      return;
+    }
+
+    if (this.shortStrategyStatus?.isRunning) {
+      alert('SHORT -500ms strategy is already running. Stop it first.');
+      return;
+    }
+
+    if (this.isBotRunning) {
+      alert('Another bot (0s strategy) is already running. Stop it first.');
+      return;
+    }
+
+    this.selectedForShortStrategy = op;
+  }
+
+  /**
+   * Cancel SHORT -500ms strategy panel
+   */
+  cancelShortStrategy(): void {
+    this.selectedForShortStrategy = null;
+  }
+
+  /**
+   * Start SHORT -500ms strategy
+   */
+  async startShortStrategy(): Promise<void> {
+    if (!this.selectedForShortStrategy) {
+      alert('Please select an opportunity');
+      return;
+    }
+
+    const op = this.selectedForShortStrategy;
+
+    const confirmed = confirm(
+      `Start SHORT -500ms Strategy on ${op.symbol}?\n\n` +
+      `Funding Rate: ${(op.fundingRate * 100).toFixed(4)}%\n` +
+      `Position Size: ${this.shortStrategyConfig.maxPositionSizeUSDT} USDT\n` +
+      `Paper Trading: ${this.shortStrategyConfig.paperTradingMode ? 'YES' : 'NO'}\n\n` +
+      `The strategy will:\n` +
+      `1. Enter SHORT at -500ms (0.5s BEFORE funding payment)\n` +
+      `2. Hold through funding payment (likely avoided)\n` +
+      `3. Exit at +30s after funding payment\n\n` +
+      `Expected: +1.56% profit per trade (100% success in backtest)\n` +
+      `Monthly ROI: +14% (with 1000 USDT capital)\n\n` +
+      `${this.shortStrategyConfig.paperTradingMode ? '⚠️ PAPER TRADING MODE - No real money' : '⚠️ LIVE TRADING - Real money at risk!'}\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    this.shortStrategyLoading = true;
+
+    try {
+      // Update config with selected symbol
+      const config: Partial<ShortStrategyConfig> = {
+        ...this.shortStrategyConfig,
+        allowedSymbols: [op.symbol],
+        enabled: true
+      };
+
+      const response = await firstValueFrom(this.farmService.startShortStrategy(config));
+
+      if (response.success) {
+        alert(`SHORT -500ms strategy started successfully!\n\nWaiting for next funding time...`);
+        this.selectedForShortStrategy = null;
+        this.loadShortStrategyStatus();
+      } else {
+        alert(`Failed to start strategy: ${response.error}`);
+      }
+    } catch (error: any) {
+      console.error('[Farm] Failed to start SHORT -500ms strategy:', error);
+      alert(`Failed to start strategy: ${error.error?.error || error.message}`);
+    } finally {
+      this.shortStrategyLoading = false;
+    }
+  }
+
+  /**
+   * Stop SHORT -500ms strategy
+   */
+  async stopShortStrategy(): Promise<void> {
+    const confirmed = confirm('Stop the SHORT -500ms strategy? Any active positions will be closed.');
+    if (!confirmed) return;
+
+    try {
+      const response = await firstValueFrom(this.farmService.stopShortStrategy());
+      if (response.success) {
+        alert('SHORT -500ms strategy stopped successfully');
+        this.loadShortStrategyStatus();
+      }
+    } catch (error: any) {
+      console.error('[Farm] Failed to stop SHORT -500ms strategy:', error);
+      alert(`Failed to stop strategy: ${error.message}`);
+    }
   }
 }

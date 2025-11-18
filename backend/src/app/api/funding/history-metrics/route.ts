@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Exchange } from '@prisma/client';
-import { getFundingHistoryWithMetrics } from '@/services/funding-rate.service';
 
 // Helper functions copied from service (temporary workaround)
 function calculateStabilityMetrics(rates: number[]) {
@@ -24,7 +23,9 @@ function calculateStabilityMetrics(rates: number[]) {
 
   let signChanges = 0;
   for (let i = 1; i < rates.length; i++) {
-    if ((rates[i-1] > 0 && rates[i] < 0) || (rates[i-1] < 0 && rates[i] > 0)) {
+    const prev = rates[i-1];
+    const curr = rates[i];
+    if (prev !== undefined && curr !== undefined && ((prev > 0 && curr < 0) || (prev < 0 && curr > 0))) {
       signChanges++;
     }
   }
@@ -35,8 +36,11 @@ function calculateStabilityMetrics(rates: number[]) {
   let numerator = 0;
   let denominator = 0;
   for (let i = 0; i < n; i++) {
-    numerator += (i - xMean) * (rates[i] - mean);
-    denominator += Math.pow(i - xMean, 2);
+    const rate = rates[i];
+    if (rate !== undefined) {
+      numerator += (i - xMean) * (rate - mean);
+      denominator += Math.pow(i - xMean, 2);
+    }
   }
   const slope = denominator !== 0 ? numerator / denominator : 0;
   const maxPossibleSlope = Math.abs(mean) / (n / 2);
@@ -79,14 +83,18 @@ function predictFundingRates(rates: number[]) {
   }
 
   const alpha = 0.3;
-  let ema = rates[0];
+  let ema = rates[0] ?? 0;
   for (let i = 1; i < rates.length; i++) {
-    ema = alpha * rates[i] + (1 - alpha) * ema;
+    const rate = rates[i];
+    if (rate !== undefined) {
+      ema = alpha * rate + (1 - alpha) * ema;
+    }
   }
 
   const recentRates = rates.slice(-5);
-  const recentMean = recentRates.reduce((sum, r) => sum + r, 0) / recentRates.length;
-  const trend = (rates[rates.length - 1] - recentMean) / recentMean;
+  const recentMean = recentRates.reduce((sum, r) => sum + (r ?? 0), 0) / recentRates.length;
+  const lastRate = rates[rates.length - 1] ?? 0;
+  const trend = (lastRate - recentMean) / recentMean;
 
   const next1 = ema * (1 + trend * 0.5);
   const next2 = next1 * (1 + trend * 0.3);
@@ -177,21 +185,18 @@ export async function GET(request: NextRequest) {
     // Normalize symbol format (some exchanges use / separator, some don't)
     const normalizedSymbol = symbol.replace('/', '');
 
-    // Try to fetch comprehensive metrics
-    // For now, if database is empty, use the working /api/arbitrage/funding-rates/history endpoint
+    // Fetch from the working history endpoint
     let result;
     try {
-      result = await getFundingHistoryWithMetrics(exchange, normalizedSymbol, days);
-    } catch (error: any) {
-      // If no database data, fetch from the working history endpoint
+      // Fetch from the working history endpoint
       console.log(`[Funding History Metrics] Database empty, fetching from working history API`);
 
       const historyUrl = `http://localhost:3000/api/arbitrage/funding-rates/history?exchange=${exchange}&symbol=${normalizedSymbol}&days=${days}`;
       const historyResponse = await fetch(historyUrl);
       const historyData = await historyResponse.json();
 
-      if (!historyData.success || historyData.data.length === 0) {
-        throw error; // Re-throw original error
+      if (!historyData.success || (historyData.data && historyData.data.length === 0)) {
+        throw new Error('No historical data available for this symbol and exchange');
       }
 
       // Convert history data to our format
@@ -225,6 +230,9 @@ export async function GET(request: NextRequest) {
           markPrice: null
         }
       };
+    } catch (fetchError: any) {
+      console.error('[Funding History Metrics] Error fetching data:', fetchError);
+      throw new Error('No historical data available for this symbol and exchange');
     }
 
     console.log(`[Funding History Metrics] Successfully fetched data:

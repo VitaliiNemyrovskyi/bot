@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard } from './guards/auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/home', pathMatch: 'full' },
@@ -80,5 +81,10 @@ export const routes: Routes = [
     path: 'farm',
     loadComponent: () => import('./pages/farm/farm.component').then(m => m.FarmComponent),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'admin/recordings',
+    loadComponent: () => import('./pages/recordings/recordings.component').then(m => m.RecordingsComponent),
+    canActivate: [AdminGuard]
   }
 ];

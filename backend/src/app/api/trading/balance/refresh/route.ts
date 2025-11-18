@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Get all user's connected platforms
     const userPlatforms = Array.from(mockUserTradingPlatforms.values())
-      .filter(up => up.userId === authResult.user.userId && up.isConnected);
+      .filter(up => up.userId === authResult.user!.userId && up.isConnected);
 
     // Simulate refreshing balance from each platform
     const updatedPlatforms = [];

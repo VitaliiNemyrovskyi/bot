@@ -265,8 +265,9 @@ function generateMockFundingRates(
 ): Array<{ timestamp: number; fundingRate: number }> {
   const fundingRates: Array<{ timestamp: number; fundingRate: number }> = [];
 
-  // Funding occurs every 8 hours (3 times per day)
-  const FUNDING_INTERVAL_MS = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+  // For better chart visualization, use 1-hour intervals instead of 8-hour
+  // This will generate 24 points per day instead of 3
+  const FUNDING_INTERVAL_MS = 1 * 60 * 60 * 1000; // 1 hour in milliseconds
 
   // Base funding rate with some randomness
   // Typical funding rates range from -0.001 to 0.001 (0.1%)

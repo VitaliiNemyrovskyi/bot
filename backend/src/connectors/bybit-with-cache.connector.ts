@@ -18,7 +18,6 @@ export class BybitConnectorWithCache extends BaseExchangeConnector {
   constructor(
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = true,
     userId?: string,
     credentialId?: string
   ) {

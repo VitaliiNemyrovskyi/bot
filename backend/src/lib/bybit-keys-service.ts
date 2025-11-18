@@ -102,14 +102,12 @@ export class BybitKeysService {
         update: {
           apiKey: encryptedApiKey,
           apiSecret: encryptedApiSecret,
-          testnet: data.testnet,
           updatedAt: new Date(),
         },
         create: {
           userId,
           apiKey: encryptedApiKey,
           apiSecret: encryptedApiSecret,
-          testnet: data.testnet,
         },
       });
 
@@ -120,7 +118,6 @@ export class BybitKeysService {
       return {
         id: apiKeyRecord.id,
         userId: apiKeyRecord.userId,
-        testnet: apiKeyRecord.testnet,
         createdAt: apiKeyRecord.createdAt,
         updatedAt: apiKeyRecord.updatedAt,
       };
@@ -154,7 +151,6 @@ export class BybitKeysService {
 
       return {
         hasKeys: true,
-        testnet: apiKeyRecord.testnet,
         apiKeyPreview,
         createdAt: apiKeyRecord.createdAt,
         updatedAt: apiKeyRecord.updatedAt,
@@ -180,7 +176,6 @@ export class BybitKeysService {
         return {
           apiKey: cached.apiKey,
           apiSecret: cached.apiSecret,
-          testnet: cached.testnet,
         };
       }
 
@@ -201,14 +196,12 @@ export class BybitKeysService {
       this.cache.set(userId, {
         apiKey,
         apiSecret,
-        testnet: apiKeyRecord.testnet,
         timestamp: Date.now(),
       });
 
       return {
         apiKey,
         apiSecret,
-        testnet: apiKeyRecord.testnet,
       };
     } catch (error) {
       console.error('Error getting API keys:', error);

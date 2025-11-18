@@ -74,6 +74,14 @@ export interface AppConfig {
         symbolInfo: string;
         balance: string;
       };
+      fundingPayment: {
+        recordings: string;
+        recordingById: string;
+        recordingData: string;
+        recordingStream: string;
+        recordingExport: string;
+        recordingTest: string;
+      };
     };
   };
   app: {
@@ -165,6 +173,14 @@ export const appConfig: AppConfig = {
       exchange: {
         symbolInfo: '/exchange/symbol-info',
         balance: '/exchange/balance'
+      },
+      fundingPayment: {
+        recordings: '/funding-payment/recordings',
+        recordingById: '/funding-payment/recordings/:id',
+        recordingData: '/funding-payment/recordings/:id/data',
+        recordingStream: '/funding-payment/recordings/:id/stream',
+        recordingExport: '/funding-payment/recordings/:id/export',
+        recordingTest: '/funding-payment/recordings/test'
       }
     }
   },

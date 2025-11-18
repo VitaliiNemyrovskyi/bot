@@ -1,4 +1,4 @@
-import { RestClientV5, WebsocketClient } from 'bybit-api';
+import { RestClientV5, WebsocketClient, WebsocketAPIClient } from 'bybit-api';
 import { BybitKeysService } from './bybit-keys-service';
 
 export interface BybitConfig {
@@ -260,6 +260,7 @@ export class BybitService {
   private restClient: RestClientV5;
   private wsClientPrivate?: WebsocketClient; // Private WebSocket (requires auth) - orders, positions, wallet
   private wsClientPublic: WebsocketClient; // Public WebSocket (no auth) - tickers, orderbook, kline
+  private wsApiClient?: WebsocketAPIClient; // WebSocket API Client - for sending orders via WebSocket (low latency)
   private config: BybitConfig;
   private keysLoadedFromDb: boolean = false;
   private timeOffset: number = 0;
@@ -287,7 +288,6 @@ export class BybitService {
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
-      testnet: false, // Mainnet only
       enableRateLimit: this.config.enableRateLimit,
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
@@ -299,7 +299,6 @@ export class BybitService {
     // Always create public WebSocket client (no credentials needed for market data)
     this.wsClientPublic = new WebsocketClient({
       market: 'v5',
-      testnet: false,
     });
     console.log('[BybitService] Public WebSocket client initialized (market data)');
 
@@ -309,9 +308,15 @@ export class BybitService {
         key: this.config.apiKey,
         secret: this.config.apiSecret,
         market: 'v5',
-        testnet: false,
       });
       console.log('[BybitService] Private WebSocket client initialized (account data)');
+
+      // Create WebSocket API client for sending orders via WebSocket (low latency)
+      this.wsApiClient = new WebsocketAPIClient({
+        key: this.config.apiKey,
+        secret: this.config.apiSecret,
+      });
+      console.log('[BybitService] WebSocket API client initialized (low-latency trading)');
     } else {
       console.log('[BybitService] Private WebSocket client not initialized (no credentials)');
     }
@@ -1360,6 +1365,41 @@ export class BybitService {
     }
   }
 
+  async getOrderBook(
+    category: 'linear' | 'spot' | 'option',
+    symbol: string,
+    limit: number = 1
+  ): Promise<{
+    symbol: string;
+    bids: [string, string][]; // [price, size]
+    asks: [string, string][]; // [price, size]
+    timestamp: number;
+  }> {
+    try {
+      const response = await this.restClient.getOrderbook({
+        category,
+        symbol,
+        limit,
+      });
+
+      if (response.retCode !== 0) {
+        throw new Error(`Bybit API Error: ${response.retMsg}`);
+      }
+
+      const result = response.result;
+
+      return {
+        symbol: result.s,
+        bids: result.b || [],
+        asks: result.a || [],
+        timestamp: Number(result.ts),
+      };
+    } catch (error) {
+      console.error('Error fetching order book:', error);
+      throw error;
+    }
+  }
+
   async getKline(category: 'linear' | 'spot' | 'option', symbol: string, interval: string, start?: number, end?: number, limit: number = 200) {
     try {
       const params: any = { category, symbol, interval, limit };
@@ -1618,6 +1658,255 @@ export class BybitService {
     }
   }
 
+  // Fast Trading Methods for Funding Arbitrage Strategy
+  /**
+   * Open market SHORT position (sell)
+   * Optimized for low latency (~30-50ms)
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size in base currency
+   * @param reduceOnly - If true, only reduces existing position
+   * @returns Order result with orderId and status
+   */
+  async openShort(
+    symbol: string,
+    quantity: string,
+    reduceOnly: boolean = false
+  ): Promise<any> {
+    console.log(`[BybitService] Opening SHORT: ${symbol} qty=${quantity}`);
+
+    const params: any = {
+      category: 'linear',
+      symbol,
+      side: 'Sell',
+      orderType: 'Market',
+      qty: quantity,
+      timeInForce: 'GTC', // Good Till Cancel (not relevant for Market orders but required)
+      reduceOnly,
+    };
+
+    try {
+      const result = await this.restClient.submitOrder(params);
+      console.log(`[BybitService] SHORT opened: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService] Failed to open SHORT:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Open market LONG position (buy)
+   * Optimized for low latency (~30-50ms)
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size in base currency
+   * @param reduceOnly - If true, only reduces existing position
+   * @returns Order result with orderId and status
+   */
+  async openLong(
+    symbol: string,
+    quantity: string,
+    reduceOnly: boolean = false
+  ): Promise<any> {
+    console.log(`[BybitService] Opening LONG: ${symbol} qty=${quantity}`);
+
+    const params: any = {
+      category: 'linear',
+      symbol,
+      side: 'Buy',
+      orderType: 'Market',
+      qty: quantity,
+      timeInForce: 'GTC',
+      reduceOnly,
+    };
+
+    try {
+      const result = await this.restClient.submitOrder(params);
+      console.log(`[BybitService] LONG opened: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService] Failed to open LONG:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Close SHORT position (buy to close)
+   * Optimized for low latency (~30-50ms)
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size to close in base currency
+   * @returns Order result with orderId and status
+   */
+  async closeShort(symbol: string, quantity: string): Promise<any> {
+    console.log(`[BybitService] Closing SHORT: ${symbol} qty=${quantity}`);
+
+    const params: any = {
+      category: 'linear',
+      symbol,
+      side: 'Buy', // Buy to close SHORT
+      orderType: 'Market',
+      qty: quantity,
+      timeInForce: 'GTC',
+      reduceOnly: true, // CRITICAL: Only close existing position
+    };
+
+    try {
+      const result = await this.restClient.submitOrder(params);
+      console.log(`[BybitService] SHORT closed: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService] Failed to close SHORT:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Close LONG position (sell to close)
+   * Optimized for low latency (~30-50ms)
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size to close in base currency
+   * @returns Order result with orderId and status
+   */
+  async closeLong(symbol: string, quantity: string): Promise<any> {
+    console.log(`[BybitService] Closing LONG: ${symbol} qty=${quantity}`);
+
+    const params: any = {
+      category: 'linear',
+      symbol,
+      side: 'Sell', // Sell to close LONG
+      orderType: 'Market',
+      qty: quantity,
+      timeInForce: 'GTC',
+      reduceOnly: true, // CRITICAL: Only close existing position
+    };
+
+    try {
+      const result = await this.restClient.submitOrder(params);
+      console.log(`[BybitService] LONG closed: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService] Failed to close LONG:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Open SHORT position via WebSocket API (ultra-low latency ~5-20ms)
+   * Preferred method for precise timing strategies
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size in base currency
+   * @param reduceOnly - Set to true to only reduce position size
+   * @returns Order result with orderId and status
+   */
+  async openShortWS(
+    symbol: string,
+    quantity: string,
+    reduceOnly: boolean = false
+  ): Promise<any> {
+    if (!this.wsApiClient) {
+      throw new Error('WebSocket API client not initialized. API keys required.');
+    }
+
+    console.log(`[BybitService WS] Opening SHORT: ${symbol} qty=${quantity}`);
+    const startTime = Date.now();
+
+    try {
+      const result = await this.wsApiClient.submitNewOrder({
+        category: 'linear',
+        symbol,
+        side: 'Sell', // Sell to open SHORT
+        orderType: 'Market',
+        qty: quantity,
+        reduceOnly,
+      });
+
+      const latency = Date.now() - startTime;
+      console.log(`[BybitService WS] SHORT opened in ${latency}ms: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService WS] Failed to open SHORT:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Close SHORT position via WebSocket API (ultra-low latency ~5-20ms)
+   * Buy to close SHORT position
+   *
+   * @param symbol - Trading pair (e.g. "BTCUSDT")
+   * @param quantity - Position size to close in base currency
+   * @returns Order result with orderId and status
+   */
+  async closeShortWS(symbol: string, quantity: string): Promise<any> {
+    if (!this.wsApiClient) {
+      throw new Error('WebSocket API client not initialized. API keys required.');
+    }
+
+    console.log(`[BybitService WS] Closing SHORT: ${symbol} qty=${quantity}`);
+    const startTime = Date.now();
+
+    try {
+      const result = await this.wsApiClient.submitNewOrder({
+        category: 'linear',
+        symbol,
+        side: 'Buy', // Buy to close SHORT
+        orderType: 'Market',
+        qty: quantity,
+        reduceOnly: true, // CRITICAL: Only close existing position
+      });
+
+      const latency = Date.now() - startTime;
+      console.log(`[BybitService WS] SHORT closed in ${latency}ms: orderId=${result.result.orderId}`);
+      return result.result;
+    } catch (error: any) {
+      console.error(`[BybitService WS] Failed to close SHORT:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Flip position: Close SHORT and immediately open LONG (or vice versa)
+   * Critical for funding arbitrage strategy timing
+   *
+   * @param symbol - Trading pair
+   * @param quantity - Position size
+   * @param fromShortToLong - true: SHORT→LONG, false: LONG→SHORT
+   * @returns Object with closeResult and openResult
+   */
+  async flipPosition(
+    symbol: string,
+    quantity: string,
+    fromShortToLong: boolean
+  ): Promise<{ closeResult: any; openResult: any }> {
+    console.log(`[BybitService] Flipping position: ${symbol} ${fromShortToLong ? 'SHORT→LONG' : 'LONG→SHORT'}`);
+
+    const startTime = Date.now();
+
+    try {
+      // Close existing position
+      const closeResult = fromShortToLong
+        ? await this.closeShort(symbol, quantity)
+        : await this.closeLong(symbol, quantity);
+
+      // Immediately open opposite position
+      const openResult = fromShortToLong
+        ? await this.openLong(symbol, quantity)
+        : await this.openShort(symbol, quantity);
+
+      const duration = Date.now() - startTime;
+      console.log(`[BybitService] Position flipped in ${duration}ms`);
+
+      return { closeResult, openResult };
+    } catch (error: any) {
+      console.error(`[BybitService] Failed to flip position:`, error.message);
+      throw error;
+    }
+  }
+
   // Utility Methods
   hasCredentials(): boolean {
     return !!(this.config.apiKey && this.config.apiSecret);
@@ -1633,7 +1922,6 @@ export class BybitService {
     this.restClient = new RestClientV5({
       key: this.config.apiKey,
       secret: this.config.apiSecret,
-      testnet: false,
       enableRateLimit: this.config.enableRateLimit,
       recv_window: 30000, // 30 seconds - increased from default 5000ms to handle time sync issues
     });
@@ -1641,7 +1929,6 @@ export class BybitService {
     // Public WebSocket doesn't need credentials, so recreate it
     this.wsClientPublic = new WebsocketClient({
       market: 'v5',
-      testnet: false,
     });
     console.log('[BybitService] Public WebSocket client reinitialized');
 
@@ -1650,7 +1937,6 @@ export class BybitService {
       key: this.config.apiKey,
       secret: this.config.apiSecret,
       market: 'v5',
-      testnet: false,
     });
     console.log('[BybitService] Private WebSocket client reinitialized');
   }
@@ -1658,6 +1944,6 @@ export class BybitService {
 
 // Export a default instance for easy use (mainnet only)
 export const bybitService = new BybitService({
-  apiKey: process.env.BYBIT_API_KEY,
-  apiSecret: process.env.BYBIT_API_SECRET,
+  apiKey: process.env['BYBIT_API_KEY'],
+  apiSecret: process.env['BYBIT_API_SECRET'],
 });

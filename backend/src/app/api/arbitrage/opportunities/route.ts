@@ -450,7 +450,8 @@ export async function GET(request: NextRequest) {
         return {
           ...ex,
           fundingRate: fundingData?.rate,
-          fundingInterval: fundingData?.interval
+          fundingInterval: fundingData?.interval,
+          environment: 'MAINNET'
         };
       });
 
@@ -640,11 +641,13 @@ export async function GET(request: NextRequest) {
           name: primaryExchangeName,
           credentialId: bestShort.credentialId,
           price: highestPrice,
+          environment: 'MAINNET', // Always mainnet (testnet deprecated)
         },
         hedgeExchange: {
           name: hedgeExchangeName,
           credentialId: bestLong.credentialId,
           price: lowestPrice,
+          environment: 'MAINNET', // Always mainnet (testnet deprecated)
         },
         spread,
         spreadPercent,

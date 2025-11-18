@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
             const ticker = await bybitService.getTicker('linear', symbol);
             if (ticker && ticker.length > 0) {
               const tickerData = ticker[0];
+              if (!tickerData) return;
               send({
                 type: 'ticker',
                 symbol: tickerData.symbol,

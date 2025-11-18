@@ -1,9 +1,10 @@
-import { Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject } from '@angular/core';import { IconComponent } from '../../components/ui/icon/icon.component';
+import {Component, OnInit, OnDestroy, ViewEncapsulation, signal, computed, effect, inject, Signal} from '@angular/core';
+import { IconComponent } from '../../components/ui/icon/icon.component';
 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
-import { interval, Subscription } from 'rxjs';
+import {interval, Subscription, take} from 'rxjs';
 import { startWith, switchMap } from 'rxjs/operators';
 import { PublicFundingRatesService } from '../../services/public-funding-rates.service';
 import { FundingRateOpportunity, SpreadStabilityMetrics } from '../../models/public-funding-rate.model';
@@ -29,13 +30,13 @@ import { FundingSpreadDetailsComponent } from '../../components/trading/funding-
  * - Auto-refresh every 30 seconds
  */
 @Component({
-  selector: 'app-arbitrage-funding',
-  standalone: true,
-  imports: [
-    IconComponent,CommonModule, FormsModule, RouterModule, CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingRateSpreadChartComponent, FundingSpreadDetailsComponent],
-  templateUrl: './arbitrage-funding.component.html',
-  styleUrls: ['./arbitrage-funding.component.scss'],
-  encapsulation: ViewEncapsulation.None,
+    encapsulation: ViewEncapsulation.None,
+    imports: [
+        IconComponent, CommonModule, FormsModule, RouterModule, CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent, ButtonComponent, DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent, FundingRateSpreadChartComponent, FundingSpreadDetailsComponent],
+    selector: 'app-arbitrage-funding',
+    standalone: true,
+    styleUrls: ['./arbitrage-funding.component.scss'],
+    templateUrl: './arbitrage-funding.component.html',
 })
 export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   // State
@@ -91,7 +92,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   });
 
   // Computed time since update - uses currentTime signal to avoid NG0100
-  timeSinceUpdate = computed(() => {
+  timeSinceUpdate: Signal<string> = computed(() => {
     const lastUpdate = this.lastUpdated();
     if (!lastUpdate) return '—';
 
@@ -249,7 +250,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.error.set(null);
 
-    this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()).subscribe({
+    this.fundingRatesService.getFundingRatesOpportunities(this.selectedExchanges()).pipe(take(1)).subscribe({
       next: (opportunities) => {
         this.opportunities.set(opportunities);
         this.error.set(null);

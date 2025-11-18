@@ -116,7 +116,6 @@ export async function POST(request: NextRequest) {
       },
       credentials.apiKey,
       credentials.apiSecret,
-      credentials.id // Pass credential ID for persistence
     );
 
     console.log(`[API] Strategy started successfully: ${strategyId}`);

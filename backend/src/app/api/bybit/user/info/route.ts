@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
     // Check for API keys in headers (for testing)
     const headerApiKey = request.headers.get('x-bybit-api-key');
     const headerApiSecret = request.headers.get('x-bybit-api-secret');
-    const headerTestnet = request.headers.get('x-bybit-testnet') === 'true';
 
     let bybitService: BybitService | null = null;
 
@@ -64,7 +63,6 @@ export async function GET(request: NextRequest) {
       bybitService = new BybitService({
         apiKey: headerApiKey,
         apiSecret: headerApiSecret,
-        testnet: headerTestnet,
         enableRateLimit: true
       });
     } else {

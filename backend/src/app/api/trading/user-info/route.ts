@@ -25,7 +25,6 @@ import { BybitService } from '@/lib/bybit';
  * Request Headers Required:
  * - x-api-key: Bybit API key
  * - x-api-secret: Bybit API secret
- * - x-testnet: (optional) 'true' for testnet, 'false' for mainnet (default: 'true')
  */
 export async function GET(request: NextRequest) {
   try {

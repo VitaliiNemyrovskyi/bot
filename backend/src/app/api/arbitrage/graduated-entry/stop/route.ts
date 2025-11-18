@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
 import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
+import prisma from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   console.log(`[API] ========================================`);
@@ -49,9 +50,6 @@ export async function POST(request: NextRequest) {
     if (!position) {
       // Position not in memory - CRITICAL: After backend restart, positions are in DB but not in memory
       console.log(`[API] ⚠️ Position ${positionId} not found in memory, checking database...`);
-
-      const { PrismaClient } = await import('@prisma/client');
-      const prisma = new PrismaClient();
 
       try {
         const dbPosition = await prisma.graduatedEntryPosition.findUnique({

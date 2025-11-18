@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signalMonitor } from '@/services/signal-monitor.service';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { AuthService } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -12,17 +11,17 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get user session
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // Authenticate user
+    const auth = await AuthService.authenticateRequest(request);
+    if (!auth.success || !auth.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
     // Get active signals for user
-    const signals = signalMonitor.getActiveSignals(session.user.id);
+    const signals = signalMonitor.getActiveSignals(auth.user.userId);
 
     return NextResponse.json({
       success: true,

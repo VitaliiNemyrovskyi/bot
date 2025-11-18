@@ -14,7 +14,6 @@ export class BinanceFuturesConnector extends BaseExchangeConnector {
   constructor(
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = false,
     userId?: string,
     credentialId?: string
   ) {

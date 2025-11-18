@@ -245,7 +245,6 @@ async function customInstanceExample() {
     const customBybit = new BybitService({
       apiKey: process.env.BYBIT_TESTNET_API_KEY,
       apiSecret: process.env.BYBIT_TESTNET_API_SECRET,
-      testnet: true,
       enableRateLimit: true
     });
 
@@ -365,7 +364,7 @@ async function runAllExamples() {
   console.log('========================================');
   console.log('Bybit User Information Examples');
   console.log('========================================');
-  console.log(`Environment: ${bybitService.isTestnet() ? 'TESTNET' : 'MAINNET'}`);
+  console.log(`Environment: MAINNET`); // Testnet is deprecated
 
   try {
     // Run all examples

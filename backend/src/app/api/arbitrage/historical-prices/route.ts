@@ -633,7 +633,7 @@ async function fetchKuCoinKlines(
         price: parseFloat(k[4])
       }));
 
-      klines.sort((a, b) => a.time - b.time);
+      klines.sort((a: { time: number; price: number }, b: { time: number; price: number }) => a.time - b.time);
 
       console.log(`[KuCoin Klines] Successfully fetched ${klines.length} klines`);
       if (klines.length > 0) {
@@ -717,8 +717,8 @@ async function fetchKuCoinKlines(
 
     console.log(`[KuCoin Klines] Total fetched: ${uniqueKlines.length} candles (requested: ${limit})`);
     if (uniqueKlines.length > 0) {
-      console.log(`[KuCoin Klines] First:`, new Date(uniqueKlines[0].time * 1000).toISOString(), `Price: ${uniqueKlines[0].price}`);
-      console.log(`[KuCoin Klines] Last:`, new Date(uniqueKlines[uniqueKlines.length - 1].time * 1000).toISOString(), `Price: ${uniqueKlines[uniqueKlines.length - 1].price}`);
+      console.log(`[KuCoin Klines] First:`, new Date(uniqueKlines[0]!.time * 1000).toISOString(), `Price: ${uniqueKlines[0]!.price}`);
+      console.log(`[KuCoin Klines] Last:`, new Date(uniqueKlines[uniqueKlines.length - 1]!.time * 1000).toISOString(), `Price: ${uniqueKlines[uniqueKlines.length - 1]!.price}`);
     }
 
     return uniqueKlines;

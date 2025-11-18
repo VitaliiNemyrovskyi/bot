@@ -36,7 +36,6 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
     exchangeId: string,
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = true,
     private userId?: string,
     private credentialId?: string,
     private marketType: 'spot' | 'swap' | 'future' | 'margin' = 'spot',

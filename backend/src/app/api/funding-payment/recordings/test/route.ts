@@ -6,12 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, Exchange } from '@prisma/client';
+import { Exchange } from '@prisma/client';
 import { FundingPaymentRecorderService, RecordingConfig } from '@/services/funding-payment-recorder.service';
 import { BybitService } from '@/lib/bybit';
-import { auth } from '@/lib/auth';
-
-const prisma = new PrismaClient();
+import { AuthService } from '@/lib/auth';
+import prisma from '@/lib/prisma';
 
 /**
  * POST /api/funding-payment/recordings/test
@@ -20,12 +19,12 @@ const prisma = new PrismaClient();
 export async function POST(request: NextRequest) {
   try {
     // Authenticate user
-    const session = await auth(request);
-    if (!session) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.userId;
+    const userId = authResult.user.userId;
 
     // Parse request body
     const body = await request.json();

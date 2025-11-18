@@ -121,7 +121,6 @@ export async function GET(request: NextRequest) {
         data: allCoinsBalance,
         accountType,
         ...(coin && { coin }),
-        testnet: bybitService.isTestnet(),
         timestamp: new Date().toISOString(),
       },
       { status: 200 }

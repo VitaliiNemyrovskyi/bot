@@ -415,6 +415,9 @@ async function handleBybitOrder(
   }
 
   const instrument = instrumentInfo.list[0];
+  if (!instrument) {
+    throw new Error(`Unable to retrieve instrument details for ${order.symbol}`);
+  }
 
   // Prepare Bybit order request
   const bybitOrderRequest: any = {

@@ -6,12 +6,10 @@
  */
 
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
 import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 export interface FeeRateData {
   makerFeeRate: number; // e.g., 0.0002 = 0.02%

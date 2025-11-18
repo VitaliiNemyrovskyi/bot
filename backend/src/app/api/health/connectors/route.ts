@@ -50,17 +50,15 @@ export async function GET(request: NextRequest) {
 
     // Check Bybit connector
     try {
-      const bybitCreds = await ExchangeCredentialsService.getCredentialsByEnvironment(
+      const bybitCreds = await ExchangeCredentialsService.getActiveCredentials(
         userId,
-        'BYBIT' as any,
-        'MAINNET' as any
+        'BYBIT' as any
       );
 
       if (bybitCreds) {
         const bybitService = new BybitService({
           apiKey: bybitCreds.apiKey,
           apiSecret: bybitCreds.apiSecret,
-          testnet: bybitCreds.environment === 'TESTNET',
           enableRateLimit: true
         });
 
@@ -81,7 +79,7 @@ export async function GET(request: NextRequest) {
             message = `Time offset is large (${syncStatus.offset}ms). Monitor for API failures.`;
           }
 
-          connectorHealth.BYBIT = {
+          connectorHealth['BYBIT'] = {
             status,
             initialized: true,
             timeSync: {
@@ -92,7 +90,7 @@ export async function GET(request: NextRequest) {
             message
           };
         } catch (error: any) {
-          connectorHealth.BYBIT = {
+          connectorHealth['BYBIT'] = {
             status: 'error',
             initialized: false,
             error: error.message,
@@ -100,14 +98,14 @@ export async function GET(request: NextRequest) {
           };
         }
       } else {
-        connectorHealth.BYBIT = {
+        connectorHealth['BYBIT'] = {
           status: 'warning',
           initialized: false,
           message: 'No credentials configured'
         };
       }
     } catch (error: any) {
-      connectorHealth.BYBIT = {
+      connectorHealth['BYBIT'] = {
         status: 'error',
         initialized: false,
         error: error.message
@@ -116,10 +114,9 @@ export async function GET(request: NextRequest) {
 
     // Check MEXC connector
     try {
-      const mexcCreds = await ExchangeCredentialsService.getCredentialsByEnvironment(
+      const mexcCreds = await ExchangeCredentialsService.getActiveCredentials(
         userId,
-        'MEXC' as any,
-        'MAINNET' as any
+        'MEXC' as any
       );
 
       if (mexcCreds) {
@@ -127,7 +124,6 @@ export async function GET(request: NextRequest) {
           apiKey: mexcCreds.apiKey,
           apiSecret: mexcCreds.apiSecret,
           authToken: mexcCreds.authToken,
-          testnet: mexcCreds.environment === 'TESTNET',
           enableRateLimit: true
         });
 
@@ -135,13 +131,13 @@ export async function GET(request: NextRequest) {
           // Test account info (verifies credentials and connection)
           await mexcService.getAccountInfo();
 
-          connectorHealth.MEXC = {
+          connectorHealth['MEXC'] = {
             status: 'healthy',
             initialized: true,
             message: 'Connector initialized successfully'
           };
         } catch (error: any) {
-          connectorHealth.MEXC = {
+          connectorHealth['MEXC'] = {
             status: 'error',
             initialized: false,
             error: error.message,
@@ -149,14 +145,14 @@ export async function GET(request: NextRequest) {
           };
         }
       } else {
-        connectorHealth.MEXC = {
+        connectorHealth['MEXC'] = {
           status: 'warning',
           initialized: false,
           message: 'No credentials configured'
         };
       }
     } catch (error: any) {
-      connectorHealth.MEXC = {
+      connectorHealth['MEXC'] = {
         status: 'error',
         initialized: false,
         error: error.message
@@ -165,17 +161,15 @@ export async function GET(request: NextRequest) {
 
     // Check BingX connector
     try {
-      const bingxCreds = await ExchangeCredentialsService.getCredentialsByEnvironment(
+      const bingxCreds = await ExchangeCredentialsService.getActiveCredentials(
         userId,
-        'BINGX' as any,
-        'MAINNET' as any
+        'BINGX' as any
       );
 
       if (bingxCreds) {
         const bingxService = new BingXService({
           apiKey: bingxCreds.apiKey,
           apiSecret: bingxCreds.apiSecret,
-          testnet: bingxCreds.environment === 'TESTNET',
           enableRateLimit: true
         });
 
@@ -183,13 +177,13 @@ export async function GET(request: NextRequest) {
           // Test account info (verifies credentials and connection)
           await bingxService.getAccountInfo();
 
-          connectorHealth.BINGX = {
+          connectorHealth['BINGX'] = {
             status: 'healthy',
             initialized: true,
             message: 'Connector initialized successfully'
           };
         } catch (error: any) {
-          connectorHealth.BINGX = {
+          connectorHealth['BINGX'] = {
             status: 'error',
             initialized: false,
             error: error.message,
@@ -197,14 +191,14 @@ export async function GET(request: NextRequest) {
           };
         }
       } else {
-        connectorHealth.BINGX = {
+        connectorHealth['BINGX'] = {
           status: 'warning',
           initialized: false,
           message: 'No credentials configured'
         };
       }
     } catch (error: any) {
-      connectorHealth.BINGX = {
+      connectorHealth['BINGX'] = {
         status: 'error',
         initialized: false,
         error: error.message

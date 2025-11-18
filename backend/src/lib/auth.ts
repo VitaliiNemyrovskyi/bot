@@ -208,13 +208,20 @@ export class AuthService {
         return { success: false, user: null, error: 'Invalid token' };
       }
 
-      // Verify user still exists in database
+      // Verify user still exists in database and get fresh role
       const user = await this.findUserById(payload.userId);
       if (!user) {
         return { success: false, user: null, error: 'User not found' };
       }
 
-      return { success: true, user: payload };
+      // Return payload with fresh role from database
+      return {
+        success: true,
+        user: {
+          ...payload,
+          role: user.role // Always use fresh role from database
+        }
+      };
     } catch (error) {
       console.error('Authentication error:', error);
       return { success: false, user: null, error: 'Authentication failed' };

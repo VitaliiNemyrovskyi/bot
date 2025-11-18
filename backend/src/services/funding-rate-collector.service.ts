@@ -1,35 +1,22 @@
-import { PrismaClient, Exchange } from '@prisma/client';
+import { Exchange, PrismaClient } from '@prisma/client';
 import { BingXService } from '../lib/bingx';
 import { BybitService } from '../lib/bybit';
 import { redisService } from '../lib/redis';
+import prisma from '../lib/prisma';
 
 /**
  * Background service for collecting historical funding rates
- * Runs every hour to:
+ * Runs every 5 minutes to:
  * - Save funding rates to PostgreSQL for historical analysis
  * - Cache funding rates in Redis for fast real-time access (60s TTL)
  */
 export class FundingRateCollectorService {
   private prisma: PrismaClient;
   private collectionInterval: NodeJS.Timeout | null = null;
-  private readonly COLLECTION_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  private readonly COLLECTION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-  // Symbols to track (can be expanded)
-  private readonly TRACKED_SYMBOLS = [
-    'BTC/USDT',
-    'ETH/USDT',
-    'BNB/USDT',
-    'SOL/USDT',
-    'ARB/USDT',
-    'OP/USDT',
-    'MATIC/USDT',
-    'AVAX/USDT',
-    'DOT/USDT',
-    'LINK/USDT',
-    'RIVER/USDT',
-    'AIA/USDT',
-    'LSK/USDT',
-  ];
+  // Cache for symbols list (fetched dynamically from exchanges)
+  private symbolsCache: Map<Exchange, { symbols: string[]; lastFetch: number }> = new Map();
 
   // Exchanges to track
   private readonly TRACKED_EXCHANGES: Exchange[] = [
@@ -43,7 +30,7 @@ export class FundingRateCollectorService {
   ];
 
   constructor() {
-    this.prisma = new PrismaClient();
+    this.prisma = prisma;
   }
 
   /**
@@ -55,7 +42,7 @@ export class FundingRateCollectorService {
     // Collect immediately on start
     this.collectAllFundingRates();
 
-    // Then collect every hour
+    // Then collect every 5 minutes
     this.collectionInterval = setInterval(() => {
       this.collectAllFundingRates();
     }, this.COLLECTION_INTERVAL_MS);
@@ -75,32 +62,185 @@ export class FundingRateCollectorService {
   }
 
   /**
-   * Collect funding rates from all exchanges for all symbols
+   * Get all available symbols from an exchange (with caching)
+   */
+  private async getSymbolsForExchange(exchange: Exchange): Promise<string[]> {
+    const now = Date.now();
+    const cached = this.symbolsCache.get(exchange);
+
+    // Use cache if less than 1 hour old
+    if (cached && (now - cached.lastFetch) < 60 * 60 * 1000) {
+      return cached.symbols;
+    }
+
+    // Fetch fresh list
+    let symbols: string[] = [];
+
+    try {
+      switch (exchange) {
+        case Exchange.BYBIT:
+          symbols = await this.fetchBybitSymbols();
+          break;
+        case Exchange.BINANCE:
+          symbols = await this.fetchBinanceSymbols();
+          break;
+        case Exchange.BINGX:
+          symbols = await this.fetchBingXSymbols();
+          break;
+        case Exchange.GATEIO:
+          symbols = await this.fetchGateIOSymbols();
+          break;
+        case Exchange.OKX:
+          symbols = await this.fetchOKXSymbols();
+          break;
+        case Exchange.BITGET:
+          symbols = await this.fetchBitgetSymbols();
+          break;
+        case Exchange.KUCOIN:
+          symbols = await this.fetchKuCoinSymbols();
+          break;
+        default:
+          console.warn(`[FundingRateCollector] Symbol fetching not implemented for ${exchange}`);
+          return [];
+      }
+
+      // Cache the result
+      this.symbolsCache.set(exchange, { symbols, lastFetch: now });
+      console.log(`[FundingRateCollector] Fetched ${symbols.length} symbols from ${exchange}`);
+
+      return symbols;
+    } catch (error: any) {
+      console.error(`[FundingRateCollector] Failed to fetch symbols from ${exchange}:`, error.message);
+
+      // Return cached symbols if available, even if expired
+      if (cached) {
+        console.log(`[FundingRateCollector] Using stale cache for ${exchange}`);
+        return cached.symbols;
+      }
+
+      return [];
+    }
+  }
+
+  /**
+   * Collect funding rates from all exchanges for all symbols (bulk mode)
    */
   private async collectAllFundingRates(): Promise<void> {
     const startTime = Date.now();
-    // console.log('[FundingRateCollector] Starting collection cycle...');
+    console.log('[FundingRateCollector] Starting collection cycle (bulk mode)...');
 
     let totalCollected = 0;
     let totalErrors = 0;
 
     for (const exchange of this.TRACKED_EXCHANGES) {
-      for (const symbol of this.TRACKED_SYMBOLS) {
-        try {
-          await this.collectFundingRate(exchange, symbol);
-          totalCollected++;
-
-          // Small delay to avoid rate limits
-          await this.delay(100);
-        } catch (error: any) {
-          totalErrors++;
-          console.error(`[FundingRateCollector] Error collecting ${exchange}:${symbol}:`, error.message);
-        }
+      try {
+        const collected = await this.collectBulkFundingRates(exchange);
+        totalCollected += collected;
+        console.log(`[FundingRateCollector] ✓ ${exchange}: ${collected} symbols collected`);
+      } catch (error: any) {
+        totalErrors++;
+        console.error(`[FundingRateCollector] ✗ ${exchange}: ${error.message}`);
       }
+
+      // Small delay between exchanges
+      await this.delay(500);
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[FundingRateCollector] Collection cycle completed in ${duration}ms. Collected: ${totalCollected}, Errors: ${totalErrors}`);
+    console.log(`[FundingRateCollector] Collection cycle completed in ${(duration / 1000).toFixed(1)}s. Collected: ${totalCollected}, Errors: ${totalErrors}`);
+  }
+
+  /**
+   * Collect all funding rates from an exchange in one bulk operation
+   */
+  private async collectBulkFundingRates(exchange: Exchange): Promise<number> {
+    let fundingDataList: Array<{
+      symbol: string;
+      fundingRate: number;
+      nextFundingTime: Date;
+      fundingInterval: number;
+      markPrice?: number;
+      indexPrice?: number;
+    }> = [];
+
+    // Fetch all funding rates in one request
+    switch (exchange) {
+      case Exchange.BYBIT:
+        fundingDataList = await this.fetchBybitBulkFunding();
+        break;
+      case Exchange.BINANCE:
+        fundingDataList = await this.fetchBinanceBulkFunding();
+        break;
+      case Exchange.BINGX:
+        fundingDataList = await this.fetchBingXBulkFunding();
+        break;
+      case Exchange.GATEIO:
+        fundingDataList = await this.fetchGateIOBulkFunding();
+        break;
+      case Exchange.OKX:
+        fundingDataList = await this.fetchOKXBulkFunding();
+        break;
+      case Exchange.BITGET:
+        fundingDataList = await this.fetchBitgetBulkFunding();
+        break;
+      case Exchange.KUCOIN:
+        fundingDataList = await this.fetchKuCoinBulkFunding();
+        break;
+      default:
+        console.warn(`[FundingRateCollector] Bulk collection not implemented for ${exchange}`);
+        return 0;
+    }
+
+    if (fundingDataList.length === 0) {
+      return 0;
+    }
+
+    // Save all to database in batch
+    const now = new Date();
+    for (const fundingData of fundingDataList) {
+      try {
+        await this.prisma.publicFundingRate.upsert({
+          where: {
+            symbol_exchange: {
+              symbol: fundingData.symbol,
+              exchange,
+            },
+          },
+          update: {
+            fundingRate: fundingData.fundingRate,
+            nextFundingTime: fundingData.nextFundingTime,
+            fundingInterval: fundingData.fundingInterval,
+            markPrice: fundingData.markPrice,
+            indexPrice: fundingData.indexPrice,
+            timestamp: now,
+          },
+          create: {
+            symbol: fundingData.symbol,
+            exchange,
+            fundingRate: fundingData.fundingRate,
+            nextFundingTime: fundingData.nextFundingTime,
+            fundingInterval: fundingData.fundingInterval,
+            markPrice: fundingData.markPrice,
+            indexPrice: fundingData.indexPrice,
+            timestamp: now,
+          },
+        });
+
+        // Cache in Redis
+        await redisService.cacheFundingRate(
+          exchange,
+          fundingData.symbol,
+          fundingData.fundingRate,
+          fundingData.nextFundingTime,
+          fundingData.markPrice,
+          fundingData.indexPrice
+        );
+      } catch (error: any) {
+        // Silently skip errors for individual symbols
+      }
+    }
+
+    return fundingDataList.length;
   }
 
   /**
@@ -612,12 +752,38 @@ export class FundingRateCollectorService {
         // Parse funding interval (Bitget returns string like "4")
         const intervalHours = parseInt(fundingInfo.fundingRateInterval || '8');
 
+        // Fetch ticker to get markPrice (Bitget doesn't provide it in funding rate API)
+        let markPrice: number | undefined = undefined;
+        let indexPrice: number | undefined = undefined;
+
+        try {
+          const tickerResponse = await fetch(`https://api.bitget.com/api/v2/mix/market/ticker?productType=USDT-FUTURES&symbol=${bitgetSymbol}`, {
+            signal: AbortSignal.timeout(5000),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            // @ts-ignore
+            family: 4
+          });
+
+          if (tickerResponse.ok) {
+            const tickerData = await tickerResponse.json();
+            if (tickerData.code === '00000' && tickerData.data?.[0]) {
+              markPrice = parseFloat(tickerData.data[0].lastPr || '0') || undefined;
+              indexPrice = parseFloat(tickerData.data[0].indexPrice || '0') || undefined;
+            }
+          }
+        } catch (tickerError: any) {
+          console.warn(`[FundingRateCollector] Failed to fetch Bitget ticker for ${symbol}:`, tickerError.message);
+        }
+
         return {
           fundingRate: parseFloat(fundingInfo.fundingRate || '0'),
           nextFundingTime: new Date(parseInt(fundingInfo.nextUpdate || '0')),
           fundingInterval: intervalHours,
-          markPrice: undefined, // Bitget doesn't provide mark price in funding rate API
-          indexPrice: undefined,
+          markPrice,
+          indexPrice,
         };
       } catch (error: any) {
         if (error.name === 'AbortError' || error.name === 'TimeoutError') {
@@ -695,7 +861,7 @@ export class FundingRateCollectorService {
 
         return {
           fundingRate: parseFloat(contract.fundingFeeRate || '0'),
-          nextFundingTime: new Date(parseInt(contract.nextFundingRateTime || '0')),
+          nextFundingTime: new Date(parseInt(contract.nextFundingRateDateTime || '0')),
           fundingInterval: intervalHours,
           markPrice: parseFloat(contract.markPrice || '0'),
           indexPrice: parseFloat(contract.indexPrice || '0'),
@@ -723,6 +889,621 @@ export class FundingRateCollectorService {
     }
 
     return null;
+  }
+
+  /**
+   * Fetch all funding rates from Bybit in bulk
+   */
+  private async fetchBybitBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://api.bybit.com/v5/market/tickers?category=linear', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Bybit API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.retCode !== 0 || !data.result?.list) {
+        throw new Error('Invalid response from Bybit API');
+      }
+
+      // Process all tickers
+      const fundingData = data.result.list
+        .filter((ticker: any) => ticker.symbol.endsWith('USDT') && ticker.nextFundingTime)
+        .map((ticker: any) => {
+          const symbol = ticker.symbol.slice(0, -4) + '/' + ticker.symbol.slice(-4);
+          return {
+            symbol,
+            fundingRate: parseFloat(ticker.fundingRate || '0'),
+            nextFundingTime: new Date(parseInt(ticker.nextFundingTime)),
+            fundingInterval: 8,
+            markPrice: parseFloat(ticker.markPrice || '0'),
+            indexPrice: parseFloat(ticker.indexPrice || '0'),
+          };
+        })
+        .filter((item) => item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Bybit bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from Binance in bulk
+   */
+  private async fetchBinanceBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Binance API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const fundingData = data
+        .filter((item: any) => item.symbol.endsWith('USDT') && item.nextFundingTime)
+        .map((item: any) => {
+          const symbol = item.symbol.slice(0, -4) + '/' + item.symbol.slice(-4);
+          return {
+            symbol,
+            fundingRate: parseFloat(item.lastFundingRate || '0'),
+            nextFundingTime: new Date(item.nextFundingTime),
+            fundingInterval: 8,
+            markPrice: parseFloat(item.markPrice || '0'),
+            indexPrice: parseFloat(item.indexPrice || '0'),
+          };
+        })
+        .filter((item) => item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Binance bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from BingX in bulk
+   */
+  private async fetchBingXBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      // BingX doesn't have bulk endpoint, need to fetch contracts first
+      const symbols = await this.fetchBingXSymbols();
+      const fundingData = [];
+
+      // Fetch in batches of 10 to avoid rate limits
+      for (let i = 0; i < Math.min(symbols.length, 50); i++) {
+        const symbol = symbols[i];
+        const data = await this.fetchBingXFunding(symbol);
+        if (data) {
+          fundingData.push({ symbol, ...data });
+        }
+        await this.delay(100);
+      }
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch BingX bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from Gate.io in bulk
+   */
+  private async fetchGateIOBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://api.gateio.ws/api/v4/futures/usdt/contracts', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gate.io API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const fundingData = data
+        .filter((contract: any) => contract.name.endsWith('_USDT') && contract.funding_next_apply)
+        .map((contract: any) => {
+          const symbol = contract.name.replace('_', '/');
+          return {
+            symbol,
+            fundingRate: parseFloat(contract.funding_rate || '0'),
+            nextFundingTime: new Date(parseFloat(contract.funding_next_apply) * 1000),
+            fundingInterval: parseInt(contract.funding_interval || '28800') / 3600,
+            markPrice: parseFloat(contract.mark_price || '0'),
+            indexPrice: parseFloat(contract.index_price || '0'),
+          };
+        })
+        .filter((item) => item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Gate.io bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from OKX in bulk
+   */
+  private async fetchOKXBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://www.okx.com/api/v5/public/funding-rate?instType=SWAP', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`OKX API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '0' || !data.data) {
+        throw new Error('Invalid response from OKX API');
+      }
+
+      const fundingData = data.data
+        .filter((item: any) => item.instId.endsWith('-USDT-SWAP') && item.nextFundingTime)
+        .map((item: any) => {
+          const parts = item.instId.split('-');
+          const symbol = parts[0] + '/' + parts[1];
+          return {
+            symbol,
+            fundingRate: parseFloat(item.fundingRate || '0'),
+            nextFundingTime: new Date(parseInt(item.nextFundingTime)),
+            fundingInterval: 8,
+            markPrice: parseFloat(item.markPx || '0'),
+            indexPrice: undefined,
+          };
+        })
+        .filter((item) => item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch OKX bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from Bitget in bulk
+   */
+  private async fetchBitgetBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://api.bitget.com/api/v2/mix/market/current-fund-rate?productType=USDT-FUTURES', {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Bitget API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '00000' || !data.data) {
+        throw new Error('Invalid response from Bitget API');
+      }
+
+      // Fetch all tickers in bulk to get markPrice and indexPrice
+      let tickerMap = new Map<string, { markPrice?: number; indexPrice?: number }>();
+
+      try {
+        const tickerResponse = await fetch('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', {
+          signal: AbortSignal.timeout(10000),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          // @ts-ignore
+          family: 4
+        });
+
+        if (tickerResponse.ok) {
+          const tickerData = await tickerResponse.json();
+          if (tickerData.code === '00000' && tickerData.data) {
+            // Build a map of symbol -> price data
+            for (const ticker of tickerData.data) {
+              tickerMap.set(ticker.symbol, {
+                markPrice: parseFloat(ticker.lastPr || '0') || undefined,
+                indexPrice: parseFloat(ticker.indexPrice || '0') || undefined,
+              });
+            }
+          }
+        }
+      } catch (tickerError: any) {
+        console.warn('[FundingRateCollector] Failed to fetch Bitget bulk tickers:', tickerError.message);
+      }
+
+      const fundingData = data.data
+        .filter((item: any) => item.symbol.endsWith('USDT') && item.nextUpdate)
+        .map((item: any) => {
+          const symbol = item.symbol.slice(0, -4) + '/' + item.symbol.slice(-4);
+          const priceData = tickerMap.get(item.symbol);
+
+          return {
+            symbol,
+            fundingRate: parseFloat(item.fundingRate || '0'),
+            nextFundingTime: new Date(parseInt(item.nextUpdate)),
+            fundingInterval: parseInt(item.fundingRateInterval || '8'),
+            markPrice: priceData?.markPrice,
+            indexPrice: priceData?.indexPrice,
+          };
+        })
+        // Filter out symbols without valid markPrice (test symbols, delisted, etc.)
+        .filter((item) => item.markPrice !== undefined && item.markPrice !== null && item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Bitget bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all funding rates from KuCoin in bulk
+   */
+  private async fetchKuCoinBulkFunding(): Promise<Array<{
+    symbol: string;
+    fundingRate: number;
+    nextFundingTime: Date;
+    fundingInterval: number;
+    markPrice?: number;
+    indexPrice?: number;
+  }>> {
+    try {
+      const response = await fetch('https://api-futures.kucoin.com/api/v1/contracts/active', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`KuCoin API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '200000' || !data.data) {
+        throw new Error('Invalid response from KuCoin API');
+      }
+
+      const fundingData = data.data
+        .filter((contract: any) => contract.symbol.endsWith('USDTM') && contract.nextFundingRateDateTime)
+        .map((contract: any) => {
+          const symbol = contract.symbol.slice(0, -5) + '/' + contract.symbol.slice(-5, -1);
+          const intervalMs = parseInt(contract.fundingRateGranularity || '28800000');
+          return {
+            symbol,
+            fundingRate: parseFloat(contract.fundingFeeRate || '0'),
+            nextFundingTime: new Date(parseInt(contract.nextFundingRateDateTime)),
+            fundingInterval: intervalMs / 3600000,
+            markPrice: parseFloat(contract.markPrice || '0'),
+            indexPrice: parseFloat(contract.indexPrice || '0'),
+          };
+        })
+        // Filter out symbols with invalid markPrice (0, delisted, etc.)
+        .filter((item) => item.markPrice > 0);
+
+      return fundingData;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch KuCoin bulk funding:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from Bybit
+   */
+  private async fetchBybitSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://api.bybit.com/v5/market/tickers?category=linear', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Bybit API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.retCode !== 0 || !data.result?.list) {
+        throw new Error('Invalid response from Bybit API');
+      }
+
+      // Filter for USDT perpetuals only
+      const symbols = data.result.list
+        .filter((ticker: any) => ticker.symbol.endsWith('USDT'))
+        .map((ticker: any) => {
+          const symbol = ticker.symbol;
+          // Convert BTCUSDT -> BTC/USDT
+          return symbol.slice(0, -4) + '/' + symbol.slice(-4);
+        });
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Bybit symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from Binance
+   */
+  private async fetchBinanceSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Binance API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Filter for USDT perpetuals
+      const symbols = data
+        .filter((item: any) => item.symbol.endsWith('USDT'))
+        .map((item: any) => {
+          const symbol = item.symbol;
+          return symbol.slice(0, -4) + '/' + symbol.slice(-4);
+        });
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Binance symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from BingX
+   */
+  private async fetchBingXSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://open-api.bingx.com/openApi/swap/v2/quote/contracts', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`BingX API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== 0 || !data.data) {
+        throw new Error('Invalid response from BingX API');
+      }
+
+      // Filter for USDT perpetuals
+      const symbols = data.data
+        .filter((contract: any) => contract.symbol.endsWith('-USDT'))
+        .map((contract: any) => contract.symbol.replace('-', '/'));
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch BingX symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from Gate.io
+   */
+  private async fetchGateIOSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://api.gateio.ws/api/v4/futures/usdt/contracts', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gate.io API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Convert to standard format
+      const symbols = data
+        .filter((contract: any) => contract.name.endsWith('_USDT'))
+        .map((contract: any) => contract.name.replace('_', '/'));
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Gate.io symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from OKX
+   */
+  private async fetchOKXSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://www.okx.com/api/v5/public/instruments?instType=SWAP', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`OKX API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '0' || !data.data) {
+        throw new Error('Invalid response from OKX API');
+      }
+
+      // Filter for USDT perpetuals
+      const symbols = data.data
+        .filter((inst: any) => inst.instId.endsWith('-USDT-SWAP'))
+        .map((inst: any) => {
+          // Convert BTC-USDT-SWAP -> BTC/USDT
+          const parts = inst.instId.split('-');
+          return parts[0] + '/' + parts[1];
+        });
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch OKX symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from Bitget
+   */
+  private async fetchBitgetSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://api.bitget.com/api/v2/mix/market/contracts?productType=USDT-FUTURES', {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`Bitget API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '00000' || !data.data) {
+        throw new Error('Invalid response from Bitget API');
+      }
+
+      // Convert to standard format
+      const symbols = data.data
+        .map((contract: any) => {
+          // Convert BTCUSDT -> BTC/USDT
+          const symbol = contract.symbol;
+          if (symbol.endsWith('USDT')) {
+            return symbol.slice(0, -4) + '/' + symbol.slice(-4);
+          }
+          return null;
+        })
+        .filter((s: string | null) => s !== null);
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch Bitget symbols:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all available USDT perpetual symbols from KuCoin
+   */
+  private async fetchKuCoinSymbols(): Promise<string[]> {
+    try {
+      const response = await fetch('https://api-futures.kucoin.com/api/v1/contracts/active', {
+        signal: AbortSignal.timeout(10000),
+        // @ts-ignore
+        family: 4
+      });
+
+      if (!response.ok) {
+        throw new Error(`KuCoin API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '200000' || !data.data) {
+        throw new Error('Invalid response from KuCoin API');
+      }
+
+      // Filter for USDT perpetuals
+      const symbols = data.data
+        .filter((contract: any) => contract.symbol.endsWith('USDTM'))
+        .map((contract: any) => {
+          // Convert BTCUSDTM -> BTC/USDT
+          const symbol = contract.symbol;
+          return symbol.slice(0, -5) + '/' + symbol.slice(-5, -1);
+        });
+
+      return symbols;
+    } catch (error: any) {
+      console.error('[FundingRateCollector] Failed to fetch KuCoin symbols:', error.message);
+      throw error;
+    }
   }
 
   /**

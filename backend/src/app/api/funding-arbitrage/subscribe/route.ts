@@ -299,9 +299,9 @@ export async function GET(request: NextRequest) {
             // Deal results (for completed deals)
             entryPrice: sub.entryPrice,
             hedgeEntryPrice: sub.hedgeEntryPrice,
-            fundingEarned: sub.fundingEarned,
-            realizedPnl: sub.realizedPnl,
-            executedAt: sub.executedAt,
+            fundingEarned: (sub as any).fundingEarned,
+            realizedPnl: (sub as any).realizedPnl,
+            executedAt: (sub as any).executedAt,
           };
         }),
         count: subscriptions.length,
@@ -559,8 +559,8 @@ export async function PUT(request: NextRequest) {
         primaryCredentialId,
         hedgeExchange: mode === 'HEDGED' ? hedgeExchange : null, // Null for NON_HEDGED
         hedgeCredentialId: mode === 'HEDGED' ? hedgeCredentialId : null, // Null for NON_HEDGED
-        // Reset status to PENDING if it was ERROR/COMPLETED
-        status: existingSubscription.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING',
+        // Reset status to WAITING if it was ERROR/COMPLETED
+        status: existingSubscription.status === 'ACTIVE' ? 'ACTIVE' : 'WAITING',
         errorMessage: null,
         updatedAt: new Date(),
       },

@@ -37,7 +37,7 @@ class RedisService {
 
     try {
       // Redis connection from environment or default localhost
-      const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+      const redisUrl = process.env['REDIS_URL'] || 'redis://localhost:6379';
 
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
@@ -114,7 +114,6 @@ class RedisService {
    */
   async cachePrice(exchange: string, symbol: string, price: number): Promise<void> {
     if (!this.isReady()) {
-      console.warn('[Redis] Not connected, skipping cache');
       return;
     }
 
@@ -167,7 +166,6 @@ class RedisService {
     indexPrice?: number
   ): Promise<void> {
     if (!this.isReady()) {
-      console.warn('[Redis] Not connected, skipping cache');
       return;
     }
 
@@ -268,7 +266,7 @@ class RedisService {
         const exchange = key.split(':')[1]; // Extract exchange from key
         const value = values[index];
 
-        if (value) {
+        if (value && exchange) {
           result[exchange] = JSON.parse(value);
         }
       });
@@ -305,7 +303,6 @@ class RedisService {
    */
   async cacheBulkFundingRates(exchange: string, data: any, ttlSeconds: number): Promise<void> {
     if (!this.isReady()) {
-      console.warn('[Redis] Not connected, skipping bulk cache');
       return;
     }
 

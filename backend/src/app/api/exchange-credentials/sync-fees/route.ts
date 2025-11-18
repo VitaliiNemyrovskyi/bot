@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     // Get authenticated user
     const authResult = await AuthService.authenticateRequest(request);
+    const user = authResult.user!;
     if (!authResult.success || !authResult.user) {
       return NextResponse.json(
         { error: authResult.error || 'Unauthorized' },
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { credentialId } = body;
 
-    // console.log('[API] Syncing fee rates for user:', user.id);
+    // console.log('[API] Syncing fee rates for user:', user.userId);
 
     if (credentialId) {
       // Sync specific credential
@@ -64,9 +65,9 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Sync all user's credentials
-      // console.log('[API] Syncing all credentials for user:', user.id);
+      // console.log('[API] Syncing all credentials for user:', user.userId);
 
-      await ExchangeFeeSyncService.syncAllUserFeeRates(user.id);
+      await ExchangeFeeSyncService.syncAllUserFeeRates(user.userId);
 
       return NextResponse.json({
         success: true,

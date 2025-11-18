@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time } from 'lightweight-charts';
 import { ThemeService } from '../../../services/theme.service';
 import { AuthService } from '../../../services/auth.service';
 
@@ -188,7 +188,7 @@ export class FundingRateSpreadChartComponent implements OnInit, AfterViewInit, O
     });
 
     // Add spread line series
-    this.spreadSeries = this.chart.addSeries(LineSeries, {
+    this.spreadSeries = this.chart.addLineSeries({
       color: colors.lineColor,
       lineWidth: 2,
       title: 'Funding Spread',

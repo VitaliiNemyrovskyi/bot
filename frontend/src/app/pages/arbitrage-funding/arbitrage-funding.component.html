@@ -134,7 +134,7 @@
             Symbol
             <ui-icon
               *ngIf="sortColumn() === 'symbol'"
-              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [name]="sortDirection() === 'desc' ? 'arrow_upward' : 'arrow_downward'"
               [size]="16"
             ></ui-icon>
           </th>
@@ -142,7 +142,7 @@
             Spread
             <ui-icon
               *ngIf="sortColumn() === 'fundingSpread'"
-              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [name]="sortDirection() === 'desc' ? 'arrow_upward' : 'arrow_downward'"
               [size]="16"
             ></ui-icon>
           </th>
@@ -150,7 +150,7 @@
             Estimated APR
             <ui-icon
               *ngIf="sortColumn() === 'estimatedAPR'"
-              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [name]="sortDirection() === 'desc' ? 'arrow_upward' : 'arrow_downward'"
               [size]="16"
             ></ui-icon>
           </th>
@@ -159,7 +159,7 @@
             Net APR
             <ui-icon
               *ngIf="sortColumn() === 'netAPR'"
-              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [name]="sortDirection() === 'desc' ? 'arrow_upward' : 'arrow_downward'"
               [size]="16"
             ></ui-icon>
           </th>
@@ -169,7 +169,7 @@
             Price Spread
             <ui-icon
               *ngIf="sortColumn() === 'priceSpread'"
-              [name]="sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+              [name]="sortDirection() === 'desc' ? 'arrow_upward' : 'arrow_downward'"
               [size]="16"
             ></ui-icon>
           </th>

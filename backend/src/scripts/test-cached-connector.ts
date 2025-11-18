@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { ConnectorStateCache } from '../services/connector-state-cache.service';
-
-const prisma = new PrismaClient();
 
 async function testCachedConnector() {
   try {

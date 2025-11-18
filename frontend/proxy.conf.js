@@ -3,9 +3,11 @@ const PROXY_CONFIG = [
     context: ['/api'],
     target: 'http://localhost:3000',
     secure: false,
-    changeOrigin: true,
+    changeOrigin: false,
     logLevel: 'debug',
-    timeout: 180000
+    timeout: 180000,
+    cookieDomainRewrite: 'localhost',
+    cookiePathRewrite: '/'
   },
   {
     context: ['/placeholder'],

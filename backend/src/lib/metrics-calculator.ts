@@ -1,6 +1,5 @@
-import { PrismaClient, Exchange } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Exchange } from '@prisma/client';
+import prisma from './prisma';
 
 /**
  * Statistical metrics for funding rates

@@ -5,7 +5,7 @@ import { redisService } from '@/lib/redis';
  * Health Check Endpoint
  * Returns the status of critical backend services
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const startTime = Date.now();
 
   try {

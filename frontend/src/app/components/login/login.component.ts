@@ -42,7 +42,7 @@ export class LoginComponent {
     private route: ActivatedRoute,
     private translationService: TranslationService
   ) {
-    this.returnUrl = (this.route.snapshot.queryParams['returnUrl'] as string) || '/trading';
+    this.returnUrl = (this.route.snapshot.queryParams['returnUrl'] as string) || '/arbitrage/funding';
     this.loginReason = (this.route.snapshot.queryParams['reason'] as string) || null;
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],

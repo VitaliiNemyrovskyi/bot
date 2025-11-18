@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { BingXService } from '../lib/bingx';
-
-const prisma = new PrismaClient();
 
 async function testBingXAuth() {
   try {

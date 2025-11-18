@@ -2955,20 +2955,31 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
         exchange: config.hedgeExchange.toUpperCase().includes('BYBIT') ? 'BYBIT' : 'BINGX',
       });
 
-      // Check if price has crossed liquidation threshold
+      // Check if price has crossed liquidation threshold (with 5% buffer to catch bouncebacks)
       const primaryPriceCrossed = dbPosition.primarySide === 'long'
-        ? primaryPrice <= primaryLiqCalc.liquidationPrice * 1.02 // 2% buffer for long
-        : primaryPrice >= primaryLiqCalc.liquidationPrice * 0.98; // 2% buffer for short
+        ? primaryPrice <= primaryLiqCalc.liquidationPrice * 1.05 // 5% buffer for long
+        : primaryPrice >= primaryLiqCalc.liquidationPrice * 0.95; // 5% buffer for short
 
       const hedgePriceCrossed = dbPosition.hedgeSide === 'long'
-        ? hedgePrice <= hedgeLiqCalc.liquidationPrice * 1.02
-        : hedgePrice >= hedgeLiqCalc.liquidationPrice * 0.98;
+        ? hedgePrice <= hedgeLiqCalc.liquidationPrice * 1.05
+        : hedgePrice >= hedgeLiqCalc.liquidationPrice * 0.95;
 
-      // CRITICAL: Only trigger liquidation if BOTH conditions are met:
-      // 1. Position no longer exists (or size = 0) on exchange
-      // 2. Current price has crossed calculated liquidation price
-      const primaryLiquidated = (!primaryPosition || primaryPosition.size === 0) && primaryPriceCrossed;
-      const hedgeLiquidated = (!hedgePosition || hedgePosition.size === 0) && hedgePriceCrossed;
+      // Check if position is missing from exchange
+      const primaryMissing = !primaryPosition || primaryPosition.size === 0;
+      const hedgeMissing = !hedgePosition || hedgePosition.size === 0;
+
+      // CRITICAL FIX: Detect liquidation even if price has recovered
+      // If position is missing AND price was near liquidation level (or still is), treat as liquidated
+      // This handles the case where price bounces back after liquidation
+      const primaryLiquidated = primaryMissing && primaryPriceCrossed;
+      const hedgeLiquidated = hedgeMissing && hedgePriceCrossed;
+
+      // NEW: If BOTH positions are missing, check which one is likely liquidated
+      const bothMissing = primaryMissing && hedgeMissing;
+
+      // If both missing but only one crossed liquidation price, that one was liquidated
+      const primaryLiquidatedAlone = bothMissing && !primaryLiquidated && !hedgeLiquidated && primaryPriceCrossed;
+      const hedgeLiquidatedAlone = bothMissing && !primaryLiquidated && !hedgeLiquidated && hedgePriceCrossed;
 
       console.log(`[GraduatedEntry] ${id} - Liquidation check:`, {
         primary: {
@@ -2978,6 +2989,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           liqPrice: primaryLiqCalc.liquidationPrice,
           priceCrossed: primaryPriceCrossed,
           liquidated: primaryLiquidated,
+          priceDistanceFromLiq: ((primaryPrice - primaryLiqCalc.liquidationPrice) / primaryLiqCalc.liquidationPrice * 100).toFixed(2) + '%'
         },
         hedge: {
           exists: !!hedgePosition,
@@ -2986,6 +2998,7 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
           liqPrice: hedgeLiqCalc.liquidationPrice,
           priceCrossed: hedgePriceCrossed,
           liquidated: hedgeLiquidated,
+          priceDistanceFromLiq: ((hedgePrice - hedgeLiqCalc.liquidationPrice) / hedgeLiqCalc.liquidationPrice * 100).toFixed(2) + '%'
         }
       });
 
@@ -3001,11 +3014,21 @@ export class GraduatedEntryArbitrageService extends EventEmitter {
       } else if (primaryLiquidated && hedgeLiquidated) {
         console.error(`[GraduatedEntry] 🚨 BOTH POSITIONS LIQUIDATED (price-based check)`);
         await this.handleBothLiquidated(position);
-      } else if (!primaryPosition && !hedgePosition) {
-        // Both positions missing but prices are safe - likely API error
+      } else if (primaryLiquidatedAlone) {
+        // Only primary crossed liquidation level, hedge is missing due to API error
+        console.error(`[GraduatedEntry] 🚨 PRIMARY LIQUIDATION DETECTED (both missing, primary price crossed)`);
+        console.error(`[GraduatedEntry] Primary: current=${primaryPrice}, liq=${primaryLiqCalc.liquidationPrice}`);
+        await this.handlePrimaryLiquidation(position, config);
+      } else if (hedgeLiquidatedAlone) {
+        // Only hedge crossed liquidation level, primary is missing due to API error
+        console.error(`[GraduatedEntry] 🚨 HEDGE LIQUIDATION DETECTED (both missing, hedge price crossed)`);
+        console.error(`[GraduatedEntry] Hedge: current=${hedgePrice}, liq=${hedgeLiqCalc.liquidationPrice}`);
+        await this.handleHedgeLiquidation(position, config);
+      } else if (bothMissing && !primaryPriceCrossed && !hedgePriceCrossed) {
+        // Both positions missing but prices are clearly safe - likely API error
         console.warn(`[GraduatedEntry] ⚠️ Both positions not found but prices are SAFE - likely API error`);
-        console.warn(`[GraduatedEntry] Primary: current=${primaryPrice}, liq=${primaryLiqCalc.liquidationPrice}`);
-        console.warn(`[GraduatedEntry] Hedge: current=${hedgePrice}, liq=${hedgeLiqCalc.liquidationPrice}`);
+        console.warn(`[GraduatedEntry] Primary: current=${primaryPrice} (${((primaryPrice - primaryLiqCalc.liquidationPrice) / primaryLiqCalc.liquidationPrice * 100).toFixed(2)}% from liq ${primaryLiqCalc.liquidationPrice})`);
+        console.warn(`[GraduatedEntry] Hedge: current=${hedgePrice} (${((hedgePrice - hedgeLiqCalc.liquidationPrice) / hedgeLiqCalc.liquidationPrice * 100).toFixed(2)}% from liq ${hedgeLiqCalc.liquidationPrice})`);
         console.warn(`[GraduatedEntry] NOT triggering liquidation - waiting for next check`);
       }
     } catch (error: any) {

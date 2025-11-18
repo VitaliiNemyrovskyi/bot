@@ -972,7 +972,6 @@ class PriceArbitrageService extends EventEmitter {
     exchange: string,
     apiKey: string,
     apiSecret: string,
-    testnet: boolean,
     authToken?: string
   ): BaseExchangeConnector {
     const exchangeUpper = exchange.toUpperCase().replace('_TESTNET', '').replace('_MAINNET', '');

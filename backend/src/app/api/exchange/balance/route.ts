@@ -166,6 +166,9 @@ async function getBybitBalance(apiKey: string, apiSecret: string): Promise<Excha
     }
 
     const account = walletBalance.list[0];
+    if (!account) {
+      throw new Error('No account data available in wallet balance');
+    }
     const usdtCoin = account.coin?.find((c: any) => c.coin === 'USDT');
 
     if (!usdtCoin) {

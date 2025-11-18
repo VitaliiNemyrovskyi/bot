@@ -14,6 +14,8 @@ export interface WebSocketData {
 export class ExchangeWebSocketService {
   private connections = new Map<string, WebSocket>();
   private pingIntervals = new Map<string, any>();
+  private kucoinToken: string | null = null;
+  private kucoinEndpoint: string | null = null;
 
   constructor() { }
 
@@ -96,10 +98,20 @@ export class ExchangeWebSocketService {
         break;
 
       case 'GATEIO':
+        const gateioSymbol = symbol.includes('_') ? symbol : symbol.replace('USDT', '_USDT');
+        wsUrl = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
+        subscribeMessage = {
+          time: Math.floor(Date.now() / 1000),
+          channel: 'futures.tickers',
+          event: 'subscribe',
+          payload: [gateioSymbol]
+        };
+        break;
+
       case 'KUCOIN':
-        // These exchanges require special handling, not supported in this basic service
-        console.warn(`[WebSocket] ${exchange} not supported in basic service`);
-        return () => {};
+        // KuCoin requires token - handle asynchronously
+        this.connectKuCoin(key, symbol, onUpdate, onError);
+        return () => this.disconnect(key);
 
       default:
         console.warn(`[WebSocket] Unsupported exchange: ${exchange}`);
@@ -130,6 +142,16 @@ export class ExchangeWebSocketService {
             ws.send('ping');
           }
         }, 30000);
+        this.pingIntervals.set(key, pingInterval);
+      } else if (exchange === 'GATEIO') {
+        const pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              time: Math.floor(Date.now() / 1000),
+              channel: 'futures.ping'
+            }));
+          }
+        }, 10000);
         this.pingIntervals.set(key, pingInterval);
       }
     };
@@ -247,6 +269,28 @@ export class ExchangeWebSocketService {
             };
           }
           break;
+
+        case 'GATEIO':
+          if (data.channel === 'futures.tickers' && data.event === 'update' && data.result && data.result.length > 0) {
+            const ticker = data.result[0];
+            return {
+              price: parseFloat(ticker.last || '0'),
+              fundingRate: ticker.funding_rate ? parseFloat(ticker.funding_rate) : undefined,
+              nextFundingTime: ticker.funding_next_apply ? parseInt(ticker.funding_next_apply) * 1000 : undefined
+            };
+          }
+          break;
+
+        case 'KUCOIN':
+          if (data.type === 'message' && data.topic && data.topic.startsWith('/contractMarket/ticker:') && data.data) {
+            const ticker = data.data;
+            return {
+              price: parseFloat(ticker.price || '0'),
+              fundingRate: ticker.fundingRate ? parseFloat(ticker.fundingRate) : undefined,
+              nextFundingTime: ticker.nextFundingTime ? parseInt(ticker.nextFundingTime) : undefined
+            };
+          }
+          break;
       }
     } catch (error) {
       console.error(`[WebSocket] Parse error for ${exchange}:`, error);
@@ -302,5 +346,124 @@ export class ExchangeWebSocketService {
     }
 
     return cleanSymbol;
+  }
+
+  /**
+   * Get KuCoin WebSocket token
+   */
+  private async getKuCoinToken(): Promise<{ token: string; endpoint: string }> {
+    const response = await fetch('https://api-futures.kucoin.com/api/v1/bullet-public', {
+      method: 'POST',
+    });
+
+    const data = await response.json();
+
+    if (data.code !== '200000' || !data.data) {
+      throw new Error('Failed to get KuCoin WebSocket token');
+    }
+
+    const server = data.data.instanceServers[0];
+
+    return {
+      token: data.data.token,
+      endpoint: server.endpoint
+    };
+  }
+
+  /**
+   * Connect to KuCoin WebSocket (requires token)
+   */
+  private async connectKuCoin(
+    key: string,
+    symbol: string,
+    onUpdate: (data: WebSocketData) => void,
+    onError?: (error: any) => void
+  ): Promise<void> {
+    try {
+      // Get token if we don't have one
+      if (!this.kucoinToken || !this.kucoinEndpoint) {
+        const tokenData = await this.getKuCoinToken();
+        this.kucoinToken = tokenData.token;
+        this.kucoinEndpoint = tokenData.endpoint;
+      }
+
+      // Convert symbol to KuCoin format (BTCUSDT -> XBTUSDTM)
+      const kucoinSymbol = this.convertToKuCoinSymbol(symbol);
+
+      const wsUrl = `${this.kucoinEndpoint}?token=${this.kucoinToken}&connectId=${Date.now()}`;
+      const ws = new WebSocket(wsUrl);
+      this.connections.set(key, ws);
+
+      ws.onopen = () => {
+        console.log(`[WebSocket] KuCoin connected for ${symbol}`);
+
+        // Subscribe to ticker
+        const subscribeMessage = {
+          id: Date.now(),
+          type: 'subscribe',
+          topic: `/contractMarket/ticker:${kucoinSymbol}`,
+          privateChannel: false,
+          response: true
+        };
+
+        ws.send(JSON.stringify(subscribeMessage));
+
+        // Setup ping (KuCoin requires ping every 20s)
+        const pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              id: Date.now(),
+              type: 'ping'
+            }));
+          }
+        }, 20000);
+        this.pingIntervals.set(key, pingInterval);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const parsed = this.parseMessage('KUCOIN', data);
+          if (parsed) {
+            onUpdate(parsed);
+          }
+        } catch (error) {
+          console.error(`[WebSocket] KuCoin parse error:`, error);
+          if (onError) onError(error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error(`[WebSocket] KuCoin error:`, error);
+        if (onError) onError(error);
+      };
+
+      ws.onclose = () => {
+        console.log(`[WebSocket] KuCoin closed for ${symbol}`);
+        this.disconnect(key);
+      };
+
+    } catch (error) {
+      console.error('[WebSocket] Failed to connect to KuCoin:', error);
+      if (onError) onError(error);
+    }
+  }
+
+  /**
+   * Convert symbol to KuCoin format
+   * Examples: BTC/USDT -> XBTUSDTM, BTCUSDT -> XBTUSDTM, ETH/USDT -> ETHUSDTM
+   */
+  private convertToKuCoinSymbol(symbol: string): string {
+    // Remove slash if present
+    symbol = symbol.replace('/', '');
+
+    // Extract base currency
+    const base = symbol.replace('USDT', '');
+
+    // KuCoin uses XBT for Bitcoin
+    const kucoinBase = base === 'BTC' ? 'XBT' : base;
+
+    // KuCoin perpetuals end with M
+    return `${kucoinBase}USDTM`;
   }
 }

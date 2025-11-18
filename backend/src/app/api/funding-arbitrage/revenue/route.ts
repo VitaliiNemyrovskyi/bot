@@ -150,17 +150,21 @@ export async function GET(request: NextRequest) {
       const best = sortedByPnl[0];
       const worst = sortedByPnl[sortedByPnl.length - 1];
 
-      bestDeal = {
-        symbol: best.symbol,
-        revenue: best.realizedPnl || 0,
-        date: best.closedAt?.toISOString() || null,
-      };
+      if (best) {
+        bestDeal = {
+          symbol: best.symbol,
+          revenue: best.realizedPnl || 0,
+          date: best.closedAt?.toISOString() || null,
+        };
+      }
 
-      worstDeal = {
-        symbol: worst.symbol,
-        revenue: worst.realizedPnl || 0,
-        date: worst.closedAt?.toISOString() || null,
-      };
+      if (worst) {
+        worstDeal = {
+          symbol: worst.symbol,
+          revenue: worst.realizedPnl || 0,
+          date: worst.closedAt?.toISOString() || null,
+        };
+      }
     }
 
     const summary = {
@@ -244,7 +248,7 @@ export async function GET(request: NextRequest) {
     deals.forEach(deal => {
       if (!deal.closedAt) return;
 
-      const dateKey = deal.closedAt.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateKey = deal.closedAt.toISOString().split('T')[0] ?? ''; // YYYY-MM-DD
       const existing = timelineMap.get(dateKey) || {
         deals: 0,
         revenue: 0,

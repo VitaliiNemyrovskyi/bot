@@ -104,7 +104,7 @@ export async function GET(
     const response = {
       id: activeCredential.id,
       exchange: activeCredential.exchange,
-      environment: activeCredential.environment,
+      environment: 'MAINNET', // Testnet is deprecated
       apiKeyMasked: '...' + decryptedApiKey.slice(-4),
       label: activeCredential.label,
       isActive: true,

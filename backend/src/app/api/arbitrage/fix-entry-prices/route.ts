@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { AuthService } from '@/services/auth.service';
+import { AuthService } from '@/lib/auth';
 import { graduatedEntryArbitrageService } from '@/services/graduated-entry-arbitrage.service';
 
 export const runtime = 'nodejs';

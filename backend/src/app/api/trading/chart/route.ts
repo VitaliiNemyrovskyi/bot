@@ -10,14 +10,6 @@ interface TradingViewBar {
   volume: number;
 }
 
-interface ChartDataRequest {
-  symbol: string;
-  resolution: string;
-  from: number;
-  to: number;
-  firstDataRequest?: boolean;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

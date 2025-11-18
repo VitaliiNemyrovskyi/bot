@@ -49,9 +49,6 @@ export async function GET(request: NextRequest) {
     console.log(`[API] Getting graduated entry positions for user ${user.userId} (showAll: ${showAll})`);
 
     // Get positions from database
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-
     try {
       const whereClause: any = {
         userId: user.userId,
@@ -562,8 +559,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Start graduated entry arbitrage position
-    const testnet = primaryCredentials.environment === 'TESTNET';
-
     const positionId = await graduatedEntryArbitrageService.startPosition(
       {
         userId: user.userId,
@@ -582,14 +577,12 @@ export async function POST(request: NextRequest) {
       {
         apiKey: primaryCredentials.apiKey,
         apiSecret: primaryCredentials.apiSecret,
-        testnet,
         credentialId: primaryCredentials.id,
         authToken: primaryCredentials.authToken,
       },
       {
         apiKey: hedgeCredentials.apiKey,
         apiSecret: hedgeCredentials.apiSecret,
-        testnet: hedgeCredentials.environment === 'TESTNET',
         credentialId: hedgeCredentials.id,
         authToken: hedgeCredentials.authToken,
       }
@@ -612,7 +605,6 @@ export async function POST(request: NextRequest) {
           side: primarySide,
           leverage: primaryLeverage,
           quantity: adjustedPrimaryQuantity,
-          environment: primaryCredentials.environment,
           entryPrice: dbPosition?.primaryEntryPrice || undefined,
         },
         hedge: {
@@ -620,7 +612,6 @@ export async function POST(request: NextRequest) {
           side: hedgeSide,
           leverage: hedgeLeverage,
           quantity: adjustedHedgeQuantity,
-          environment: hedgeCredentials.environment,
           entryPrice: dbPosition?.hedgeEntryPrice || undefined,
         },
         graduatedEntry: {
@@ -807,16 +798,25 @@ async function getBybitSymbolInfo(symbol: string): Promise<SymbolInfo | null> {
 
     const instrument = response.list[0];
 
+    if (!instrument) {
+      console.warn(`[Bybit] No instrument data for ${symbol}`);
+      return null;
+    }
+
+    const lotSizeFilter = instrument.lotSizeFilter;
+    const priceFilter = instrument.priceFilter;
+    const leverageFilter = 'leverageFilter' in instrument ? instrument.leverageFilter : undefined;
+
     return {
       symbol: instrument.symbol,
       exchange: 'BYBIT',
-      minOrderQty: parseFloat(instrument.lotSizeFilter?.minOrderQty || '0.001'),
-      minOrderValue: instrument.lotSizeFilter?.minOrderAmt ? parseFloat(instrument.lotSizeFilter.minOrderAmt) : undefined,
-      qtyStep: parseFloat(instrument.lotSizeFilter?.qtyStep || '0.001'),
-      pricePrecision: parseInt(instrument.priceFilter?.tickSize?.split('.')[1]?.length || '2'),
-      qtyPrecision: parseInt(instrument.lotSizeFilter?.basePrecision || '3'),
-      maxOrderQty: instrument.lotSizeFilter?.maxOrderQty ? parseFloat(instrument.lotSizeFilter.maxOrderQty) : undefined,
-      maxLeverage: instrument.leverageFilter?.maxLeverage ? parseFloat(instrument.leverageFilter.maxLeverage) : undefined,
+      minOrderQty: parseFloat((lotSizeFilter && 'minOrderQty' in lotSizeFilter && lotSizeFilter.minOrderQty) || '0.001'),
+      minOrderValue: lotSizeFilter && 'minOrderAmt' in lotSizeFilter && lotSizeFilter.minOrderAmt ? parseFloat(lotSizeFilter.minOrderAmt) : undefined,
+      qtyStep: parseFloat((lotSizeFilter && 'qtyStep' in lotSizeFilter && lotSizeFilter.qtyStep) || '0.001'),
+      pricePrecision: parseInt(String((priceFilter && 'tickSize' in priceFilter && priceFilter.tickSize?.split('.')[1]?.length) || 2)),
+      qtyPrecision: parseInt((lotSizeFilter && 'basePrecision' in lotSizeFilter && lotSizeFilter.basePrecision) || '3'),
+      maxOrderQty: lotSizeFilter && 'maxOrderQty' in lotSizeFilter && lotSizeFilter.maxOrderQty ? parseFloat(lotSizeFilter.maxOrderQty) : undefined,
+      maxLeverage: leverageFilter && 'maxLeverage' in leverageFilter && leverageFilter.maxLeverage ? parseFloat(leverageFilter.maxLeverage) : undefined,
     };
   } catch (error: any) {
     console.error('[Bybit] Error getting symbol info:', error.message);
@@ -1031,9 +1031,6 @@ export async function PATCH(request: NextRequest) {
     console.log(`[API] Updating monitoring status for position ${positionId}: ${isMonitoringEnabled}`);
 
     // Update database
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-
     try {
       const position = await prisma.graduatedEntryPosition.findFirst({
         where: {

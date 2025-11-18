@@ -298,7 +298,6 @@ export class BybitFundingStrategyService extends EventEmitter {
     config: FundingStrategyConfig,
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = true,
     credentialId?: string
   ): Promise<string> {
     const strategyId = `strategy_${++this.strategyCounter}_${Date.now()}`;
@@ -1339,7 +1338,6 @@ export class BybitFundingStrategyService extends EventEmitter {
     config: PreciseTimingStrategyConfig,
     apiKey: string,
     apiSecret: string,
-    testnet: boolean = true,
     credentialId?: string
   ): Promise<string> {
     const strategyId = `precise_timing_${++this.strategyCounter}_${Date.now()}`;

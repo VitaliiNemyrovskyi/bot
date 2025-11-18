@@ -26,7 +26,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Mainnet only (testnet support removed)
-    const isTestnet = false;
 
     // Test credentials based on exchange type
     if (exchange.toUpperCase() === 'BYBIT') {
@@ -34,8 +33,6 @@ export async function POST(request: NextRequest) {
       const client = new RestClientV5({
         key: apiKey,
         secret: apiSecret,
-        testnet: isTestnet,
-        enableRateLimit: true,
       });
 
       try {
@@ -120,8 +117,8 @@ export async function POST(request: NextRequest) {
         const balance = await binanceExchange.fetchBalance();
 
         // Extract USDT balance info
-        const usdtTotal = balance.total?.USDT || 0;
-        const usdtFree = balance.free?.USDT || 0;
+        const usdtTotal = (balance as any).total?.USDT || 0;
+        const usdtFree = (balance as any).free?.USDT || 0;
 
         console.log('[BINANCE] Credentials validated successfully');
 
@@ -194,8 +191,8 @@ export async function POST(request: NextRequest) {
         const balance = await okxExchange.fetchBalance({ type: 'swap' });
 
         // Extract USDT balance info
-        const usdtTotal = balance.total?.USDT || 0;
-        const usdtFree = balance.free?.USDT || 0;
+        const usdtTotal = (balance as any).total?.USDT || 0;
+        const usdtFree = (balance as any).free?.USDT || 0;
 
         console.log('[OKX] Credentials validated successfully');
 
@@ -255,7 +252,6 @@ export async function POST(request: NextRequest) {
       const bingxService = new BingXService({
         apiKey,
         apiSecret,
-        testnet: isTestnet,
         enableRateLimit: true,
       });
 
@@ -311,7 +307,6 @@ export async function POST(request: NextRequest) {
         apiKey,
         apiSecret,
         authToken,
-        testnet: isTestnet,
         enableRateLimit: true,
       });
 
@@ -371,8 +366,8 @@ export async function POST(request: NextRequest) {
         const balance = await gateioExchange.fetchBalance({ type: 'swap' });
 
         // Extract USDT balance info
-        const usdtTotal = balance.total?.USDT || 0;
-        const usdtFree = balance.free?.USDT || 0;
+        const usdtTotal = (balance as any).total?.USDT || 0;
+        const usdtFree = (balance as any).free?.USDT || 0;
 
         console.log('[GATEIO] Credentials validated successfully');
 
@@ -457,8 +452,8 @@ export async function POST(request: NextRequest) {
         const balance = await bitgetExchange.fetchBalance({ type: 'swap' });
 
         // Extract USDT balance info
-        const usdtTotal = balance.total?.USDT || 0;
-        const usdtFree = balance.free?.USDT || 0;
+        const usdtTotal = (balance as any).total?.USDT || 0;
+        const usdtFree = (balance as any).free?.USDT || 0;
 
         console.log('[BITGET] Credentials validated successfully');
 
@@ -544,14 +539,11 @@ export async function POST(request: NextRequest) {
         console.log('[KUCOIN] Balance response:', JSON.stringify(balance, null, 2));
 
         // Extract USDT balance info
-        const usdtTotal = balance.total?.USDT || 0;
-        const usdtFree = balance.free?.USDT || 0;
+        const usdtTotal = (balance as any).total?.USDT || 0;
+        const usdtFree = (balance as any).free?.USDT || 0;
 
         console.log('[KUCOIN] Credentials validated successfully');
         console.log('[KUCOIN] USDT Total:', usdtTotal, 'Free:', usdtFree);
-
-        // Close connector
-        await kucoinConnector.close();
 
         return NextResponse.json({
           success: true,

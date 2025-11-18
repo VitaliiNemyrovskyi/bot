@@ -22,6 +22,7 @@ import { BybitService } from '@/lib/bybit';
 import { BingXService } from '@/lib/bingx';
 import { GateIOService } from '@/lib/gateio';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
+import prisma from '@/lib/prisma';
 
 interface FundingUpdate {
   positionId: string;
@@ -47,7 +48,7 @@ export class FundingTrackerService {
   private readonly UPDATE_FREQUENCY_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
-    this.prisma = new PrismaClient();
+    this.prisma = prisma;
   }
 
   /**

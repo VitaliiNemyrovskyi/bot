@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signalMonitor } from '@/services/signal-monitor.service';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { AuthService } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -12,11 +11,11 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get user session
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // Authenticate user
+    const auth = await AuthService.authenticateRequest(request);
+    if (!auth.success || !auth.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
@@ -55,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     // Start signal monitoring
     const signal = await signalMonitor.startSignal({
-      userId: session.user.id,
+      userId: auth.user.userId,
       symbol,
       primaryExchange,
       hedgeExchange,

@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
     const bodySchema = z.object({
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
-      testnet: z.boolean().default(true),
     });
 
     let body;
@@ -79,10 +78,10 @@ export async function POST(request: NextRequest) {
 
     // Save API keys (includes validation)
     const result = await BybitKeysService.saveApiKeys(userId, {
-      apiKey: body.apiKey,
-      apiSecret: body.apiSecret,
-      testnet: body.testnet,
-    });
+       apiKey: body.apiKey,
+       apiSecret: body.apiSecret,
+       testnet: false, // Testnet is deprecated
+     });
 
     return NextResponse.json(
       {

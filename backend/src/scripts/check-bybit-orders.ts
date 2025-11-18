@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { BybitService } from '../lib/bybit';
-
-const prisma = new PrismaClient();
 
 async function checkBybitOrders() {
   try {

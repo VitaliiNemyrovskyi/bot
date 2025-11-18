@@ -45,6 +45,10 @@
                 <a routerLink="/arbitrage/funding" routerLinkActive="active" class="nav-link">{{ translate('Funding') }}</a>
                 <a routerLink="/arbitrage/opportunities" routerLinkActive="active" class="nav-link">{{ translate('Opportunities') }}</a>
                 <a routerLink="/farm" routerLinkActive="active" class="nav-link">{{ translate('Farm') }}</a>
+                <a routerLink="/funding-strategy" routerLinkActive="active" class="nav-link">Strategy</a>
+                @if (isAdmin()) {
+                  <a routerLink="/admin/recordings" routerLinkActive="active" class="nav-link">Recordings</a>
+                }
                 <!--<a routerLink="/trading" routerLinkActive="active" class="nav-link">🤖 {{ translate('nav.gridTrading') }}</a>
                 <a routerLink="/trading/manual" routerLinkActive="active" class="nav-link">📊 {{ translate('nav.manualTrading') }}</a>
                 <a routerLink="/testing/api-tester" routerLinkActive="active" class="nav-link">🧪 {{ translate('nav.apiTester') }}</a>-->

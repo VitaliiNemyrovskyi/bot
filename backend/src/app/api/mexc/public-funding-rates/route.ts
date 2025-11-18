@@ -30,7 +30,7 @@ function normalizeSymbol(symbol: string): string {
  * MEXC API: GET https://futures.mexc.com/api/v1/contract/funding_rate/{symbol}
  * Documentation: https://mexcdevelop.github.io/apidocs/contract_v1_en/#get-funding-rate
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const now = new Date();
     const cacheThreshold = new Date(now.getTime() - CACHE_TTL_SECONDS * 1000);

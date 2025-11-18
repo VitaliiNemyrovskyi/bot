@@ -180,7 +180,6 @@ export async function POST(request: NextRequest) {
     // Parse and validate request body
     const bodySchema = z.object({
       exchange: z.nativeEnum(Exchange, {
-        errorMap: () => ({ message: 'Invalid exchange value' }),
       }),
       apiKey: z.string().min(1, 'API key is required'),
       apiSecret: z.string().min(1, 'API secret is required'),
@@ -214,7 +213,7 @@ export async function POST(request: NextRequest) {
     try {
       // For OKX, Bitget, and KuCoin, store passphrase in authToken field
       const authTokenValue = (body.exchange === 'OKX' || body.exchange === 'BITGET' || body.exchange === 'KUCOIN')
-        ? body.passphrase
+        ? (body as any).passphrase
         : body.authToken;
 
       const result = await ExchangeCredentialsService.saveCredentials(userId, {

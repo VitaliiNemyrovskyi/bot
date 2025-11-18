@@ -71,6 +71,7 @@ model User {
   priceArbitragePositions       PriceArbitragePosition[]
   graduatedEntryPositions       GraduatedEntryPosition[]
   triangularArbitragePositions  TriangularArbitragePosition[]
+  fundingPaymentRecordingSessions FundingPaymentRecordingSession[]
 
   @@map("users")
 }
@@ -1119,4 +1120,171 @@ model PublicFundingRate {
   @@index([timestamp])
   @@index([exchange])
   @@map("public_funding_rates")
+}
+
+enum RecordingStatus {
+  PREPARING // Syncing time, preparing to record
+  WAITING // Waiting for funding payment time
+  RECORDING // Actively recording data
+  COMPLETED // Recording finished successfully
+  CANCELLED // User cancelled recording
+  ERROR // Error occurred during recording
+}
+
+// Recording session for funding payment analysis
+model FundingPaymentRecordingSession {
+  id     String  @id @default(cuid())
+  userId String? // Optional for automated recordings
+
+  // Symbol and exchange
+  symbol   String // e.g., "BTCUSDT"
+  exchange Exchange // Only BYBIT for now
+
+  // Funding details
+  fundingRate         Float // Funding rate at recording time (e.g., -0.02 = -2%)
+  fundingPaymentTime  DateTime // Exact funding payment time (00:00:00, 08:00:00, 16:00:00 UTC)
+  fundingInterval     Int // Interval in hours (usually 8 for Bybit)
+
+  // Recording configuration
+  preRecordingSeconds  Int @default(5) // Seconds before payment to start recording
+  postRecordingSeconds Int @default(30) // Seconds after payment to record
+
+  // Timing synchronization
+  bybitServerTime    DateTime? // Bybit server time at sync
+  localTime          DateTime? // Local time at sync
+  networkLatencyMs   Int? // Measured network latency in milliseconds
+  timeSyncAccuracy   Float? // Time sync accuracy in ms (lower is better)
+
+  // Status
+  status       RecordingStatus @default(PREPARING)
+  errorMessage String?
+
+  // Statistics (calculated after completion)
+  totalDataPoints       Int     @default(0) // Total WebSocket messages recorded
+  priceDropPercent      Float? // Price drop % after funding payment
+  priceDropStartTimeMs  Int? // When price started dropping (ms relative to payment)
+  priceDropDuration     Int? // How long price drop lasted (ms)
+  maxPriceDropPercent   Float? // Maximum price drop observed
+  priceRecoveryTimeMs   Int? // Time for price to recover (if it did)
+
+  // Best entry analysis
+  optimalEntryTimeMs    Int? // Optimal entry time (ms after payment)
+  optimalEntryPrice     Float? // Price at optimal entry
+  optimalTakeProfitPrice Float? // Calculated optimal TP price
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime? // When recording actually started
+  completedAt DateTime? // When recording finished
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user       User?                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataPoints FundingPaymentDataPoint[]
+
+  // Indexes
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status])
+  @@index([symbol])
+  @@index([exchange])
+  @@index([fundingPaymentTime])
+  @@index([createdAt])
+  @@map("funding_payment_recording_sessions")
+}
+
+// Individual data points captured during recording
+model FundingPaymentDataPoint {
+  id        String @id @default(cuid())
+  sessionId String
+
+  // Timing (critical for analysis)
+  bybitTimestamp    BigInt // Bybit server timestamp (milliseconds since epoch)
+  localTimestamp    BigInt // Local timestamp when received (milliseconds since epoch)
+  relativeTimeMs    Int // Time relative to funding payment (negative = before, positive = after)
+
+  // Price data from WebSocket ticker
+  lastPrice   Float // Last traded price
+  markPrice   Float? // Mark price (fair price)
+  indexPrice  Float? // Index price
+  bid1Price   Float? // Best bid
+  ask1Price   Float? // Best ask
+  bidAskSpread Float? // Spread between best bid/ask
+
+  // Volume and liquidity
+  volume24h     Float? // 24h volume
+  turnover24h   Float? // 24h turnover
+  openInterest  Float? // Open interest
+
+  // Order book depth (if available)
+  bid1Size Float? // Size at best bid
+  ask1Size Float? // Size at best ask
+
+  // Price changes
+  priceChange1m     Float? // Price change last 1 minute
+  priceChangePercent Float? // Price change % from entry
+
+  // Metadata
+  updateType String? // "snapshot" or "delta"
+  sequence   BigInt? // Sequence number from exchange
+
+  // Timestamp
+  createdAt DateTime @default(now())
+
+  // Relations
+  session FundingPaymentRecordingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Indexes for fast queries and analysis
+  @@index([sessionId])
+  @@index([sessionId, relativeTimeMs])
+  @@index([bybitTimestamp])
+  @@index([relativeTimeMs])
+  @@map("funding_payment_data_points")
+}
+
+// Funding SHORT Strategy Trades
+model FundingShortTrade {
+  id      String @id @default(cuid())
+  tradeId String @unique
+
+  // Symbol and exchange
+  symbol   String
+  exchange String @default("BYBIT")
+
+  // Position details
+  side             String // "Short"
+  entryPrice       Float
+  exitPrice        Float?
+  positionSizeUSDT Float
+
+  // Timing (critical for -500ms strategy)
+  entryTime          DateTime
+  exitTime           DateTime?
+  fundingPaymentTime DateTime
+  fundingRate        Float // Funding rate at entry
+
+  // Financial results
+  realizedPnL  Float? // Total P&L in USDT
+  fundingPaid  Float? // Funding fee paid (negative if paid, 0 if avoided)
+  priceMove    Float? // Price movement % (entry - exit) / entry
+  netProfit    Float? // realizedPnL including funding
+
+  // Status
+  status       String // PENDING_ENTRY, ENTERED, PENDING_EXIT, EXITED, STOPPED
+  errorMessage String?
+
+  // Trade type
+  paperTrade Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([symbol])
+  @@index([status])
+  @@index([paperTrade])
+  @@index([fundingPaymentTime])
+  @@index([createdAt])
+  @@map("funding_short_trades")
 }

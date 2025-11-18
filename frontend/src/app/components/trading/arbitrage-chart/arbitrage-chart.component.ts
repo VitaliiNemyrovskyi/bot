@@ -6,7 +6,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { CardComponent, CardHeaderComponent, CardTitleComponent, CardContentComponent } from '../../ui/card/card.component';
 import { ButtonComponent } from '../../ui/button/button.component';
-import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time } from 'lightweight-charts';
 import { AuthService } from '../../../services/auth.service';
 import { ThemeService } from '../../../services/theme.service';
 import { ToastService } from '../../../services/toast.service';
@@ -875,14 +875,14 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
     });
 
     // Add Primary Exchange series (blue line)
-    this.primarySeries = this.chart.addSeries(LineSeries, {
+    this.primarySeries = this.chart.addLineSeries( {
       color: '#3b82f6',
       lineWidth: 2,
       title: this.primaryExchange(),
     });
 
     // Add Hedge Exchange series (purple line)
-    this.hedgeSeries = this.chart.addSeries(LineSeries, {
+    this.hedgeSeries = this.chart.addLineSeries( {
       color: '#a855f7',
       lineWidth: 2,
       title: this.hedgeExchange(),
@@ -4555,14 +4555,7 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
       // Only log error, don't show to user (this is a background check)
       console.error('[ArbitrageChart] Error detecting existing positions:', error);
 
-      // Only show error if it's not a "no credentials" or "no positions" error
-      const errorMessage = error.message || 'Unknown error';
-      if (!errorMessage.includes('credentials') && !errorMessage.includes('No matching')) {
-        this.toastService.error(
-          this.translationService.translate('arbitrage.positionDetectionError') ||
-          'Failed to check for existing positions'
-        );
-      }
+      // NOTE: Not showing error toast to avoid spamming user with background errors
     }
   }
 

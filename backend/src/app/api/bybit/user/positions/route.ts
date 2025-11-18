@@ -10,13 +10,13 @@ const userBybitKeys = new Map<string, { apiKey: string; apiSecret: string; testn
 function initMockBybitKeys() {
   if (userBybitKeys.size === 0) {
     userBybitKeys.set('admin_1', {
-      apiKey: process.env.BYBIT_API_KEY || '',
-      apiSecret: process.env.BYBIT_API_SECRET || '',
+      apiKey: process.env['BYBIT_API_KEY'] || '',
+      apiSecret: process.env['BYBIT_API_SECRET'] || '',
       testnet: process.env.NODE_ENV !== 'production'
     });
     userBybitKeys.set('user_1', {
-      apiKey: process.env.BYBIT_API_KEY || '',
-      apiSecret: process.env.BYBIT_API_SECRET || '',
+      apiKey: process.env['BYBIT_API_KEY'] || '',
+      apiSecret: process.env['BYBIT_API_SECRET'] || '',
       testnet: process.env.NODE_ENV !== 'production'
     });
   }
@@ -141,7 +141,6 @@ export async function GET(request: NextRequest) {
     const bybitService = new BybitService({
       apiKey: userKeys.apiKey,
       apiSecret: userKeys.apiSecret,
-      testnet: userKeys.testnet,
       enableRateLimit: true
     });
 

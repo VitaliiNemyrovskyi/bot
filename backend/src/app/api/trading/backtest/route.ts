@@ -179,7 +179,9 @@ function getStrategyEffectiveness(strategyType: string): number {
 function getEntryReason(config: BotConfiguration): string {
   if (config.entryFilters.length > 0) {
     const filter = config.entryFilters[Math.floor(Math.random() * config.entryFilters.length)];
-    return `Entry filter: ${filter.name}`;
+    if (filter) {
+      return `Entry filter: ${filter.name}`;
+    }
   }
   return 'Grid level reached';
 }
@@ -187,10 +189,13 @@ function getEntryReason(config: BotConfiguration): string {
 function getExitReason(config: BotConfiguration): string {
   if (config.exitFilters.length > 0) {
     const filter = config.exitFilters[Math.floor(Math.random() * config.exitFilters.length)];
-    return `Exit filter: ${filter.name}`;
+    if (filter) {
+      return `Exit filter: ${filter.name}`;
+    }
   }
   const reasons = ['Take profit', 'Stop loss', 'Grid rebalance', 'Time-based exit'];
-  return reasons[Math.floor(Math.random() * reasons.length)];
+  const reason = reasons[Math.floor(Math.random() * reasons.length)];
+  return reason || 'Grid level reached';
 }
 
 function generateMonthlyReturns(dailyReturns: Array<{ date: Date; return: number }>): Array<{ month: string; return: number }> {

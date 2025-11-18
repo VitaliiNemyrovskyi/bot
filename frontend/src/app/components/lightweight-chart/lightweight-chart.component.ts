@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, Input, Output, EventEmitter, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { createChart, CandlestickData, ColorType, CandlestickSeries, ISeriesApi, IChartApi, Time, UTCTimestamp } from 'lightweight-charts';
+import { createChart, CandlestickData, ColorType, ISeriesApi, IChartApi, Time, UTCTimestamp } from 'lightweight-charts';
 import { ThemeService } from '../../services/theme.service';
 import { BybitService } from '../../services/bybit.service';
 import { Subscription } from 'rxjs';
@@ -256,7 +256,7 @@ export class LightweightChartComponent implements OnInit, AfterViewInit, OnDestr
         // console.log('Creating candlestick series...');
 
         // In v5, use addSeries() with CandlestickSeries type
-        this.candlestickSeries = this.chart.addSeries(CandlestickSeries, {
+        this.candlestickSeries = this.chart.addCandlestickSeries( {
           upColor: '#26a69a',
           downColor: '#ef5350',
           borderVisible: false,

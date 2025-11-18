@@ -6,11 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { FundingPaymentRecorderService } from '@/services/funding-payment-recorder.service';
-import { auth } from '@/lib/auth';
-
-const prisma = new PrismaClient();
+import { AuthService } from '@/lib/auth';
+import prisma from '@/lib/prisma';
 
 /**
  * GET /api/funding-payment/recordings/[sessionId]/stream
@@ -18,17 +16,34 @@ const prisma = new PrismaClient();
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    // Authenticate user
-    const session = await auth(request);
-    if (!session) {
+    // Try to authenticate from header first
+    let authResult = await AuthService.authenticateRequest(request);
+
+    // If header auth fails, try query parameter (for EventSource which can't send headers)
+    if (!authResult.success) {
+      const { searchParams } = new URL(request.url);
+      const token = searchParams.get('token');
+
+      if (token) {
+        const payload = AuthService.verifyToken(token);
+        if (payload) {
+          const user = await AuthService.findUserById(payload.userId);
+          if (user) {
+            authResult = { success: true, user: payload };
+          }
+        }
+      }
+    }
+
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.userId;
-    const { sessionId } = params;
+    const userId = authResult.user.userId;
+    const { sessionId } = await params;
 
     // Fetch session from database
     const recording = await prisma.fundingPaymentRecordingSession.findUnique({

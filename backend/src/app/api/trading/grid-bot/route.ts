@@ -153,7 +153,7 @@ export async function PUT(request: NextRequest) {
     // Update bot based on action
     switch (action) {
       case 'start':
-        bot.status = 'RUNNING';
+        bot.status = 'ACTIVE';
         break;
       case 'stop':
         bot.status = 'STOPPED';

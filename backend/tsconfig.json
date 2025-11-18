@@ -35,13 +35,22 @@
   "exclude": [
     "node_modules",
     "scripts/**/*",
-    "activate-open-positions.ts",
+    "activate-*.ts",
+    "analyze-*.ts",
     "check-*.ts",
     "cleanup-*.ts",
     "close-*.ts",
     "diagnose-*.ts",
     "dry-run-*.ts",
+    "emergency-*.ts",
+    "find-*.ts",
+    "heal-*.ts",
     "migrate-*.ts",
+    "reset-*.ts",
+    "run-*.ts",
+    "show-*.ts",
+    "start-*.ts",
+    "stop-*.ts",
     "test-*.ts"
   ]
 }

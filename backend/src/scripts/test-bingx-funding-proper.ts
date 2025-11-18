@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { BingXService } from '../lib/bingx';
 import { ExchangeCredentialsService } from '../lib/exchange-credentials-service';
-
-const prisma = new PrismaClient();
 
 async function testBingXFundingProper() {
   try {

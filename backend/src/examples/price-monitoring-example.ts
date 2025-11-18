@@ -17,8 +17,8 @@ async function example1_FetchCurrentPrice() {
 
   // Initialize Bybit connector
   const connector = new BybitConnector(
-    process.env.BYBIT_API_KEY!,
-    process.env.BYBIT_API_SECRET!,
+    process.env['BYBIT_API_KEY']!,
+    process.env['BYBIT_API_SECRET']!,
     true // testnet
   );
 
@@ -36,8 +36,8 @@ async function example2_RealTimePriceStream() {
   console.log('\n=== Example 2: Real-Time Price Stream ===\n');
 
   const connector = new BybitConnector(
-    process.env.BYBIT_API_KEY!,
-    process.env.BYBIT_API_SECRET!,
+    process.env['BYBIT_API_KEY']!,
+    process.env['BYBIT_API_SECRET']!,
     true
   );
 
@@ -66,8 +66,8 @@ async function example3_CrossExchangePriceMonitoring() {
 
   // Initialize all three connectors
   const bybit = new BybitConnector(
-    process.env.BYBIT_API_KEY!,
-    process.env.BYBIT_API_SECRET!,
+    process.env['BYBIT_API_KEY']!,
+    process.env['BYBIT_API_SECRET']!,
     true
   );
 
@@ -159,8 +159,8 @@ async function example4_PriceAlertSystem() {
   console.log('\n=== Example 4: Price Alert System ===\n');
 
   const connector = new BybitConnector(
-    process.env.BYBIT_API_KEY!,
-    process.env.BYBIT_API_SECRET!,
+    process.env['BYBIT_API_KEY']!,
+    process.env['BYBIT_API_SECRET']!,
     true
   );
 
@@ -220,8 +220,8 @@ async function example5_PriceVolatilityTracker() {
   console.log('\n=== Example 5: Price Volatility Tracker ===\n');
 
   const connector = new BybitConnector(
-    process.env.BYBIT_API_KEY!,
-    process.env.BYBIT_API_SECRET!,
+    process.env['BYBIT_API_KEY']!,
+    process.env['BYBIT_API_SECRET']!,
     true
   );
 
