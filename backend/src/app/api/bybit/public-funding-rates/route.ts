@@ -113,7 +113,10 @@ export async function GET(_request: NextRequest) {
     const data = rawData.result?.list || [];
 
     // Step 4: Upsert records (update existing or create new)
-    const upsertPromises = data.map((item: any) => {
+    // Step 4: Bulk update records (delete old + insert new)
+    const upsertStartTime = Date.now();
+
+    const recordsToInsert = data.map((item: any) => {
       const symbol = item.symbol; // BTCUSDT (no separator)
 
       // Parse funding interval from API
@@ -123,35 +126,31 @@ export async function GET(_request: NextRequest) {
       // Convert symbol format: BTCUSDT → BTC/USDT
       const normalizedSymbol = symbol.replace(/USDT$/, '/USDT');
 
-      return prisma.publicFundingRate.upsert({
-        where: {
-          symbol_exchange: {
-            symbol: normalizedSymbol,
-            exchange: 'BYBIT',
-          },
-        },
-        update: {
-          fundingRate: parseFloat(item.fundingRate || '0'),
-          nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
-          fundingInterval: fundingIntervalHour,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
-        },
-        create: {
-          symbol: normalizedSymbol,
-          exchange: 'BYBIT',
-          fundingRate: parseFloat(item.fundingRate || '0'),
-          nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
-          fundingInterval: fundingIntervalHour,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
-        },
-      });
+      return {
+        symbol: normalizedSymbol,
+        exchange: 'BYBIT',
+        fundingRate: parseFloat(item.fundingRate || '0'),
+        nextFundingTime: new Date(parseInt(item.nextFundingTime || Date.now().toString())),
+        fundingInterval: fundingIntervalHour,
+        markPrice: parseFloat(item.markPrice || '0'),
+        indexPrice: parseFloat(item.indexPrice || '0'),
+        timestamp: now,
+      };
     });
 
-    await Promise.all(upsertPromises);
+    await prisma.$transaction([
+      prisma.publicFundingRate.deleteMany({
+        where: {
+          exchange: 'BYBIT',
+        },
+      }),
+      prisma.publicFundingRate.createMany({
+        data: recordsToInsert as any,
+        skipDuplicates: true,
+      }),
+    ]);
+
+    console.log(`[Bybit] Database bulk update took ${Date.now() - upsertStartTime}ms`);
 
 
     // Step 5: Return data with unified format

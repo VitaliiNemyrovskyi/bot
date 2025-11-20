@@ -56,6 +56,10 @@ export class BinanceFundingTriggerService extends EventEmitter {
   private shortPositionOpened: boolean = false;
   private isActive: boolean = false;
 
+  // Pre-calculated values
+  private triggerQuantity: string = '0';
+  private mainQuantity: string = '0';
+
   // Performance metrics
   private fundingDetectionTime?: number;
   private shortEntryTime?: number;
@@ -107,7 +111,11 @@ export class BinanceFundingTriggerService extends EventEmitter {
       await this.connectUserDataStream();
       console.log('✅ User Data Stream connected');
 
-      // Step 4: Wait until 10 seconds before funding
+      // Step 4: Pre-calculate quantities (approximate based on current price)
+      // We will refresh this right before opening the trigger
+      await this.calculateQuantities();
+
+      // Step 5: Wait until 10 seconds before funding
       const timeUntilEntry = this.config.fundingTime.getTime() - Date.now() - 10000;
 
       if (timeUntilEntry > 0) {
@@ -115,14 +123,17 @@ export class BinanceFundingTriggerService extends EventEmitter {
         await this.sleep(timeUntilEntry);
       }
 
-      // Step 5: Open LONG trigger position
+      // Refresh quantities one last time before action
+      await this.calculateQuantities();
+
+      // Step 6: Open LONG trigger position
       await this.openLongTrigger();
 
-      // Step 6: Wait for funding payment detection
+      // Step 7: Wait for funding payment detection
       console.log('\n👀 MONITORING FOR FUNDING PAYMENT...');
       const result = await this.waitForFundingAndExecute();
 
-      // Step 7: Cleanup
+      // Step 8: Cleanup
       await this.cleanup();
 
       return result;
@@ -135,6 +146,21 @@ export class BinanceFundingTriggerService extends EventEmitter {
         success: false,
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Calculate order quantities based on current price
+   */
+  private async calculateQuantities(): Promise<void> {
+    try {
+      const currentPrice = await this.binanceService.getCurrentPrice(this.config.symbol);
+      this.triggerQuantity = (this.config.triggerPositionUsdt / currentPrice).toFixed(3);
+      this.mainQuantity = (this.config.mainPositionUsdt / currentPrice).toFixed(3);
+      console.log(`   Calculated Quantities (Price: ${currentPrice}): Trigger=${this.triggerQuantity}, Main=${this.mainQuantity}`);
+    } catch (error: any) {
+      console.error('Failed to calculate quantities:', error.message);
+      throw error;
     }
   }
 
@@ -232,7 +258,14 @@ export class BinanceFundingTriggerService extends EventEmitter {
    */
   private handleUserDataMessage(data: Buffer): void {
     try {
-      const message = JSON.parse(data.toString());
+      const msgString = data.toString();
+      
+      // Optimization: Fast check before parsing JSON
+      if (!msgString.includes('FUNDING_FEE')) {
+        return;
+      }
+
+      const message = JSON.parse(msgString);
 
       // Check for ACCOUNT_UPDATE event with FUNDING_FEE
       if (message.e === 'ACCOUNT_UPDATE' && message.a?.m === 'FUNDING_FEE') {
@@ -246,11 +279,7 @@ export class BinanceFundingTriggerService extends EventEmitter {
           this.fundingAmount = parseFloat(usdtBalance.bc); // Balance change
         }
 
-        console.log('\n⚡⚡⚡ FUNDING PAYMENT DETECTED!');
-        console.log(`   Time: ${new Date(this.fundingDetectionTime).toISOString()}`);
-        console.log(`   Funding Amount: ${this.fundingAmount?.toFixed(6)} USDT`);
-        console.log(`   Detection Latency: ${this.fundingDetectionTime - this.config.fundingTime.getTime()}ms`);
-
+        // CRITICAL: Log AFTER emitting event to not block execution
         // Emit funding detected event
         this.emit('fundingDetected', {
           fundingAmount: this.fundingAmount,
@@ -260,6 +289,9 @@ export class BinanceFundingTriggerService extends EventEmitter {
         });
 
         this.fundingDetected = true;
+        
+        // Log after critical path
+        console.log(`\n⚡⚡⚡ FUNDING DETECTED! Latency: ${this.fundingDetectionTime - this.config.fundingTime.getTime()}ms`);
       }
 
     } catch (error: any) {
@@ -275,16 +307,11 @@ export class BinanceFundingTriggerService extends EventEmitter {
     console.log('='.repeat(70));
 
     try {
-      // Get current price
-      const currentPrice = await this.binanceService.getCurrentPrice(this.config.symbol);
-      console.log(`   Current Price: ${currentPrice}`);
-
-      // Calculate quantity
-      const quantity = (this.config.triggerPositionUsdt / currentPrice).toFixed(3);
-      console.log(`   Quantity: ${quantity}`);
+      // Use pre-calculated quantity
+      console.log(`   Quantity: ${this.triggerQuantity}`);
 
       // Open LONG position via WebSocket API (ultra-fast)
-      const order = await this.binanceService.openLongWS(this.config.symbol, quantity);
+      const order = await this.binanceService.openLongWS(this.config.symbol, this.triggerQuantity);
 
       console.log(`✅ LONG trigger opened!`);
       console.log(`   Order ID: ${order.orderId}`);
@@ -338,35 +365,43 @@ export class BinanceFundingTriggerService extends EventEmitter {
 
     try {
       // STEP 1: Open SHORT position immediately (PRIORITY!)
-      console.log('\n🎯 OPENING SHORT POSITION');
-      console.log('='.repeat(70));
+      // Fire and forget logging to not block
+      // console.log('\n🎯 OPENING SHORT POSITION'); 
+      
+      // Use pre-calculated quantity
+      const shortPromise = this.binanceService.openShortWS(this.config.symbol, this.mainQuantity);
+      
+      // STEP 2: Close LONG trigger position (PARALLEL EXECUTION)
+      // Don't await this immediately, let it fly
+      const closeLongPromise = this.binanceService.closeLongWS(this.config.symbol, this.triggerQuantity)
+        .catch(err => console.error('Failed to close LONG trigger:', err.message));
 
-      const currentPrice = await this.binanceService.getCurrentPrice(this.config.symbol);
-      const shortQuantity = (this.config.mainPositionUsdt / currentPrice).toFixed(3);
-
-      const shortOrder = await this.binanceService.openShortWS(this.config.symbol, shortQuantity);
+      // Await SHORT confirmation (we need it for logic)
+      const shortOrder = await shortPromise;
       this.shortEntryTime = Date.now();
       this.shortEntryPrice = parseFloat(shortOrder.avgPrice);
       this.shortPositionOpened = true;
 
-      console.log(`✅ SHORT opened in ${this.shortEntryTime - tradeStartTime}ms`);
+      // Log after critical network requests
+      console.log(`\n✅ SHORT opened in ${this.shortEntryTime - tradeStartTime}ms`);
       console.log(`   Order ID: ${shortOrder.orderId}`);
       console.log(`   Entry Price: ${this.shortEntryPrice}`);
 
-      // STEP 2: Close LONG trigger position
-      console.log('\n🧹 CLOSING LONG TRIGGER POSITION');
-
-      const longQuantity = (this.config.triggerPositionUsdt / currentPrice).toFixed(3);
-      const longCloseOrder = await this.binanceService.closeLongWS(this.config.symbol, longQuantity);
-
-      console.log(`✅ LONG closed in ${Date.now() - tradeStartTime}ms`);
-      console.log(`   Order ID: ${longCloseOrder.orderId}`);
+      // Await close long just to confirm it's done (optional, could be skipped if we trust it)
+      try {
+        const longCloseOrder = await closeLongPromise;
+        if (longCloseOrder) {
+             console.log(`✅ LONG closed (Order ID: ${longCloseOrder.orderId})`);
+        }
+      } catch (e) {
+          // Already handled in catch above
+      }
 
       // STEP 3: Monitor for exit
       console.log('\n👀 MONITORING FOR EXIT SIGNAL');
       console.log('='.repeat(70));
 
-      await this.monitorForExit(shortQuantity);
+      await this.monitorForExit(this.mainQuantity);
 
       // Calculate results
       if (!this.shortExitPrice || !this.shortEntryPrice) {

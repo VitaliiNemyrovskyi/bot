@@ -1,42 +1,113 @@
-<div class="home-container">
-  <div class="hero-section">
-    <div class="hero-header">
-      <div class="hero-content">
-        <h1 class="hero-title">{{ translate('welcome.title') }}</h1>
-        <p class="hero-subtitle">{{ translate('welcome.subtitle') }}</p>
-      </div>
-      <ui-button variant="ghost" size="medium" className="theme-toggle" (clicked)="toggleTheme()" [attr.aria-label]="translate('theme.switchTo', { mode: isDark() ? translate('theme.light') : translate('theme.dark') })">
-        @if (isDark()) {
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
-            <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
-            <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2"/>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2"/>
-            <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2"/>
-            <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2"/>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2"/>
-          </svg>
-        } @else {
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"/>
-          </svg>
-        }
-      </ui-button>
+<div class="nexus-container">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-item">
+      <span class="status-dot operational"></span>
+      <span class="status-text">SYSTEM OPERATIONAL</span>
+    </div>
+    <div class="user-greeting">
+      WELCOME BACK, <span class="highlight">COMMANDER</span>
     </div>
   </div>
-  
-  <div class="trading-widget-container">
-    <div class="widget-header">
-      <h2>{{ translate('market.overview') }}</h2>
+
+  <!-- Hero Section -->
+  <div class="hero-section">
+    <h1 class="nexus-title">TRADING <span class="neon-text">NEXUS</span></h1>
+    <p class="nexus-subtitle">Advanced Algorithmic Trading Command Center</p>
+  </div>
+
+  <!-- Metrics Grid (The Pulse) -->
+  <div class="metrics-grid">
+    <div class="metric-card glass-panel">
+      <div class="metric-icon">
+        <span class="material-symbols-outlined">smart_toy</span>
+      </div>
+      <div class="metric-content">
+        <span class="metric-label">ACTIVE BOTS</span>
+        <span class="metric-value neon-blue">{{ activeBots }}</span>
+      </div>
+      <div class="metric-trend positive">
+        <span class="material-symbols-outlined">trending_up</span>
+        <span>Running</span>
+      </div>
     </div>
-    <div class="tradingview-widget-container">
-      <div #tradingviewWidget class="tradingview-widget-container__widget"></div>
-      <div class="tradingview-widget-copyright">
-        <a href="https://www.tradingview.com/symbols/NASDAQ-AAPL/?exchange=NASDAQ" rel="noopener nofollow" target="_blank">
-          <span class="blue-text">AAPL chart by TradingView</span>
-        </a>
+
+    <div class="metric-card glass-panel">
+      <div class="metric-icon">
+        <span class="material-symbols-outlined">bar_chart</span>
+      </div>
+      <div class="metric-content">
+        <span class="metric-label">24H VOLUME</span>
+        <span class="metric-value neon-purple">{{ totalVolume }}</span>
+      </div>
+      <div class="metric-trend">
+        <span>USDT</span>
+      </div>
+    </div>
+
+    <div class="metric-card glass-panel">
+      <div class="metric-icon">
+        <span class="material-symbols-outlined">bolt</span>
+      </div>
+      <div class="metric-content">
+        <span class="metric-label">ARBITRAGE OPPS</span>
+        <span class="metric-value neon-green">{{ arbitrageOpps }}</span>
+      </div>
+      <div class="metric-trend positive">
+        <span class="material-symbols-outlined">flash_on</span>
+        <span>Live</span>
+      </div>
+    </div>
+
+    <div class="metric-card glass-panel">
+      <div class="metric-icon">
+        <span class="material-symbols-outlined">dns</span>
+      </div>
+      <div class="metric-content">
+        <span class="metric-label">NETWORK LATENCY</span>
+        <span class="metric-value">{{ networkLatency }}ms</span>
+      </div>
+      <div class="metric-trend excellent">
+        <span>Optimal</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Deck -->
+  <div class="action-deck">
+    <div class="action-card glass-panel" (click)="navigateTo('trading/bot/create')">
+      <div class="card-bg-glow blue"></div>
+      <div class="action-content">
+        <span class="material-symbols-outlined action-icon">rocket_launch</span>
+        <h3>Launch Bot</h3>
+        <p>Deploy a new algorithmic trading strategy.</p>
+      </div>
+      <div class="action-arrow">
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </div>
+    </div>
+
+    <div class="action-card glass-panel" (click)="navigateTo('arbitrage/opportunities')">
+      <div class="card-bg-glow green"></div>
+      <div class="action-content">
+        <span class="material-symbols-outlined action-icon">currency_exchange</span>
+        <h3>Arbitrage Scanner</h3>
+        <p>View live funding rate arbitrage opportunities.</p>
+      </div>
+      <div class="action-arrow">
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </div>
+    </div>
+
+    <div class="action-card glass-panel" (click)="navigateTo('arbitrage/funding')">
+      <div class="card-bg-glow purple"></div>
+      <div class="action-content">
+        <span class="material-symbols-outlined action-icon">analytics</span>
+        <h3>Funding Analysis</h3>
+        <p>Deep dive into historical funding rate data.</p>
+      </div>
+      <div class="action-arrow">
+        <span class="material-symbols-outlined">arrow_forward</span>
       </div>
     </div>
   </div>

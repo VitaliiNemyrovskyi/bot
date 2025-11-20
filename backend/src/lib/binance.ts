@@ -523,7 +523,7 @@ export class BinanceService {
    * Sell to open SHORT position
    */
   async openShortWS(symbol: string, quantity: string, reduceOnly: boolean = false): Promise<any> {
-    console.log(`[BinanceService WS] Opening SHORT: ${symbol} qty=${quantity}`);
+    // console.log(`[BinanceService WS] Opening SHORT: ${symbol} qty=${quantity}`);
     const startTime = Date.now();
 
     try {

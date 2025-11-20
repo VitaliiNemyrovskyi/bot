@@ -196,43 +196,37 @@ export async function GET(_request: NextRequest) {
       return true;
     });
 
-    // Step 4: Upsert records (update existing or create new)
+    // Step 4: Bulk update records (delete old + insert new)
     const upsertStartTime = Date.now();
     console.log(`[GateIO] Saving ${validContracts.length} records to database...`);
 
-    const upsertPromises = validContracts.map((contract: any) => {
-        const symbol = contract.name.replace('_', '/'); // BTC_USDT → BTC/USDT
+    const recordsToInsert = validContracts.map((contract: any) => {
+      const symbol = contract.name.replace('_', '/'); // BTC_USDT → BTC/USDT
 
-        return prisma.publicFundingRate.upsert({
-          where: {
-            symbol_exchange: {
-              symbol,
-              exchange: 'GATEIO',
-            },
-          },
-          update: {
-            fundingRate: parseFloat(contract.funding_rate || '0'),
-            nextFundingTime: new Date(contract.funding_next_apply * 1000),
-            fundingInterval: contract.funding_interval / 3600, // Seconds → hours
-            markPrice: parseFloat(contract.mark_price || '0'),
-            indexPrice: parseFloat(contract.index_price || '0'),
-            timestamp: now,
-          },
-          create: {
-            symbol,
-            exchange: 'GATEIO',
-            fundingRate: parseFloat(contract.funding_rate || '0'),
-            nextFundingTime: new Date(contract.funding_next_apply * 1000),
-            fundingInterval: contract.funding_interval / 3600, // Seconds → hours
-            markPrice: parseFloat(contract.mark_price || '0'),
-            indexPrice: parseFloat(contract.index_price || '0'),
-            timestamp: now,
-          },
-        });
-      });
+      return {
+        symbol,
+        exchange: 'GATEIO',
+        fundingRate: parseFloat(contract.funding_rate || '0'),
+        nextFundingTime: new Date(contract.funding_next_apply * 1000),
+        fundingInterval: contract.funding_interval / 3600, // Seconds → hours
+        markPrice: parseFloat(contract.mark_price || '0'),
+        indexPrice: parseFloat(contract.index_price || '0'),
+        timestamp: now,
+      };
+    });
 
-    await Promise.all(upsertPromises);
-    console.log(`[GateIO] Database upsert took ${Date.now() - upsertStartTime}ms`);
+    await prisma.$transaction([
+      prisma.publicFundingRate.deleteMany({
+        where: {
+          exchange: 'GATEIO',
+        },
+      }),
+      prisma.publicFundingRate.createMany({
+        data: recordsToInsert as any,
+        skipDuplicates: true,
+      }),
+    ]);
+    console.log(`[GateIO] Database bulk update took ${Date.now() - upsertStartTime}ms`);
 
     // Step 5: Return transformed data with unified format (only valid contracts)
     const unifiedData = {

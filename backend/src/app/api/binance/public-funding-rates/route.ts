@@ -176,42 +176,45 @@ export async function GET(_request: NextRequest) {
     const upsertStartTime = Date.now();
     console.log(`[Binance] Saving ${enrichedData.length} records to database...`);
 
-    const upsertPromises = enrichedData.map((item: any) => {
+    // Save to database using transaction for performance
+    const upsertStartTime = Date.now();
+    console.log(`[Binance] Saving ${enrichedData.length} records to database...`);
+
+    const recordsToInsert = enrichedData.map((item: any) => {
       // Binance uses format like "BTCUSDT", convert to "BTC/USDT"
       const symbolWithSlash = item.symbol.replace(/USDT$/, '/USDT')
         .replace(/USDC$/, '/USDC')
         .replace(/BUSD$/, '/BUSD');
 
-      return prisma.publicFundingRate.upsert({
-        where: {
-          symbol_exchange: {
-            symbol: symbolWithSlash,
-            exchange: 'BINANCE',
-          },
-        },
-        update: {
-          fundingRate: parseFloat(item.lastFundingRate || '0'),
-          nextFundingTime: new Date(item.nextFundingTime),
-          fundingInterval: item.fundingInterval || 0,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
-        },
-        create: {
-          symbol: symbolWithSlash,
-          exchange: 'BINANCE',
-          fundingRate: parseFloat(item.lastFundingRate || '0'),
-          nextFundingTime: new Date(item.nextFundingTime),
-          fundingInterval: item.fundingInterval || 0,
-          markPrice: parseFloat(item.markPrice || '0'),
-          indexPrice: parseFloat(item.indexPrice || '0'),
-          timestamp: now,
-        },
-      });
+      return {
+        symbol: symbolWithSlash,
+        exchange: 'BINANCE', // Type assertion if needed, but string literal works for enum
+        fundingRate: parseFloat(item.lastFundingRate || '0'),
+        nextFundingTime: new Date(item.nextFundingTime),
+        fundingInterval: item.fundingInterval || 0,
+        markPrice: parseFloat(item.markPrice || '0'),
+        indexPrice: parseFloat(item.indexPrice || '0'),
+        timestamp: now,
+      };
     });
 
-    await Promise.all(upsertPromises);
-    console.log(`[Binance] Database upsert took ${Date.now() - upsertStartTime}ms`);
+    // Use transaction to delete old records and insert new ones
+    // This is much faster than hundreds of individual upserts
+    await prisma.$transaction([
+      // 1. Delete all Binance records (we're replacing the snapshot)
+      prisma.publicFundingRate.deleteMany({
+        where: {
+          exchange: 'BINANCE',
+        },
+      }),
+      // 2. Bulk insert new records
+      prisma.publicFundingRate.createMany({
+        data: recordsToInsert as any, // Cast to any to avoid strict enum typing issues in bulk insert
+        skipDuplicates: true,
+      }),
+    ]);
+
+    console.log(`[Binance] Database bulk update took ${Date.now() - upsertStartTime}ms`);
 
     // Transform to unified format
     const unifiedData = {
