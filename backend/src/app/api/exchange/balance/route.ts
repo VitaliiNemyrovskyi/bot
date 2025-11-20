@@ -29,9 +29,14 @@ export async function GET(request: NextRequest) {
     const authResult = await AuthService.authenticateRequest(request);
 
     if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized. Please log in.';
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Please log in.' },
-        { status: 401 }
+        { success: false, error: errorMessage },
+        { status: statusCode }
       );
     }
 

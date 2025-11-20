@@ -1,39 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 
 /**
- * PrismaClient Singleton
+ * PrismaClient Singleton for Next.js
+ *
+ * Uses the official Prisma recommended pattern for Next.js to prevent
+ * multiple instances during hot reloading in development.
+ *
+ * @see https://www.prisma.io/docs/orm/more/help-and-troubleshooting/help-articles/nextjs-prisma-client-dev-practices
  */
 
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
-}
-
-const prismaClientSingleton = () => {
-  const client = new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  });
-
-  // Explicitly connect on initialization
-  client.$connect().catch((error) => {
-    console.error('[Prisma] Failed to connect:', error);
-  });
-
-  return client;
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
 };
 
-const prisma = globalThis.prisma ?? prismaClientSingleton();
+const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+});
 
 if (process.env.NODE_ENV !== 'production') {
-  globalThis.prisma = prisma;
-}
-
-// Graceful shutdown
-if (typeof window === 'undefined') {
-  process.on('beforeExit', async () => {
-    await prisma.$disconnect();
-  });
+  globalForPrisma.prisma = prisma;
 }
 
 export default prisma;
-export { prisma };

@@ -26,7 +26,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
    * @param exchangeId - Exchange identifier (e.g., 'binance', 'bybit', 'bingx', 'mexc')
    * @param apiKey - API key for authentication
    * @param apiSecret - API secret for authentication
-   * @param testnet - Whether to use testnet/sandbox mode (default: true)
+   * @param testnet - Whether to use testnet/sandbox mode (default: false)
    * @param userId - Optional user ID for logging/tracking
    * @param credentialId - Optional credential ID for logging/tracking
    * @param marketType - Market type: 'spot', 'swap' (perpetual futures), 'future', 'margin' (default: 'spot')
@@ -36,6 +36,7 @@ export class CCXTExchangeConnector extends BaseExchangeConnector {
     exchangeId: string,
     apiKey: string,
     apiSecret: string,
+    testnet: boolean = false,
     private userId?: string,
     private credentialId?: string,
     private marketType: 'spot' | 'swap' | 'future' | 'margin' = 'spot',

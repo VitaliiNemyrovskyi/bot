@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
                 nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
                 fundingInterval = matchingSymbol.fundingInterval || 0;
               } else if (exchange === 'BINGX') {
-                fundingRate = matchingSymbol.lastFundingRate || '0';
+                fundingRate = matchingSymbol.fundingRate || '0';
                 nextFundingTime = parseInt(matchingSymbol.nextFundingTime || '0');
                 fundingInterval = matchingSymbol.fundingInterval || 0;
               } else if (exchange === 'GATEIO') {

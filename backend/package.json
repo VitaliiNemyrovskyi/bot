@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "powershell -Command \"$proc = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | Get-Unique; if ($proc) { Stop-Process -Id $proc -Force; Start-Sleep -Seconds 2 }; npm run dev:next\"",
+    "dev": "cmd /c start-dev.cmd",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -12,8 +12,7 @@
     "test:coverage": "jest --coverage",
     "test-wallet": "tsx test-wallet-balance.ts",
     "test-bingx": "tsx test-bingx-connector.ts",
-    "dev:next": "next dev",
-    "restart": "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %a & timeout /t 2 /nobreak & next dev"
+    "dev:next": "next dev"
   },
   "dependencies": {
     "@prisma/client": "^6.10.0",

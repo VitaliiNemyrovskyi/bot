@@ -127,7 +127,7 @@ export async function GET(_request: NextRequest) {
         },
         update: {
           fundingRate: parseFloat(contract.fundingFeeRate || '0'),
-          nextFundingTime: new Date(parseInt(contract.nextFundingRateTime || Date.now().toString())),
+          nextFundingTime: new Date(parseInt(contract.nextFundingRateDateTime || Date.now().toString())),
           fundingInterval,
           markPrice: parseFloat(contract.markPrice || '0'),
           indexPrice: parseFloat(contract.indexPrice || '0'),
@@ -137,7 +137,7 @@ export async function GET(_request: NextRequest) {
           symbol: normalizedSymbol,
           exchange: 'KUCOIN',
           fundingRate: parseFloat(contract.fundingFeeRate || '0'),
-          nextFundingTime: new Date(parseInt(contract.nextFundingRateTime || Date.now().toString())),
+          nextFundingTime: new Date(parseInt(contract.nextFundingRateDateTime || Date.now().toString())),
           fundingInterval,
           markPrice: parseFloat(contract.markPrice || '0'),
           indexPrice: parseFloat(contract.indexPrice || '0'),
@@ -168,7 +168,7 @@ export async function GET(_request: NextRequest) {
           symbol: `${base}USDT`, // Normalize: XBTUSDTM -> BTCUSDT
           last: contract.markPrice || '0',
           fundingRate: contract.fundingFeeRate || '0',
-          nextFundingTime: contract.nextFundingRateTime || Date.now().toString(),
+          nextFundingTime: contract.nextFundingRateDateTime || Date.now().toString(),
           fundingInterval,
           markPx: contract.markPrice || '0',
           idxPx: contract.indexPrice || '0'

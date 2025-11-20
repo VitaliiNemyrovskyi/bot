@@ -186,11 +186,29 @@ export class AuthService {
     }
 
     // Verify user exists in database
+    // This will throw on database errors (connection issues, etc.)
+    // Returns null only if user genuinely doesn't exist
     const user = await this.findUserById(payload.userId);
     return user;
   }
 
-  static async authenticateRequest(request: any): Promise<{ success: boolean; user: JWTPayload | null; error?: string }> {
+  /**
+   * Check if an error is a database connection error
+   */
+  static isDatabaseError(error: unknown): boolean {
+    if (!error) return false;
+    const errorStr = String(error);
+    return errorStr.includes('PrismaClientUnknownRequestError') ||
+           errorStr.includes('PrismaClientKnownRequestError') ||
+           errorStr.includes('Connection') ||
+           errorStr.includes('ECONNREFUSED') ||
+           errorStr.includes('connection pool') ||
+           errorStr.includes('Engine is not yet connected') ||
+           errorStr.includes('Response from the Engine was empty') ||
+           errorStr.includes('GenericFailure');
+  }
+
+  static async authenticateRequest(request: any): Promise<{ success: boolean; user: JWTPayload | null; error?: string; isDatabaseError?: boolean }> {
     try {
       const authHeader = request.headers.get('authorization');
 
@@ -224,6 +242,10 @@ export class AuthService {
       };
     } catch (error) {
       console.error('Authentication error:', error);
+      // Check if this is a database error
+      if (this.isDatabaseError(error)) {
+        return { success: false, user: null, error: 'Database error', isDatabaseError: true };
+      }
       return { success: false, user: null, error: 'Authentication failed' };
     }
   }

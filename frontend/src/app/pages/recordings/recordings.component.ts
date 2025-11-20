@@ -332,12 +332,14 @@ export class RecordingsComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Convert data points to line chart format with millisecond precision
+    // Sort and deduplicate by timestamp (lightweight-charts requires unique timestamps)
     const lineData: LineData[] = data
       .map(point => ({
         time: (point.timestamp / 1000) as Time, // Keep milliseconds as fractional seconds
         value: point.price,
       }))
-      .sort((a, b) => (a.time as number) - (b.time as number));
+      .sort((a, b) => (a.time as number) - (b.time as number))
+      .filter((point, index, arr) => index === 0 || point.time !== arr[index - 1].time);
 
     console.log('Setting chart data:', lineData.length, 'points with millisecond precision');
     console.log('First point:', lineData[0]);

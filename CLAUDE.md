@@ -21,3 +21,8 @@ You are a Senior Software developer and crypto trading expert
   - hardcoded values or fallbacks are forbbiden
   - calculate funding spread using shared utilities
   - all comments should be in English
+
+## Process Management
+- NEVER try to kill processes or restart backend/frontend yourself
+- When backend/frontend needs restart - just tell user "перезапусти бекенд" or "перезапусти фронтенд"
+- Backend always runs on port 3000, frontend on port 4200 - NEVER change these ports

@@ -49,6 +49,12 @@
     color: #dc2626;
   }
 
+  &.alert-warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #d97706;
+  }
+
   .alert-close {
     position: absolute;
     right: 0.75rem;
@@ -58,10 +64,24 @@
     cursor: pointer;
     color: inherit;
     opacity: 0.7;
-    
+
     &:hover {
       opacity: 1;
     }
+  }
+}
+
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e5e7eb;
+    border-top: 3px solid #3b82f6;
   }
 }
 

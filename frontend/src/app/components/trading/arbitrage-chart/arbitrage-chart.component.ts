@@ -1924,30 +1924,56 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         console.warn(`[ArbitrageChart] No funding rate data received from API for hedge exchange ${hedgeEx}`);
       }
 
-      // Update primary exchange data (only if we have a valid price from WebSocket/historical data)
+      // Update primary exchange data
       const primaryData = this.getFundingRate(primaryEx, currentSymbol);
       const currentPrimaryPrice = this.primaryData().price;
-      if (primaryData.fundingRate && primaryData.nextFundingTime && primaryData.fundingInterval && currentPrimaryPrice && currentPrimaryPrice > 0) {
-        console.log('[ArbitrageChart] Updating primary with funding data:', primaryData);
-        this.updatePrimaryData(
-          currentPrimaryPrice,
-          primaryData.fundingRate,
-          primaryData.nextFundingTime,
-          primaryData.fundingInterval // Pass funding interval from API
-        );
+
+      // Always update funding interval string even without price (for spread calculation)
+      if (primaryData.fundingRate && primaryData.nextFundingTime && primaryData.fundingInterval) {
+        const currentData = this.primaryData();
+        this.primaryData.set({
+          ...currentData,
+          fundingRate: primaryData.fundingRate,
+          nextFundingTime: primaryData.nextFundingTime,
+          fundingIntervalStr: primaryData.fundingInterval // e.g., "1h", "4h", "8h"
+        });
+        console.log('[ArbitrageChart] Updated primary funding data:', primaryData);
+
+        // Also update with full data if we have valid price
+        if (currentPrimaryPrice && currentPrimaryPrice > 0) {
+          this.updatePrimaryData(
+            currentPrimaryPrice,
+            primaryData.fundingRate,
+            primaryData.nextFundingTime,
+            primaryData.fundingInterval // Pass funding interval from API
+          );
+        }
       }
 
-      // Update hedge exchange data (only if we have a valid price from WebSocket/historical data)
+      // Update hedge exchange data
       const hedgeData = this.getFundingRate(hedgeEx, currentSymbol);
       const currentHedgePrice = this.hedgeData().price;
-      if (hedgeData.fundingRate && hedgeData.nextFundingTime && hedgeData.fundingInterval && currentHedgePrice && currentHedgePrice > 0) {
-        console.log('[ArbitrageChart] Updating hedge with funding data:', hedgeData);
-        this.updateHedgeData(
-          currentHedgePrice,
-          hedgeData.fundingRate,
-          hedgeData.nextFundingTime,
-          hedgeData.fundingInterval // Pass funding interval from API
-        );
+
+      // Always update funding interval string even without price (for spread calculation)
+      if (hedgeData.fundingRate && hedgeData.nextFundingTime && hedgeData.fundingInterval) {
+        const currentData = this.hedgeData();
+        this.hedgeData.set({
+          ...currentData,
+          fundingRate: hedgeData.fundingRate,
+          nextFundingTime: hedgeData.nextFundingTime,
+          fundingIntervalStr: hedgeData.fundingInterval // e.g., "1h", "4h", "8h"
+        });
+        console.log('[ArbitrageChart] Updated hedge funding data:', hedgeData);
+
+        // Also update with full data if we have valid price
+        if (currentHedgePrice && currentHedgePrice > 0) {
+          this.updateHedgeData(
+            currentHedgePrice,
+            hedgeData.fundingRate,
+            hedgeData.nextFundingTime,
+            hedgeData.fundingInterval // Pass funding interval from API
+          );
+        }
       }
     } catch (error) {
       console.error('[ArbitrageChart] Failed to fetch funding rates:', error);

@@ -377,6 +377,12 @@ export class AuthService {
   }
 
   clearAuthData() {
+    // Check if already cleared to avoid unnecessary signal updates
+    const currentState = this._authState();
+    if (!currentState.token && !currentState.user) {
+      return; // Already cleared, no need to update
+    }
+
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.userKey);
     this.updateAuthState({

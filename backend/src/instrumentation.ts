@@ -25,11 +25,10 @@ export async function register() {
     console.log('[Instrumentation] Initializing server-side services...');
 
     try {
-      // Initialize Prisma database connection first
+      // Import Prisma module (connection happens lazily on first query)
       const prismaModule = await import('@/lib/prisma');
       prisma = prismaModule.default;
-      // NOTE: prisma.$connect() is already called in prisma.ts, no need to call again
-      console.log('[Instrumentation] Prisma singleton imported');
+      console.log('[Instrumentation] Prisma module loaded (lazy connection)');
 
       // Initialize Redis cache for real-time data
       // TEMPORARILY DISABLED - causing connection errors
@@ -99,14 +98,14 @@ export async function register() {
       console.log('[Instrumentation] Funding interval scheduler skipped (temporarily disabled)');
 
       // Initialize auto-recorder for funding payment streams
-      // TEMPORARILY DISABLED
+      // DISABLED - run separately via: npx tsx src/scripts/auto-record-funding-data.ts
       /* const autoRecorderModule = await import('@/scripts/auto-record-funding-data');
       autoRecorder = autoRecorderModule.autoRecorder;
       if (autoRecorder) {
         await autoRecorder.start();
         console.log('[Instrumentation] Auto-recorder service started (monitors funding rates >= 1%)');
       } */
-      console.log('[Instrumentation] Auto-recorder service skipped (temporarily disabled)');
+      console.log('[Instrumentation] Auto-recorder service skipped (run separately)');
 
       servicesInitialized = true;
 

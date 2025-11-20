@@ -63,6 +63,16 @@ export class FarmComponent implements OnInit, OnDestroy {
   };
   public shortStrategyLoading = false;
 
+  // Binance Farm strategy state
+  public selectedForBinanceFarm: FundingOpportunity | null = null;
+  public binanceFarmStatus: { isRunning: boolean } | null = null;
+  public binanceFarmConfig = {
+    triggerPositionUsdt: 5,
+    mainPositionUsdt: 100,
+    maxHoldTimeSeconds: 6
+  };
+  public binanceFarmLoading = false;
+
   private selectedExchangesSubject = new BehaviorSubject<string[]>([]);
   private destroy$ = new Subject<void>();
 
@@ -791,6 +801,101 @@ export class FarmComponent implements OnInit, OnDestroy {
     } catch (error: any) {
       console.error('[Farm] Failed to stop SHORT -500ms strategy:', error);
       alert(`Failed to stop strategy: ${error.message}`);
+    }
+  }
+
+  /**
+   * Open Binance Farm strategy panel
+   */
+  openBinanceFarmPanel(op: FundingOpportunity): void {
+    if (op.exchange !== 'BINANCE') {
+      alert('Farm strategy is only supported for BINANCE exchange');
+      return;
+    }
+
+    if (this.binanceFarmStatus?.isRunning) {
+      alert('Binance Farm strategy is already running. Stop it first.');
+      return;
+    }
+
+    this.selectedForBinanceFarm = op;
+  }
+
+  /**
+   * Cancel Binance Farm strategy panel
+   */
+  cancelBinanceFarm(): void {
+    this.selectedForBinanceFarm = null;
+  }
+
+  /**
+   * Start Binance Farm strategy
+   */
+  async startBinanceFarm(): Promise<void> {
+    if (!this.selectedForBinanceFarm) {
+      alert('Please select an opportunity');
+      return;
+    }
+
+    const op = this.selectedForBinanceFarm;
+
+    const confirmed = confirm(
+      `Start Binance Funding Trigger Strategy on ${op.symbol}?\n\n` +
+      `Funding Rate: ${(op.fundingRate * 100).toFixed(4)}%\n` +
+      `Trigger Position: ${this.binanceFarmConfig.triggerPositionUsdt} USDT (LONG)\n` +
+      `Main Position: ${this.binanceFarmConfig.mainPositionUsdt} USDT (SHORT)\n` +
+      `Max Hold Time: ${this.binanceFarmConfig.maxHoldTimeSeconds}s\n\n` +
+      `The strategy will:\n` +
+      `1. Open small LONG position 10s before funding (trigger)\n` +
+      `2. Monitor WebSocket for FUNDING_FEE event\n` +
+      `3. Open SHORT immediately when funding detected\n` +
+      `4. Close LONG trigger position (cleanup)\n` +
+      `5. Monitor price for exit signal (velocity reversal or ${this.binanceFarmConfig.maxHoldTimeSeconds}s timeout)\n\n` +
+      `Expected: +0.8-1.2% profit per trade (after fees)\n` +
+      `Reaction Time: ~155ms (ultra-fast WebSocket execution)\n\n` +
+      `⚠️ LIVE TRADING - Real money at risk!\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    this.binanceFarmLoading = true;
+
+    try {
+      const payload = {
+        symbol: op.symbol,
+        userId: this.userId,
+        triggerPositionUsdt: this.binanceFarmConfig.triggerPositionUsdt,
+        mainPositionUsdt: this.binanceFarmConfig.mainPositionUsdt,
+        maxHoldTimeSeconds: this.binanceFarmConfig.maxHoldTimeSeconds
+      };
+
+      const response = await fetch('/api/binance-funding-trigger/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert(
+          `Binance Farm strategy started successfully!\n\n` +
+          `Symbol: ${data.config.symbol}\n` +
+          `Time until funding: ${data.config.timeUntilFundingMinutes} minutes\n` +
+          `Funding Rate: ${data.config.fundingRatePercent}\n\n` +
+          `Waiting for funding time...`
+        );
+        this.selectedForBinanceFarm = null;
+        this.binanceFarmStatus = { isRunning: true };
+      } else {
+        alert(`Failed to start strategy: ${data.error}`);
+      }
+    } catch (error: any) {
+      console.error('[Farm] Failed to start Binance Farm strategy:', error);
+      alert(`Failed to start strategy: ${error.message}`);
+    } finally {
+      this.binanceFarmLoading = false;
     }
   }
 }

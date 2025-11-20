@@ -63,14 +63,19 @@ export async function GET(request: NextRequest) {
     console.log('[DetectPositionAPI] Authenticating user...');
     const authResult = await AuthService.authenticateRequest(request);
     if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
         {
           success: false,
-          error: 'Unauthorized',
-          message: 'Authentication required',
-          code: 'AUTH_REQUIRED',
+          error: errorMessage,
+          message: authResult.isDatabaseError ? 'Database connection error' : 'Authentication required',
+          code: authResult.isDatabaseError ? 'DATABASE_ERROR' : 'AUTH_REQUIRED',
         },
-        { status: 401 }
+        { status: statusCode }
       );
     }
 

@@ -34,13 +34,19 @@ interface SymbolInfo {
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user
-    const { success, user } = await AuthService.authenticateRequest(request);
-    if (!success || !user) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: errorMessage },
+        { status: statusCode }
       );
     }
+    const user = authResult.user;
 
     // Check query parameter for showing all positions
     const searchParams = request.nextUrl.searchParams;
@@ -250,13 +256,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Authenticate user
-    const { success, user } = await AuthService.authenticateRequest(request);
-    if (!success || !user) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: errorMessage },
+        { status: statusCode }
       );
     }
+    const user = authResult.user;
 
     // Parse request body
     const body = await request.json();
@@ -1002,13 +1014,19 @@ function validateOrderQuantity(
 export async function PATCH(request: NextRequest) {
   try {
     // Authenticate user
-    const { success, user } = await AuthService.authenticateRequest(request);
-    if (!success || !user) {
+    const authResult = await AuthService.authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: errorMessage },
+        { status: statusCode }
       );
     }
+    const user = authResult.user;
 
     // Parse request body
     const body = await request.json();

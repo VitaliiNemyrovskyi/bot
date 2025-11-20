@@ -1,10 +1,12 @@
-import { Component, signal, computed, effect } from '@angular/core';
+import { Component, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TranslationService } from '../../services/translation.service';
 import { ButtonComponent } from '../ui/button/button.component';
+import { Subscription } from 'rxjs';
+import { filter, take } from 'rxjs/operators';
 
 @Component({
   selector: 'app-login',
@@ -13,10 +15,11 @@ import { ButtonComponent } from '../ui/button/button.component';
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss'
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit, OnDestroy {
   // Signals for component state
   private showRegisterSignal = signal(false);
-  
+  private isAuthReady = signal(false);
+
   // Computed values
   readonly showRegister = this.showRegisterSignal.asReadonly();
   readonly isLoading = computed(() => this.authService.isLoading());
@@ -28,12 +31,16 @@ export class LoginComponent {
     return null;
   });
 
+  // Show form only when auth is ready (effect handles navigation if authenticated)
+  readonly showForm = computed(() => this.isAuthReady());
+
   // Form groups
   loginForm: FormGroup;
   registerForm: FormGroup;
 
   private returnUrl: string;
   private loginReason: string | null;
+  private subscriptions: Subscription[] = [];
 
   constructor(
     private fb: FormBuilder,
@@ -55,12 +62,29 @@ export class LoginComponent {
       password: ['', [Validators.required, Validators.minLength(6)]]
     });
 
-    // Effect to navigate when authenticated
+    // Effect to navigate when user successfully logs in (must be in constructor for injection context)
     effect(() => {
-      if (this.authService.isAuthenticated()) {
+      // Only navigate if auth is ready and user becomes authenticated
+      if (this.isAuthReady() && this.authService.isAuthenticated()) {
         this.router.navigate([this.returnUrl]);
       }
     });
+  }
+
+  ngOnInit() {
+    // Wait for auth service to be ready before checking authentication
+    const readySub = this.authService.isReady.pipe(
+      filter(ready => ready),
+      take(1)
+    ).subscribe(() => {
+      this.isAuthReady.set(true);
+    });
+
+    this.subscriptions.push(readySub);
+  }
+
+  ngOnDestroy() {
+    this.subscriptions.forEach(sub => sub.unsubscribe());
   }
 
   onLogin() {

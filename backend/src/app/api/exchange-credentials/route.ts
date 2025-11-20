@@ -47,14 +47,19 @@ export async function GET(request: NextRequest) {
     // Authenticate user
     const authResult = await AuthService.authenticateRequest(request);
     if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
         {
           success: false,
-          error: 'Unauthorized',
-          code: CredentialErrorCode.AUTH_REQUIRED,
+          error: errorMessage,
+          code: authResult.isDatabaseError ? CredentialErrorCode.INTERNAL_ERROR : CredentialErrorCode.AUTH_REQUIRED,
           timestamp: new Date().toISOString(),
         },
-        { status: 401 }
+        { status: statusCode }
       );
     }
 
@@ -163,14 +168,19 @@ export async function POST(request: NextRequest) {
     // Authenticate user
     const authResult = await AuthService.authenticateRequest(request);
     if (!authResult.success || !authResult.user) {
+      // Return 500 for database errors, 401 for auth errors
+      const statusCode = authResult.isDatabaseError ? 500 : 401;
+      const errorMessage = authResult.isDatabaseError
+        ? 'Database error. Please try again.'
+        : 'Unauthorized';
       return NextResponse.json(
         {
           success: false,
-          error: 'Unauthorized',
-          code: CredentialErrorCode.AUTH_REQUIRED,
+          error: errorMessage,
+          code: authResult.isDatabaseError ? CredentialErrorCode.INTERNAL_ERROR : CredentialErrorCode.AUTH_REQUIRED,
           timestamp: new Date().toISOString(),
         },
-        { status: 401 }
+        { status: statusCode }
       );
     }
 

@@ -1,24 +1,25 @@
 <div class="auth-container">
   <div class="auth-card">
-    <div class="auth-header">
-      <h1>{{ showRegister() ? translate('login.joinUs') : translate('login.welcomeBack') }}</h1>
-      <p>{{ showRegister() ? translate('login.createAccount') : translate('login.signInToAccount') }}</p>
-    </div>
-
-    @if (sessionMessage()) {
-      <div class="alert alert-warning">
-        <span class="alert-icon">⏰</span>
-        {{ sessionMessage() }}
+    @if (showForm()) {
+      <div class="auth-header">
+        <h1>{{ showRegister() ? translate('login.joinUs') : translate('login.welcomeBack') }}</h1>
+        <p>{{ showRegister() ? translate('login.createAccount') : translate('login.signInToAccount') }}</p>
       </div>
-    }
 
-    @if (authError()) {
-      <div class="alert alert-error">
-        <span class="alert-icon">⚠️</span>
-        {{ authError() }}
-        <ui-button variant="ghost" size="small" type="button" className="alert-close" (clicked)="clearError()">×</ui-button>
-      </div>
-    }
+      @if (sessionMessage()) {
+        <div class="alert alert-warning">
+          <span class="alert-icon">⏰</span>
+          {{ sessionMessage() }}
+        </div>
+      }
+
+      @if (authError()) {
+        <div class="alert alert-error">
+          <span class="alert-icon">⚠️</span>
+          {{ authError() }}
+          <ui-button variant="ghost" size="small" type="button" className="alert-close" (clicked)="clearError()">×</ui-button>
+        </div>
+      }
 
     <!-- Login Form -->
     @if (!showRegister()) {
@@ -174,5 +175,11 @@
         </p>
       }
     </div>
+    } @else {
+      <!-- Loading state while checking authentication -->
+      <div class="auth-loading">
+        <span class="spinner"></span>
+      </div>
+    }
   </div>
 </div>

@@ -8,13 +8,22 @@ export async function authMiddleware(request: NextRequest) {
     return NextResponse.json({ error: 'No token provided' }, { status: 401 });
   }
 
-  const user = await AuthService.getUserFromToken(token);
-  if (!user) {
-    return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-  }
+  try {
+    const user = await AuthService.getUserFromToken(token);
+    if (!user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
 
-  // Add user to request context (this would need to be implemented with a proper context system)
-  return NextResponse.next();
+    // Add user to request context (this would need to be implemented with a proper context system)
+    return NextResponse.next();
+  } catch (error) {
+    // Database errors should return 500, not 401
+    if (AuthService.isDatabaseError(error)) {
+      console.error('[AuthMiddleware] Database error during authentication:', error);
+      return NextResponse.json({ error: 'Database error' }, { status: 500 });
+    }
+    throw error;
+  }
 }
 
 export function requireAuth(handler: Function) {
@@ -25,13 +34,22 @@ export function requireAuth(handler: Function) {
       return NextResponse.json({ error: 'No token provided' }, { status: 401 });
     }
 
-    const user = await AuthService.getUserFromToken(token);
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
+    try {
+      const user = await AuthService.getUserFromToken(token);
+      if (!user) {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
 
-    // Pass user to the handler
-    return handler(request, { ...context, user });
+      // Pass user to the handler
+      return handler(request, { ...context, user });
+    } catch (error) {
+      // Database errors should return 500, not 401
+      if (AuthService.isDatabaseError(error)) {
+        console.error('[requireAuth] Database error during authentication:', error);
+        return NextResponse.json({ error: 'Database error' }, { status: 500 });
+      }
+      throw error;
+    }
   };
 }
 
@@ -44,16 +62,25 @@ export function requireRole(roles: string[]) {
         return NextResponse.json({ error: 'No token provided' }, { status: 401 });
       }
 
-      const user = await AuthService.getUserFromToken(token);
-      if (!user) {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-      }
+      try {
+        const user = await AuthService.getUserFromToken(token);
+        if (!user) {
+          return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        }
 
-      if (!roles.includes(user.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-      }
+        if (!roles.includes(user.role)) {
+          return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+        }
 
-      return handler(request, { ...context, user });
+        return handler(request, { ...context, user });
+      } catch (error) {
+        // Database errors should return 500, not 401
+        if (AuthService.isDatabaseError(error)) {
+          console.error('[requireRole] Database error during authentication:', error);
+          return NextResponse.json({ error: 'Database error' }, { status: 500 });
+        }
+        throw error;
+      }
     };
   };
 }

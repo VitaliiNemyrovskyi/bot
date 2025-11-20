@@ -129,9 +129,10 @@ export class KuCoinRecorderService {
     const kucoinSymbol = this.convertToKuCoinSymbol(symbol);
     console.log(`[KuCoinRecorder] 🔄 Converted symbol: ${symbol} -> ${kucoinSymbol}`);
 
-    // Store callback first
-    this.wsCallbacks.set(kucoinSymbol, callback);
-    console.log(`[KuCoinRecorder] 💾 Stored callback for: ${kucoinSymbol}`);
+    // Store callback using topic as key (KuCoin specific)
+    const topic = `/contractMarket/ticker:${kucoinSymbol}`;
+    this.wsCallbacks.set(topic, callback);
+    console.log(`[KuCoinRecorder] 💾 Stored callback for topic: ${topic}`);
     console.log(`[KuCoinRecorder] 📋 All callbacks:`, Array.from(this.wsCallbacks.keys()));
 
     // Initialize WebSocket if not already connected
@@ -213,8 +214,9 @@ export class KuCoinRecorderService {
           const tickerData = message.data;
           // Extract symbol from topic (e.g., "/contractMarket/ticker:XBTUSDTM" -> "XBTUSDTM")
           const symbol = message.topic.split(':')[1];
+          const topic = message.topic;
 
-          console.log(`[KuCoinRecorder] Ticker update - symbol: ${symbol}, topic: ${message.topic}`);
+          console.log(`[KuCoinRecorder] Ticker update - symbol: ${symbol}, topic: ${topic}`);
           console.log(`[KuCoinRecorder] Registered callbacks:`, Array.from(this.wsCallbacks.keys()));
 
           // Transform to common format matching Bybit/Binance
@@ -242,13 +244,13 @@ export class KuCoinRecorderService {
 
           console.log(`[KuCoinRecorder] Transformed data - topic: ${transformedData.topic}, lastPrice: ${transformedData.data.lastPrice}`);
 
-          // Call callback if registered (using the KuCoin symbol format)
-          const callback = this.wsCallbacks.get(symbol);
+          // Call callback if registered (using topic as key)
+          const callback = this.wsCallbacks.get(topic);
           if (callback) {
-            console.log(`[KuCoinRecorder] ✅ Callback found for ${symbol}, invoking...`);
+            console.log(`[KuCoinRecorder] ✅ Callback found for topic ${topic}, invoking...`);
             callback(transformedData);
           } else {
-            console.warn(`[KuCoinRecorder] ❌ No callback found for symbol: ${symbol}. Available callbacks:`, Array.from(this.wsCallbacks.keys()));
+            console.warn(`[KuCoinRecorder] ❌ No callback found for topic: ${topic}. Available callbacks:`, Array.from(this.wsCallbacks.keys()));
           }
         }
       } catch (error: any) {
