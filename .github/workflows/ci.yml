@@ -1,0 +1,192 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  version:
+    name: Generate SemVer
+    runs-on: ubuntu-latest
+    outputs:
+      semVer: ${{ steps.version.outputs.semVer }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.4.2
+        with:
+          versionSpec: '6.x'
+
+      - name: Generate Semantic Version
+        id: version
+        uses: gittools/actions/gitversion/execute@v4.4.2
+
+  build:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: version
+    permissions:
+      packages: write
+    outputs:
+      registry_lower: ${{ steps.registry.outputs.registry_lower }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute lowercase GHCR repository path
+        id: registry
+        run: |
+          echo "registry_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Build Backend image using Buildah
+        id: build-backend-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: backend
+          tags: v${{ needs.version.outputs.semVer }} latest ${{ github.sha }}
+          containerfiles: ./backend/Dockerfile
+          context: .
+          oci: true
+
+      - name: Build Frontend image using Buildah
+        id: build-frontend-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: frontend
+          tags: v${{ needs.version.outputs.semVer }} latest ${{ github.sha }}
+          containerfiles: ./frontend/Dockerfile
+          context: ./frontend
+          oci: true
+
+      - name: Push Backend to GitHub Container Registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-backend-image.outputs.image }}
+          tags: ${{ steps.build-backend-image.outputs.tags }}
+          registry: ghcr.io/${{ steps.registry.outputs.registry_lower }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Frontend to GitHub Container Registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-frontend-image.outputs.image }}
+          tags: ${{ steps.build-frontend-image.outputs.tags }}
+          registry: ghcr.io/${{ steps.registry.outputs.registry_lower }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export built Backend image to tarball
+        run: |
+          buildah push ${{ steps.build-backend-image.outputs.image-with-tag }} docker-archive:/tmp/backend-image.tar
+
+      - name: Export built Frontend image to tarball
+        run: |
+          buildah push ${{ steps.build-frontend-image.outputs.image-with-tag }} docker-archive:/tmp/frontend-image.tar
+
+      - name: Save built Backend image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image-v${{ needs.version.outputs.semVer }}
+          path: /tmp/backend-image.tar
+          retention-days: 7
+
+      - name: Save built Frontend image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image-v${{ needs.version.outputs.semVer }}
+          path: /tmp/frontend-image.tar
+          retention-days: 7
+
+  release:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    needs: [version, build]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push Release Tag
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git tag v${{ needs.version.outputs.semVer }}
+          git push origin v${{ needs.version.outputs.semVer }}
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: [version, build]
+    if: github.ref == 'refs/heads/main'
+    concurrency:
+      group: deploy-server
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+
+      - name: Add SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Ensure remote deploy directory exists
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/bot}"
+          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p '${REMOTE_DIR}/backend/prisma'"
+
+      - name: Rsync compose file and Prisma to server
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/bot}"
+          RSYNC_SSH="ssh -o StrictHostKeyChecking=yes"
+          rsync -avz -e "$RSYNC_SSH" docker-compose.deploy.yml "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_DIR}/docker-compose.deploy.yml"
+          rsync -avz -e "$RSYNC_SSH" backend/prisma/ "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_DIR}/backend/prisma/"
+
+      - name: Pull images and restart stack on server
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          SEMVER: ${{ needs.version.outputs.semVer }}
+          REGISTRY_LOWER: ${{ needs.build.outputs.registry_lower }}
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/bot}"
+          BACKEND_IMAGE="ghcr.io/${REGISTRY_LOWER}/backend:v${SEMVER}"
+          FRONTEND_IMAGE="ghcr.io/${REGISTRY_LOWER}/frontend:v${SEMVER}"
+          ssh -o StrictHostKeyChecking=yes "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s << EOF
+          set -euo pipefail
+          cd "${REMOTE_DIR}"
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+          fi
+          export BACKEND_IMAGE="${BACKEND_IMAGE}"
+          export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
+          docker compose -f docker-compose.deploy.yml pull backend frontend
+          docker compose -f docker-compose.deploy.yml up -d --remove-orphans
+          EOF

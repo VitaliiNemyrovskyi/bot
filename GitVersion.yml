@@ -1,0 +1,7 @@
+# https://gitversion.net/docs/reference/configuration
+workflow: GitHubFlow/v1
+mode: ContinuousDeployment
+continuous-delivery-fallback-tag: ''
+branches:
+  main:
+    label: ''
