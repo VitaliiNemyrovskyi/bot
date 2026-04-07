@@ -149,15 +149,51 @@ The application uses Prisma with PostgreSQL. Key models:
 
 ## Deployment
 
-### Backend
-1. Set up PostgreSQL database
-2. Configure production environment variables
-3. Deploy to your preferred platform (Vercel, Railway, etc.)
+This application supports multiple deployment methods. Choose the one that fits your needs:
 
-### Frontend
-1. Update production environment configuration
-2. Build the application: `npm run build`
-3. Deploy to your preferred platform (Netlify, Vercel, etc.)
+### 🚀 Docker Compose on Cloud Server (Recommended)
+**Cost:** ~$10-20/month | **Setup:** 15 minutes
+
+Perfect for small to medium applications. Deploy to any VPS (DigitalOcean, Linode, Hetzner, etc.)
+
+```bash
+# One-time server setup
+ssh root@your-server-ip
+curl -fsSL https://raw.githubusercontent.com/YOUR_REPO/main/scripts/setup-server.sh | sudo bash
+
+# Configure GitHub Actions and push
+git push origin main
+```
+
+📖 **[Full Docker Compose Deployment Guide](./DEPLOYMENT_DOCKER_COMPOSE.md)**
+
+### ☁️ AWS ECS (Enterprise)
+**Cost:** ~$50-200+/month | **Setup:** 1-2 hours
+
+Enterprise-grade deployment with auto-scaling, managed database, and full AWS integration.
+
+📖 **[Full AWS ECS Deployment Guide](./DEPLOYMENT.md)**
+
+### 📘 Deployment Overview
+For a complete comparison and recommendations, see **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)**
+
+## Local Development with Docker
+
+```bash
+# Start all services (backend, frontend, database)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+Access the application:
+- Frontend: http://localhost:80
+- Backend API: http://localhost:3000
+- Database: localhost:5432
 
 ## License
 
