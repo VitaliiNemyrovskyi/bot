@@ -10,6 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:sandbox": "jest --testPathPatterns=sandbox --verbose",
     "test-wallet": "tsx test-wallet-balance.ts",
     "test-bingx": "tsx test-bingx-connector.ts",
     "dev:next": "next dev"

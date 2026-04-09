@@ -10,9 +10,10 @@
    ========================================================================== */
 
 .trading-dashboard {
-  padding: 1.5rem;
-  min-height: 100vh;
+  padding: 0;
+  min-height: auto;
   background-color: var(--background-secondary);
+  overflow: visible;
 }
 
 .dashboard-header {
@@ -47,7 +48,7 @@
 
 /* Chart and Trading Controls Layout */
 .chart-trading-layout {
-  grid-template-columns: 1fr 400px;
+  grid-template-columns: 1fr minmax(320px, 420px);
   margin-bottom: 1.5rem;
 }
 

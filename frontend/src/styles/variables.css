@@ -143,72 +143,46 @@
   --grid-background: rgba(59, 130, 246, 0.1);
 }
 
-/* Dark Theme Variables */
-[data-theme="dark"] {
-  /* Text Colors */
-  --text-primary: #f9fafb;
-  --text-secondary: #d1d5db;
-  --text-muted: #9ca3af;
-  --text-disabled: #6b7280;
-  --text-inverse: #111827;
-
-  /* Background Colors */
-  --background-primary: #1e1e1e;
-  --background-secondary: #2d2d2d;
-  --background-tertiary: #374151;
-  --background-quaternary: #4b5563;
-  --background-overlay: rgba(0, 0, 0, 0.7);
-
-  /* Border Colors */
-  --border-color: rgba(255, 255, 255, 0.1);
-  --border-hover: rgba(255, 255, 255, 0.2);
-
-  /* Shadow Values (adjusted for dark theme) */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.3);
-  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.5);
-
-  /* Grid Colors (adjusted for dark theme) */
-  --grid-line: rgba(59, 130, 246, 0.2);
-  --grid-line-hover: rgba(59, 130, 246, 0.4);
-  --grid-background: rgba(59, 130, 246, 0.15);
-}
-
-/* Alternative dark theme class for components */
+/* Dark Theme Variables — Navy palette matching the app's fintech aesthetic */
+[data-theme="dark"],
 .dark-theme {
   /* Text Colors */
-  --text-primary: #f9fafb;
-  --text-secondary: #d1d5db;
-  --text-muted: #9ca3af;
-  --text-disabled: #6b7280;
-  --text-inverse: #111827;
+  --text-primary: #f0f2f5;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-muted: rgba(255, 255, 255, 0.40);
+  --text-disabled: rgba(255, 255, 255, 0.25);
+  --text-inverse: #0b1020;
 
-  /* Background Colors */
-  --background-primary: #1e1e1e;
-  --background-secondary: #2d2d2d;
-  --background-tertiary: #374151;
-  --background-quaternary: #4b5563;
-  --background-overlay: rgba(0, 0, 0, 0.7);
+  /* Background Colors — Navy gradient base */
+  --background-primary: #0b1020;
+  --background-secondary: #131a33;
+  --background-tertiary: #1a2240;
+  --background-quaternary: #222b4a;
+  --background-overlay: rgba(0, 0, 0, 0.6);
 
   /* Border Colors */
-  --border-color: rgba(255, 255, 255, 0.1);
-  --border-hover: rgba(255, 255, 255, 0.2);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --border-focus: #6366f1;
 
-  /* Shadow Values (adjusted for dark theme) */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.3);
-  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.5);
+  /* Shadow Values */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 4px 20px rgba(0, 0, 0, 0.6);
 
-  /* Grid Colors (adjusted for dark theme) */
-  --grid-line: rgba(59, 130, 246, 0.2);
-  --grid-line-hover: rgba(59, 130, 246, 0.4);
-  --grid-background: rgba(59, 130, 246, 0.15);
+  /* Primary overrides for dark — indigo accent */
+  --primary-color: #6366f1;
+  --primary-hover: #5558e6;
+  --primary-light: #8b5cf6;
+  --primary-dark: #4f46e5;
+
+  /* Grid Colors */
+  --grid-line: rgba(99, 102, 241, 0.2);
+  --grid-line-hover: rgba(99, 102, 241, 0.4);
+  --grid-background: rgba(99, 102, 241, 0.08);
 }
 
 /* High contrast mode support */

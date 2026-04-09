@@ -1,0 +1,185 @@
+<div class="dashboard-page">
+  <!-- Header -->
+  <div class="dash-header">
+    <div class="dash-header-text">
+      <h1>{{ translate('dashboard.title') }}</h1>
+      <p>{{ translate('dashboard.subtitle') }}</p>
+    </div>
+    <div class="dash-header-actions">
+      <span class="last-updated" *ngIf="lastUpdated()">
+        <ui-icon name="schedule" [size]="16"></ui-icon>
+        {{ timeSinceUpdate() }}
+      </span>
+      <a routerLink="/arbitrage/funding" class="btn-see-all">
+        {{ translate('dashboard.seeAll') }}
+        <ui-icon name="arrow_forward" [size]="16"></ui-icon>
+      </a>
+    </div>
+  </div>
+
+  <!-- How it works - compact -->
+  <div class="how-it-works">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span>{{ translate('dashboard.how.step1') }}</span>
+    </div>
+    <ui-icon name="arrow_forward" [size]="16" class="step-arrow"></ui-icon>
+    <div class="step">
+      <span class="step-num">2</span>
+      <span>{{ translate('dashboard.how.step2') }}</span>
+    </div>
+    <ui-icon name="arrow_forward" [size]="16" class="step-arrow"></ui-icon>
+    <div class="step">
+      <span class="step-num">3</span>
+      <span>{{ translate('dashboard.how.step3') }}</span>
+    </div>
+    <ui-icon name="arrow_forward" [size]="16" class="step-arrow"></ui-icon>
+    <div class="step">
+      <span class="step-num">4</span>
+      <span>{{ translate('dashboard.how.step4') }}</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (isLoading() && opportunities().length === 0) {
+    <div class="loading-state">
+      <ui-icon name="refresh" [size]="40" class="spinning"></ui-icon>
+      <p>{{ translate('dashboard.loading') }}</p>
+    </div>
+  }
+
+  <!-- Error -->
+  @if (error()) {
+    <div class="error-state">
+      <ui-icon name="error" [size]="24"></ui-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
+
+  <!-- Results count -->
+  @if (!isLoading() || opportunities().length > 0) {
+    <div class="results-bar">
+      <span class="results-count">{{ totalCount() }} {{ translate('dashboard.profitableFound') }}</span>
+    </div>
+  }
+
+  <!-- Opportunity Cards -->
+  <div class="opp-grid">
+    @for (opp of topOpportunities(); track opp.symbol) {
+      <div class="opp-card">
+        <!-- Card header -->
+        <div class="opp-card-header">
+          <span class="opp-symbol">{{ opp.symbol }}</span>
+          <span class="opp-net-apr" [class]="getNetAPRClass(opp.netAPR)">
+            {{ opp.netAPRFormatted }} {{ translate('dashboard.netApr') }}
+          </span>
+        </div>
+
+        <!-- Countdown -->
+        <div class="opp-countdown" [class]="getUrgencyClass(opp.nextFundingTime)">
+          <ui-icon name="timer" [size]="18"></ui-icon>
+          <span class="countdown-label">{{ translate('dashboard.nextFunding') }}:</span>
+          <span class="countdown-value">{{ getCountdown(opp.nextFundingTime) }}</span>
+        </div>
+
+        <!-- Long / Short Actions -->
+        <div class="opp-actions-grid">
+          <!-- LONG side -->
+          <div class="action-card long-card">
+            <div class="action-header">
+              <span class="action-label long-label">LONG</span>
+              <span class="action-type">{{ translate('dashboard.futures') }}</span>
+            </div>
+            <div class="action-exchange" (click)="openExchange(opp.bestLong.exchange, opp.symbol)">
+              <span class="exchange-name">{{ opp.bestLong.exchange }}</span>
+              <ui-icon name="open_in_new" [size]="14"></ui-icon>
+            </div>
+            <div class="action-details">
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.rate') }}</span>
+                <span class="detail-value" [class]="getFundingRateClass(opp.bestLong.fundingRate)">
+                  {{ formatFundingRate(opp.bestLong.fundingRate) }}
+                </span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.price') }}</span>
+                <span class="detail-value">${{ opp.bestLong.lastPrice }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.interval') }}</span>
+                <span class="detail-value">{{ opp.bestLong.fundingInterval || '8h' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.countdown') }}</span>
+                <span class="detail-value countdown-mini" [class]="getUrgencyClass(opp.bestLong.nextFundingTime)">
+                  {{ getCountdown(opp.bestLong.nextFundingTime) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHORT side -->
+          <div class="action-card short-card">
+            <div class="action-header">
+              <span class="action-label short-label">SHORT</span>
+              <span class="action-type">{{ translate('dashboard.futures') }}</span>
+            </div>
+            <div class="action-exchange" (click)="openExchange(opp.bestShort.exchange, opp.symbol)">
+              <span class="exchange-name">{{ opp.bestShort.exchange }}</span>
+              <ui-icon name="open_in_new" [size]="14"></ui-icon>
+            </div>
+            <div class="action-details">
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.rate') }}</span>
+                <span class="detail-value" [class]="getFundingRateClass(opp.bestShort.fundingRate)">
+                  {{ formatFundingRate(opp.bestShort.fundingRate) }}
+                </span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.price') }}</span>
+                <span class="detail-value">${{ opp.bestShort.lastPrice }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.interval') }}</span>
+                <span class="detail-value">{{ opp.bestShort.fundingInterval || '8h' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">{{ translate('dashboard.countdown') }}</span>
+                <span class="detail-value countdown-mini" [class]="getUrgencyClass(opp.bestShort.nextFundingTime)">
+                  {{ getCountdown(opp.bestShort.nextFundingTime) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer metrics -->
+        <div class="opp-footer">
+          <div class="footer-metric">
+            <span class="metric-label">{{ translate('dashboard.spread') }}</span>
+            <span class="metric-value">{{ opp.maxFundingSpreadPercent }}</span>
+          </div>
+          <div class="footer-metric">
+            <span class="metric-label">{{ translate('dashboard.fees') }}</span>
+            <span class="metric-value">{{ opp.totalFeesFormatted }}</span>
+          </div>
+          <div class="footer-metric">
+            <span class="metric-label">{{ translate('dashboard.grossApr') }}</span>
+            <span class="metric-value">{{ opp.estimatedAPRFormatted }}</span>
+          </div>
+          <a class="btn-chart" [routerLink]="['/arbitrage/chart', opp.symbol, opp.bestLong.exchange, opp.bestShort.exchange]">
+            <ui-icon name="show_chart" [size]="16"></ui-icon>
+          </a>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Empty state -->
+  @if (!isLoading() && topOpportunities().length === 0) {
+    <div class="empty-state">
+      <ui-icon name="search_off" [size]="48"></ui-icon>
+      <p>{{ translate('dashboard.noOpportunities') }}</p>
+    </div>
+  }
+</div>

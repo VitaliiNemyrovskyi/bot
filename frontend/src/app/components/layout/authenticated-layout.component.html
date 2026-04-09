@@ -1,0 +1,90 @@
+<div class="layout" [class.layout--collapsed]="collapsed()">
+  <!-- Sidebar -->
+  <aside class="sidebar" [class.sidebar--collapsed]="collapsed()" [class.sidebar--mobile-open]="mobileOpen()">
+    <div class="sidebar__header">
+      <a routerLink="/trading/manual" class="sidebar__logo">
+        <img [src]="logoSource()" alt="REX" class="sidebar__logo-img" />
+        <span class="sidebar__logo-text" *ngIf="!collapsed()">{{ translate('auth.app') }}</span>
+      </a>
+    </div>
+
+    <nav class="sidebar__nav">
+      <div *ngFor="let section of navSections" class="sidebar__section">
+        <div class="sidebar__section-title" *ngIf="!collapsed()">{{ translate(section.titleKey) }}</div>
+        <a *ngFor="let item of section.items"
+           [routerLink]="item.path"
+           routerLinkActive="sidebar__link--active"
+           class="sidebar__link"
+           [title]="translate(item.labelKey)"
+           (click)="closeMobileMenu()">
+          <ui-icon [name]="item.icon" [size]="20"></ui-icon>
+          <span class="sidebar__link-text" *ngIf="!collapsed()">{{ translate(item.labelKey) }}</span>
+          <span *ngIf="isItemLocked(item) && !collapsed()" class="sidebar__badge sidebar__badge--lock">
+            <ui-icon name="lock" [size]="12"></ui-icon>
+          </span>
+          <span *ngIf="item.path === '/billing' && isSubscribed() && !collapsed()" class="sidebar__badge sidebar__badge--pro">PRO</span>
+          <span *ngIf="item.path === '/billing' && !isSubscribed() && !collapsed()" class="sidebar__badge sidebar__badge--upgrade">{{ translate('sidebar.upgrade') }}</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar__footer">
+      <button class="sidebar__collapse-btn" (click)="toggleSidebar()" [title]="collapsed() ? translate('sidebar.expand') : translate('sidebar.collapse')">
+        <ui-icon [name]="collapsed() ? 'chevron_right' : 'chevron_left'" [size]="18"></ui-icon>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Mobile backdrop -->
+  <div class="backdrop" *ngIf="mobileOpen()" (click)="closeMobileMenu()"></div>
+
+  <!-- Main area -->
+  <div class="main">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar__left">
+        <button class="topbar__hamburger" (click)="toggleMobileMenu()">
+          <ui-icon name="menu" [size]="24"></ui-icon>
+        </button>
+      </div>
+
+      <div class="topbar__right">
+        <app-theme-toggle></app-theme-toggle>
+
+        <div class="topbar__lang">
+          <button class="topbar__lang-btn" (click)="toggleLanguageDropdown()">
+            <span>{{ currentLanguageOption().flag }}</span>
+            <span class="topbar__lang-code">{{ currentLanguageOption().code.toUpperCase() }}</span>
+          </button>
+          <div class="topbar__lang-dropdown" *ngIf="showLanguageDropdown">
+            <button *ngFor="let lang of availableLanguages"
+                    class="topbar__lang-option"
+                    [class.topbar__lang-option--active]="lang.code === currentLanguage()"
+                    (click)="selectLanguage(lang.code)">
+              <span>{{ lang.flag }}</span>
+              <span>{{ lang.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="topbar__user" *ngIf="currentUser() as user">
+          <div class="topbar__user-info">
+            <span class="topbar__user-name">{{ user.name || user.email }}</span>
+            <span class="topbar__user-badge" [class.topbar__user-badge--pro]="isSubscribed()">
+              {{ isSubscribed() ? 'PRO' : 'FREE' }}
+            </span>
+          </div>
+        </div>
+
+        <button class="topbar__logout" (click)="onLogout()" [title]="translate('topbar.logout')">
+          <ui-icon name="logout" [size]="20"></ui-icon>
+        </button>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <div class="content">
+      <router-outlet></router-outlet>
+    </div>
+  </div>
+</div>

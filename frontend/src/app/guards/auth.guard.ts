@@ -24,8 +24,11 @@ canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Observab
         // Authenticated users hitting /login should be sent into the app.
         // OnboardingGuard on downstream routes decides whether to bounce them
         // to /onboarding (no exchange connected) or to the dashboard.
+        // Authenticated users hitting /login go to the dashboard.
+        // The OnboardingGuard on the parent layout route will bounce them
+        // to /onboarding if they have no exchange credentials yet.
         if (isAuth && isLoginRoute) {
-          this.router.navigate(['/onboarding']);
+          this.router.navigate(['/trading/manual']);
           return false;
         }
 

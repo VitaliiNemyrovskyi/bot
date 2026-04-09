@@ -69,7 +69,9 @@ services:
       # NOWPayments billing (required for /api/billing/* endpoints)
       NOWPAYMENTS_API_KEY: ${NOWPAYMENTS_API_KEY}
       NOWPAYMENTS_IPN_SECRET: ${NOWPAYMENTS_IPN_SECRET}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:3000}
+      # Set to 'true' to use NOWPayments sandbox for testing
+      NOWPAYMENTS_SANDBOX: ${NOWPAYMENTS_SANDBOX:-false}
       # Comma-separated outbound IPs the user must whitelist on exchange APIs
       WHITELIST_IPS: ${WHITELIST_IPS}
     ports:

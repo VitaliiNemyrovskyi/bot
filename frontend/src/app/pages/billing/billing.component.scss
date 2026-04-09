@@ -1,7 +1,7 @@
 .billing-page {
   min-height: 100vh;
   padding: 60px 24px 40px;
-  background: linear-gradient(135deg, #0b1020 0%, #131a33 100%);
+  background: var(--background-primary);
 }
 
 .billing-container {
@@ -17,13 +17,13 @@
 .billing-title {
   font-size: 36px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 12px;
 }
 
 .billing-subtitle {
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--text-secondary);
   margin: 0;
   max-width: 640px;
   margin-left: auto;
@@ -115,7 +115,7 @@
 .plan-name {
   font-size: 20px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -127,7 +127,7 @@
   &__amount {
     font-size: 42px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   &__period {

@@ -12,6 +12,7 @@ import { ButtonComponent } from '../../components/ui/button/button.component';
 import { DialogComponent, DialogHeaderComponent, DialogTitleComponent, DialogContentComponent, DialogFooterComponent } from '../../components/ui/dialog/dialog.component';
 import { TradingSettingsService, TradingSettings } from '../../services/trading-settings.service';
 import { ThemeService } from '../../services/theme.service';
+import { TranslationService } from '../../services/translation.service';
 import { FundingRateSpreadChartComponent } from '../../components/trading/funding-rate-spread-chart/funding-rate-spread-chart.component';
 import { FundingSpreadDetailsComponent } from '../../components/trading/funding-spread-details/funding-spread-details.component';
 
@@ -52,9 +53,13 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   private timeUpdateInterval?: any;
   private readonly REFRESH_INTERVAL_MS = 30 * 1000; // 30 seconds
 
+  // Guide section
+  showGuide = signal<boolean>(false);
+
   // Filters
   searchQuery = signal<string>('');
   minFundingSpread = signal<number | null>(null);
+  showOnlyProfitable = signal<boolean>(false);
 
   // Computed list of unique exchanges from all opportunities
   availableExchanges = computed(() => {
@@ -119,6 +124,11 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
       filtered = filtered.filter(o => Math.abs(o.maxFundingSpread * 100) >= minSpread);
     }
 
+    // Filter by profitability (positive Net APR)
+    if (this.showOnlyProfitable()) {
+      filtered = filtered.filter(o => o.netAPR > 0);
+    }
+
     // Filter by selected exchanges
     // Show opportunities where BOTH bestLong AND bestShort exchanges are selected
     // This ensures we only show arbitrage pairs between the selected exchanges
@@ -161,6 +171,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   });
 
   private themeService = inject(ThemeService);
+  private translationService = inject(TranslationService);
 
   constructor(
     private fundingRatesService: PublicFundingRatesService,
@@ -284,6 +295,7 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
   clearFilters(): void {
     this.searchQuery.set('');
     this.minFundingSpread.set(null);
+    this.showOnlyProfitable.set(false);
     this.selectAllExchanges();
   }
 
@@ -504,12 +516,12 @@ export class ArbitrageFundingComponent implements OnInit, OnDestroy {
     this.closeSettingsDialog();
   }
 
-  /**
-   * Translation stub method
-   * Returns the key as-is for now
-   */
   translate(key: string): string {
-    return key;
+    return this.translationService.translate(key);
+  }
+
+  toggleGuide(): void {
+    this.showGuide.update(v => !v);
   }
 
   /**

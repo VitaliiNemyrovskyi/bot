@@ -31,7 +31,7 @@ export class ThemeService {
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
     
-    return 'light';
+    return 'dark';
   }
   
   toggleTheme(): void {

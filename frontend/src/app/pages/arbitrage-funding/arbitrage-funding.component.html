@@ -1,9 +1,45 @@
 <div class="arbitrage-funding-page">
   <!-- Header -->
   <div class="page-header">
-    <h1 class="page-title">Funding Rate Arbitrage</h1>
-    <p class="page-subtitle">Public funding rates from all exchanges - No API keys required</p>
+    <h1 class="page-title">{{ translate('fundingArbitrage.title') }}</h1>
+    <p class="page-subtitle">{{ translate('fundingArbitrage.subtitle') }}</p>
+    <button class="btn-guide-toggle" (click)="toggleGuide()">
+      <ui-icon [name]="showGuide() ? 'expand_less' : 'help_outline'" [size]="18"></ui-icon>
+      {{ translate(showGuide() ? 'fundingArbitrage.guide.hide' : 'fundingArbitrage.guide.show') }}
+    </button>
   </div>
+
+  <!-- How It Works Guide -->
+  @if (showGuide()) {
+    <div class="guide-section">
+      <div class="guide-grid">
+        <div class="guide-card">
+          <div class="guide-step">1</div>
+          <h3>{{ translate('fundingArbitrage.guide.step1.title') }}</h3>
+          <p>{{ translate('fundingArbitrage.guide.step1.text') }}</p>
+        </div>
+        <div class="guide-card">
+          <div class="guide-step">2</div>
+          <h3>{{ translate('fundingArbitrage.guide.step2.title') }}</h3>
+          <p>{{ translate('fundingArbitrage.guide.step2.text') }}</p>
+        </div>
+        <div class="guide-card">
+          <div class="guide-step">3</div>
+          <h3>{{ translate('fundingArbitrage.guide.step3.title') }}</h3>
+          <p>{{ translate('fundingArbitrage.guide.step3.text') }}</p>
+        </div>
+        <div class="guide-card">
+          <div class="guide-step">4</div>
+          <h3>{{ translate('fundingArbitrage.guide.step4.title') }}</h3>
+          <p>{{ translate('fundingArbitrage.guide.step4.text') }}</p>
+        </div>
+      </div>
+      <div class="guide-tip">
+        <ui-icon name="info" [size]="18"></ui-icon>
+        <span>{{ translate('fundingArbitrage.guide.tip') }}</span>
+      </div>
+    </div>
+  }
 
   <!-- Controls -->
   <div class="controls-section">
@@ -31,6 +67,20 @@
           (ngModelChange)="minFundingSpread.set($event)"
           class="number-input"
         />
+      </div>
+
+      <!-- Profitability filter -->
+      <div class="filter-group profitability-filter">
+        <label>{{ translate('fundingArbitrage.filters.profitability') }}</label>
+        <button
+          type="button"
+          class="profitability-toggle"
+          [class.active]="showOnlyProfitable()"
+          (click)="showOnlyProfitable.set(!showOnlyProfitable())"
+        >
+          <ui-icon [name]="showOnlyProfitable() ? 'check_circle' : 'radio_button_unchecked'" [size]="18"></ui-icon>
+          {{ translate('fundingArbitrage.filters.profitableOnly') }}
+        </button>
       </div>
 
       <!-- Exchange filter -->
@@ -75,7 +125,7 @@
 
       <!-- Clear filters button -->
       <button
-        *ngIf="searchQuery() || minFundingSpread() || selectedExchanges().size !== availableExchanges().length"
+        *ngIf="searchQuery() || minFundingSpread() || showOnlyProfitable() || selectedExchanges().size !== availableExchanges().length"
         (click)="clearFilters()"
         class="btn-clear"
       >

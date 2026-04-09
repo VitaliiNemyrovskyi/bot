@@ -2,18 +2,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 70vh;
+  min-height: 100vh;
   padding: 2rem;
+  background: var(--background-primary);
 }
 
 .auth-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+  background: var(--background-secondary);
+  border-radius: 16px;
+  box-shadow: var(--shadow-xl);
   padding: 2.5rem;
   width: 100%;
   max-width: 420px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
 }
 
 .auth-header {
@@ -24,12 +25,12 @@
     margin: 0 0 0.5rem 0;
     font-size: 1.75rem;
     font-weight: 700;
-    color: #1a1a1a;
+    color: var(--text-primary);
   }
 
   p {
     margin: 0;
-    color: #666;
+    color: var(--text-secondary);
     font-size: 0.95rem;
   }
 }
@@ -44,9 +45,9 @@
   position: relative;
 
   &.alert-error {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #dc2626;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
   }
 
   .alert-close {
@@ -58,7 +59,7 @@
     cursor: pointer;
     color: inherit;
     opacity: 0.7;
-    
+
     &:hover {
       opacity: 1;
     }
@@ -77,38 +78,39 @@
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
 .form-control {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   font-size: 1rem;
-  transition: all 0.2s ease;
-  background: #f9fafb;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  background: var(--background-tertiary);
+  color: var(--text-primary);
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    background: white;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--primary-color);
+    background: var(--background-quaternary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
   }
 
   &.is-invalid {
-    border-color: #ef4444;
-    background: #fef2f2;
+    border-color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.08);
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--text-muted);
   }
 }
 
 .invalid-feedback {
-  color: #ef4444;
+  color: #fca5a5;
   font-size: 0.875rem;
   margin-top: 0.25rem;
   display: block;
@@ -117,7 +119,7 @@
 .btn {
   padding: 0.875rem 1.5rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
@@ -129,7 +131,7 @@
   text-decoration: none;
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
   }
 }
@@ -139,23 +141,23 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
   }
 }
 
 .btn-google {
-  background: white;
-  border: 2px solid #e5e7eb;
-  color: #374151;
+  background: var(--background-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
 
   &:hover:not(:disabled) {
-    border-color: #d1d5db;
-    background: #f9fafb;
+    border-color: var(--border-hover);
+    background: var(--background-quaternary);
   }
 }
 
@@ -182,7 +184,7 @@
   text-align: center;
   margin: 1.5rem 0;
   position: relative;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 0.875rem;
 
   &::before {
@@ -192,11 +194,11 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: #e5e7eb;
+    background: var(--border-color);
   }
 
   span {
-    background: white;
+    background: var(--background-secondary);
     padding: 0 1rem;
     position: relative;
     z-index: 1;
@@ -207,17 +209,17 @@
   text-align: center;
   margin-top: 1.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--border-color);
 
   p {
     margin: 0;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 0.9rem;
   }
 }
 
 .link {
-  color: #3b82f6;
+  color: var(--primary-color);
   cursor: pointer;
   font-weight: 600;
   text-decoration: none;

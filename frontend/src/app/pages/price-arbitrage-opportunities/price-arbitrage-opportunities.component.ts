@@ -111,6 +111,9 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
   sortColumn = signal<'symbol' | 'spreadPercent' | 'fundingDifferential' | 'expectedDailyReturn' | 'volatility'>('fundingDifferential');
   sortDirection = signal<'asc' | 'desc'>('desc');
 
+  // Profitability filter
+  showOnlyProfitable = signal<boolean>(false);
+
   // Price Only strategy filters
   filterByMaxFunding = signal<boolean>(false);
   maxFundingValue = signal<number>(0.01); // Default: 1%
@@ -236,6 +239,11 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
             return true;
         }
       });
+    }
+
+    // Filter by profitability (positive Net APR)
+    if (this.showOnlyProfitable()) {
+      filtered = filtered.filter(o => o.netAPR > 0);
     }
 
     // Filter by selected exchanges (case-insensitive comparison)
@@ -642,6 +650,7 @@ export class PriceArbitrageOpportunitiesComponent implements OnInit, OnDestroy {
     this.minCombinedScore.set(null);
     this.minFundingRate.set(null);
     this.minPriceSpread.set(null);
+    this.showOnlyProfitable.set(false);
     this.strategyTypeFilter.set('combined');
     this.selectedExchanges.set([...this.availableExchanges]); // Select all exchanges
     this.filterByMaxFunding.set(false); // Clear Price Only filters

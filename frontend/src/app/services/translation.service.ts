@@ -3,6 +3,7 @@ import { fundingRatesTranslations } from './translations/funding-rates-translati
 import { bybitStrategyTranslations } from './translations/bybit-strategy-translations';
 import { arbitragePositionsTranslations } from './translations/arbitrage-positions-translations';
 import { arbitrageChartTranslations } from './translations/arbitrage-chart-translations';
+import { layoutTranslations } from './translations/layout-translations';
 
 export type Language = 'en' | 'es' | 'fr' | 'ru' | 'uk';
 
@@ -3007,6 +3008,7 @@ export class TranslationService {
     this.mergeTranslations(arbitragePositionsTranslations);
     // Merge arbitrage chart translations
     this.mergeTranslations(arbitrageChartTranslations);
+    this.mergeTranslations(layoutTranslations);
   }
 
   private mergeTranslations(translations: Record<string, Record<string, string>>): void {

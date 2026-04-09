@@ -4,14 +4,14 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: linear-gradient(135deg, #0b1020 0%, #131a33 100%);
+  background: var(--background-primary);
 }
 
 .onboarding-card {
   width: 100%;
   max-width: 560px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 40px 36px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
@@ -44,7 +44,7 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 13px;
     font-weight: 600;
     display: flex;
@@ -60,7 +60,7 @@
 
   &__label {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--text-primary);
     font-weight: 500;
   }
 }
@@ -86,12 +86,12 @@
   font-size: 28px;
   font-weight: 700;
   margin: 0 0 8px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .onboarding-subtitle {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -111,7 +111,7 @@
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary);
 }
 
 .form-input,
@@ -121,7 +121,7 @@
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 14px;
   transition: border-color 0.15s, background 0.15s;
 
@@ -147,7 +147,7 @@
 
   option {
     background: #131a33;
-    color: #ffffff;
+    color: var(--text-primary);
   }
 }
 

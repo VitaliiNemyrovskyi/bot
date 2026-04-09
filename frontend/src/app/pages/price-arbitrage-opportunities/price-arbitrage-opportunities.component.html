@@ -95,6 +95,19 @@
           </ui-input>
         </div>
 
+        <div class="filter-group profitability-filter">
+          <label class="filter-label">Profitability</label>
+          <button
+            type="button"
+            class="profitability-toggle"
+            [class.active]="showOnlyProfitable()"
+            (click)="showOnlyProfitable.set(!showOnlyProfitable())"
+          >
+            <ui-icon [name]="showOnlyProfitable() ? 'check_circle' : 'radio_button_unchecked'" [size]="18"></ui-icon>
+            Profitable only
+          </button>
+        </div>
+
         <div class="filter-actions">
           <ui-button (clicked)="clearFilters()" variant="danger" size="medium">
             <ui-icon name="clear" [size]="18"></ui-icon>

@@ -19,6 +19,125 @@
       color: var(--text-secondary, #666);
       margin: 0;
     }
+
+    .btn-guide-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+      padding: 0.4rem 0.8rem;
+      background: transparent;
+      border: 1px solid var(--border-color, #e0e0e0);
+      border-radius: 6px;
+      color: var(--text-secondary, #666);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: var(--background-hover, rgba(0, 0, 0, 0.04));
+        color: var(--primary-color, #3b82f6);
+        border-color: var(--primary-color, #3b82f6);
+      }
+    }
+  }
+
+  // Guide section
+  .guide-section {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    background: var(--background-secondary, #f8f9fa);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 10px;
+
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+
+      @media (max-width: 1024px) {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      @media (max-width: 600px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .guide-card {
+      padding: 1.25rem;
+      background: var(--background-primary, #fff);
+      border-radius: 8px;
+      border: 1px solid var(--border-color, #e0e0e0);
+
+      .guide-step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--primary-color, #3b82f6);
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.85rem;
+        margin-bottom: 0.75rem;
+      }
+
+      h3 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary, #1a1a1a);
+        margin: 0 0 0.5rem 0;
+      }
+
+      p {
+        font-size: 0.85rem;
+        color: var(--text-secondary, #666);
+        margin: 0;
+        line-height: 1.5;
+      }
+    }
+
+    .guide-tip {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: rgba(59, 130, 246, 0.08);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--primary-color, #3b82f6);
+    }
+  }
+
+  // Profitability filter
+  .profitability-filter {
+    .profitability-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.6rem 0.9rem;
+      background: transparent;
+      border: 1px solid var(--border-color, #e0e0e0);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--text-secondary, #666);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+
+      &:hover {
+        border-color: var(--primary-color, #3b82f6);
+      }
+
+      &.active {
+        background: rgba(16, 185, 129, 0.1);
+        border-color: #10b981;
+        color: #10b981;
+      }
+    }
   }
 
   // Controls section
