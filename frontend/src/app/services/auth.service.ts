@@ -1,7 +1,8 @@
 import { computed, effect, Injectable, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { BehaviorSubject, catchError, Observable, tap, throwError, map, take, of } from 'rxjs';
 import { getEndpointUrl } from '../config/app.config';
+import { TranslationService } from './translation.service';
 
 export interface User {
   id: string;
@@ -50,7 +51,10 @@ export class AuthService {
   public readonly isLoading = computed(() => this._authState().isLoading);
   public readonly error = computed(() => this._authState().error);
 
-  constructor(private http: HttpClient) {
+  constructor(
+    private http: HttpClient,
+    private translationService: TranslationService
+  ) {
     this.loadAuthDataFromStorage();
     this.setupWindowFocusListener();
 
@@ -87,7 +91,7 @@ export class AuthService {
       catchError(error => {
         this.updateAuthState({
           isLoading: false,
-          error: error.error?.message || 'Login failed'
+          error: this.extractErrorMessage(error, 'auth.loginFailed')
         });
         return throwError(() => error);
       })
@@ -107,7 +111,7 @@ export class AuthService {
       catchError(error => {
         this.updateAuthState({
           isLoading: false,
-          error: error.error?.message || 'Registration failed'
+          error: this.extractErrorMessage(error, 'auth.registrationFailed')
         });
         return throwError(() => error);
       })
@@ -125,11 +129,27 @@ export class AuthService {
       catchError(error => {
         this.updateAuthState({
           isLoading: false,
-          error: error.error?.message || 'Google login failed'
+          error: this.extractErrorMessage(error, 'auth.googleLoginFailed')
         });
         return throwError(() => error);
       })
     );
+  }
+
+  /**
+   * Extracts a user-facing error message from an HTTP error response.
+   * Backend convention: error responses use the shape `{ error: '...' }`.
+   * Special-cases HTTP 409 (conflict) on register to surface "user already exists".
+   */
+  private extractErrorMessage(error: HttpErrorResponse, fallbackKey: string): string {
+    if (error?.status === 409) {
+      return this.translationService.translate('auth.userAlreadyExists');
+    }
+    const backendMessage = error?.error?.error;
+    if (typeof backendMessage === 'string' && backendMessage.length > 0) {
+      return backendMessage;
+    }
+    return this.translationService.translate(fallbackKey);
   }
 
   logout(): Observable<any> {

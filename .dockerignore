@@ -1,11 +1,10 @@
-# Used when building backend (and other images) with repository root as context.
+# Used when building backend and frontend images with repository root as context.
 **/node_modules
 **/.next
 **/out
 **/dist
 **/.git
 .git
-frontend
 backups
 coverage
 **/*.log

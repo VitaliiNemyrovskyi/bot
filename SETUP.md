@@ -685,3 +685,6 @@ For issues, questions, or contributions:
 - Review troubleshooting section above
 
 Happy Trading!
+
+make sub:
+UPDATE users SET "subscriptionActive" = true, "subscriptionExpiry" = NOW() + INTERVAL '30 days', role = 'PREMIUM' WHERE email = 'ivan.nemyrovskiy+2@gmail.com';

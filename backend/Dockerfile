@@ -1,25 +1,21 @@
 # Multi-stage build for Backend
-FROM node:20-alpine AS deps
-WORKDIR /app
+# Build context is the repository root so the sibling `shared/` package is reachable.
 
-# Install dependencies only when needed
-COPY package*.json ./
+FROM node:20-alpine AS deps
+WORKDIR /app/backend
+COPY backend/package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
-# Development dependencies for build
+# Builder stage with full dev deps
 FROM node:20-alpine AS builder
 WORKDIR /app
-
-COPY package*.json ./
+# Sibling package referenced via tsconfig path "@shared/lib" -> "../shared/lib"
+COPY shared ./shared
+WORKDIR /app/backend
+COPY backend/package*.json ./
 RUN npm ci
-
-COPY . .
-COPY prisma ./prisma/
-
-# Generate Prisma Client
+COPY backend/ ./
 RUN npx prisma generate
-
-# Build Next.js application
 RUN npm run build
 
 # Production image
@@ -29,21 +25,27 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-# Copy necessary files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
-COPY --from=deps /app/node_modules ./node_modules
+# Standalone output (with outputFileTracingRoot=repo root) lays files out as
+#   /app/backend/.next/standalone/backend/server.js
+#   /app/backend/.next/standalone/shared/...
+#   /app/backend/.next/standalone/node_modules/...
+# Copy that tree to /app so server.js ends up at /app/backend/server.js.
+COPY --from=builder /app/backend/.next/standalone ./
+COPY --from=builder /app/backend/.next/static ./backend/.next/static
+COPY --from=builder /app/backend/public ./backend/public
+COPY --from=builder /app/backend/prisma ./backend/prisma
 
-# Copy Prisma generated client
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Overlay the full node_modules from the builder so the Prisma CLI (used at
+# startup for `migrate deploy`) has all of its transitive dependencies. This
+# replaces the trimmed standalone node_modules but is the simplest reliable way
+# to keep both `node server.js` and the Prisma CLI working in one image.
+COPY --from=builder /app/backend/node_modules ./backend/node_modules
 
 USER nextjs
+
+WORKDIR /app/backend
 
 EXPOSE 3000
 

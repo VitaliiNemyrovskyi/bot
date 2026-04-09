@@ -1,0 +1,60 @@
+<div class="billing-page">
+  <div class="billing-container">
+    <header class="billing-header">
+      <h1 class="billing-title">{{ translate('billing.title') }}</h1>
+      <p class="billing-subtitle">{{ translate('billing.subtitle') }}</p>
+    </header>
+
+    <div *ngIf="bannerReason()" class="banner banner--warning">
+      ⚠ {{ bannerReason() }}
+    </div>
+
+    <div *ngIf="paymentStatus()" class="banner banner--info">
+      ⏳ {{ paymentStatus() }}
+    </div>
+
+    <div *ngIf="isSubscribed()" class="banner banner--success">
+      ✓ {{ translate('billing.currentPlan') }}
+      <span *ngIf="currentUser()?.subscriptionExpiry as expiry">
+        — {{ expiry | date:'mediumDate' }}
+      </span>
+    </div>
+
+    <div *ngIf="loading()" class="billing-loading">{{ translate('loading') }}</div>
+
+    <div *ngIf="error()" class="banner banner--error">{{ error() }}</div>
+
+    <div class="plans-grid" *ngIf="!loading() && plans().length > 0">
+      <div *ngFor="let plan of plans()" class="plan-card"
+           [class.plan-card--featured]="plan.duration > 31">
+        <div *ngIf="plan.duration > 31" class="plan-badge">{{ translate('billing.bestValue') }}</div>
+        <h2 class="plan-name">{{ plan.name }}</h2>
+        <div class="plan-price">
+          <span class="plan-price__amount">${{ plan.price }}</span>
+          <span class="plan-price__period">
+            / {{ plan.duration > 31 ? translate('billing.year') : translate('billing.month') }}
+          </span>
+        </div>
+        <div class="plan-effective">{{ pricePerMonth(plan) }}</div>
+        <p class="plan-description">{{ plan.description }}</p>
+
+        <ul class="plan-features">
+          <li *ngFor="let feature of plan.features">✓ {{ feature }}</li>
+        </ul>
+
+        <ui-button
+          variant="primary"
+          [fullWidth]="true"
+          [loading]="creatingInvoiceFor() === plan.id"
+          [disabled]="creatingInvoiceFor() !== null"
+          (clicked)="onUpgrade(plan)">
+          {{ translate('billing.upgradeNow') }}
+        </ui-button>
+      </div>
+    </div>
+
+    <footer class="billing-footer">
+      {{ translate('billing.poweredBy') }}
+    </footer>
+  </div>
+</div>

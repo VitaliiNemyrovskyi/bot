@@ -43,8 +43,8 @@ services:
   # Backend Service
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: 0bot-backend
     restart: unless-stopped
     depends_on:
@@ -66,10 +66,16 @@ services:
       # Bybit API (optional)
       BYBIT_API_KEY: ${BYBIT_API_KEY}
       BYBIT_API_SECRET: ${BYBIT_API_SECRET}
+      # NOWPayments billing (required for /api/billing/* endpoints)
+      NOWPAYMENTS_API_KEY: ${NOWPAYMENTS_API_KEY}
+      NOWPAYMENTS_IPN_SECRET: ${NOWPAYMENTS_IPN_SECRET}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
+      # Comma-separated outbound IPs the user must whitelist on exchange APIs
+      WHITELIST_IPS: ${WHITELIST_IPS}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
-      - ./backend/prisma:/app/prisma
+      - ./backend/prisma:/app/backend/prisma
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -78,18 +84,18 @@ services:
       start_period: 40s
     networks:
       - bot-network
-    command: sh -c "npx prisma migrate deploy && node server.js"
+    command: sh -c "npx prisma db push --accept-data-loss --skip-generate && node server.js"
 
   # Frontend Service
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: 0bot-frontend
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "${FRONTEND_PORT:-80}:80"
     healthcheck:

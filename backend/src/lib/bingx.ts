@@ -406,17 +406,15 @@ export class BingXService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
-    // // console.log('[BingXService] Signature calculation details:');
-    console.log('  Query string (exact order):', queryString);
-    console.log('  API Secret (first 8 chars):', this.apiSecret.substring(0, 8) + '...');
+    // SECURITY: never log queryString (contains the API key as a query
+    // parameter), the API secret (or any prefix of it), or the resulting
+    // signature. These together leak the credential.
 
     // Generate HMAC SHA256 signature using HEX encoding
     const signature = crypto
       .createHmac('sha256', this.apiSecret)
       .update(queryString)
       .digest('hex');
-
-    console.log('  Generated signature (hex):', signature);
 
     // Build URL with URL-encoded parameters in exact order
     const urlParamsString = paramsWithTimestamp

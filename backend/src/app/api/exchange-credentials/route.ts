@@ -193,9 +193,16 @@ export async function POST(request: NextRequest) {
     let body: SaveCredentialsRequest;
     try {
       const rawBody = await request.json();
-      console.log('[API] Received raw body:', JSON.stringify(rawBody, null, 2));
       body = bodySchema.parse(rawBody);
-      console.log('[API] Validated body:', JSON.stringify(body, null, 2));
+      // SECURITY: never log apiKey/apiSecret/authToken/passphrase. Only log
+      // safe metadata that helps debugging.
+      console.log('[API] Save credentials request:', {
+        exchange: body.exchange,
+        hasLabel: !!body.label,
+        isActive: body.isActive,
+        hasPassphrase: !!body.passphrase,
+        hasAuthToken: !!body.authToken,
+      });
     } catch (error: any) {
       console.error('[API] Validation error:', error);
       return NextResponse.json(

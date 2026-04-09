@@ -15,8 +15,7 @@ import EventEmitter from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { websocketManager } from './websocket-manager.service';
 import prisma from '@/lib/prisma';
-import { calculateFundingSpread } from '@/lib/funding-spread.utils';
-import { calculatePriceSpread } from '@shared/lib';
+import { calculateFundingSpread, calculatePriceSpread } from '@shared/lib';
 
 export interface SignalConfig {
   id: string;

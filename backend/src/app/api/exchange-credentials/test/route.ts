@@ -518,8 +518,7 @@ export async function POST(request: NextRequest) {
       // Test KuCoin credentials using custom connector
       try {
         console.log('[KUCOIN] Testing KuCoin credentials with custom connector...');
-        console.log('[KUCOIN] API Key:', apiKey.substring(0, 8) + '...');
-        console.log('[KUCOIN] Passphrase length:', passphrase.trim().length);
+        // SECURITY: do not log any portion of apiKey, secret, or passphrase.
 
         // Use ExchangeConnectorFactory to create KuCoin connector
         const { ExchangeConnectorFactory } = await import('@/connectors/exchange.factory');

@@ -6,11 +6,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { positionId: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ positionId: string }> }
 ) {
   try {
-    const { positionId } = params;
+    const { positionId } = await params;
 
     console.log(`[API] DELETE request for position: ${positionId}`);
 

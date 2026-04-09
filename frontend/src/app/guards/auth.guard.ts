@@ -19,7 +19,17 @@ canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Observab
       take(1),
       map(() => {
         const isAuth = this.authService.isAuthenticated();
-        if (isAuth || route.routeConfig?.path === 'login' || route.routeConfig?.path === 'register') {
+        const isLoginRoute = route.routeConfig?.path === 'login' || route.routeConfig?.path === 'register';
+
+        // Authenticated users hitting /login should be sent into the app.
+        // OnboardingGuard on downstream routes decides whether to bounce them
+        // to /onboarding (no exchange connected) or to the dashboard.
+        if (isAuth && isLoginRoute) {
+          this.router.navigate(['/onboarding']);
+          return false;
+        }
+
+        if (isAuth || isLoginRoute) {
           return true;
         } else {
           // Check if there was a token that might have expired

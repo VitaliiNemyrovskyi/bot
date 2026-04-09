@@ -74,6 +74,13 @@ export interface AppConfig {
         symbolInfo: string;
         balance: string;
       };
+      billing: {
+        plans: string;
+        createInvoice: string;
+      };
+      system: {
+        whitelistIps: string;
+      };
     };
   };
   app: {
@@ -165,6 +172,13 @@ export const appConfig: AppConfig = {
       exchange: {
         symbolInfo: '/exchange/symbol-info',
         balance: '/exchange/balance'
+      },
+      billing: {
+        plans: '/billing/plans',
+        createInvoice: '/billing/create-invoice'
+      },
+      system: {
+        whitelistIps: '/system/whitelist-ips'
       }
     }
   },

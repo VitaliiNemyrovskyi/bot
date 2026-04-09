@@ -164,7 +164,30 @@ model Subscription {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  paymentEvents PaymentEvent[]
+
   @@map("subscriptions")
+}
+
+/// Records every NOWPayments IPN webhook delivery so we can guarantee
+/// idempotent subscription activation. The unique paymentId column blocks
+/// duplicate side-effects when NOWPayments retries the same notification.
+model PaymentEvent {
+  id        String   @id @default(cuid())
+  paymentId String   @unique // NOWPayments payment_id
+  userId    String
+  planId    String
+  status    String // NOWPayments payment_status: waiting, confirming, finished, failed, ...
+  amount    Float?
+  currency  String?
+  rawPayload Json?
+  createdAt DateTime @default(now())
+
+  plan Subscription @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payment_events")
 }
 
 enum TradingPlatformType {

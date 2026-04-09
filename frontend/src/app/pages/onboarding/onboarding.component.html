@@ -1,0 +1,141 @@
+<div class="onboarding-page">
+  <div class="onboarding-card">
+    <!-- Progress indicator -->
+    <div class="step-indicator">
+      <div class="step" [class.step--active]="currentStep() === 1" [class.step--done]="currentStep() === 2">
+        <span class="step__number">1</span>
+        <span class="step__label">{{ translate('onboarding.stepWhitelist') }}</span>
+      </div>
+      <div class="step-connector" [class.step-connector--active]="currentStep() === 2"></div>
+      <div class="step" [class.step--active]="currentStep() === 2">
+        <span class="step__number">2</span>
+        <span class="step__label">{{ translate('onboarding.stepConnect') }}</span>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 1: Whitelist IPs                                          -->
+    <!-- ============================================================ -->
+    <ng-container *ngIf="currentStep() === 1">
+      <header class="onboarding-header">
+        <h1 class="onboarding-title">{{ translate('onboarding.whitelistTitle') }}</h1>
+        <p class="onboarding-subtitle">{{ translate('onboarding.whitelistSubtitle') }}</p>
+      </header>
+
+      <div *ngIf="whitelistLoading()" class="loading-text">{{ translate('loading') }}</div>
+
+      <div *ngIf="whitelistError()" class="result-banner result-banner--error">
+        ✗ {{ whitelistError() }}
+      </div>
+
+      <div *ngIf="!whitelistLoading() && whitelistIps().length === 0 && !whitelistError()"
+           class="result-banner result-banner--warning">
+        ⚠ {{ translate('onboarding.whitelistNotConfigured') }}
+      </div>
+
+      <div *ngIf="whitelistIps().length > 0" class="ip-list">
+        <div *ngFor="let ip of whitelistIps()" class="ip-row">
+          <code class="ip-value">{{ ip }}</code>
+          <button type="button" class="copy-btn" (click)="copyIp(ip)">
+            {{ copiedIp() === ip ? translate('onboarding.copied') : translate('onboarding.copy') }}
+          </button>
+        </div>
+        <button type="button" class="copy-all-btn" (click)="copyAllIps()">
+          {{ copiedIp() === 'all' ? translate('onboarding.copiedAll') : translate('onboarding.copyAll') }}
+        </button>
+      </div>
+
+      <div class="info-tip">
+        💡 {{ translate('onboarding.whitelistTip') }}
+      </div>
+
+      <ol class="instructions">
+        <li>{{ translate('onboarding.whitelistStep1') }}</li>
+        <li>{{ translate('onboarding.whitelistStep2') }}</li>
+        <li>{{ translate('onboarding.whitelistStep3') }}</li>
+        <li>{{ translate('onboarding.whitelistStep4') }}</li>
+      </ol>
+
+      <div class="form-actions form-actions--single">
+        <ui-button type="button" variant="primary" (clicked)="goToStep2()">
+          {{ translate('onboarding.continueToKeys') }}
+        </ui-button>
+      </div>
+    </ng-container>
+
+    <!-- ============================================================ -->
+    <!-- STEP 2: Connect exchange                                       -->
+    <!-- ============================================================ -->
+    <ng-container *ngIf="currentStep() === 2">
+      <header class="onboarding-header">
+        <h1 class="onboarding-title">{{ translate('onboarding.title') }}</h1>
+        <p class="onboarding-subtitle">{{ translate('onboarding.subtitle') }}</p>
+      </header>
+
+      <form [formGroup]="form" class="onboarding-form" (ngSubmit)="onSaveAndContinue()">
+        <div class="form-group">
+          <label class="form-label">{{ translate('onboarding.selectExchange') }}</label>
+          <select formControlName="exchange" class="form-select">
+            <option [ngValue]="null" disabled>{{ translate('onboarding.chooseExchange') }}</option>
+            <option *ngFor="let ex of exchanges" [ngValue]="ex.value">{{ ex.label }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{ translate('onboarding.apiKey') }}</label>
+          <input type="text" formControlName="apiKey" class="form-input"
+                 [placeholder]="translate('onboarding.apiKeyPlaceholder')" autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{ translate('onboarding.apiSecret') }}</label>
+          <input type="password" formControlName="apiSecret" class="form-input"
+                 [placeholder]="translate('onboarding.apiSecretPlaceholder')" autocomplete="off" />
+        </div>
+
+        <div class="form-group" *ngIf="requiresPassphrase()">
+          <label class="form-label">{{ translate('onboarding.passphrase') }}</label>
+          <input type="password" formControlName="passphrase" class="form-input"
+                 [placeholder]="translate('onboarding.passphrasePlaceholder')" autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{ translate('onboarding.labelOptional') }}</label>
+          <input type="text" formControlName="label" class="form-input"
+                 [placeholder]="translate('onboarding.labelPlaceholder')" />
+        </div>
+
+        <div class="info-tip">
+          💡 {{ translate('onboarding.ipWhitelistTip') }}
+        </div>
+
+        <div class="form-actions">
+          <ui-button type="button" variant="secondary" [loading]="testing()"
+                     [disabled]="form.invalid || testing()" (clicked)="onTestConnection()">
+            {{ translate('onboarding.testConnection') }}
+          </ui-button>
+          <ui-button type="submit" variant="primary" [loading]="saving()"
+                     [disabled]="!canSave()">
+            {{ translate('onboarding.saveContinue') }}
+          </ui-button>
+        </div>
+
+        <div *ngIf="testResult()?.success" class="result-banner result-banner--success">
+          <strong>✓ {{ translate('onboarding.testSuccess') }}</strong>
+          <div *ngIf="testResult()?.accountPreview as preview" class="account-preview">
+            <span *ngIf="preview['accountType']">{{ preview['accountType'] }}</span>
+            <span *ngIf="preview['totalEquity']">{{ preview['totalEquity'] }} {{ preview['currency'] || 'USDT' }}</span>
+          </div>
+        </div>
+
+        <div *ngIf="testError()" class="result-banner result-banner--error">
+          ✗ {{ testError() }}
+        </div>
+      </form>
+
+      <button type="button" class="back-link" (click)="goToStep1()">
+        ← {{ translate('onboarding.backToWhitelist') }}
+      </button>
+    </ng-container>
+  </div>
+</div>

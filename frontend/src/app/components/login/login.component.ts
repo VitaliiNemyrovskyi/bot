@@ -4,6 +4,7 @@ import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angula
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TranslationService } from '../../services/translation.service';
+import { ExchangeCredentialsService } from '../../services/exchange-credentials.service';
 import { ButtonComponent } from '../ui/button/button.component';
 
 @Component({
@@ -16,6 +17,7 @@ import { ButtonComponent } from '../ui/button/button.component';
 export class LoginComponent {
   // Signals for component state
   private showRegisterSignal = signal(false);
+  private hasRedirected = signal(false);
   
   // Computed values
   readonly showRegister = this.showRegisterSignal.asReadonly();
@@ -40,7 +42,8 @@ export class LoginComponent {
     private authService: AuthService,
     private router: Router,
     private route: ActivatedRoute,
-    private translationService: TranslationService
+    private translationService: TranslationService,
+    private credentialsService: ExchangeCredentialsService
   ) {
     this.returnUrl = (this.route.snapshot.queryParams['returnUrl'] as string) || '/trading';
     this.loginReason = (this.route.snapshot.queryParams['reason'] as string) || null;
@@ -55,10 +58,23 @@ export class LoginComponent {
       password: ['', [Validators.required, Validators.minLength(6)]]
     });
 
-    // Effect to navigate when authenticated
+    // Effect to navigate when authenticated.
+    // New users (zero exchange credentials) are routed to /onboarding so they
+    // can connect at least one exchange before reaching the dashboard.
     effect(() => {
-      if (this.authService.isAuthenticated()) {
-        this.router.navigate([this.returnUrl]);
+      if (this.authService.isAuthenticated() && !this.hasRedirected()) {
+        this.hasRedirected.set(true);
+        this.credentialsService.fetchCredentials().subscribe({
+          next: (creds) => {
+            const target = creds.length === 0 ? '/onboarding' : this.returnUrl;
+            this.router.navigate([target]);
+          },
+          error: () => {
+            // If credentials fetch fails (e.g. network), default to onboarding
+            // so the user can attempt to connect an exchange.
+            this.router.navigate(['/onboarding']);
+          }
+        });
       }
     });
   }
