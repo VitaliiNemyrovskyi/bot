@@ -12,7 +12,6 @@ export interface User {
   id: string;
   email: string;
   name?: string;
-  password?: string;
   role: string;
   avatar?: string;
   subscriptionActive: boolean;
@@ -21,8 +20,27 @@ export interface User {
   lastLoginAt?: Date;
 }
 
+/** Internal type used only for password verification during login. Never serialize to responses. */
+interface UserWithPassword extends User {
+  passwordHash?: string;
+}
+
 export class AuthService {
-  private static readonly JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+  private static _jwtSecret: string | null = null;
+
+  private static get JWT_SECRET(): string {
+    if (!this._jwtSecret) {
+      const secret = process.env.JWT_SECRET;
+      if (!secret || secret.length < 32) {
+        throw new Error(
+          'FATAL: JWT_SECRET environment variable must be set and at least 32 characters. ' +
+          'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
+        );
+      }
+      this._jwtSecret = secret;
+    }
+    return this._jwtSecret;
+  }
   private static readonly JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
 
   static async hashPassword(password: string): Promise<string> {
@@ -65,7 +83,32 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name || undefined,
-      password: user.password || undefined,
+      // password hash intentionally excluded from User return type
+      role: user.role,
+      avatar: user.avatar || undefined,
+      subscriptionActive: user.subscriptionActive,
+      subscriptionExpiry: user.subscriptionExpiry?.toISOString(),
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt || undefined,
+    };
+  }
+
+  /**
+   * Fetch user with password hash for login verification only.
+   * NEVER return the result of this method to API responses.
+   */
+  static async findUserByEmailWithPassword(email: string): Promise<UserWithPassword | null> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) return null;
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name || undefined,
+      passwordHash: user.password || undefined,
       role: user.role,
       avatar: user.avatar || undefined,
       subscriptionActive: user.subscriptionActive,
@@ -86,7 +129,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name || undefined,
-      password: user.password || undefined,
+      // password hash intentionally excluded from User return type
       role: user.role,
       avatar: user.avatar || undefined,
       subscriptionActive: user.subscriptionActive,
@@ -107,7 +150,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name || undefined,
-      password: user.password || undefined,
+      // password hash intentionally excluded from User return type
       role: user.role,
       avatar: user.avatar || undefined,
       subscriptionActive: user.subscriptionActive,
@@ -123,7 +166,7 @@ export class AuthService {
       data: {
         ...(updates.email && { email: updates.email }),
         ...(updates.name && { name: updates.name }),
-        ...(updates.password && { password: updates.password }),
+
         ...(updates.role && { role: updates.role }),
         ...(updates.avatar !== undefined && { avatar: updates.avatar }),
         ...(updates.subscriptionActive !== undefined && { subscriptionActive: updates.subscriptionActive }),
@@ -136,7 +179,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name || undefined,
-      password: user.password || undefined,
+      // password hash intentionally excluded from User return type
       role: user.role,
       avatar: user.avatar || undefined,
       subscriptionActive: user.subscriptionActive,
@@ -182,6 +225,12 @@ export class AuthService {
   static async getUserFromToken(token: string): Promise<User | null> {
     const payload = this.verifyToken(token);
     if (!payload) {
+      return null;
+    }
+
+    // Verify session is still valid (not logged out / expired)
+    const sessionValid = await this.isSessionValid(token);
+    if (!sessionValid) {
       return null;
     }
 

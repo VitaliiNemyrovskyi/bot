@@ -1,0 +1,91 @@
+// FlatBuffers schema: Message envelope
+// Wraps every message across the IPC boundary.
+// Both C++ and TypeScript implementations MUST use this envelope.
+//
+// Compile: flatc --ts --cpp -o generated/ envelope.fbs
+
+namespace BotEngine.IPC;
+
+// Message envelope: wraps every command, event, and response
+table Envelope {
+  // Monotonically increasing per-sender sequence number
+  seq:uint64;
+  // Nanosecond timestamp from monotonic clock (e.g. clock_gettime CLOCK_MONOTONIC)
+  timestamp_ns:uint64;
+  // UUID correlation ID as 16 raw bytes (not string, saves 20 bytes per message)
+  correlation_id:[ubyte] (required);
+  // Message type discriminator (see MessageType enum)
+  msg_type:MessageType;
+  // Exactly one payload field will be set; the rest are null.
+  // FlatBuffers unions would be ideal but unions of tables work poorly
+  // across languages, so we use optional table fields instead.
+  cmd_open_position:CmdOpenPosition;
+  cmd_close_position:CmdClosePosition;
+  cmd_cancel_position:CmdCancelPosition;
+  cmd_create_subscription:CmdCreateSubscription;
+  cmd_cancel_subscription:CmdCancelSubscription;
+  cmd_start_graduated_entry:CmdStartGraduatedEntry;
+  cmd_stop_graduated_entry:CmdStopGraduatedEntry;
+  cmd_get_engine_status:CmdGetEngineStatus;
+  cmd_shutdown_engine:CmdShutdownEngine;
+  cmd_get_position_state:CmdGetPositionState;
+  cmd_get_all_positions:CmdGetAllPositions;
+  cmd_warmup_connector:CmdWarmupConnector;
+  cmd_invalidate_connector:CmdInvalidateConnector;
+  evt_position_state_changed:EvtPositionStateChanged;
+  evt_order_submitted:EvtOrderSubmitted;
+  evt_order_filled:EvtOrderFilled;
+  evt_order_rejected:EvtOrderRejected;
+  evt_graduated_entry_progress:EvtGraduatedEntryProgress;
+  evt_countdown_tick:EvtCountdownTick;
+  evt_funding_collected:EvtFundingCollected;
+  evt_liquidation_warning:EvtLiquidationWarning;
+  evt_engine_heartbeat:EvtEngineHeartbeat;
+  evt_engine_ready:EvtEngineReady;
+  resp_command:RespCommand;
+}
+
+// All message types in the system.
+// Values 0-99: commands (API -> Engine)
+// Values 100-199: events (Engine -> API)
+// Values 200-255: responses (Engine -> API, correlated to a command)
+enum MessageType : uint8 {
+  // Commands
+  CMD_OPEN_POSITION = 0,
+  CMD_CLOSE_POSITION = 1,
+  CMD_CANCEL_POSITION = 2,
+  CMD_CREATE_SUBSCRIPTION = 3,
+  CMD_CANCEL_SUBSCRIPTION = 4,
+  CMD_START_GRADUATED_ENTRY = 5,
+  CMD_STOP_GRADUATED_ENTRY = 6,
+  CMD_GET_ENGINE_STATUS = 10,
+  CMD_SHUTDOWN_ENGINE = 11,
+  CMD_GET_POSITION_STATE = 12,
+  CMD_GET_ALL_POSITIONS = 13,
+  CMD_WARMUP_CONNECTOR = 20,
+  CMD_INVALIDATE_CONNECTOR = 21,
+
+  // Events
+  EVT_POSITION_STATE_CHANGED = 100,
+  EVT_POSITION_OPENED = 101,
+  EVT_POSITION_CLOSED = 102,
+  EVT_POSITION_ERROR = 103,
+  EVT_ORDER_SUBMITTED = 110,
+  EVT_ORDER_FILLED = 111,
+  EVT_ORDER_REJECTED = 112,
+  EVT_GRADUATED_ENTRY_PROGRESS = 113,
+  EVT_COUNTDOWN_TICK = 120,
+  EVT_FUNDING_COLLECTED = 121,
+  EVT_LIQUIDATION_WARNING = 130,
+  EVT_LIQUIDATION_CRITICAL = 131,
+  EVT_ENGINE_HEARTBEAT = 140,
+  EVT_ENGINE_READY = 141,
+  EVT_ENGINE_SHUTTING_DOWN = 142,
+  EVT_PRICE_UPDATE = 150,
+  EVT_SPREAD_UPDATE = 151,
+
+  // Responses
+  RESP_COMMAND = 200,
+}
+
+root_type Envelope;

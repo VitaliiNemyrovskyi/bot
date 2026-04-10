@@ -13,7 +13,8 @@
     "test:sandbox": "jest --testPathPatterns=sandbox --verbose",
     "test-wallet": "tsx test-wallet-balance.ts",
     "test-bingx": "tsx test-bingx-connector.ts",
-    "dev:next": "next dev"
+    "dev:next": "next dev",
+    "benchmark": "tsx src/scripts/run-latency-benchmark.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",

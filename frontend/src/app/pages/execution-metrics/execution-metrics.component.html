@@ -1,0 +1,239 @@
+<div class="exec-metrics-page">
+  <!-- Header -->
+  <div class="exec-header">
+    <div>
+      <h1>{{ translate('execMetrics.title') }}</h1>
+      <p>{{ translate('execMetrics.subtitle') }}</p>
+    </div>
+    <div class="exec-header-actions">
+      <button
+        class="btn-start-benchmark"
+        (click)="startBenchmark()"
+        [disabled]="isBenchmarkRunning()"
+        *ngIf="isAdmin()">
+        <ui-icon [name]="isBenchmarkRunning() ? 'hourglass_empty' : 'play_arrow'" [size]="18"></ui-icon>
+        <span>{{ isBenchmarkRunning() ? translate('execMetrics.benchmarkRunning') : translate('execMetrics.startBenchmark') }}</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div class="exec-error" *ngIf="error()">
+    <ui-icon name="error" [size]="18"></ui-icon>
+    <span>{{ error() }}</span>
+  </div>
+
+  <!-- Loading state -->
+  <div class="exec-loading" *ngIf="isLoading()">
+    <div class="spinner"></div>
+    <span>{{ translate('loading') }}</span>
+  </div>
+
+  <!-- No data state -->
+  <div class="exec-empty" *ngIf="!isLoading() && runs().length === 0 && !error()">
+    <ui-icon name="analytics" [size]="48"></ui-icon>
+    <p>{{ translate('execMetrics.noData') }}</p>
+  </div>
+
+  <!-- Main content (visible when data is loaded) -->
+  <ng-container *ngIf="!isLoading() && selectedAnalysis()">
+
+    <!-- Section A: Latency per Exchange Table -->
+    <section class="exec-section" *ngIf="exchangeLatencyRows().length > 0">
+      <h2 class="exec-section-title">{{ translate('execMetrics.latencyPerExchange') }}</h2>
+      <div class="exec-table-wrap">
+        <table class="exec-table">
+          <thead>
+            <tr>
+              <th>{{ translate('execMetrics.exchange') }}</th>
+              <th>{{ translate('execMetrics.eventType') }}</th>
+              <th class="num">{{ translate('execMetrics.count') }}</th>
+              <th class="num">{{ translate('execMetrics.min') }}</th>
+              <th class="num">{{ translate('execMetrics.max') }}</th>
+              <th class="num">{{ translate('execMetrics.mean') }}</th>
+              <th class="num">{{ translate('execMetrics.median') }}</th>
+              <th class="num">{{ translate('execMetrics.p95') }}</th>
+              <th class="num">{{ translate('execMetrics.p99') }}</th>
+              <th class="num">{{ translate('execMetrics.stddev') }}</th>
+              <th class="num">{{ translate('execMetrics.jitter') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of exchangeLatencyRows()">
+              <td class="exchange-cell">{{ row.exchange }}</td>
+              <td>
+                <span class="event-type-badge">{{ row.eventTypeLabel }}</span>
+              </td>
+              <td class="num">{{ row.stats.count }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.min)">{{ formatLatency(row.stats.min) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.max)">{{ formatLatency(row.stats.max) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.mean)">{{ formatLatency(row.stats.mean) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.median)">{{ formatLatency(row.stats.median) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.p95)">{{ formatLatency(row.stats.p95) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.p99)">{{ formatLatency(row.stats.p99) }}</td>
+              <td class="num">{{ formatLatency(row.stats.stddev) }}</td>
+              <td class="num">{{ formatLatency(row.stats.jitter) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section B: Time Sync Accuracy -->
+    <section class="exec-section" *ngIf="timeSyncRows().length > 0">
+      <h2 class="exec-section-title">{{ translate('execMetrics.timeSyncAccuracy') }}</h2>
+      <div class="exec-chart-container" #timeSyncChartContainer></div>
+      <div class="exec-table-wrap exec-table-compact">
+        <table class="exec-table">
+          <thead>
+            <tr>
+              <th>{{ translate('execMetrics.exchange') }}</th>
+              <th class="num">{{ translate('execMetrics.count') }}</th>
+              <th class="num">{{ translate('execMetrics.min') }}</th>
+              <th class="num">{{ translate('execMetrics.mean') }}</th>
+              <th class="num">{{ translate('execMetrics.p95') }}</th>
+              <th class="num">{{ translate('execMetrics.p99') }}</th>
+              <th class="num">{{ translate('execMetrics.max') }}</th>
+              <th class="num">{{ translate('execMetrics.stddev') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of timeSyncRows()">
+              <td class="exchange-cell">{{ row.exchange }}</td>
+              <td class="num">{{ row.stats.count }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.min)">{{ formatLatency(row.stats.min) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.mean)">{{ formatLatency(row.stats.mean) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.p95)">{{ formatLatency(row.stats.p95) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.p99)">{{ formatLatency(row.stats.p99) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.max)">{{ formatLatency(row.stats.max) }}</td>
+              <td class="num">{{ formatLatency(row.stats.stddev) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section C: Settlement Jitter -->
+    <section class="exec-section" *ngIf="settlementJitterRows().length > 0">
+      <h2 class="exec-section-title">{{ translate('execMetrics.settlementJitter') }}</h2>
+      <div class="exec-chart-container" #jitterChartContainer></div>
+      <div class="exec-table-wrap exec-table-compact">
+        <table class="exec-table">
+          <thead>
+            <tr>
+              <th>{{ translate('execMetrics.exchange') }}</th>
+              <th class="num">{{ translate('execMetrics.count') }}</th>
+              <th class="num">{{ translate('execMetrics.min') }}</th>
+              <th class="num">{{ translate('execMetrics.mean') }}</th>
+              <th class="num">{{ translate('execMetrics.p95') }}</th>
+              <th class="num">{{ translate('execMetrics.max') }}</th>
+              <th class="num">{{ translate('execMetrics.jitter') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of settlementJitterRows()">
+              <td class="exchange-cell">{{ row.exchange }}</td>
+              <td class="num">{{ row.stats.count }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.min)">{{ formatLatency(row.stats.min) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.mean)">{{ formatLatency(row.stats.mean) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.p95)">{{ formatLatency(row.stats.p95) }}</td>
+              <td class="num" [ngClass]="getLatencyClass(row.stats.max)">{{ formatLatency(row.stats.max) }}</td>
+              <td class="num">{{ formatLatency(row.stats.jitter) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section D: DB Write Latency Card -->
+    <section class="exec-section" *ngIf="dbWriteStats()">
+      <h2 class="exec-section-title">{{ translate('execMetrics.dbWriteLatency') }}</h2>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.avgWriteLatency') }}</div>
+          <div class="stat-card__value" [ngClass]="getLatencyClass(dbWriteStats()!.mean)">
+            {{ formatLatency(dbWriteStats()!.mean) }} ms
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.min') }}</div>
+          <div class="stat-card__value" [ngClass]="getLatencyClass(dbWriteStats()!.min)">
+            {{ formatLatency(dbWriteStats()!.min) }} ms
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.p95') }}</div>
+          <div class="stat-card__value" [ngClass]="getLatencyClass(dbWriteStats()!.p95)">
+            {{ formatLatency(dbWriteStats()!.p95) }} ms
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.p99') }}</div>
+          <div class="stat-card__value" [ngClass]="getLatencyClass(dbWriteStats()!.p99)">
+            {{ formatLatency(dbWriteStats()!.p99) }} ms
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.max') }}</div>
+          <div class="stat-card__value" [ngClass]="getLatencyClass(dbWriteStats()!.max)">
+            {{ formatLatency(dbWriteStats()!.max) }} ms
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">{{ translate('execMetrics.writes') }}</div>
+          <div class="stat-card__value">{{ dbWriteStats()!.count }}</div>
+        </div>
+      </div>
+    </section>
+
+  </ng-container>
+
+  <!-- Section E: Benchmark Run History (always visible if runs exist) -->
+  <section class="exec-section" *ngIf="runs().length > 0">
+    <h2 class="exec-section-title">{{ translate('execMetrics.benchmarkHistory') }}</h2>
+    <div class="exec-table-wrap">
+      <table class="exec-table">
+        <thead>
+          <tr>
+            <th>{{ translate('execMetrics.runLabel') }}</th>
+            <th>{{ translate('execMetrics.startedAt') }}</th>
+            <th class="num">{{ translate('execMetrics.duration') }}</th>
+            <th>{{ translate('execMetrics.exchanges') }}</th>
+            <th class="num">{{ translate('execMetrics.totalEvents') }}</th>
+            <th class="num">{{ translate('execMetrics.errors') }}</th>
+            <th>{{ translate('execMetrics.status') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let run of runs()"
+              [class.run-selected]="isSelectedRun(run.id)"
+              class="run-row">
+            <td class="run-label">{{ run.runLabel }}</td>
+            <td>{{ formatDate(run.startedAt) }}</td>
+            <td class="num">{{ formatDuration(run.durationMs) }}</td>
+            <td>
+              <span class="exchange-tag" *ngFor="let ex of run.exchanges">{{ ex }}</span>
+            </td>
+            <td class="num">{{ run.totalEvents ?? '-' }}</td>
+            <td class="num" [class.has-errors]="run.errorCount && run.errorCount > 0">
+              {{ run.errorCount ?? 0 }}
+            </td>
+            <td>
+              <span class="status-badge" [ngClass]="run.completedAt ? 'status-completed' : 'status-running'">
+                {{ run.completedAt ? translate('execMetrics.completed') : translate('execMetrics.running') }}
+              </span>
+            </td>
+            <td>
+              <button class="btn-view-details"
+                      (click)="selectRun(run.id)"
+                      [disabled]="!run.completedAt">
+                {{ translate('execMetrics.viewDetails') }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>

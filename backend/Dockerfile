@@ -43,6 +43,10 @@ COPY --from=builder /app/backend/prisma ./backend/prisma
 # to keep both `node server.js` and the Prisma CLI working in one image.
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 
+# Execution engine source files (run via tsx in the execution-engine container)
+COPY --from=builder /app/backend/src ./backend/src
+COPY --from=builder /app/backend/tsconfig.json ./backend/tsconfig.json
+
 USER nextjs
 
 WORKDIR /app/backend

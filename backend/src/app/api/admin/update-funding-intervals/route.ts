@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { triggerManualUpdate } from '@/services/funding-interval-scheduler.service';
+import { AuthService } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -7,12 +8,19 @@ export const runtime = 'nodejs';
  * POST /api/admin/update-funding-intervals
  *
  * Manually trigger funding interval update for all exchanges.
- * Useful for testing or immediate updates.
- *
- * NO AUTH REQUIRED (but should add in production)
+ * Requires ADMIN role.
  */
 export async function POST(_request: NextRequest) {
   try {
+    // Require ADMIN authentication
+    const authResult = await AuthService.authenticateRequest(_request);
+    if (!authResult.success || !authResult.user || authResult.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { success: false, error: 'Admin access required' },
+        { status: 403 }
+      );
+    }
+
     console.log('[Admin] Manual funding interval update triggered');
 
     const result = await triggerManualUpdate();

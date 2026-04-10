@@ -3598,6 +3598,8 @@ export class ArbitrageChartComponent implements OnInit, OnDestroy, AfterViewInit
         return `https://www.bitget.com/futures/usdt/${symbol}`;
       case 'OKX':
         return `https://www.okx.com/trade-swap/${symbol.toLowerCase()}`;
+      case 'KUCOIN':
+        return `https://www.kucoin.com/futures/trade/${symbol}`;
       default:
         return '#';
     }

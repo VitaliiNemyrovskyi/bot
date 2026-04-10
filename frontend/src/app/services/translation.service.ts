@@ -4,6 +4,7 @@ import { bybitStrategyTranslations } from './translations/bybit-strategy-transla
 import { arbitragePositionsTranslations } from './translations/arbitrage-positions-translations';
 import { arbitrageChartTranslations } from './translations/arbitrage-chart-translations';
 import { layoutTranslations } from './translations/layout-translations';
+import { executionMetricsTranslations } from './translations/execution-metrics-translations';
 
 export type Language = 'en' | 'es' | 'fr' | 'ru' | 'uk';
 
@@ -3009,6 +3010,7 @@ export class TranslationService {
     // Merge arbitrage chart translations
     this.mergeTranslations(arbitrageChartTranslations);
     this.mergeTranslations(layoutTranslations);
+    this.mergeTranslations(executionMetricsTranslations);
   }
 
   private mergeTranslations(translations: Record<string, Record<string, string>>): void {

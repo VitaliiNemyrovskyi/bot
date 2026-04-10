@@ -1,0 +1,124 @@
+// FlatBuffers schema: Command payloads (API layer -> Execution engine)
+// These map 1:1 to the existing TypeScript command types in ipc-protocol.ts.
+//
+// Compile: flatc --ts --cpp -o generated/ commands.fbs
+
+namespace BotEngine.IPC;
+
+enum PositionSide : uint8 { Long = 0, Short = 1 }
+
+enum StrategyType : uint8 {
+  Combined = 0,
+  PriceOnly = 1,
+  FundingFarm = 2,
+  SpotFutures = 3,
+}
+
+enum SubscriptionMode : uint8 { Hedged = 0, NonHedged = 1 }
+
+enum CloseReason : uint8 {
+  UserRequested = 0,
+  Convergence = 1,
+  StopLoss = 2,
+  MaxHoldingTime = 3,
+  LiquidationRisk = 4,
+}
+
+// ---- Position lifecycle commands ----
+
+table CmdOpenPosition {
+  user_id:string (required);
+  symbol:string (required);
+  primary_exchange:string (required);
+  primary_credential_id:string (required);
+  primary_side:PositionSide;
+  primary_leverage:float64;
+  primary_quantity:float64;
+  hedge_exchange:string (required);
+  hedge_credential_id:string (required);
+  hedge_side:PositionSide;
+  hedge_leverage:float64;
+  hedge_quantity:float64;
+  graduated_entry_parts:uint32 = 0;
+  graduated_entry_delay_ms:uint32 = 0;
+  strategy_type:StrategyType = Combined;
+}
+
+table CmdClosePosition {
+  position_id:string (required);
+  user_id:string (required);
+  reason:CloseReason;
+}
+
+table CmdCancelPosition {
+  position_id:string (required);
+  user_id:string (required);
+}
+
+// ---- Subscription commands ----
+
+table CmdCreateSubscription {
+  user_id:string (required);
+  symbol:string (required);
+  funding_rate:float64;
+  next_funding_time:uint64;
+  position_type:PositionSide;
+  quantity:float64;
+  primary_exchange:string (required);
+  primary_credential_id:string (required);
+  hedge_exchange:string;
+  hedge_credential_id:string;
+  mode:SubscriptionMode;
+  leverage:float64;
+  margin:float64;
+  execution_delay:uint32 = 0;
+  take_profit_percent:float64;
+  stop_loss_percent:float64;
+}
+
+table CmdCancelSubscription {
+  subscription_id:string (required);
+  user_id:string (required);
+}
+
+// ---- Graduated entry commands ----
+
+table CmdStartGraduatedEntry {
+  position_id:string (required);
+  user_id:string (required);
+  parts:uint32;
+  delay_ms:uint32;
+}
+
+table CmdStopGraduatedEntry {
+  position_id:string (required);
+  user_id:string (required);
+}
+
+// ---- Engine control commands ----
+
+table CmdGetEngineStatus {}
+
+table CmdShutdownEngine {
+  reason:string;
+}
+
+table CmdGetPositionState {
+  position_id:string (required);
+}
+
+table CmdGetAllPositions {
+  user_id:string;
+}
+
+// ---- Connector management commands ----
+
+table CmdWarmupConnector {
+  exchange_name:string (required);
+  credential_id:string (required);
+}
+
+table CmdInvalidateConnector {
+  exchange_name:string (required);
+  credential_id:string;
+}

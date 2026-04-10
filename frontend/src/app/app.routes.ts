@@ -82,6 +82,10 @@ export const routes: Routes = [
       {
         path: 'testing/api-tester',
         loadComponent: () => import('./components/testing/api-tester/api-tester.component').then(m => m.ApiTesterComponent)
+      },
+      {
+        path: 'execution-metrics',
+        loadComponent: () => import('./pages/execution-metrics/execution-metrics.component').then(m => m.ExecutionMetricsComponent)
       }
     ]
   },

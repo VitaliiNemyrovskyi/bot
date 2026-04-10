@@ -1,0 +1,118 @@
+// FlatBuffers schema: Market data types for the shared memory ring buffer
+//
+// These are NOT sent over UDS. They describe the binary layout of
+// ring buffer slots that live in mmap'd shared memory.
+//
+// The ring buffer itself uses raw struct layout (not FlatBuffers encoding)
+// for zero-overhead reads. This file documents the canonical field order
+// and types so both C++ and TypeScript agree on the memory layout.
+//
+// Compile: flatc --ts --cpp -o generated/ market_data.fbs
+
+namespace BotEngine.MarketData;
+
+// Exchange identifier (fits in uint16, max 65535 exchanges)
+// Values MUST match between C++ and TypeScript.
+// Add new exchanges at the end; never reorder.
+enum ExchangeId : uint16 {
+  Bybit = 0,
+  Binance = 1,
+  BingX = 2,
+  GateIO = 3,
+  KuCoin = 4,
+  MEXC = 5,
+  OKX = 6,
+  Bitget = 7,
+  HTX = 8,
+  CoinEx = 9,
+  Phemex = 10,
+  WOO = 11,
+  dYdX = 12,
+}
+
+// Price tick: best bid/ask snapshot
+// This is the binary layout of each ring buffer slot (64 bytes, cache-line aligned).
+// Written as raw bytes, NOT FlatBuffers-encoded.
+//
+// Offset  Size  Type     Field
+// ------  ----  ----     -----
+//  0       8    uint64   sequence (monotonic, writer increments AFTER writing all fields)
+//  8       8    uint64   timestamp_ns (monotonic clock, nanoseconds)
+// 16       8    float64  bid_price
+// 24       8    float64  ask_price
+// 32       8    float64  bid_qty (depth at best bid)
+// 40       8    float64  ask_qty (depth at best ask)
+// 48       2    uint16   exchange_id (ExchangeId enum)
+// 50       2    uint16   symbol_id (index into shared symbol lookup table)
+// 52       4    uint32   flags (bit 0: stale, bit 1: exchange-disconnected)
+// 56       8    uint64   checksum (XOR of bytes [0..55] as 7 uint64 values)
+//
+// Total: 64 bytes
+struct PriceTick {
+  sequence:uint64;
+  timestamp_ns:uint64;
+  bid_price:float64;
+  ask_price:float64;
+  bid_qty:float64;
+  ask_qty:float64;
+  exchange_id:uint16;
+  symbol_id:uint16;
+  flags:uint32;
+  checksum:uint64;
+}
+
+// Order book depth update (sent over UDS, not ring buffer, for L2 snapshots)
+table OrderBookUpdate {
+  exchange_id:ExchangeId;
+  symbol:string (required);
+  timestamp_ns:uint64;
+  bids:[PriceLevel];
+  asks:[PriceLevel];
+  is_snapshot:bool;
+}
+
+table PriceLevel {
+  price:float64;
+  quantity:float64;
+}
+
+// Funding rate update (sent over UDS, low frequency)
+table FundingRateUpdate {
+  exchange_id:ExchangeId;
+  symbol:string (required);
+  funding_rate:float64;
+  next_funding_time_ms:uint64;
+  // Estimated seconds until settlement (using calibrated clock offset)
+  estimated_seconds_remaining:int32;
+  timestamp_ns:uint64;
+}
+
+// Ring buffer header: lives at offset 0 of the shared memory region.
+// 128 bytes, cache-line aligned.
+//
+// Offset  Size  Type     Field
+// ------  ----  ----     -----
+//  0       4    uint32   magic (0x424F5442 = "BOTB")
+//  4       4    uint32   version (protocol version, currently 1)
+//  8       4    uint32   slot_count (must be power of 2)
+// 12       4    uint32   slot_size_bytes (64)
+// 16       8    uint64   write_cursor (next slot to write, monotonic)
+// 24       8    uint64   read_cursor (last slot read by consumer, advisory)
+// 32       8    uint64   created_at_ns (monotonic clock when buffer was initialized)
+// 40       4    uint32   writer_pid (PID of the writing process)
+// 44       4    uint32   reader_pid (PID of the reading process, advisory)
+// 48      80    padding  (reserved for future use, must be zero)
+//
+// Total: 128 bytes
+struct RingBufferHeader {
+  magic:uint32;
+  version:uint32;
+  slot_count:uint32;
+  slot_size_bytes:uint32;
+  write_cursor:uint64;
+  read_cursor:uint64;
+  created_at_ns:uint64;
+  writer_pid:uint32;
+  reader_pid:uint32;
+  _reserved:[ubyte:80];
+}

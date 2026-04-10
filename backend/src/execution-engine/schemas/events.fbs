@@ -1,0 +1,182 @@
+// FlatBuffers schema: Event payloads (Execution engine -> API layer)
+// These map 1:1 to the existing TypeScript event types in ipc-protocol.ts.
+//
+// Compile: flatc --ts --cpp -o generated/ events.fbs
+
+namespace BotEngine.IPC;
+
+// ---- Position state machine ----
+
+// Mirrors PositionState enum from position-state-machine.ts exactly.
+// BOTH sides must agree on these values. Adding a new state requires
+// a protocol version bump.
+enum PositionStateEnum : uint8 {
+  Intent = 0,
+  PrimarySubmitting = 1,
+  PrimaryFilled = 2,
+  HedgeSubmitting = 3,
+  Active = 4,
+  CloseTriggered = 5,
+  Closing = 6,
+  PrimaryClosed = 7,
+  Completed = 8,
+  RollingBack = 9,
+  RolledBack = 10,
+  Error = 11,
+  Cancelled = 12,
+}
+
+table EvtPositionStateChanged {
+  position_id:string (required);
+  previous_state:PositionStateEnum;
+  new_state:PositionStateEnum;
+  reason:string (required);
+  wal_sequence:uint64;
+  exchange_verified:bool;
+  timestamp_ns:uint64;
+}
+
+// ---- Order events ----
+
+enum OrderSideEnum : uint8 { Buy = 0, Sell = 1 }
+enum OrderTypeEnum : uint8 { Market = 0, Limit = 1 }
+enum OrderStatusEnum : uint8 {
+  New = 0,
+  PartiallyFilled = 1,
+  Filled = 2,
+  Cancelled = 3,
+  Rejected = 4,
+}
+
+table EvtOrderSubmitted {
+  position_id:string (required);
+  leg:string (required);  // "primary" or "hedge"
+  order_id:string (required);
+  exchange:string (required);
+  symbol:string (required);
+  side:OrderSideEnum;
+  order_type:OrderTypeEnum;
+  quantity:float64;
+  price:float64;
+  submitted_at_ns:uint64;
+}
+
+table EvtOrderFilled {
+  position_id:string (required);
+  leg:string (required);
+  order_id:string (required);
+  exchange:string (required);
+  symbol:string (required);
+  side:OrderSideEnum;
+  filled_quantity:float64;
+  avg_fill_price:float64;
+  fees:float64;
+  fee_currency:string;
+  filled_at_ns:uint64;
+  // Slippage from expected price in basis points (negative = favorable)
+  slippage_bps:float64;
+}
+
+table EvtOrderRejected {
+  position_id:string (required);
+  leg:string (required);
+  order_id:string;
+  exchange:string (required);
+  symbol:string (required);
+  error_code:string (required);
+  error_message:string (required);
+  retryable:bool;
+  rejected_at_ns:uint64;
+}
+
+// ---- Graduated entry ----
+
+table EvtGraduatedEntryProgress {
+  position_id:string (required);
+  completed_parts:uint32;
+  total_parts:uint32;
+  filled_quantity:float64;
+  avg_price:float64;
+  next_part_at_ns:uint64;
+}
+
+// ---- Funding events ----
+
+table EvtCountdownTick {
+  symbol:string (required);
+  exchange:string (required);
+  seconds_remaining:int32;
+  funding_rate:float64;
+  // Estimated clock offset used for this countdown (microseconds)
+  clock_offset_us:int64;
+}
+
+table EvtFundingCollected {
+  position_id:string (required);
+  symbol:string (required);
+  exchange:string (required);
+  funding_rate:float64;
+  payment_amount:float64;
+  payment_currency:string (required);
+  collected_at_ns:uint64;
+}
+
+// ---- Liquidation ----
+
+table EvtLiquidationWarning {
+  position_id:string (required);
+  exchange:string (required);
+  symbol:string (required);
+  // Distance to liquidation as a percentage (0.0 - 100.0)
+  distance_percent:float64;
+  mark_price:float64;
+  liquidation_price:float64;
+  severity:uint8;  // 1=warning, 2=critical
+  timestamp_ns:uint64;
+}
+
+// ---- Engine health ----
+
+table EvtEngineHeartbeat {
+  uptime_ms:uint64;
+  active_positions:uint32;
+  active_subscriptions:uint32;
+  connector_count:uint32;
+  memory_usage_mb:float32;
+  event_loop_lag_ms:float32;
+  wal_queue_depth:uint32;
+  // Per-exchange clock offsets in microseconds (positive = exchange ahead)
+  clock_offsets:[ExchangeClockOffset];
+}
+
+table ExchangeClockOffset {
+  exchange:string (required);
+  offset_us:int64;
+  last_sync_ns:uint64;
+  samples:uint32;
+}
+
+table EvtEngineReady {
+  started_at_ns:uint64;
+  recovery_completed:bool;
+  active_positions:uint32;
+  protocol_version:uint32;
+}
+
+// ---- Response ----
+
+enum ResponseStatusEnum : uint8 {
+  Ok = 0,
+  Error = 1,
+  Rejected = 2,
+}
+
+table RespCommand {
+  status:ResponseStatusEnum;
+  // Opaque JSON payload serialized as bytes (avoids schema explosion for
+  // varied response shapes). TypeScript side parses this with Zod.
+  data_json:[ubyte];
+  error_code:string;
+  error_message:string;
+  retryable:bool;
+}

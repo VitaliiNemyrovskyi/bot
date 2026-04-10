@@ -133,6 +133,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'GATEIO': return `https://www.gate.io/trade/${symbol.replace(/USDT$/, '_USDT')}`;
       case 'BITGET': return `https://www.bitget.com/futures/usdt/${symbol}`;
       case 'OKX': return `https://www.okx.com/trade-swap/${symbol.toLowerCase()}`;
+      case 'KUCOIN': return `https://www.kucoin.com/futures/trade/${symbol}`;
       default: return '#';
     }
   }

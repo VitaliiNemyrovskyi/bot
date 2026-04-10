@@ -12,10 +12,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user by email
-    const user = await AuthService.findUserByEmail(email);
+    // Find user by email (with password hash for verification)
+    const user = await AuthService.findUserByEmailWithPassword(email);
 
-    if (!user || !user.password) {
+    if (!user || !user.passwordHash) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify password
-    const isValidPassword = await AuthService.comparePasswords(password, user.password);
+    const isValidPassword = await AuthService.comparePasswords(password, user.passwordHash);
 
     if (!isValidPassword) {
       return NextResponse.json(

@@ -1143,3 +1143,137 @@ model PublicFundingRate {
   @@index([exchange])
   @@map("public_funding_rates")
 }
+
+// ============================================================================
+// Performance Benchmarking Models
+// ============================================================================
+
+enum BenchmarkEventType {
+  ORDER_LATENCY // End-to-end order placement latency
+  WS_LATENCY // WebSocket subscription to first callback latency
+  TIME_SYNC // Exchange clock offset measurement
+  DB_WRITE_LATENCY // Prisma/PostgreSQL write latency
+  SETTLEMENT_JITTER // Latency measurements during funding settlement window
+}
+
+model BenchmarkRun {
+  id String @id @default(cuid())
+
+  // Run identification
+  runLabel       String // Human-readable label (e.g., "settlement_2026-04-10T08:00Z")
+  startedAt      DateTime // When the benchmark run started
+  completedAt    DateTime? // When the benchmark run completed
+  durationMs     Float? // Total run duration in milliseconds
+
+  // Configuration snapshot
+  exchanges      String[] // Exchanges tested (e.g., ["BYBIT", "BINGX", "BINANCE"])
+  symbols        String[] // Symbols tested (e.g., ["BTCUSDT", "ETHUSDT"])
+  settlementTime DateTime? // Funding settlement time (null for non-settlement runs)
+  windowSeconds  Int? // Settlement window size in seconds (e.g., 30)
+  config         Json? // Full configuration snapshot for reproducibility
+
+  // Aggregate statistics (computed after run completes)
+  totalEvents    Int @default(0)
+  errorCount     Int @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events BenchmarkEvent[]
+
+  @@index([startedAt])
+  @@index([runLabel])
+  @@index([settlementTime])
+  @@map("benchmark_runs")
+}
+
+model BenchmarkEvent {
+  id String @id @default(cuid())
+
+  // Parent run reference
+  benchmarkRunId String
+
+  // Event classification
+  eventType  BenchmarkEventType
+  exchange   String // Exchange name (e.g., "BYBIT", "BINGX", "SYSTEM")
+  symbol     String? // Trading symbol (null for DB_WRITE_LATENCY)
+
+  // High-resolution timing (nanoseconds stored as BigInt for precision)
+  startNs    BigInt // process.hrtime.bigint() at event start
+  endNs      BigInt // process.hrtime.bigint() at event end
+  latencyNs  BigInt // endNs - startNs (nanoseconds)
+  latencyMs  Float // Convenience: latency in milliseconds
+
+  // Event-specific payload
+  // ORDER_LATENCY: { orderId, orderType, side, quantity, ackTimestamp }
+  // WS_LATENCY: { topic, firstMessageTimestamp }
+  // TIME_SYNC: { localTimestamp, exchangeTimestamp, offsetMs }
+  // DB_WRITE_LATENCY: { table, operation, rowCount }
+  // SETTLEMENT_JITTER: { secondsFromSettlement, measurementType }
+  payload Json?
+
+  // Error tracking
+  isError      Boolean @default(false)
+  errorMessage String?
+
+  // Wall-clock timestamp for correlation with external systems
+  recordedAt DateTime @default(now())
+
+  // Relations
+  benchmarkRun BenchmarkRun @relation(fields: [benchmarkRunId], references: [id], onDelete: Cascade)
+
+  @@index([benchmarkRunId])
+  @@index([benchmarkRunId, eventType])
+  @@index([exchange])
+  @@index([eventType])
+  @@index([recordedAt])
+  @@index([latencyMs])
+  @@map("benchmark_events")
+}
+
+// ============================================================================
+// Execution Engine: Write-Ahead Log for Position State Machine
+// ============================================================================
+
+model PositionWAL {
+  // Auto-incrementing sequence number (append-only WAL)
+  sequence Int @id @default(autoincrement())
+
+  // Position reference
+  positionId String
+  userId     String
+
+  // State transition
+  fromState String // PositionState enum value
+  toState   String // PositionState enum value
+  reason    String // Human-readable reason for transition
+
+  // WAL entry lifecycle
+  status String @default("PENDING") // PENDING, EXECUTING, CONFIRMED, FAILED, SUPERSEDED
+
+  // Exchange interaction tracking
+  exchangeOrderIds String[] // Order IDs involved in this transition
+  exchanges        String[] // Exchange names involved
+  symbol           String? // Trading pair symbol
+
+  // Metadata (prices, quantities, verification results)
+  metadata Json?
+
+  // Error tracking
+  errorCode    String?
+  errorMessage String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes for recovery queries
+  @@index([positionId])
+  @@index([positionId, status])
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("position_wal")
+}

@@ -85,6 +85,7 @@ export class AuthenticatedLayoutComponent {
       items: [
         { path: '/chart-demo', labelKey: 'sidebar.chartDemo', icon: 'bar_chart' },
         { path: '/testing/api-tester', labelKey: 'sidebar.apiTester', icon: 'science' },
+        { path: '/execution-metrics', labelKey: 'sidebar.executionMetrics', icon: 'speed' },
       ]
     },
     {
