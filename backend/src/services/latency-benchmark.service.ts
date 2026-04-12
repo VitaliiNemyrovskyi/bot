@@ -1,9 +1,19 @@
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as net from 'net';
 import prisma from '@/lib/prisma';
 import { BenchmarkEventType } from '@prisma/client';
 import { BaseExchangeConnector } from '@/connectors/base-exchange.connector';
 import { ExchangeConnectorFactory } from '@/connectors/exchange.factory';
 import { websocketManager } from '@/services/websocket-manager.service';
+import {
+  RING_BUFFER_SLOT_SIZE,
+  RING_BUFFER_HEADER_SIZE,
+  SHM_PATH_DEFAULT,
+  SHM_PATH_ENV,
+  UDS_SOCKET_PATH_DEFAULT,
+  UDS_SOCKET_PATH_ENV,
+} from '@/execution-engine/ipc-protocol';
 
 /**
  * Configuration for a single exchange benchmark target
@@ -31,8 +41,12 @@ export interface BenchmarkRunConfig {
   enableTimeSync: boolean;
   enableDbWriteLatency: boolean;
   enableSettlementJitter: boolean;
+  enableRingBufferBenchmark: boolean;
+  enableUdsBenchmark: boolean;
   timeSyncIterations: number;
   dbWriteIterations: number;
+  ringBufferReadIterations: number;
+  udsRoundTripIterations: number;
 }
 
 /**
@@ -104,8 +118,12 @@ export class LatencyBenchmarkService extends EventEmitter {
             enableTimeSync: config.enableTimeSync,
             enableDbWriteLatency: config.enableDbWriteLatency,
             enableSettlementJitter: config.enableSettlementJitter,
+            enableRingBufferBenchmark: config.enableRingBufferBenchmark,
+            enableUdsBenchmark: config.enableUdsBenchmark,
             timeSyncIterations: config.timeSyncIterations,
             dbWriteIterations: config.dbWriteIterations,
+            ringBufferReadIterations: config.ringBufferReadIterations,
+            udsRoundTripIterations: config.udsRoundTripIterations,
           })),
         },
       });
@@ -140,6 +158,18 @@ export class LatencyBenchmarkService extends EventEmitter {
         const orderEvents = await this.measureOrderLatency(config);
         events.push(...orderEvents);
         this.emitProgress('orderLatency', orderEvents.length);
+      }
+
+      if (config.enableRingBufferBenchmark) {
+        const rbEvents = await this.measureRingBufferReadThroughput(config);
+        events.push(...rbEvents);
+        this.emitProgress('ringBufferRead', rbEvents.length);
+      }
+
+      if (config.enableUdsBenchmark) {
+        const udsEvents = await this.measureUdsRoundTrip(config);
+        events.push(...udsEvents);
+        this.emitProgress('udsRoundTrip', udsEvents.length);
       }
 
       if (config.enableSettlementJitter && config.settlementTime) {
@@ -757,6 +787,313 @@ export class LatencyBenchmarkService extends EventEmitter {
 
     console.log(`[LatencyBenchmark] Settlement jitter measurement completed (${events.length} probes)`);
     return events;
+  }
+
+  /**
+   * Measure ring buffer read throughput and per-read latency.
+   *
+   * Opens the shared memory file at the configured SHM_PATH and performs
+   * sequential reads (header refresh + slot refresh) to measure:
+   * - Per-read latency (nanoseconds) for pread syscalls
+   * - Sustainable read throughput (reads/second)
+   *
+   * This benchmarks the TypeScript reader side of the SPSC ring buffer,
+   * which is the bottleneck in the C++ -> TypeScript market data path.
+   */
+  private async measureRingBufferReadThroughput(config: BenchmarkRunConfig): Promise<RawBenchmarkEvent[]> {
+    const events: RawBenchmarkEvent[] = [];
+    const shmPath = process.env[SHM_PATH_ENV] ?? SHM_PATH_DEFAULT;
+    const iterations = config.ringBufferReadIterations;
+
+    console.log(`[LatencyBenchmark] Ring buffer read benchmark: ${iterations} iterations on ${shmPath}`);
+
+    let fd: number;
+    try {
+      fd = fs.openSync(shmPath, 'r');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[LatencyBenchmark] Cannot open ring buffer at ${shmPath}: ${message}`);
+      events.push({
+        eventType: 'RING_BUFFER_READ',
+        exchange: 'SYSTEM',
+        startNs: process.hrtime.bigint(),
+        endNs: process.hrtime.bigint(),
+        payload: { error: 'shm_file_not_found', path: shmPath },
+        isError: true,
+        errorMessage: message,
+      });
+      return events;
+    }
+
+    try {
+      const stats = fs.fstatSync(fd);
+      const totalBytes = stats.size;
+
+      if (totalBytes < RING_BUFFER_HEADER_SIZE) {
+        events.push({
+          eventType: 'RING_BUFFER_READ',
+          exchange: 'SYSTEM',
+          startNs: process.hrtime.bigint(),
+          endNs: process.hrtime.bigint(),
+          payload: { error: 'shm_file_too_small', size: totalBytes },
+          isError: true,
+          errorMessage: `Ring buffer file too small: ${totalBytes} bytes`,
+        });
+        return events;
+      }
+
+      const headerBuf = Buffer.alloc(RING_BUFFER_HEADER_SIZE);
+      const slotBuf = Buffer.alloc(RING_BUFFER_SLOT_SIZE);
+
+      // Warm-up: read header once to page in memory
+      fs.readSync(fd, headerBuf, 0, RING_BUFFER_HEADER_SIZE, 0);
+
+      // Read the slot count from the header to compute valid slot offsets
+      const slotCount = headerBuf.readUInt32LE(8);
+
+      for (let i = 0; i < iterations; i++) {
+        const startNs = process.hrtime.bigint();
+
+        // Simulate a full tryRead() cycle: header + slot + slot (torn check)
+        fs.readSync(fd, headerBuf, 0, RING_BUFFER_HEADER_SIZE, 0);
+
+        // Read a slot at a pseudo-random offset within the valid range
+        const slotIndex = i % (slotCount || 1);
+        const slotOffset = RING_BUFFER_HEADER_SIZE + slotIndex * RING_BUFFER_SLOT_SIZE;
+
+        if (slotOffset + RING_BUFFER_SLOT_SIZE <= totalBytes) {
+          fs.readSync(fd, slotBuf, 0, RING_BUFFER_SLOT_SIZE, slotOffset);
+          // Second read for torn-write detection
+          fs.readSync(fd, slotBuf, 0, RING_BUFFER_SLOT_SIZE, slotOffset);
+        }
+
+        const endNs = process.hrtime.bigint();
+
+        events.push({
+          eventType: 'RING_BUFFER_READ',
+          exchange: 'SYSTEM',
+          startNs,
+          endNs,
+          payload: {
+            iteration: i,
+            slotIndex,
+            syscalls: 3,
+            headerBytes: RING_BUFFER_HEADER_SIZE,
+            slotBytes: RING_BUFFER_SLOT_SIZE,
+          },
+          isError: false,
+        });
+      }
+
+      // Compute aggregate stats for logging
+      const latencies = events
+        .filter((e) => !e.isError)
+        .map((e) => Number(e.endNs - e.startNs));
+
+      if (latencies.length > 0) {
+        const sorted = [...latencies].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)]!;
+        const p95 = sorted[Math.floor(sorted.length * 0.95)]!;
+        const mean = latencies.reduce((a, b) => a + b, 0) / latencies.length;
+        const throughput = Math.round(1_000_000_000 / mean);
+
+        console.log(`[LatencyBenchmark] Ring buffer read results:` +
+          ` median=${(median / 1000).toFixed(1)}us` +
+          ` p95=${(p95 / 1000).toFixed(1)}us` +
+          ` throughput=${throughput} reads/sec`);
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+
+    return events;
+  }
+
+  /**
+   * Measure Unix domain socket round-trip time.
+   *
+   * Connects to the execution engine UDS, sends a GET_ENGINE_STATUS command,
+   * and measures the time until the response is received. This captures the
+   * full IPC overhead: JSON serialization, kernel socket transfer, JSON
+   * deserialization, and response processing.
+   *
+   * If the UDS is not available (engine not running), records an error event.
+   */
+  private async measureUdsRoundTrip(config: BenchmarkRunConfig): Promise<RawBenchmarkEvent[]> {
+    const events: RawBenchmarkEvent[] = [];
+    const socketPath = process.env[UDS_SOCKET_PATH_ENV] ?? UDS_SOCKET_PATH_DEFAULT;
+    const iterations = config.udsRoundTripIterations;
+
+    console.log(`[LatencyBenchmark] UDS round-trip benchmark: ${iterations} iterations on ${socketPath}`);
+
+    // Check if socket file exists
+    if (!fs.existsSync(socketPath)) {
+      console.warn(`[LatencyBenchmark] UDS socket not found at ${socketPath}`);
+      events.push({
+        eventType: 'UDS_ROUND_TRIP',
+        exchange: 'SYSTEM',
+        startNs: process.hrtime.bigint(),
+        endNs: process.hrtime.bigint(),
+        payload: { error: 'socket_not_found', path: socketPath },
+        isError: true,
+        errorMessage: `UDS socket not found at ${socketPath}`,
+      });
+      return events;
+    }
+
+    // Connect to UDS
+    let socket: net.Socket;
+    try {
+      socket = await this.connectToUds(socketPath);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      events.push({
+        eventType: 'UDS_ROUND_TRIP',
+        exchange: 'SYSTEM',
+        startNs: process.hrtime.bigint(),
+        endNs: process.hrtime.bigint(),
+        payload: { error: 'connect_failed', path: socketPath },
+        isError: true,
+        errorMessage: message,
+      });
+      return events;
+    }
+
+    try {
+      for (let i = 0; i < iterations; i++) {
+        const startNs = process.hrtime.bigint();
+
+        try {
+          await this.sendUdsPing(socket, i);
+          const endNs = process.hrtime.bigint();
+
+          events.push({
+            eventType: 'UDS_ROUND_TRIP',
+            exchange: 'SYSTEM',
+            startNs,
+            endNs,
+            payload: {
+              iteration: i,
+              commandType: 'cmd:get_engine_status',
+            },
+            isError: false,
+          });
+        } catch (err: unknown) {
+          const endNs = process.hrtime.bigint();
+          const message = err instanceof Error ? err.message : String(err);
+          events.push({
+            eventType: 'UDS_ROUND_TRIP',
+            exchange: 'SYSTEM',
+            startNs,
+            endNs,
+            payload: { iteration: i },
+            isError: true,
+            errorMessage: message,
+          });
+        }
+      }
+
+      // Compute aggregate stats for logging
+      const latencies = events
+        .filter((e) => !e.isError)
+        .map((e) => Number(e.endNs - e.startNs));
+
+      if (latencies.length > 0) {
+        const sorted = [...latencies].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)]!;
+        const p95 = sorted[Math.floor(sorted.length * 0.95)]!;
+        const mean = latencies.reduce((a, b) => a + b, 0) / latencies.length;
+
+        console.log(`[LatencyBenchmark] UDS round-trip results:` +
+          ` median=${(median / 1_000_000).toFixed(2)}ms` +
+          ` p95=${(p95 / 1_000_000).toFixed(2)}ms` +
+          ` mean=${(mean / 1_000_000).toFixed(2)}ms`);
+      }
+    } finally {
+      socket.destroy();
+    }
+
+    return events;
+  }
+
+  /**
+   * Connect to the execution engine UDS.
+   */
+  private connectToUds(socketPath: string): Promise<net.Socket> {
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection({ path: socketPath }, () => {
+        resolve(socket);
+      });
+
+      socket.on('error', (err) => {
+        reject(err);
+      });
+
+      // Timeout after 5 seconds
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        reject(new Error('UDS connection timeout'));
+      }, 5000);
+
+      socket.once('connect', () => {
+        clearTimeout(timeout);
+      });
+    });
+  }
+
+  /**
+   * Send a length-prefixed JSON command over UDS and wait for response.
+   * Uses GET_ENGINE_STATUS as a lightweight ping command.
+   */
+  private sendUdsPing(socket: net.Socket, seq: number): Promise<void> {
+    const RESPONSE_TIMEOUT_MS = 5000;
+
+    return new Promise((resolve, reject) => {
+      const correlationId = `benchmark-${Date.now()}-${seq}`;
+
+      const envelope = {
+        seq,
+        timestampNs: process.hrtime.bigint().toString(),
+        correlationId,
+        type: 'cmd:get_engine_status',
+        payload: {},
+      };
+
+      const json = JSON.stringify(envelope);
+      const payloadBuf = Buffer.from(json, 'utf-8');
+      const header = Buffer.alloc(4);
+      header.writeUInt32BE(payloadBuf.length, 0);
+
+      const frame = Buffer.concat([header, payloadBuf]);
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('UDS ping timeout'));
+      }, RESPONSE_TIMEOUT_MS);
+
+      const onData = (_data: Buffer) => {
+        // Any response means the round-trip completed.
+        // We do not parse the response for benchmark purposes --
+        // we only need the timing.
+        cleanup();
+        resolve();
+      };
+
+      const onError = (err: Error) => {
+        cleanup();
+        reject(err);
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        socket.removeListener('data', onData);
+        socket.removeListener('error', onError);
+      };
+
+      socket.on('data', onData);
+      socket.on('error', onError);
+      socket.write(frame);
+    });
   }
 
   /**

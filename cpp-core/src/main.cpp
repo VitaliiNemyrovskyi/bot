@@ -97,9 +97,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
         return 1;
     }
 
-    // Bybit API credentials (required for order submission, optional for market data)
-    std::string api_key = env_or("BYBIT_API_KEY", "");
-    std::string api_secret = env_or("BYBIT_API_SECRET", "");
+    // Bybit API credentials: received from execution engine via UDS (PROVIDE_CREDENTIALS)
+    // No longer read from env vars — the engine decrypts and pushes them at connect time.
+    std::string api_key;
+    std::string api_secret;
 
     // Bybit REST/WS hosts
     std::string ws_host = env_or("BYBIT_WS_HOST", "stream.bybit.com");
@@ -232,14 +233,27 @@ int main(int /*argc*/, char* /*argv*/[]) {
     };
     bot::UdsClient uds_client(uds_config);
 
-    // 6. Order pipeline (only active in non-shadow mode)
+    // 6. Order pipeline (lazily initialized when credentials arrive via UDS)
     std::unique_ptr<bot::OrderPipeline> order_pipeline;
-    if (!shadow_mode && !api_key.empty() && !api_secret.empty()) {
+
+    // Helper to initialize order pipeline once credentials are received
+    auto init_order_pipeline = [&](const std::string& key, const std::string& secret) {
+        if (order_pipeline) {
+            std::cout << "[main] Order pipeline already initialized, skipping"
+                      << std::endl;
+            return;
+        }
+        if (shadow_mode) {
+            std::cout << "[main] Credentials received but shadow mode active — "
+                      << "order pipeline stays disabled" << std::endl;
+            return;
+        }
+
         bot::OrderPipelineConfig order_config{
             .rest_host = rest_host,
             .rest_port = 443,
-            .api_key = api_key,
-            .api_secret = api_secret,
+            .api_key = key,
+            .api_secret = secret,
             .max_slippage_bps = max_slippage_bps,
             .submit_timeout_ms = 10000,
             .confirm_max_retries = 10,
@@ -276,15 +290,45 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
                 uds_client.send_event(event_type, payload);
             });
-    } else {
-        std::cout << "[main] Order pipeline disabled (shadow mode or no API credentials)"
+
+        std::cout << "[main] Order pipeline initialized with credentials from engine"
                   << std::endl;
-    }
+    };
+
+    std::cout << "[main] Waiting for credentials from execution engine via UDS"
+              << std::endl;
 
     // 7. Handle incoming UDS commands
     uds_client.set_message_callback(
-        [&order_pipeline, shadow_mode](const nlohmann::json& envelope) {
+        [&order_pipeline, &init_order_pipeline, &api_key, &api_secret,
+         shadow_mode](const nlohmann::json& envelope) {
             std::string type = envelope.value("type", "");
+
+            // Handle credential provisioning from execution engine
+            if (type == "cmd:provide_credentials") {
+                auto payload = envelope.value("payload", nlohmann::json::object());
+                auto creds = payload.value("credentials", nlohmann::json::array());
+
+                for (const auto& cred : creds) {
+                    std::string exchange = cred.value("exchange", "");
+                    if (exchange == "BYBIT") {
+                        api_key = cred.value("apiKey", "");
+                        api_secret = cred.value("apiSecret", "");
+                        std::cout << "[main] Received Bybit credentials from engine"
+                                  << " (credentialId: " << cred.value("credentialId", "")
+                                  << ")" << std::endl;
+                        init_order_pipeline(api_key, api_secret);
+                        break;
+                    }
+                }
+
+                if (api_key.empty()) {
+                    std::cout << "[main] No Bybit credentials in provisioned set"
+                              << std::endl;
+                }
+                return;
+            }
+
             std::cout << "[main] Received command: " << type << std::endl;
 
             // In shadow mode, log but do not execute trading commands

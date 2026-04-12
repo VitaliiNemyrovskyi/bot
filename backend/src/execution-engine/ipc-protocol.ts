@@ -66,6 +66,9 @@ export enum CommandType {
   // Connector management
   WARMUP_CONNECTOR = 'cmd:warmup_connector',
   INVALIDATE_CONNECTOR = 'cmd:invalidate_connector',
+
+  // Credential provisioning (engine -> cpp-core)
+  PROVIDE_CREDENTIALS = 'cmd:provide_credentials',
 }
 
 // ---------------------------------------------------------------------------

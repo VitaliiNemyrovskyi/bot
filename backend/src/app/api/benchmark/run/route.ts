@@ -31,8 +31,12 @@ interface BenchmarkRunRequestBody {
   enableTimeSync?: boolean;
   enableDbWriteLatency?: boolean;
   enableSettlementJitter?: boolean;
+  enableRingBufferBenchmark?: boolean;
+  enableUdsBenchmark?: boolean;
   timeSyncIterations?: number;
   dbWriteIterations?: number;
+  ringBufferReadIterations?: number;
+  udsRoundTripIterations?: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -115,8 +119,12 @@ export async function POST(request: NextRequest) {
       enableTimeSync: body.enableTimeSync ?? true,
       enableDbWriteLatency: body.enableDbWriteLatency ?? true,
       enableSettlementJitter: body.enableSettlementJitter ?? false,
+      enableRingBufferBenchmark: body.enableRingBufferBenchmark ?? false,
+      enableUdsBenchmark: body.enableUdsBenchmark ?? false,
       timeSyncIterations: body.timeSyncIterations ?? 10,
       dbWriteIterations: body.dbWriteIterations ?? 10,
+      ringBufferReadIterations: body.ringBufferReadIterations ?? 100,
+      udsRoundTripIterations: body.udsRoundTripIterations ?? 50,
     };
 
     // Settlement jitter requires a settlement time

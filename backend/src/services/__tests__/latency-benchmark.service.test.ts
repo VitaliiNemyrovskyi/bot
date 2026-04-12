@@ -104,8 +104,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: true,
         enableDbWriteLatency: true,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 2,
         dbWriteIterations: 2,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       const runId = await service.run(config);
@@ -137,8 +141,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: true,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       // Start first run
@@ -160,8 +168,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: true,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 5,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       await service.run(config);
@@ -186,8 +198,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: true,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       // Should not throw - errors are captured as events
@@ -210,8 +226,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: false,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       await service.run(config);
@@ -252,8 +272,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: false,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       await service.run(config);
@@ -277,8 +301,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: false,
         enableDbWriteLatency: true,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 3,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       await service.run(config);
@@ -300,8 +328,12 @@ describe('LatencyBenchmarkService', () => {
         enableTimeSync: true,
         enableDbWriteLatency: false,
         enableSettlementJitter: false,
+        enableRingBufferBenchmark: false,
+        enableUdsBenchmark: false,
         timeSyncIterations: 1,
         dbWriteIterations: 1,
+        ringBufferReadIterations: 0,
+        udsRoundTripIterations: 0,
       };
 
       await service.run(config);

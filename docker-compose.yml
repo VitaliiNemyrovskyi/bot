@@ -89,7 +89,7 @@ services:
       start_period: 40s
     networks:
       - bot-network
-    command: sh -c "npx prisma db push --accept-data-loss --skip-generate && node server.js"
+    command: sh -c "npx prisma db push --skip-generate && node server.js"
 
   # Execution Engine (standalone process for trading services)
   execution-engine:
@@ -124,7 +124,7 @@ services:
       start_period: 30s
     networks:
       - bot-network
-    command: sh -c "npx prisma db push --accept-data-loss --skip-generate && npx tsx src/execution-engine/engine-process.ts"
+    command: sh -c "npx prisma db push --skip-generate && npx tsx src/execution-engine/engine-process.ts"
 
   # C++ Execution Core (low-latency market data and order submission)
   cpp-core:
@@ -142,8 +142,8 @@ services:
       MARKET_DATA_SHM_PATH: /data/shm/bot-market-data.shm
       RING_BUFFER_SLOT_COUNT: ${RING_BUFFER_SLOT_COUNT:-4096}
       BYBIT_SYMBOLS: ${BYBIT_SYMBOLS:-BTCUSDT,ETHUSDT}
-      BYBIT_API_KEY: ${BYBIT_API_KEY}
-      BYBIT_API_SECRET: ${BYBIT_API_SECRET}
+      # API keys are NOT passed via env vars — the execution engine
+      # decrypts and pushes them via UDS (PROVIDE_CREDENTIALS command)
       BYBIT_WS_HOST: ${BYBIT_WS_HOST:-stream.bybit.com}
       BYBIT_REST_HOST: ${BYBIT_REST_HOST:-api.bybit.com}
       CONNECTOR_MODE_BYBIT: ${CONNECTOR_MODE_BYBIT:-shadow}

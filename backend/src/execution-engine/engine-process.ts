@@ -44,6 +44,7 @@ import {
 } from './position-state-machine';
 import { ExchangeConnectorFactory } from '@/connectors/exchange.factory';
 import { ExchangeCredentialsService } from '@/lib/exchange-credentials-service';
+import { alertService } from '@/services/alert.service';
 import {
   MessageEnvelope,
   CommandType,
@@ -148,6 +149,14 @@ export class ExecutionEngine extends EventEmitter {
           console.error('[ExecutionEngine] Command handler error:', err);
         });
       });
+
+      // When a client (e.g. C++ core) connects, push exchange credentials
+      this.udsServer.on('client:connected', () => {
+        this.provideCredentialsToCppCore().catch((err) => {
+          console.error('[ExecutionEngine] Failed to push credentials:', err);
+        });
+      });
+
       await this.udsServer.start();
 
       // 5. Ready
@@ -411,6 +420,24 @@ export class ExecutionEngine extends EventEmitter {
         `[ExecutionEngine] CRITICAL: Position ${positionId} requires operator intervention. ` +
         `Reason: ${recovery.reason}`
       );
+      await alertService.critical('Position requires operator intervention', {
+        positionId,
+        lastKnownState,
+        recoveryAction: recovery.action,
+        targetState: recovery.targetState,
+        reason: recovery.reason,
+        primaryExchange: primaryVerification.exchange,
+        hedgeExchange: hedgeVerification.exchange,
+        primaryPositionExists: primaryVerification.positionExists,
+        hedgePositionExists: hedgeVerification.positionExists,
+      });
+    } else if (recovery.action === RecoveryAction.EMERGENCY_CLOSE) {
+      await alertService.warning('Emergency close triggered during recovery', {
+        positionId,
+        lastKnownState,
+        recoveryAction: recovery.action,
+        reason: recovery.reason,
+      });
     }
   }
 
@@ -543,6 +570,98 @@ export class ExecutionEngine extends EventEmitter {
         exchangeReachable: false,
         error: message,
       };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Credential provisioning to C++ core
+  // ---------------------------------------------------------------------------
+
+  private credentialsPushed = false;
+
+  /**
+   * Push decrypted exchange credentials to the C++ core via UDS.
+   * Called once when a UDS client connects. Subsequent connections
+   * (e.g. health check probes) are ignored — credentials only need
+   * to be sent once since the C++ core caches them in memory.
+   */
+  private async provideCredentialsToCppCore(): Promise<void> {
+    if (this.credentialsPushed) return;
+
+    try {
+      const prismaModule = await import('@/lib/prisma');
+      const prisma = prismaModule.default;
+
+      // Find active credentials, deduplicated per exchange (pick the most
+      // recently updated credential for each exchange)
+      const credentials = await prisma.exchangeCredentials.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          userId: true,
+          exchange: true,
+          apiKey: true,
+          apiSecret: true,
+          authToken: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      if (credentials.length === 0) {
+        console.log('[ExecutionEngine] No active credentials to push to C++ core');
+        return;
+      }
+
+      // Deduplicate: keep the most recently updated credential per exchange
+      const seenExchanges = new Set<string>();
+      const uniqueCreds = credentials.filter(c => {
+        if (seenExchanges.has(c.exchange)) return false;
+        seenExchanges.add(c.exchange);
+        return true;
+      });
+
+      const decryptedCreds: Array<{
+        exchange: string;
+        credentialId: string;
+        userId: string;
+        apiKey: string;
+        apiSecret: string;
+        authToken?: string;
+      }> = [];
+
+      for (const cred of uniqueCreds) {
+        try {
+          const decrypted = await ExchangeCredentialsService.getCredentialsById(cred.id);
+          if (decrypted) {
+            decryptedCreds.push({
+              exchange: cred.exchange,
+              credentialId: cred.id,
+              userId: cred.userId,
+              apiKey: decrypted.apiKey,
+              apiSecret: decrypted.apiSecret,
+              authToken: decrypted.authToken,
+            });
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[ExecutionEngine] Failed to decrypt credential ${cred.id}: ${msg}`);
+        }
+      }
+
+      if (decryptedCreds.length > 0) {
+        this.udsServer.send(CommandType.PROVIDE_CREDENTIALS, {
+          credentials: decryptedCreds,
+        });
+        this.credentialsPushed = true;
+        console.log(
+          `[ExecutionEngine] Pushed ${decryptedCreds.length} credential(s) to C++ core: ` +
+          decryptedCreds.map(c => c.exchange).join(', ')
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[ExecutionEngine] Credential provisioning error: ${msg}`);
     }
   }
 

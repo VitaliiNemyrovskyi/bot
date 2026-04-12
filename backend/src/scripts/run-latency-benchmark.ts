@@ -195,8 +195,12 @@ async function runSettlementBenchmark(
     enableTimeSync: true,
     enableDbWriteLatency: true,
     enableSettlementJitter: true,
+    enableRingBufferBenchmark: false,
+    enableUdsBenchmark: false,
     timeSyncIterations: config.timeSyncIterations,
     dbWriteIterations: config.dbWriteIterations,
+    ringBufferReadIterations: 0,
+    udsRoundTripIterations: 0,
   });
 
   return runId;

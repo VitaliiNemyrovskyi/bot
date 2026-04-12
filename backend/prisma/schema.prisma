@@ -1154,6 +1154,8 @@ enum BenchmarkEventType {
   TIME_SYNC // Exchange clock offset measurement
   DB_WRITE_LATENCY // Prisma/PostgreSQL write latency
   SETTLEMENT_JITTER // Latency measurements during funding settlement window
+  RING_BUFFER_READ // Shared memory ring buffer read throughput and latency
+  UDS_ROUND_TRIP // Unix domain socket message round-trip time
 }
 
 model BenchmarkRun {

@@ -772,28 +772,39 @@ export class MEXCService {
 
     console.log(`[MEXCService] Found ${tickersWithFundingRate.length}/${tickers.length} tickers with funding rates`);
 
-    // For symbols with funding rates, use history endpoint directly (more reliable)
-    // Skip the main endpoint since it fails for most symbols anyway
-    const detailPromises = tickersWithFundingRate.map(async ticker => {
-      try {
-        // Use history endpoint directly - it's more reliable and includes collectCycle
-        const historyData = await this.getFundingRateFromHistory(ticker.symbol, ticker);
-        // console.log(
-        //   `[MEXCService] ✓ ${ticker.symbol} (collectCycle: ${historyData.collectCycle}h)`
-        // );
-        return historyData;
-      } catch (historyErr) {
-        // History endpoint failed - this symbol is likely delisted or unsupported
-        console.log(
-          `[MEXCService] ❌ History endpoint failed for ${ticker.symbol}, skipping...`
-        );
-        return null; // Will be filtered out
-      }
-    });
+    // Fetch funding rate history in batches to avoid MEXC 429 rate limiting.
+    // MEXC allows ~10 requests/second on the public history endpoint.
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY_MS = 600;
+    const fundingRates: MEXCFundingRate[] = [];
+    const failedSymbols: string[] = [];
 
-    const fundingRates = (await Promise.all(detailPromises)).filter(
-      (rate): rate is MEXCFundingRate => rate !== null
-    );
+    for (let i = 0; i < tickersWithFundingRate.length; i += BATCH_SIZE) {
+      const batch = tickersWithFundingRate.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async ticker => {
+          try {
+            return await this.getFundingRateFromHistory(ticker.symbol, ticker);
+          } catch {
+            failedSymbols.push(ticker.symbol);
+            return null;
+          }
+        })
+      );
+
+      for (const rate of batchResults) {
+        if (rate !== null) fundingRates.push(rate);
+      }
+
+      // Delay between batches to respect rate limits
+      if (i + BATCH_SIZE < tickersWithFundingRate.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+
+    if (failedSymbols.length > 0) {
+      console.log(`[MEXCService] Skipped ${failedSymbols.length} symbols with no history data`);
+    }
 
     console.log(`[MEXCService] Retrieved ${fundingRates.length} funding rates with complete data`);
     return fundingRates;

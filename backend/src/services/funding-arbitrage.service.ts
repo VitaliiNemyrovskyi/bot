@@ -3,6 +3,9 @@ import { BaseExchangeConnector, OrderSide } from '../connectors/base-exchange.co
 import prisma from '@/lib/prisma';
 import { FundingArbitrageStatus } from '@prisma/client';
 import { PositionCloseStrategyFactory } from '../strategies/position-close-strategy';
+import { alertService } from '@/services/alert.service';
+import { WalProtectedExecution, PositionContext, LegExecutionMetadata } from '@/execution-engine/wal-protected-execution';
+import { WALRepository } from '@/execution-engine/wal-repository';
 
 export interface FundingSubscription {
   id: string;
@@ -79,6 +82,15 @@ export class FundingArbitrageService extends EventEmitter {
   private connectorCache: Map<string, CachedConnector> = new Map();
   private cleanupTimer?: NodeJS.Timeout;
 
+  // WAL-protected execution layer for crash recovery and auditability
+  private readonly walExecution: WalProtectedExecution;
+
+  constructor() {
+    super();
+    const walRepo = new WALRepository(prisma);
+    this.walExecution = new WalProtectedExecution(walRepo);
+  }
+
   // Event types
   static readonly COUNTDOWN = 'countdown';
   static readonly ORDER_EXECUTING = 'order_executing';
@@ -129,7 +141,15 @@ export class FundingArbitrageService extends EventEmitter {
                   errorMessage: 'Positions not closed after restart - manual intervention required. Please check and close open positions manually.',
                 },
               });
-              console.error(`[FundingArbitrage] ⚠️ CRITICAL: Subscription ${dbSub.id} has open positions that were not closed! Manual intervention required.`);
+              console.error(`[FundingArbitrage] CRITICAL: Subscription ${dbSub.id} has open positions that were not closed! Manual intervention required.`);
+              alertService.critical('Open positions not closed after restart', {
+                subscriptionId: dbSub.id,
+                userId: dbSub.userId,
+                symbol: dbSub.symbol,
+                primaryExchange: dbSub.primaryExchange,
+                hedgeExchange: dbSub.hedgeExchange,
+                nextFundingTime: dbSub.nextFundingTime.toISOString(),
+              }).catch(() => {});
               continue;
             }
 
@@ -1061,6 +1081,19 @@ export class FundingArbitrageService extends EventEmitter {
   }
 
   /**
+   * Build a WAL PositionContext from a subscription
+   */
+  private buildPositionContext(subscription: FundingSubscription): PositionContext {
+    return {
+      positionId: subscription.id,
+      userId: subscription.userId,
+      symbol: subscription.symbol,
+      primaryExchange: subscription.primaryExchange.exchangeName,
+      hedgeExchange: subscription.hedgeExchange?.exchangeName,
+    };
+  }
+
+  /**
    * Execute arbitrage orders
    */
   private async executeArbitrageOrders(subscription: FundingSubscription): Promise<void> {
@@ -1068,6 +1101,23 @@ export class FundingArbitrageService extends EventEmitter {
     const subscriptionMode = mode || 'HEDGED'; // Default to HEDGED for backwards compatibility
 
     console.log(`[FundingArbitrage] Starting order execution in ${subscriptionMode} mode`);
+
+    // Initialize WAL-protected position lifecycle
+    const walCtx = this.buildPositionContext(subscription);
+    let walInitialized = false;
+    try {
+      await this.walExecution.initPosition(walCtx);
+      walInitialized = true;
+      console.log(`[FundingArbitrage] WAL position lifecycle initialized for ${subscription.id}`);
+    } catch (walError: any) {
+      // WAL init failed: log critical alert but continue execution
+      // (Position can still be tracked by DB status as before)
+      console.error(`[FundingArbitrage] WAL initialization failed: ${walError.message}`);
+      alertService.critical('WAL initialization failed, proceeding without WAL protection', {
+        subscriptionId: subscription.id,
+        error: walError.message,
+      }).catch(() => {});
+    }
 
     // Convert symbol to exchange-specific format
     const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
@@ -1287,31 +1337,46 @@ export class FundingArbitrageService extends EventEmitter {
       willUseTpSl: isBingX && subscriptionMode === 'NON_HEDGED' && (takeProfitPercent || stopLossPercent)
     });
 
-    if (isBingX && subscriptionMode === 'NON_HEDGED' && (takeProfitPercent || stopLossPercent)) {
-      console.log(`[FundingArbitrage] ✅ Using atomic order with TP/SL for BingX...`);
-      console.log(`[FundingArbitrage] 📤 Calling placeMarketOrderWithTPSL with:`, {
-        symbol: primarySymbol,
-        side: primarySide,
-        quantity: primaryQuantity,
-        takeProfitPercent,
-        stopLossPercent
-      });
+    // Build the primary leg execution function
+    const primaryExecFn = async () => {
+      if (isBingX && subscriptionMode === 'NON_HEDGED' && (takeProfitPercent || stopLossPercent)) {
+        console.log(`[FundingArbitrage] Using atomic order with TP/SL for BingX...`);
+        return (primaryExchange as any).placeMarketOrderWithTPSL(
+          primarySymbol,
+          primarySide,
+          primaryQuantity,
+          takeProfitPercent,
+          stopLossPercent
+        );
+      } else {
+        console.log(`[FundingArbitrage] Using standard market order (no TP/SL)`);
+        return primaryExchange.placeMarketOrder(primarySymbol, primarySide, primaryQuantity);
+      }
+    };
 
-      primaryOrder = await (primaryExchange as any).placeMarketOrderWithTPSL(
-        primarySymbol,
-        primarySide,
-        primaryQuantity,
-        takeProfitPercent,
-        stopLossPercent
-      );
+    // WAL-protected primary leg execution
+    const primaryMeta: LegExecutionMetadata = {
+      exchange: primaryExchange.exchangeName,
+      symbol: primarySymbol,
+      side: primarySide,
+      quantity: primaryQuantity,
+    };
+
+    if (walInitialized && subscriptionMode === 'HEDGED') {
+      // HEDGED mode: WAL-protected primary open (hedge will follow)
+      const walResult = await this.walExecution.openPrimaryLeg(walCtx, primaryExecFn, primaryMeta);
+      primaryOrder = walResult.result;
+    } else if (walInitialized && subscriptionMode !== 'HEDGED') {
+      // NON_HEDGED mode: WAL-protected single-leg open
+      const walResult = await this.walExecution.openSingleLeg(walCtx, primaryExecFn, primaryMeta);
+      primaryOrder = walResult.result;
     } else {
-      console.log(`[FundingArbitrage] ⚠️ Using standard market order (no TP/SL)`);
-      // Standard market order for other exchanges or when no TP/SL
-      primaryOrder = await primaryExchange.placeMarketOrder(primarySymbol, primarySide, primaryQuantity);
+      // WAL not initialized: execute directly (legacy path)
+      primaryOrder = await primaryExecFn();
     }
 
     const primaryOrderTime = Date.now() - primaryOrderStartTime;
-    console.log(`[FundingArbitrage] ✓ Primary order executed in ${primaryOrderTime}ms`);
+    console.log(`[FundingArbitrage] Primary order executed in ${primaryOrderTime}ms`);
     console.log(`[FundingArbitrage] Primary order:`, primaryOrder);
 
     // 3. Notify primary order executed
@@ -1352,12 +1417,41 @@ export class FundingArbitrageService extends EventEmitter {
       // 7. Execute HEDGE order AFTER funding with rollback on failure
       let hedgeOrder: any;
       const hedgeOrderStartTime = Date.now();
+      const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
+
+      // Build hedge execution and rollback functions for WAL-protected execution
+      const hedgeExecFn = () => hedgeExchange.placeMarketOrder(hedgeSymbol, hedgeSide, hedgeQuantity);
+      const rollbackFn = async () => {
+        console.log(`[FundingArbitrage] Attempting emergency close of PRIMARY position on ${primaryExchange.exchangeName}...`);
+        await this.forceClosePosition(
+          primaryExchange,
+          primarySymbol,
+          primaryCloseSide,
+          primaryQuantity,
+          primaryExchange.exchangeName
+        );
+        console.log(`[FundingArbitrage] PRIMARY position successfully closed (rollback complete)`);
+      };
+
+      const hedgeMeta: LegExecutionMetadata = {
+        exchange: hedgeExchange.exchangeName,
+        symbol: hedgeSymbol,
+        side: hedgeSide,
+        quantity: hedgeQuantity,
+      };
 
       try {
-        hedgeOrder = await hedgeExchange.placeMarketOrder(hedgeSymbol, hedgeSide, hedgeQuantity);
+        if (walInitialized) {
+          // WAL-protected hedge open with automatic rollback on failure
+          const walResult = await this.walExecution.openHedgeLeg(walCtx, hedgeExecFn, hedgeMeta, rollbackFn);
+          hedgeOrder = walResult.result;
+        } else {
+          // Legacy path: direct execution
+          hedgeOrder = await hedgeExecFn();
+        }
 
         const hedgeOrderTime = Date.now() - hedgeOrderStartTime;
-        console.log(`[FundingArbitrage] ✓ Hedge order executed in ${hedgeOrderTime}ms (AFTER funding)`);
+        console.log(`[FundingArbitrage] Hedge order executed in ${hedgeOrderTime}ms (AFTER funding)`);
         console.log(`[FundingArbitrage] Hedge order:`, hedgeOrder);
 
         // 8. Notify hedge executed
@@ -1369,87 +1463,87 @@ export class FundingArbitrageService extends EventEmitter {
           timestamp: Date.now(),
         } as OrderExecutionEvent);
       } catch (hedgeError: any) {
-        // ⚠️ CRITICAL: Hedge order failed! PRIMARY position is open and unhedged!
-        console.error(`[FundingArbitrage] ⚠️ HEDGE ORDER FAILED: ${hedgeError.message}`);
-        console.error(`[FundingArbitrage] ⚠️ PRIMARY position is OPEN and UNHEDGED - initiating emergency rollback!`);
+        // Hedge order failed. WAL layer already handled rollback if walInitialized.
+        // Update database and emit events for UI regardless.
+        console.error(`[FundingArbitrage] HEDGE ORDER FAILED: ${hedgeError.message}`);
 
-        // Determine opposite side to close primary position
-        const primaryCloseSide: OrderSide = positionType === 'long' ? 'Sell' : 'Buy';
+        if (!walInitialized) {
+          // Legacy rollback path (WAL not available)
+          console.error(`[FundingArbitrage] PRIMARY position is OPEN and UNHEDGED - initiating emergency rollback!`);
 
-        // Attempt to close PRIMARY position immediately
-        try {
-          console.log(`[FundingArbitrage] 🚨 Attempting emergency close of PRIMARY position on ${primaryExchange.exchangeName}...`);
-          await this.forceClosePosition(
-            primaryExchange,
-            primarySymbol,
-            primaryCloseSide,
-            primaryQuantity,
-            primaryExchange.exchangeName
-          );
-          console.log(`[FundingArbitrage] ✓ PRIMARY position successfully closed (rollback complete)`);
+          try {
+            await rollbackFn();
 
-          // Update database with error status
+            subscription.status = 'failed';
+            await prisma.fundingArbitrageSubscription.update({
+              where: { id: subscription.id },
+              data: {
+                status: 'ERROR',
+                errorMessage: `Hedge order failed: ${hedgeError.message}. Primary position was automatically closed to prevent unhedged exposure. ${
+                  hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
+                    ? 'Please ensure you have sufficient margin in your BingX account.'
+                    : ''
+                }`,
+              },
+            });
+
+            this.emit(FundingArbitrageService.ERROR, {
+              subscriptionId: subscription.id,
+              error: `Hedge failed (auto-rolled back): ${hedgeError.message}`,
+            });
+
+            throw new Error(
+              `Hedge order failed: ${hedgeError.message}. ` +
+              `PRIMARY position was automatically closed to prevent unhedged exposure. ` +
+              `${hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
+                ? 'Please ensure you have sufficient margin in your BingX account before subscribing.'
+                : 'Please check your hedge exchange configuration and try again.'
+              }`
+            );
+          } catch (rollbackError: any) {
+            // Rollback failed: catastrophic scenario
+            console.error(`[FundingArbitrage] CATASTROPHIC: ROLLBACK FAILED! ${rollbackError.message}`);
+            console.error(`[FundingArbitrage] PRIMARY position on ${primaryExchange.exchangeName} is still OPEN!`);
+
+            subscription.status = 'failed';
+            await prisma.fundingArbitrageSubscription.update({
+              where: { id: subscription.id },
+              data: {
+                status: 'ERROR',
+                errorMessage: `CRITICAL: Hedge failed AND rollback failed! PRIMARY position on ${primaryExchange.exchangeName} for ${symbol} is OPEN and UNHEDGED. Manual intervention required! Hedge error: ${hedgeError.message}. Rollback error: ${rollbackError.message}`,
+              },
+            });
+
+            this.emit(FundingArbitrageService.ERROR, {
+              subscriptionId: subscription.id,
+              error: `CRITICAL: Hedge failed, rollback failed - manual intervention required!`,
+            });
+
+            throw new Error(
+              `CRITICAL ERROR: Hedge order failed: ${hedgeError.message}. ` +
+              `Automatic rollback FAILED: ${rollbackError.message}. ` +
+              `PRIMARY POSITION ON ${primaryExchange.exchangeName} FOR ${symbol} IS STILL OPEN AND UNHEDGED! ` +
+              `Manual intervention required immediately. Symbol: ${primarySymbol}, Side to close: ${primaryCloseSide}, Quantity: ${primaryQuantity}`
+            );
+          }
+        } else {
+          // WAL-protected path: rollback already handled by walExecution.openHedgeLeg
+          // Update database status (WAL layer handles state + alerts)
           subscription.status = 'failed';
           await prisma.fundingArbitrageSubscription.update({
             where: { id: subscription.id },
             data: {
               status: 'ERROR',
-              errorMessage: `Hedge order failed: ${hedgeError.message}. Primary position was automatically closed to prevent unhedged exposure. ${
-                hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
-                  ? 'Please ensure you have sufficient margin in your BingX account.'
-                  : ''
-              }`,
+              errorMessage: `Hedge order failed: ${hedgeError.message}. WAL-protected rollback was attempted. Check WAL entries for position ${subscription.id}.`,
             },
           });
 
-          // Emit error event
           this.emit(FundingArbitrageService.ERROR, {
             subscriptionId: subscription.id,
-            error: `Hedge failed (auto-rolled back): ${hedgeError.message}`,
+            error: `Hedge failed (WAL-protected rollback attempted): ${hedgeError.message}`,
           });
 
-          // Throw informative error
-          throw new Error(
-            `Hedge order failed: ${hedgeError.message}. ` +
-            `PRIMARY position was automatically closed to prevent unhedged exposure. ` +
-            `${hedgeError.message.includes('Insufficient margin') || hedgeError.message.includes('101253')
-              ? 'Please ensure you have sufficient margin in your BingX account before subscribing.'
-              : 'Please check your hedge exchange configuration and try again.'
-            }`
-          );
-        } catch (rollbackError: any) {
-          // ⚠️ CATASTROPHIC: Rollback failed! Position is still open!
-          console.error(`[FundingArbitrage] ⚠️⚠️⚠️ CATASTROPHIC: ROLLBACK FAILED! ${rollbackError.message}`);
-          console.error(`[FundingArbitrage] ⚠️⚠️⚠️ PRIMARY position on ${primaryExchange.exchangeName} is still OPEN!`);
-
-          // Update database with critical error status
-          subscription.status = 'failed';
-          await prisma.fundingArbitrageSubscription.update({
-            where: { id: subscription.id },
-            data: {
-              status: 'ERROR',
-              errorMessage: `⚠️ CRITICAL: Hedge failed AND rollback failed! PRIMARY position on ${primaryExchange.exchangeName} for ${symbol} is OPEN and UNHEDGED. Manual intervention required! Hedge error: ${hedgeError.message}. Rollback error: ${rollbackError.message}`,
-            },
-          });
-
-          // Emit critical error event
-          this.emit(FundingArbitrageService.ERROR, {
-            subscriptionId: subscription.id,
-            error: `CRITICAL: Hedge failed, rollback failed - manual intervention required!`,
-          });
-
-          // Throw critical error
-          throw new Error(
-            `⚠️⚠️⚠️ CRITICAL ERROR ⚠️⚠️⚠️\n` +
-            `Hedge order failed: ${hedgeError.message}\n` +
-            `Automatic rollback FAILED: ${rollbackError.message}\n\n` +
-            `PRIMARY POSITION ON ${primaryExchange.exchangeName} FOR ${symbol} IS STILL OPEN AND UNHEDGED!\n` +
-            `You MUST manually close this position immediately to prevent losses:\n` +
-            `- Symbol: ${primarySymbol}\n` +
-            `- Side to close: ${primaryCloseSide}\n` +
-            `- Quantity: ${primaryQuantity}\n\n` +
-            `Please close this position on ${primaryExchange.exchangeName} NOW!`
-          );
+          throw hedgeError;
         }
       }
 
@@ -2201,6 +2295,21 @@ export class FundingArbitrageService extends EventEmitter {
         },
       });
 
+      // Record WAL cycle completion for recurring subscriptions
+      const walCtx = this.buildPositionContext(subscription);
+      const walSm = this.walExecution.getStateMachine(subscription.id);
+      if (walSm) {
+        await this.walExecution.recordCycleCompletion(walCtx, {
+          realizedPnl,
+          fundingEarned,
+          tradePnL: primaryPnL,
+          primaryTradingFees,
+          strategy: 'TP/SL',
+        }).catch((err: any) => {
+          console.error(`[FundingArbitrage] WAL cycle completion recording failed: ${err.message}`);
+        });
+      }
+
       // Reset in-memory subscription state
       subscription.status = 'active';
       subscription.entryPrice = null;
@@ -2209,8 +2318,8 @@ export class FundingArbitrageService extends EventEmitter {
       subscription.hedgeExitPrice = null;
       subscription.errorMessage = null;
 
-      console.log(`[FundingArbitrage] ✅ NON_HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
-      console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+      console.log(`[FundingArbitrage] NON_HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
+      console.log(`[FundingArbitrage] Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
 
       // Emit completion event
       this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
@@ -2448,6 +2557,21 @@ export class FundingArbitrageService extends EventEmitter {
         },
       });
 
+      // Record WAL cycle completion for recurring subscriptions
+      const walCtx = this.buildPositionContext(subscription);
+      const walSm = this.walExecution.getStateMachine(subscription.id);
+      if (walSm) {
+        await this.walExecution.recordCycleCompletion(walCtx, {
+          realizedPnl,
+          fundingEarned,
+          primaryTradingFees,
+          hedgeTradingFees,
+          strategy: 'TP/SL-HEDGED',
+        }).catch((err: any) => {
+          console.error(`[FundingArbitrage] WAL cycle completion recording failed: ${err.message}`);
+        });
+      }
+
       // Reset in-memory state
       subscription.status = 'active';
       subscription.entryPrice = null;
@@ -2456,8 +2580,8 @@ export class FundingArbitrageService extends EventEmitter {
       subscription.hedgeExitPrice = null;
       subscription.errorMessage = null;
 
-      console.log(`[FundingArbitrage] ✅ HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
-      console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+      console.log(`[FundingArbitrage] HEDGED cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)}`);
+      console.log(`[FundingArbitrage] Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
 
       // Emit completion event
       this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
@@ -2695,7 +2819,12 @@ export class FundingArbitrageService extends EventEmitter {
     const primarySymbol = this.convertSymbolForExchange(symbol, primaryExchange.exchangeName);
     const hedgeSymbol = this.convertSymbolForExchange(symbol, hedgeExchange.exchangeName);
 
-    console.log(`[FundingArbitrage] ⚡ Starting optimized position close for ${symbol} (HEDGED mode)...`);
+    console.log(`[FundingArbitrage] Starting optimized position close for ${symbol} (HEDGED mode)...`);
+
+    // Build WAL context for close operation
+    const walCtx = this.buildPositionContext(subscription);
+    const sm = this.walExecution.getStateMachine(subscription.id);
+    const walAvailable = !!sm;
 
     // STEP 1: Get actual position sizes from exchanges
     let primaryQuantity = subscription.quantity;
@@ -2737,24 +2866,51 @@ export class FundingArbitrageService extends EventEmitter {
 
     console.log(`[FundingArbitrage] Selected strategy: ${strategy.name} (avg close time: ${strategy.avgCloseTime}ms)`);
 
-    // STEP 4: Execute close using selected strategy
+    // STEP 4: Execute close using selected strategy (WAL-protected if available)
     const closeStartTime = Date.now();
+
+    const closeExecFn = () => strategy.closePositions({
+      primarySymbol,
+      hedgeSymbol,
+      primarySide: primaryCloseSide,
+      hedgeSide: hedgeCloseSide,
+      primaryQuantity,
+      hedgeQuantity,
+      positionType,
+      maxWaitTime: 5000, // 5 seconds for limit orders
+      aggressiveMargin: 0.0005, // 0.05% aggressive pricing
+    });
 
     let result;
     try {
-      result = await strategy.closePositions({
-        primarySymbol,
-        hedgeSymbol,
-        primarySide: primaryCloseSide,
-        hedgeSide: hedgeCloseSide,
-        primaryQuantity,
-        hedgeQuantity,
-        positionType,
-        maxWaitTime: 5000, // 5 seconds for limit orders
-        aggressiveMargin: 0.0005, // 0.05% aggressive pricing
-      });
+      if (walAvailable) {
+        // WAL-protected close: ACTIVE -> CLOSE_TRIGGERED -> CLOSING -> COMPLETED
+        const walResult = await this.walExecution.closePosition(
+          walCtx,
+          closeExecFn,
+          'Funding payment received, closing hedged position',
+          {
+            strategy: strategy.name,
+            primarySymbol,
+            hedgeSymbol,
+            primaryQuantity,
+            hedgeQuantity,
+          },
+        );
+        result = walResult.result;
+      } else {
+        // Legacy path: direct execution
+        result = await closeExecFn();
+      }
     } catch (strategyError: any) {
       console.error(`[FundingArbitrage] Strategy execution failed: ${strategyError.message}`);
+
+      // Record error in WAL if available
+      if (walAvailable) {
+        await this.walExecution.transitionToError(walCtx, `Close strategy failed: ${strategyError.message}`, {
+          strategy: strategy.name,
+        }).catch(() => {});
+      }
 
       // Update database with error
       await prisma.fundingArbitrageSubscription.update({
@@ -2769,12 +2925,20 @@ export class FundingArbitrageService extends EventEmitter {
     }
 
     const actualCloseTime = Date.now() - closeStartTime;
-    console.log(`[FundingArbitrage] ✓ Strategy completed in ${actualCloseTime}ms (expected: ${strategy.avgCloseTime}ms)`);
+    console.log(`[FundingArbitrage] Strategy completed in ${actualCloseTime}ms (expected: ${strategy.avgCloseTime}ms)`);
 
     // STEP 5: Verify successful close
     if (!result.success || !result.primaryClosed || !result.hedgeClosed) {
       const errorMsg = result.error || 'Unknown error during position close';
-      console.error(`[FundingArbitrage] ✗ Position close failed: ${errorMsg}`);
+      console.error(`[FundingArbitrage] Position close failed: ${errorMsg}`);
+
+      // Record error in WAL if available
+      if (walAvailable) {
+        await this.walExecution.transitionToError(walCtx, `Position close incomplete: ${errorMsg}`, {
+          primaryClosed: result.primaryClosed,
+          hedgeClosed: result.hedgeClosed,
+        }).catch(() => {});
+      }
 
       await prisma.fundingArbitrageSubscription.update({
         where: { id: subscription.id },
@@ -2858,7 +3022,23 @@ export class FundingArbitrageService extends EventEmitter {
       },
     });
 
-    // STEP 10: Reset in-memory subscription state for next cycle
+    // STEP 10: Record WAL cycle completion for recurring subscriptions
+    if (walAvailable) {
+      await this.walExecution.recordCycleCompletion(walCtx, {
+        realizedPnl,
+        fundingEarned,
+        primaryPnL,
+        hedgePnL,
+        primaryTradingFees,
+        hedgeTradingFees,
+        closeTime: actualCloseTime,
+        strategy: result.strategy,
+      }).catch((err: any) => {
+        console.error(`[FundingArbitrage] WAL cycle completion recording failed: ${err.message}`);
+      });
+    }
+
+    // STEP 11: Reset in-memory subscription state for next cycle
     subscription.status = 'active';
     subscription.entryPrice = null;
     subscription.hedgeEntryPrice = null;
@@ -2867,8 +3047,8 @@ export class FundingArbitrageService extends EventEmitter {
     subscription.errorMessage = null;
     // Keep subscription in memory for next execution cycle
 
-    console.log(`[FundingArbitrage] ✅ HEDGED mode cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)} (closed in ${actualCloseTime}ms using ${result.strategy})`);
-    console.log(`[FundingArbitrage] 🔄 Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
+    console.log(`[FundingArbitrage] HEDGED mode cycle completed for ${symbol} - P&L: $${realizedPnl.toFixed(4)} (closed in ${actualCloseTime}ms using ${result.strategy})`);
+    console.log(`[FundingArbitrage] Subscription ${subscription.id} reset to ACTIVE for next funding cycle`);
 
     // STEP 11: Emit cycle completion event (not final completion)
     this.emit(FundingArbitrageService.SUBSCRIPTION_COMPLETED, {
